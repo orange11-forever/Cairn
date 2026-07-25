@@ -1,0 +1,167 @@
+// 用真实无头 Chromium 把 apps/web 的六态跑一遍，并断言零控制台错误。
+// 静态测试（tests/web/）只看 HTML/CSS 文本，证明不了模块能加载、fetch 能通、状态机能转。
+//
+// 运行：node scripts/verify-web.mjs
+
+import { chromium } from "playwright";
+import { spawn } from "node:child_process";
+import { mkdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { join } from "node:path";
+
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
+const SHOT_DIR = join(ROOT, "apps/web/screenshots");
+mkdirSync(SHOT_DIR, { recursive: true });
+
+const WEB = "http://localhost:5500";
+
+// mock 后端用子进程起，这样「网络失败」那帧可以直接 kill 掉它
+let mock = spawn("node", [join(ROOT, "mocks/docs-server.mjs")], { stdio: "ignore" });
+const web = spawn("node", [join(ROOT, "scripts/serve-web.mjs")], { stdio: "ignore" });
+await new Promise((r) => setTimeout(r, 900));
+
+const browser = await chromium.launch();
+const page = await browser.newPage();
+
+// 「控制台零错误」是 Day 5 的硬验收项，但要分清两类：
+//
+// 1. JS 层错误（未捕获异常、Promise rejection、模块加载失败）——必须为零。
+//    这类代表代码有 bug。
+// 2. 网络层日志（"Failed to load resource: 500" / ERR_CONNECTION_REFUSED）——预期存在。
+//    浏览器对每个失败请求都会记一条，应用代码无法抑制。我们本来就在故意制造
+//    500 和断网场景，这两条恰恰证明请求真的发出去并真的失败了。
+const jsErrors = [];
+const networkNotices = [];
+
+page.on("console", (msg) => {
+  if (msg.type() !== "error") return;
+  const text = msg.text();
+  if (text.includes("Failed to load resource")) networkNotices.push(text);
+  else jsErrors.push(text);
+});
+page.on("pageerror", (err) => jsErrors.push(`pageerror: ${err.message}`));
+page.on("requestfailed", (req) =>
+  networkNotices.push(`requestfailed: ${req.url()} ${req.failure()?.errorText ?? ""}`),
+);
+
+const frames = [];
+
+async function snapshot(label) {
+  const status = await page.$eval("#status-bar", (el) => ({
+    tone: el.dataset.tone,
+    text: el.textContent.trim(),
+  }));
+  const rows = await page.$$eval("#document-list li", (els) => els.length);
+  const buttons = await page.evaluate(() => ({
+    load: document.getElementById("load-btn").disabled,
+    cancel: document.getElementById("cancel-btn").disabled,
+  }));
+  await page.screenshot({ path: join(SHOT_DIR, `${label}.png`), fullPage: true });
+  frames.push({ label, ...status, rows, ...buttons });
+}
+
+async function loadWith(scenario) {
+  await page.selectOption("#scenario", scenario);
+  await page.click("#load-btn");
+}
+
+const waitForStatus = (pattern) =>
+  page.waitForFunction(
+    (src) => new RegExp(src).test(document.querySelector("#status-bar").textContent),
+    pattern.source,
+    { timeout: 6000 },
+  );
+
+let failed = false;
+try {
+  await page.goto(WEB, { waitUntil: "networkidle" });
+  await snapshot("0-idle");
+
+  await loadWith("success");
+  await waitForStatus(/已加载/);
+  await snapshot("1-success");
+
+  await loadWith("empty");
+  await waitForStatus(/还没有文档/);
+  await snapshot("2-empty");
+
+  await loadWith("error");
+  await waitForStatus(/服务器出错/);
+  await snapshot("3-http-500");
+
+  await loadWith("slow");
+  await waitForStatus(/加载中/);
+  await snapshot("4-loading");
+
+  await page.click("#cancel-btn");
+  await waitForStatus(/点击「加载文档」/);
+  await snapshot("5-cancelled");
+
+  await loadWith("slow");
+  await waitForStatus(/请求超过/);
+  await snapshot("6-timeout");
+
+  mock.kill();
+  await new Promise((r) => setTimeout(r, 400));
+  await loadWith("success");
+  await waitForStatus(/无法连接服务器/);
+  await snapshot("7-network-down");
+
+  console.log("\n=== 八帧结果 ===\n");
+  console.log("帧".padEnd(18), "tone".padEnd(9), "rows", " load/cancel disabled", " 文案");
+  for (const f of frames) {
+    console.log(
+      `[${f.label}]`.padEnd(18),
+      String(f.tone).padEnd(9),
+      String(f.rows).padEnd(5),
+      `${f.load}/${f.cancel}`.padEnd(22),
+      `"${f.text}"`,
+    );
+  }
+
+  // ---- 断言 ----
+  const expect = (cond, message) => {
+    if (!cond) {
+      console.error(`✗ ${message}`);
+      failed = true;
+    }
+  };
+
+  const byLabel = Object.fromEntries(frames.map((f) => [f.label, f]));
+  expect(byLabel["1-success"].rows === 4, "success 应渲染 4 行");
+  expect(byLabel["2-empty"].rows === 0 && byLabel["2-empty"].tone === "empty",
+    "空数据应为 empty 语气且 0 行，而不是报错");
+  expect(byLabel["5-cancelled"].tone === "idle",
+    "用户取消应回到 idle，不该弹错误");
+  expect(byLabel["4-loading"].cancel === false && byLabel["4-loading"].load === true,
+    "加载中：取消按钮可用、加载按钮禁用");
+  expect(byLabel["6-timeout"].tone === "error" && byLabel["7-network-down"].tone === "error",
+    "超时与网络失败都应是 error 语气");
+  expect(byLabel["6-timeout"].text !== byLabel["7-network-down"].text,
+    "超时和网络失败的文案必须不同——否则 ApiError.kind 白分类了");
+
+  if (jsErrors.length > 0) {
+    console.error(`\n✗ JS 层错误 ${jsErrors.length} 条（必须为零）：`);
+    for (const e of jsErrors) console.error(`   ${e}`);
+    failed = true;
+  } else {
+    console.log("\n✓ JS 层零错误（无未捕获异常、无模块加载失败）");
+  }
+
+  // 网络层日志只报数不判失败。但要它 > 0——一条都没有反而说明
+  // 500 和断网两帧根本没真的发出请求，那是测试自己失效了。
+  console.log(`ⓘ 网络层失败日志 ${networkNotices.length} 条（预期存在，来自故意制造的 500 / 断网）：`);
+  for (const n of new Set(networkNotices)) console.log(`   ${n}`);
+  expect(networkNotices.length > 0, "网络层日志为 0 说明失败场景没真的发出请求");
+
+  console.log(failed ? "\n✗ 验证未通过" : "\n✓ 八帧全部通过");
+  console.log(`截图：${SHOT_DIR}`);
+} catch (error) {
+  console.error("验证异常：", error.message);
+  failed = true;
+} finally {
+  await browser.close();
+  mock.kill();
+  web.kill();
+  process.exitCode = failed ? 1 : 0;
+}

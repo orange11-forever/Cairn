@@ -1,0 +1,7 @@
+node_modules/
+
+# 验证产物：跑 pnpm verify 重新生成
+apps/web/screenshots/
+
+# 工具目录
+.superpowers/

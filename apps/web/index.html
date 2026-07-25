@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Tracebase 企业知识库</title>
+    <link rel="stylesheet" href="styles/main.css">
+  </head>
+  <body>
+    <header class="product-header">
+      <a href="/">Tracebase</a>
+      <nav aria-label="主导航">
+        <ul>
+          <li><a href="/documents" aria-current="page">知识文档</a></li>
+          <li><a href="/conversations">问答记录</a></li>
+        </ul>
+      </nav>
+    </header>
+
+    <main class="workspace">
+      <section class="documents-panel" aria-labelledby="documents-title">
+        <h1 id="documents-title">知识文档</h1>
+        <p>管理用于企业问答的内部资料。</p>
+
+        <div class="documents-controls">
+          <label for="scenario">模拟场景</label>
+          <select id="scenario">
+            <option value="success">成功（有数据）</option>
+            <option value="empty">成功（空数据）</option>
+            <option value="error">HTTP 500 错误</option>
+            <option value="slow">慢响应（触发 3s 超时）</option>
+          </select>
+          <button id="load-btn" type="button">加载文档</button>
+          <button id="cancel-btn" type="button" disabled>取消</button>
+        </div>
+
+        <!-- aria-live：状态变化要让读屏用户听到，而不只是看到颜色变了 -->
+        <p id="status-bar" class="status" data-tone="idle" role="status" aria-live="polite"></p>
+
+        <!-- 列表由 src/main.js 运行时填充；空的 ul 是渲染目标，不是遗漏 -->
+        <ul id="document-list" class="document-list"></ul>
+      </section>
+
+      <section class="assistant-panel" aria-labelledby="assistant-title">
+        <h2 id="assistant-title">AI 问答</h2>
+        <p>回答只依据已经处理完成的知识文档。</p>
+
+        <form class="question-form">
+          <label for="question">你的问题</label>
+          <input
+            id="question"
+            name="question"
+            type="text"
+            placeholder="例如：值班故障如何升级？"
+          >
+          <button type="submit">发送问题</button>
+        </form>
+
+        <article aria-labelledby="answer-title">
+          <h2 id="answer-title">回答</h2>
+          <p>严重故障需要先通知当班负责人，再按照升级矩阵联系服务负责人。</p>
+          <h3>引用来源</h3>
+          <ol>
+            <li><a href="/documents/on-call#section-4">值班流程，第 4 节</a></li>
+          </ol>
+        </article>
+      </section>
+    </main>
+
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>
