@@ -1,42 +1,52 @@
 # Handoff
 
+最后更新：2026-07-25 Day 5 收尾。
+
 ## State
-I completed Day 4 async JavaScript. `practice/day4/` now has a real Node mock backend (`mock-server.mjs`, port 8787, switchable via `?scenario=`), a unified request layer (`api-client.js`) with AbortController timeout/cancel and a four-kind `ApiError` (network/http/timeout/aborted), and a six-state state-machine document loader (`app.js` + `index.html`).
-I verified the backend with curl (200/`[]`/500/5s all correct), the request layer end-to-end in Node (all six kinds), AND the full UI in a real headless Chromium via Playwright (`practice/day4/verify-browser.mjs`) — 8 frames all pass with screenshots in `practice/day4/screenshots/`. Installing Playwright required `sudo npx playwright install-deps chromium` (WSL was missing libnss3/libnspr4 etc.); playwright@1.61.1 is now a devDependency.
-I rewrote the blog for beginners (`docs/blog/2026-07-24-async-javascript.md`, C++ angle removed, added intro sections on why-async/Promise/async-await) and PUBLISHED it as **post 989**: https://xiaochublog.top/async-javascript-promise-fetch/ — category Web开发(19), featured image attachment 992 (a Yuuka cover the user picked), full content verified live via public REST (10667 chars, no corruption). Published via the write-file-to-theme + WPCode snippet route (same as Day 3) because the 17.8KB CJK body exceeds both rest_api body and run_wp_cli base64 limits.
-Tags: only 3 of 5 attached (javascript, 前端入门, promise). The other two (异步编程, async-await) could NOT be created — the wpvibe `rest_api` POST `body` param is non-deterministically parsed into an object by the harness ("expected string, received object"), so tag creation kept failing. If the user wants all 5 tags, create the two terms via a WPCode snippet with wp_insert_term, then `post term set 989 post_tag ... --by=slug`.
-Cleanup DONE: temp files day4-part1/2.html deleted; WPCode snippet #990 deactivated (active=false, code replaced with a no-op). WPCode plugin itself stays installed/enabled.
-Day 3 (JS core, published as post 975) and Day 2 (CSS, post 964) are done.
 
-## Day 5 progress (2026-07-25, session was interrupted once — this section is the truth)
-DONE:
-- `apps/web/` rebuilt as real ES Modules from an empty dir: `src/api/{client,documents,errors}.js`, `src/lib/documents.js` (pure transforms), `src/state/documentStore.js`, `src/ui/{statusBar,documentList}.js`, `src/main.js`, `styles/main.css`, `index.html`.
-- Support scripts: `mocks/docs-server.mjs` (port 8787, `?scenario=`), `scripts/serve-web.mjs` (port 5500), `scripts/verify-web.mjs` (Playwright, 8 frames, asserts zero JS-layer console errors and whitelists the deliberate 500/offline network logs).
-- Static tests `tests/web/html-structure.test.mjs` + `tests/web/css-contract.test.mjs`.
-- **Acceptance item "add a test for one data-transform function": DONE** — `tests/web/documents-transform.test.mjs`, 19 tests over `normalizeDocuments`/`filterByStatus`/`countByStatus`/`statusLabel`.
-- `practice/day5-review.md` written (section-8 template).
-- Those tests found TWO real prototype-chain bugs in `src/lib/documents.js`, both fixed: `statusLabel('toString')` returned `Object.prototype.toString` (a function) because `obj[key] ?? fallback` walks the prototype chain — now uses `Object.hasOwn`; `countByStatus` had the same hole and produced a string-concatenated count — the tally object is now `Object.create(null)`.
-- Verified: `pnpm test` = 47 tests, 46 pass; `node scripts/verify-web.mjs` = 8/8 frames pass, zero JS errors.
+**两个仓库**（2026-07-25 拆分，Git 之前零 commit，所以拆分没有改写历史）：
+- `~/projects/ai-knowledge-base` — Tracebase 主项目。1 个 commit，main 分支，工作区干净。
+- `~/projects/xiaochublog` — 博客站主题 + 文章源 + 发布工具链 + `practice/` 学习记录。3 个 commit，main 分支，工作区干净。
 
-REMAINING for Day 5:
-1. `practice/day5-review.md` — daily review using the curriculum's section-8 template.
-2. Day 5 blog draft in `docs/blog/` (beginner-facing, no C++ contrast; use the `blog-to-wordpress` skill to publish, needs explicit approval).
-3. Git branch + clean commits — this is an explicit Day 5 learning topic and the repo is still on unborn `main` with everything untracked. NEEDS EXPLICIT AUTHORIZATION before any commit.
-4. Project demo / first-phase acceptance walkthrough.
+**Day 5（第一阶段验收关）已完成**，六项里五项收口：
+- `apps/web/` 从空目录按 ES Modules 重建，四层依赖单向朝下：`src/api/`（超时/取消/错误归一成 ApiError 四种 kind）、`src/lib/`（纯函数，不碰 DOM 不碰网络）、`src/state/`（六态状态机 + 陈旧响应竞态防护）、`src/ui/`（吃 state 吐 DOM）、`src/main.js`（只接线）。
+- `tests/web/documents-transform.test.mjs` 19 个测试补完「数据转换函数」验收项。
+- 这些测试抓出并修掉两个真原型链 bug（见下面 Learned）。
+- 复盘 `practice/day5-review.md`（在 xiaochublog 仓库）。
+- Git 分支与 clean commit：两仓库共 4 个 commit。
+- 验证：Tracebase `pnpm test` 27/27、`pnpm verify` 真无头 Chromium 八帧全过零 JS 错误；xiaochublog `pnpm test` 25/25。
 
 ## Next
-1. Finish the four Day 5 remaining items above.
-2. PRE-EXISTING FAILURE, unrelated to Day 5: `tests/wordpress-build-posts.test.mjs` fails because the `async-javascript-promise-fetch` entry in `scripts/wordpress/posts.config.mjs` lacks `coverPath`/`coverAlt` (post 989 used the user-picked Yuuka cover, attachment 992, never saved into `assets/blog/`). Either save the cover locally + add both fields, or relax the assertion for already-published posts.
-3. Day 4 blog was already published as post 989 (the older "not published" note was stale).
-4. Recheck the `wpmu.php` null guard after any Colibri Page Builder update.
+
+1. **Day 5 唯一剩项：博客发布**。草稿已写完并提交：`~/projects/xiaochublog/docs/blog/2026-07-25-es-modules-layering-testing.md`，八节约 6300 字，构建产物 slug `es-modules-layering-unit-testing`。卡在通路，不是内容：
+   - 上个会话调不到 wpvibe MCP 工具（`~/.claude/.mcp.json` 里配了但没挂载）。若本会话能调到，按 `blog-to-wordpress` skill 的分块写入流程发（每块 3-5KB + 移动锚点），能规避大小限制。
+   - 备选是让用户自己跑 `node scripts/wordpress/publish-post.mjs es-modules-layering-unit-testing <user> "<app-password>"`。但该脚本一次性 POST 完整正文，本篇 13,286 字符，超过 skill 记录的 11KB 历史失败线，可能失败。
+   - **封面图用户要自己挑选并上传**，别去 search_images 找图。`publish-post.mjs` 也不处理封面，那步得单独做。
+   - 标签计划：复用 JavaScript(38)、前端入门(35)；新建 ES Modules / 单元测试 / 原型链，ASCII slug 已在 `scripts/wordpress/tag-slugs.mjs` 里备好。
+   - 发布需显式批准。
+2. 之后进 Day 6 TypeScript：把 `apps/web/src/` 迁到 TS 且禁用 `any`。`lib/documents.js` 的 Document typedef 是第一个要改成真 interface 的地方。
+3. Recheck the `wpmu.php` null guard after any Colibri Page Builder update.
+
+## Learned（Day 5 的两个 bug，都在 apps/web/src/lib/documents.js，已修）
+
+`obj[key] ?? fallback` 查的是**整条原型链**。key 若是 `toString`/`constructor`/`valueOf`/`hasOwnProperty`，会拿到 `Object.prototype` 上继承的方法，那是个函数、是 truthy，`??` 兜不住：
+- `statusLabel('toString')` 返回 `[Function: toString]` 而不是「状态未知」→ 改用 `Object.hasOwn`。
+- `countByStatus` 里 `counts[status] ?? 0` 拿到函数后 `+1` 退化成字符串拼接，产出 `"function toString() { [native code] }1"` → 计数表改用 `Object.create(null)`。
+
+规律：**任何拿外部输入当对象 key 查表的写法都有这个洞**，是原型污染的标准入口。写查表函数时固定问一句。同一个洞在 `scripts/wordpress/tag-slugs.mjs` 里也预防了。
+
+副作用要知道：`Object.create(null)` 的对象不能直接和普通对象做 strict deep-equal（原型不同），测试里要 `{ ...obj }` 展开再比。
 
 ## Context
-SCOPE DECISION (2026-07-25): the 35-day scope stays as written; a ~60-day Phase 2 afterwards extends Tracebase into Feishu/Glean-style enterprise search. Day 17 must build `documents` as a general `resources` table with `source_type`, `source_id`, `external_id` (unique with source_id, for ingest idempotency), `source_updated_at`, `acl_principals text[]` + GIN index, and `metadata JSONB` — even though only the `upload` source exists then. Day 24 retrieval takes a `source_type` filter.
-The learner works in vibe-coding mode: he does not hand-write the code. Assess explain-line-by-line, code review, spec definition, and verification instead of from-scratch typing; the no-merging-code-you-cannot-explain rule still holds.
-The authoritative curriculum is `/mnt/e/AI_Fullstack_35_Day_Plan.md` (Day 4 = 事件循环/Promise/async-await/Fetch/JSON/AbortController/DOM events; project = Mock API with loading/success/empty/timeout/cancel/error states).
-The final project and all training use vibe coding by default; assess requirements, review, debugging, tests, architecture, and product judgment rather than no-AI memorization.
-The learner has a C++/Qt/multithreading/network/Python/LangChain/RAG background; teach JS async by contrast with C++ preemptive threading + locks.
-The WSL project root is `\\wsl.localhost\Ubuntu\home\chr\projects\ai-knowledge-base`; the active theme is `/www/wwwroot/xiaochublog.top/wp-content/themes/colibri-wp`.
-The rollback copy is `/www/backup/xiaochublog-theme-before-manual-release-/colibri-wp`; do not delete it.
-Publishing requires explicit approval, no subagents, and no Git commits without explicit authorization; WPVibe OAuth is connected.
-The repository is on unborn `main` with all files uncommitted; preserve existing user changes.
+
+**范围决策（2026-07-25）**：35 天范围不变；之后接约 60 天 Phase 2，把 Tracebase 扩成飞书/Glean 式企业统一搜索。Day 17 必须把 `documents` 建成通用 `resources` 表（`source_type` / `source_id` / `external_id`（与 source_id 组唯一约束保证摄取幂等）/ `source_updated_at` / `acl_principals text[]` + GIN 索引 / `metadata JSONB`），即使当时只有 upload 一个来源。Day 24 检索带 `source_type` 过滤。这些约束也写在 `apps/api/README.md` 里。
+
+学习者是 **vibe coding 模式**：不手写代码，考核逐行解释、代码审查、定规格、验证，而不是脱离 AI 背写。有 C++/Qt/多线程/网络/Python/LangChain/RAG 背景，讲前端可用其工程直觉类比；但**博客面向基础同学，要去掉 C++ 对照**。
+
+权威大纲：`/mnt/e/AI_Fullstack_35_Day_Plan.md`，复盘用第 8 节模板。
+
+**博客发布的两个坑**（详见 xiaochublog 的 README 和 skill）：大段中文正文超限；封面不由仓库管，`publish-post.mjs` 不消费 `coverPath`，特色图片在 WordPress 媒体库手动绑定。
+
+发布需显式批准，不用 subagent，未经授权不 commit。WPVibe OAuth 已连接。主题在 `/www/wwwroot/xiaochublog.top/wp-content/themes/colibri-wp`，回滚副本 `/www/backup/xiaochublog-theme-before-manual-release-/colibri-wp` 不要删。
+
+**注意**：`~/.claude/settings.json` 里 `ANTHROPIC_BASE_URL` 指向第三方中转端点 `https://www.lingzhan.top`，`ANTHROPIC_AUTH_TOKEN` 明文存储。会话内容都经由该第三方。已告知用户，处理生产密钥前值得重新评估。
