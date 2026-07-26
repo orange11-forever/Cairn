@@ -19,6 +19,7 @@ pnpm typecheck
 ## 文件顺序
 
 ```
+00-declarations.ts         let / const / var 与解构声明
 01-annotations.ts          基础标注与类型推断
 02-arrays-objects.ts       数组与对象形状
 03-unions.ts               联合类型与字面量类型

@@ -48,7 +48,7 @@ test('status region is announced to assistive tech, not only colored', async () 
 test('stylesheet styles every document status the data layer can produce', async () => {
   const css = await readFile(cssUrl, 'utf8');
   const { DOCUMENT_STATUSES } = await import(
-    new URL('../../apps/web/src/lib/documents.js', import.meta.url)
+    new URL('../../apps/web/src/lib/documents.ts', import.meta.url)
   );
 
   // 数据层能产出的每个状态都必须有样式，包括兜底的 unknown。

@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    // Day 7：import 路径写真实的 .ts 扩展名（Vite 打包、node --test strip-types 都认）。
+    // tsc 默认拒绝带 .ts 的 import，除非明确允许——它只在 noEmit / bundler 解析下成立，
+    // 两个前提这里都满足。选 .ts 而非 .js 是因为文件真的是 .ts，import 不该对现状撒谎。
+    "allowImportingTsExtensions": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": false,
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": true
+  },
+  "include": ["apps/web/src/**/*", "tests/**/*", "practice/day6/**/*"]
+}

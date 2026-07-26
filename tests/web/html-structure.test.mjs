@@ -22,8 +22,10 @@ test('page loads the app as an ES module', async () => {
   const script = document.querySelector('script[src]');
 
   assert.ok(script, 'missing app script');
-  // type="module" 不是可选项：src/main.js 里有 import 语句，
+  // type="module" 不是可选项：src/main.ts 里有 import 语句，
   // 换成普通 <script> 会在第一行直接抛 SyntaxError: Cannot use import statement outside a module。
   assert.equal(script.getAttribute('type'), 'module');
-  assert.equal(script.getAttribute('src'), 'src/main.js');
+  // Day 7 起入口是 .ts：源 index.html 直接引 src/main.ts，Vite 在 dev 即时转换、
+  // build 时替换成 dist 里带 hash 的产物。测试读的是源文件，所以断言 .ts。
+  assert.equal(script.getAttribute('src'), 'src/main.ts');
 });

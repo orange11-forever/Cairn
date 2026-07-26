@@ -2,6 +2,10 @@
 // 静态测试（tests/web/）只看 HTML/CSS 文本，证明不了模块能加载、fetch 能通、状态机能转。
 //
 // 运行：node scripts/verify-web.mjs
+//
+// Day 7 起前端由 Vite 提供：源码里有 .ts，浏览器读不懂类型语法（Day 6 实测），
+// 必须经过 Vite 的转换才能加载。这里起的是 dev server，因为它是开发时的真实路径；
+// 生产构建路径由 `pnpm build` 单独覆盖。
 
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
@@ -17,8 +21,47 @@ const WEB = "http://localhost:5500";
 
 // mock 后端用子进程起，这样「网络失败」那帧可以直接 kill 掉它
 let mock = spawn("node", [join(ROOT, "mocks/docs-server.mjs")], { stdio: "ignore" });
-const web = spawn("node", [join(ROOT, "scripts/serve-web.mjs")], { stdio: "ignore" });
-await new Promise((r) => setTimeout(r, 900));
+
+// Vite dev server。
+//
+// detached:true 不是随手加的：shell:true 会让 spawn 返回的 pid 是那个 shell，
+// web.kill() 只杀 shell，Vite 变孤儿进程继续占着 5500。下一次 verify 因为
+// strictPort 直接失败，而报出来的错看起来像端口配置问题。
+// detached 把子进程放进独立进程组，结束时用 -pid 杀整组。
+const web = spawn("pnpm", ["exec", "vite"], {
+  cwd: ROOT,
+  stdio: "ignore",
+  shell: true,
+  detached: true,
+});
+
+/** 杀掉整个进程组（Vite 及其 shell 父进程）。 */
+function killWebTree() {
+  if (web.pid === undefined) return;
+  try {
+    process.kill(-web.pid, "SIGTERM");
+  } catch {
+    // 进程组可能已经不在了，忽略
+  }
+}
+
+// 等端口真的可连，而不是盲等固定毫秒数。
+// Vite 冷启动比静态服务器慢且不稳定，固定 900ms 会间歇性地在 CI 上抢跑。
+async function waitForServer(url, timeoutMs = 20000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) return;
+    } catch {
+      // 还没起来，继续等
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  throw new Error(`前端在 ${timeoutMs}ms 内没起来：${url}`);
+}
+
+await waitForServer(WEB);
 
 const browser = await chromium.launch();
 const page = await browser.newPage();
@@ -162,6 +205,6 @@ try {
 } finally {
   await browser.close();
   mock.kill();
-  web.kill();
+  killWebTree();
   process.exitCode = failed ? 1 : 0;
 }

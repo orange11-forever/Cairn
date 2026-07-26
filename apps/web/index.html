@@ -37,7 +37,7 @@
         <!-- aria-live：状态变化要让读屏用户听到，而不只是看到颜色变了 -->
         <p id="status-bar" class="status" data-tone="idle" role="status" aria-live="polite"></p>
 
-        <!-- 列表由 src/main.js 运行时填充；空的 ul 是渲染目标，不是遗漏 -->
+        <!-- 列表由 src/main.ts 运行时填充；空的 ul 是渲染目标，不是遗漏 -->
         <ul id="document-list" class="document-list"></ul>
       </section>
 
@@ -67,6 +67,11 @@
       </section>
     </main>
 
-    <script type="module" src="src/main.js"></script>
+    <!--
+      直接引 .ts。浏览器读不懂类型语法（Day 6 实测：炸在 as const，配 MIME 也没用），
+      能跑是因为 Vite 在中间做了转换 —— dev 时按请求即时转，build 时预先编译成 dist/。
+      这一行是"构建步骤是必需的"最直观的证据。
+    -->
+    <script type="module" src="src/main.ts"></script>
   </body>
 </html>
