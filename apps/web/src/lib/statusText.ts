@@ -1,4 +1,15 @@
-// 状态条：把状态机的 phase 翻译成一句人话。
+// 状态文案：把状态机的 phase 翻译成一句人话 + 一个语气。
+//
+// Day 8 从 ui/statusBar.ts 抽出来。抽离的理由不是审美，是可测性：
+// 原来这套逻辑嵌在 renderStatusBar(element, state) 里，要测它就得先造一个 DOM 元素，
+// 于是它只能在浏览器里被验证（八帧脚本）。八帧是好东西，但它一次跑八种情况、
+// 要起服务器和 Playwright，加一个 case 的成本很高——所以实际上从没人为
+// 「dropped 是 1 还是 0」这种细节单独加一帧。
+//
+// 抽成 (state) => {tone, text} 的纯函数后，它能被 node --test 直接调用：
+// 输入是普通对象，输出是普通对象，没有 DOM、没有网络、没有时序。
+// 这也是为什么这个文件是 .ts 而不是 .tsx——Node 的 --test 不认 JSX 语法。
+//
 // 所有面向用户的文案集中在这里，方便日后接 i18n，也方便 review 文案是否得体。
 
 import type { ApiError } from "../api/errors.ts";
@@ -7,13 +18,12 @@ import type { DocumentState } from "../state/documentStore.ts";
 /** 语气。CSS 靠 data-tone 选择颜色，测试靠它断言。 */
 export type Tone = "idle" | "loading" | "ok" | "empty" | "error";
 
-export function renderStatusBar(element: HTMLElement, state: DocumentState): void {
-  const { tone, text } = describe(state);
-  element.dataset.tone = tone;
-  element.textContent = text;
+export interface StatusText {
+  tone: Tone;
+  text: string;
 }
 
-function describe(state: DocumentState): { tone: Tone; text: string } {
+export function describeStatus(state: DocumentState): StatusText {
   switch (state.phase) {
     case "idle":
       return { tone: "idle", text: "点击「加载文档」开始" };

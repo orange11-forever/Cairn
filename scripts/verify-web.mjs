@@ -115,9 +115,69 @@ const waitForStatus = (pattern) =>
     { timeout: 6000 },
   );
 
+/**
+ * 结构关卡（Day 8 加）。
+ *
+ * 这些断言原来读 index.html 的静态文本。React 接管后结构由组件在运行时生成，
+ * 静态文件里只剩一个空壳，于是检查跟着搬到结构真正存在的地方——渲染后的 DOM。
+ *
+ * 有一条因此变强了：「渲染目标必须初始为空」原来是查静态 HTML 里没硬编码 <li>，
+ * React 下那个查法失去意义（壳里当然没有）。现在它查的是首帧真的是 0 行，
+ * 那才是这条断言当初想防的东西：真实数据到达前闪一下假状态。
+ */
+async function checkStructure() {
+  const found = await page.evaluate(() => ({
+    header: !!document.querySelector("header.product-header"),
+    nav: !!document.querySelector('nav[aria-label="主导航"]'),
+    main: !!document.querySelector("main.workspace"),
+    documentsPanel: !!document.querySelector(".documents-panel"),
+    assistantPanel: !!document.querySelector(".assistant-panel"),
+    questionForm: !!document.querySelector(".question-form"),
+    currentNavLabel:
+      document
+        .querySelector('nav[aria-label="主导航"] a[aria-current="page"]')
+        ?.textContent.trim() ?? null,
+    statusRole: document.querySelector("#status-bar")?.getAttribute("role") ?? null,
+    statusLive: document.querySelector("#status-bar")?.getAttribute("aria-live") ?? null,
+    inlineStyles: document.querySelectorAll("[style]").length,
+    initialRows: document.querySelectorAll("#document-list li").length,
+  }));
+
+  console.log("\n=== 结构关卡 ===\n");
+  expect(found.header, "缺少 header.product-header");
+  expect(found.nav, "缺少带 aria-label 的主导航");
+  expect(found.main, "缺少 main.workspace");
+  expect(found.documentsPanel, "缺少 .documents-panel");
+  expect(found.assistantPanel, "缺少 .assistant-panel");
+  expect(found.questionForm, "缺少 .question-form");
+  expect(found.currentNavLabel === "知识文档",
+    `当前页导航项应为「知识文档」，实际 ${found.currentNavLabel}`);
+  // 状态区必须被读屏软件播报，不能只靠颜色传达——颜色对色盲用户不存在。
+  expect(found.statusRole === "status", `#status-bar 的 role 应为 status，实际 ${found.statusRole}`);
+  expect(found.statusLive === "polite", `#status-bar 的 aria-live 应为 polite，实际 ${found.statusLive}`);
+  expect(found.inlineStyles === 0, `不应有内联样式，实际 ${found.inlineStyles} 处`);
+  expect(found.initialRows === 0, `首帧列表应为 0 行，实际 ${found.initialRows} 行`);
+}
+
 let failed = false;
+
+// 模块级：结构关卡（首帧后）和帧断言（末尾）都要用它。
+// 原来它是 try 块里的 const，结构关卡在前面调用会撞 TDZ。
+function expect(cond, message) {
+  if (!cond) {
+    console.error(`✗ ${message}`);
+    failed = true;
+  }
+}
+
 try {
   await page.goto(WEB, { waitUntil: "networkidle" });
+
+  // 必须在第一次截图之前查结构。
+  // Playwright 的 fullPage 截图会临时往页面注入样式，跑完留下内联样式残留——
+  // 于是「不应有内联样式」会被测量工具自己弄脏。查未被任何工具动过的初始 DOM。
+  await checkStructure();
+
   await snapshot("0-idle");
 
   await loadWith("success");
@@ -144,6 +204,61 @@ try {
   await waitForStatus(/请求超过/);
   await snapshot("6-timeout");
 
+  // ---- 第九帧：状态污染（Day 8 加）----
+  //
+  // React 引入的新失败模式，手写 DOM 时代不存在：一次远端状态变化触发重渲染，
+  // 如果组件树接错（输入框的 state 被提到公共祖先、或 key 不稳定导致组件卸载重建），
+  // 用户正在打的字和已选的文件会凭空消失。
+  //
+  // 这一帧证明本地 state（草稿、已选文件、场景选择）和服务端 state（文档列表）
+  // 各自独立：后者整轮变化，前者一个字符都不能丢。
+  const DRAFT = "这批文档里关于计费的部分怎么说的？";
+  await page.fill("#question", DRAFT);
+  await page.setInputFiles("#upload-input", {
+    name: "污染测试.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("day8"),
+  });
+
+  const readLocalState = () =>
+    page.evaluate(() => ({
+      draft: document.querySelector("#question").value,
+      // 已选文件渲染成 .upload-selection 里的列表项；同时读 data-selected-count，
+      // 那是 UploadZone 把自己的 state 直接暴露出来的属性。
+      files: [...document.querySelectorAll(".upload-selection li")].map((li) =>
+        li.textContent.trim(),
+      ),
+      selectedCount: document.querySelector(".upload-zone")?.dataset.selectedCount ?? null,
+    }));
+
+  const beforeLoad = await readLocalState();
+
+  await loadWith("success");
+  await waitForStatus(/已加载/);
+  await snapshot("8-no-cross-contamination");
+
+  const afterLoad = await readLocalState();
+  const afterRows = await page.$$eval("#document-list li", (els) => els.length);
+
+  console.log("\n=== 第九帧：状态污染 ===\n");
+  // 先证明前置条件成立，否则后面全是 null === null 的假通过。
+  expect(beforeLoad.draft === DRAFT, "草稿在加载前就没写进去，这一帧无意义");
+  expect(beforeLoad.files.length === 1,
+    `选文件在加载前就没生效（实际 ${beforeLoad.files.length} 项），这一帧无意义`);
+
+  expect(afterLoad.draft === DRAFT,
+    `文档加载后草稿被清空/篡改：期望 "${DRAFT}"，实际 "${afterLoad.draft}"`);
+  expect(afterLoad.files.join("|") === beforeLoad.files.join("|"),
+    `文档加载后已选文件变了：加载前 [${beforeLoad.files}]，加载后 [${afterLoad.files}]`);
+  expect(afterLoad.selectedCount === "1",
+    `UploadZone 的 state 应仍是 1 个文件，实际 data-selected-count="${afterLoad.selectedCount}"`);
+  // 反向也要成立：本地 state 存在不该阻止服务端 state 正常更新。
+  expect(afterRows === 4, `服务端状态应正常更新到 4 行，实际 ${afterRows} 行`);
+
+  // 清掉草稿和已选文件，别污染后面两帧的截图。
+  await page.fill("#question", "");
+  await page.setInputFiles("#upload-input", []);
+
   mock.kill();
   await new Promise((r) => setTimeout(r, 400));
   await loadWith("success");
@@ -163,13 +278,6 @@ try {
   }
 
   // ---- 断言 ----
-  const expect = (cond, message) => {
-    if (!cond) {
-      console.error(`✗ ${message}`);
-      failed = true;
-    }
-  };
-
   const byLabel = Object.fromEntries(frames.map((f) => [f.label, f]));
   expect(byLabel["1-success"].rows === 4, "success 应渲染 4 行");
   expect(byLabel["2-empty"].rows === 0 && byLabel["2-empty"].tone === "empty",

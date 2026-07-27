@@ -20,29 +20,36 @@ test('page loads the external Tracebase stylesheet', async () => {
   await assert.doesNotReject(readFile(cssUrl, 'utf8'));
 });
 
-test('page exposes stable layout and document-state hooks', async () => {
-  const document = await readPage();
+// Day 8 起，结构断言（面板存在、渲染目标为空、无内联样式、导航当前项）
+// 搬到了 verify-web.mjs 的结构关卡——结构由组件在运行时生成，
+// 就去它真正存在的地方检查。
+//
+// 留在这一层的是**另一半契约**：CSS 文件必须仍然持有那些选择器。
+// 这个方向同样会坏，而且坏得更隐蔽：组件把 class 改名后页面照样渲染，
+// 只是样式静悄悄地不生效了——浏览器不会报错，测试也不会红，
+// 只有肉眼看截图才发现布局塌了。所以两个方向都要守。
+test('stylesheet keeps the layout hooks the components render', async () => {
+  const css = await readFile(cssUrl, 'utf8');
 
-  assert.ok(document.querySelector('.documents-panel'));
-  assert.ok(document.querySelector('.assistant-panel'));
-  assert.ok(document.querySelector('.question-form'));
+  for (const hook of [
+    '.product-header',
+    '.workspace',
+    '.documents-panel',
+    '.assistant-panel',
+    '.question-form',
+    '.document-list',
+  ]) {
+    assert.match(
+      css,
+      new RegExp(hook.replace('.', '\\.')),
+      `stylesheet lost the rule for ${hook} — components still render it`,
+    );
+  }
 
-  // 列表现在是运行时渲染目标：必须存在且必须是空的。
-  // 留任何硬编码 <li> 都会在真实数据到达前一闪而过，是 Day 4 六态之外的第七种假状态。
-  const list = document.querySelector('#document-list.document-list');
-  assert.ok(list, 'missing #document-list render target');
-  assert.equal(list.querySelectorAll('li').length, 0, 'render target must start empty');
-
-  assert.equal(document.querySelectorAll('[style]').length, 0);
-});
-
-test('status region is announced to assistive tech, not only colored', async () => {
-  const document = await readPage();
-  const status = document.querySelector('#status-bar');
-
-  assert.ok(status, 'missing #status-bar');
-  assert.equal(status.getAttribute('role'), 'status');
-  assert.equal(status.getAttribute('aria-live'), 'polite');
+  // 状态色靠 data-* 属性选择器，不靠拼 class 名。
+  // 这条约定是 Day 8 换掉整个渲染层却不用改一行 CSS 的原因。
+  assert.match(css, /\[data-tone=/, 'stylesheet lost the [data-tone] status hook');
+  assert.match(css, /\[data-state=/, 'stylesheet lost the [data-state] document hook');
 });
 
 test('stylesheet styles every document status the data layer can produce', async () => {
@@ -71,12 +78,5 @@ test('stylesheet keeps focus visible and avoids priority escape hatches', async 
   assert.doesNotMatch(css, /outline:\s*none/);
 });
 
-test('primary navigation exposes the current page semantically', async () => {
-  const document = await readPage();
-  const current = document.querySelector(
-    'nav[aria-label="主导航"] a[aria-current="page"]',
-  );
-
-  assert.ok(current, 'missing current-page navigation state');
-  assert.equal(current.text.trim(), '知识文档');
-});
+// 导航当前项、status region 的 role/aria-live、语义 landmark
+// 都搬到 verify-web.mjs 的结构关卡了（同上：结构进了组件，检查跟着进浏览器）。

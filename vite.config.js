@@ -9,8 +9,17 @@
 // 这个文件就是那个构建步骤。
 
 import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
 
 export default defineConfig({
+  // Day 8：JSX 也是浏览器读不懂的语法，和上面的 .ts 同理——
+  // `<div>` 在 .tsx 里是表达式，浏览器的解析器只会看到一个小于号。
+  // 插件负责把 JSX 转成 React.createElement 调用，并在 dev 下提供组件热更新。
+  //
+  // 版本说明：装 6.0.4 时 pnpm 报未满足的 peer（要 vite ^8，我们是 7.1.12）。
+  // 降到 5.2.0，它的 peer 范围同时含 ^7 和 ^8——现在可用，将来升 vite 8 也不用再动。
+  plugins: [react()],
+
   // 仓库是 monorepo 布局，前端不在根目录。root 指到 index.html 所在处，
   // Vite 才知道从哪找入口；node_modules 仍在仓库根，Vite 会自己往上找。
   root: "apps/web",

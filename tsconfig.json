@@ -7,6 +7,11 @@
     // tsc 默认拒绝带 .ts 的 import，除非明确允许——它只在 noEmit / bundler 解析下成立，
     // 两个前提这里都满足。选 .ts 而非 .js 是因为文件真的是 .ts，import 不该对现状撒谎。
     "allowImportingTsExtensions": true,
+    // Day 8：react-jsx 用自动运行时——.tsx 文件不需要 `import React`，
+    // 编译器自己注入 react/jsx-runtime。选它而非老的 "react" transform，
+    // 是因为后者要求每个文件手写一个用不到的 import，纯属噪音。
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noEmit": true,
