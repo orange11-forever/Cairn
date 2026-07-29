@@ -1,6 +1,26 @@
 # Handoff
 
-最后更新：2026-07-27 Day 8 收尾。
+最后更新：2026-07-29（站点维护 + Qt 文档日，**没有推进 Day 9**）。
+
+## 本次会话（2026-07-29）做了什么
+
+**不是学习日**，全部是收尾和站点维护。三个 commit，两个仓库工作区都干净：
+
+- `xiaochublog` **f1c0556** — Day 8 两篇博客文章源入库
+- `xiaochublog` **2b61211** — Qt/C++ 飞书文档（新目录 `docs/feishu/`）
+- `ai-knowledge-base` **526bde3** — 交接笔记更新到 Day 8
+
+**1. Day 8 第二篇博客已发布**：post 1043 `safely-replacing-a-layer`《怎么安全地换掉一层》，八节 18309 字节，分类 19，标签 React/代码审查/前端/单元测试/系统架构，封面 1059。线上逐项核验过（八节齐、代码块转义正常、无锚点残留、上一篇导航正确）。**开头找了很久那篇"遗留的 C++ 博客"其实不存在**——C++ 那篇（post 996）2026-07-25 就发了，用户记混了，遗留的是 Day 8 这篇。
+
+**2. 站点性能实测**（移动/桌面）：性能 91/92、可访问性 95、最佳实践 100。LCP 1.0–1.5s、TBT 0ms、**CLS 已经是 0**（之前的 0.08 没了）。Lighthouse 无优化项。Speed Index 移动端 9.3–9.8s 仍飘，属主机 TTFB。
+
+**3. 确认这是私人博客**：用户明确说不对外公开，`blog_public=0` 是有意的。**SEO 分数（66）以后永远别报**——唯一扣分项就是 noindex，正是想要的效果。已告知 noindex ≠ 私密（要真私密得加登录墙/密码保护），用户没要求做。写进 [[wordpress-blog-setup]]。
+
+**4. 站点标题改为 `Aliya-devlog`**。注意 `blogname` 驱动三处：浏览器标签、左上角品牌名、**首页 hero 大标题**（`front-page.php` 渲染的就是站点名）。用户没反对 hero 一起变。想让 hero 保留独立文案得改模板。
+
+**5. 删掉首页标题的流动白光** —— 踩了个大坑，已写进 [[wpcode-snippet-dual-storage]]：**WPCode Lite 把片段代码存两份**，`post_content`（编辑器显示的）和 `wpcode_snippets` 选项（**前台实际输出的**）。我改了 `post_content` 三处（`.home-intro h1::after` 块、`@keyframes heroShine`、reduced-motion 覆盖），`replaced:1` 全成功、大括号也核对过，但白光照旧——因为选项那份没同步。**期间走了一串弯路**：以为是浏览器缓存让用户开无痕、查 LiteSpeed CCSS/UCSS、`litespeed-purge all`、甚至去数用户截图的像素亮度（那些亮区是背景夜景图自己的城市灯光 RGB≈(136,131,152)，会误导）。最后用户进 wp-admin 看了一眼，WPCode 自动用 `post_content` 重建了选项缓存，白光就没了。用户以为是缓存问题，已纠正过。
+
+**6. 写了 Qt/C++ 基础入门文档**：`~/projects/xiaochublog/docs/feishu/qt-cpp-getting-started.md`，1.5 万字八节，面向零基础同学。**我没有飞书接入能力**（无 API 凭据、无 MCP），只产出 Markdown，用户需自己粘贴或导入飞书。一开始说"直接粘进飞书就能用"让用户误以为云文档已建好，已澄清。
 
 ## State
 
@@ -45,10 +65,14 @@
 ## Next
 
 1. **Day 9：Hooks、表单与副作用**（大纲第 9 天）。学 `useState`/`useEffect`/`useMemo`/`useRef`、受控表单、自定义 Hook、何时不该用 Effect。项目：登录表单、上传表单、消息输入、自动滚动、请求取消。测试：引入 Vitest + React Testing Library 测表单校验与消息渲染。验收：关键表单有可读错误；测试关注用户行为而非组件内部。
-2. **Day 8 复盘未写**：`~/projects/xiaochublog/practice/day8-review.md`（用大纲第 8 节模板）。`practice/day6-review.md` 已 commit（b0aec34），`day7-review.md` 仍未建。
-3. Day 7 的 5 道问答验收——**用户 2026-07-27 明确说忽略**，不用再提。
-4. `mock` 加 dirty 场景 + UI 消费 `dropped` 计数（可选、非阻塞，从 Day 7 挂到现在）。
-5. Recheck the `wpmu.php` null guard after any Colibri Page Builder update.
+2. **两件我没能亲自核验的事**（2026-07-29 撞上 WPVibe 免费版 24 小时用量上限，额度约 **2026-07-30 08:15 UTC**（北京时间 7/30 下午 4:15）恢复）：
+   - **确认 `wpcode_snippets` 选项里那三段扫光代码真的清掉了**。`wp option pluck wpcode_snippets site_wide_header 0 code` 读回来比对。白光消失只是间接证据；万一那份缓存被某个操作回滚，白光会复发，处理办法是让用户去后台重新保存一次片段。
+   - **可访问性扣的 5 分是一处 `color-contrast`**（对比度不足）。`audit_page` 不返回具体元素，要定位得用 PageSpeed Insights 网页版看那一项的元素列表，或读主题 CSS 逐个算对比度。用户没催，可以留到下次动样式时一起做。
+3. **Qt 飞书文档等用户自己导入**：文件已 commit（2b61211），用户需在飞书里粘贴或用「导入 Markdown」。Windows 侧路径 `\\wsl$\Ubuntu\home\chr\projects\xiaochublog\docs\feishu\qt-cpp-getting-started.md`。**别再说"已经建好飞书文档"**。
+4. **Day 8 复盘未写**：`~/projects/xiaochublog/practice/day8-review.md`（用大纲第 8 节模板）。`practice/day6-review.md` 已 commit（b0aec34），`day7-review.md` 仍未建。
+5. Day 7 的 5 道问答验收——**用户 2026-07-27 明确说忽略**，不用再提。
+6. `mock` 加 dirty 场景 + UI 消费 `dropped` 计数（可选、非阻塞，从 Day 7 挂到现在）。
+7. Recheck the `wpmu.php` null guard after any Colibri Page Builder update.
 
 ## 未决 / 设计问题
 
