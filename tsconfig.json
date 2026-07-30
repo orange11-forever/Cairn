@@ -20,5 +20,6 @@
     "skipLibCheck": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["apps/web/src/**/*", "tests/**/*", "practice/day6/**/*"]
+  // Day 9 之后移除了 "practice/day6/**/*"：那批 TypeScript 语法演示已删。
+  "include": ["apps/web/src/**/*", "tests/**/*"]
 }
