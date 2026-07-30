@@ -8,7 +8,7 @@
 >
 > 三份文档说明这个项目要做成什么、怎么做：
 > [产品定义](docs/product-vision.md)（定位与八阶段路线）·
-> [功能清单](docs/features.md)（七个场景 + 按域清单）·
+> [功能清单](docs/features.md)（八个场景 + 按域清单）·
 > [开发计划](docs/roadmap.md)（可执行的步骤表与验收标准）
 
 ## 要解决的问题
@@ -181,7 +181,7 @@ docs/              product-vision.md（产品定义与阶段路线）+ specs/（
 | 文档 | 内容 |
 |---|---|
 | [`product-vision.md`](docs/product-vision.md) | 定位、三根支柱、成品的多端样貌、八阶段依赖关系、**明确不做的清单** |
-| [`features.md`](docs/features.md) | 七个场景（讲给人听的版本）+ 按域清单（查的版本）+ MVP 五条 |
+| [`features.md`](docs/features.md) | 八个场景（讲给人听的版本）+ 按域清单（查的版本）+ MVP 五条 |
 | [`roadmap.md`](docs/roadmap.md) | 每一步的产出、验收标准、验证方式；三条贯穿全程的规矩 |
 | [`apps/api/README.md`](apps/api/README.md) | **建表前必须确定的六条硬约束** + Provider 抽象 + 跨平台四条约束 |
 | `docs/specs/` | 逐次的设计决策与明确不做的事 |
