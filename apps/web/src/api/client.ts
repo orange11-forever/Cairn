@@ -7,7 +7,32 @@
 import { ApiError } from "./errors.ts";
 import { extractErrorMessage } from "../schemas/apiError.ts";
 
-const BASE_URL = "http://localhost:8787";
+/**
+ * 后端地址。**从环境变量读，不写死。**
+ *
+ * 这是私有部署的硬性要求，不是洁癖：客户会用他们自己的域名
+ *（`https://kb.某公司内网.local`），而我们不可能提前知道那是什么。
+ * 同一份代码要能跑在三种环境下而一行不改：
+ *   本地开发    http://localhost:8787
+ *   演示环境    https://demo.example.com/api
+ *   客户内网    https://kb.customer.local/api
+ *
+ * 用 `import.meta.env` 而不是 `process.env`：浏览器里没有 `process` 这个对象。
+ * Vite 在**构建时**把 `import.meta.env.VITE_*` 替换成字面量字符串——
+ * 所以这个值是编译进产物的，不是运行时读的。
+ *
+ * 两个由此而来的后果，都要知道：
+ *
+ * 1. **只有 `VITE_` 前缀的变量会被注入。** 这是 Vite 的安全设计——
+ *    否则服务器上的 `DATABASE_PASSWORD` 之类会被打进前端产物发给浏览器。
+ *    换句话说：能出现在这里的值，都是公开的。别把密钥放进 VITE_ 变量。
+ *
+ * 2. **改了它要重新构建**，不是重启就行。客户换域名需要重新 build，
+ *    这对私有部署是个真实的不便。阶段 A11 迁 Next.js 后会好转——
+ *    Server Component 能在运行时读环境变量，那时前端可以做到"改配置即生效"。
+ */
+const BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8787";
+
 const DEFAULT_TIMEOUT_MS = 3000;
 
 export interface RequestOptions {

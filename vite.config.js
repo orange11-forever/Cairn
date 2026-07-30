@@ -24,6 +24,18 @@ export default defineConfig({
   // Vite 才知道从哪找入口；node_modules 仍在仓库根，Vite 会自己往上找。
   root: "apps/web",
 
+  // 从仓库根读 .env，不是从 root（apps/web）读。
+  //
+  // Vite 默认在 root 目录找 .env，也就是 apps/web/.env。但这个项目的 .env
+  // 要同时供前端和（阶段 B 起的）后端与 Worker 使用，放在仓库根才合理——
+  // 一份配置管全套，Docker Compose 也是从仓库根读。
+  //
+  // 不设这一项的后果是**静默失效**：根目录的 .env 被无声忽略，
+  // VITE_API_URL 永远是 undefined，然后 client.ts 的 ?? 兜底生效，
+  // 于是"配了但没生效"——而页面看起来完全正常，只是连的是 localhost。
+  // 这类"兜底值掩盖了配置没读到"的问题非常难查，所以宁可显式写明。
+  envDir: import.meta.dirname,
+
   server: {
     port: 5500,
     // 端口被占时直接失败，不要静默换到 5501。
