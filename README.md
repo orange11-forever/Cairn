@@ -2,10 +2,14 @@
 
 **工程组织的知识层与智能体平台。** 代码是一等公民，每个答案可追溯到出处，AI 智能体受治理。
 
-> **状态：阶段 A（Web 客户端地基）进行中 — 前端原型。**
+> **状态：阶段 A10 / 八个阶段 — 前端原型。**
 > 界面与交互链路可用，对接 mock 后端。真实 API 在阶段 B，RAG 链路在阶段 C。
-> 下面「已实现 / 未实现」写清了当前边界；完整产品定义与阶段路线见
-> [`docs/product-vision.md`](docs/product-vision.md)。
+> 下面「已实现 / 未实现」写清了当前边界。
+>
+> 三份文档说明这个项目要做成什么、怎么做：
+> [产品定义](docs/product-vision.md)（定位与八阶段路线）·
+> [功能清单](docs/features.md)（七个场景 + 按域清单）·
+> [开发计划](docs/roadmap.md)（可执行的步骤表与验收标准）
 
 ## 要解决的问题
 
@@ -174,14 +178,15 @@ docs/              product-vision.md（产品定义与阶段路线）+ specs/（
 
 ## 设计文档
 
-[`docs/features.md`](docs/features.md) 是按「用户能做什么」组织的功能清单，
-每项标注了所属阶段，末尾写明 MVP 是哪五条。
+| 文档 | 内容 |
+|---|---|
+| [`product-vision.md`](docs/product-vision.md) | 定位、三根支柱、成品的多端样貌、八阶段依赖关系、**明确不做的清单** |
+| [`features.md`](docs/features.md) | 七个场景（讲给人听的版本）+ 按域清单（查的版本）+ MVP 五条 |
+| [`roadmap.md`](docs/roadmap.md) | 每一步的产出、验收标准、验证方式；三条贯穿全程的规矩 |
+| [`apps/api/README.md`](apps/api/README.md) | **建表前必须确定的五条硬约束** + 跨平台客户端四条约束 |
+| `docs/specs/` | 逐次的设计决策与明确不做的事 |
 
-[`docs/product-vision.md`](docs/product-vision.md) 是产品定义与阶段路线的权威文档：
-三根支柱（可追溯问答 / 代码感知 / 智能体治理）、成品的多端样貌、八个阶段的依赖关系，
-以及一份**明确不做的清单**（IM、独立向量库、自研 LLM、LLM 直接画图）。
-
-`docs/specs/` 下每份文档记的是**当时定下的决策和明确不做的事**，不是教程：
+`docs/specs/` 下每份文档记的是**当时定下的决策**，不是教程：
 
 - `2026-07-27-day8-react-components-design.md` — 组件边界、`useSyncExternalStore` 桥接
 - `2026-07-30-day9-hooks-forms-effects-design.md` — Hooks 边界、可读错误的五条标准、
