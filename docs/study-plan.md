@@ -10,7 +10,7 @@
   学得慢一点会被日常练习补上。
 - **数据库只有 Day 17 一天**，要过完表、索引、约束、事务、JOIN、执行计划、
   SQLAlchemy、Alembic。而且那天做的 schema 决定改起来最贵——
-  `apps/api/README.md` 里那五条硬约束就是为此写的。
+  `apps/api/README.md` 里那六条硬约束就是为此写的。
 
 所以时间有限时先补数据库。
 

@@ -183,7 +183,7 @@ docs/              product-vision.md（产品定义与阶段路线）+ specs/（
 | [`product-vision.md`](docs/product-vision.md) | 定位、三根支柱、成品的多端样貌、八阶段依赖关系、**明确不做的清单** |
 | [`features.md`](docs/features.md) | 七个场景（讲给人听的版本）+ 按域清单（查的版本）+ MVP 五条 |
 | [`roadmap.md`](docs/roadmap.md) | 每一步的产出、验收标准、验证方式；三条贯穿全程的规矩 |
-| [`apps/api/README.md`](apps/api/README.md) | **建表前必须确定的五条硬约束** + 跨平台客户端四条约束 |
+| [`apps/api/README.md`](apps/api/README.md) | **建表前必须确定的六条硬约束** + Provider 抽象 + 跨平台四条约束 |
 | `docs/specs/` | 逐次的设计决策与明确不做的事 |
 
 `docs/specs/` 下每份文档记的是**当时定下的决策**，不是教程：
@@ -192,9 +192,14 @@ docs/              product-vision.md（产品定义与阶段路线）+ specs/（
 - `2026-07-30-day9-hooks-forms-effects-design.md` — Hooks 边界、可读错误的五条标准、
   以及实测中发现并修掉的五个问题
 
-`apps/api/README.md` 里有**建表前必须落地的五条硬约束**（组织级租户、审计日志、
-软删除与彻底清除、ACL principal 格式）。筛选它们的判据是一句话：
-**这个字段如果事后再加，需不需要回填历史数据或改写每一条查询？** 需要就现在建。
+`apps/api/README.md` 里有**建表前必须落地的六条硬约束**（通用资源表、组织级租户、
+审计日志、软删除与彻底清除、ACL principal 格式、向量维度），
+外加 **Provider 抽象**（OpenAI / Claude / 国产模型 / 自建中转 / 内网自部署都要能接）
+和**跨平台客户端四条约束**。
+
+筛选这些约束的判据是一句话：
+**这个字段或接口形状如果事后再改，需不需要回填历史数据、重算向量、或改写每一条查询？**
+需要就现在定，即使当下看着像废字段。
 
 ## 技术栈演进
 

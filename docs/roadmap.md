@@ -151,7 +151,7 @@ CORS 白名单、统一异常响应。
 
 PostgreSQL + SQLAlchemy 2.x + Alembic。
 
-**建表前必须已确定的五条**（详见 `apps/api/README.md`）：
+**建表前必须已确定的六条**（详见 `apps/api/README.md`）：
 
 1. `resources` 通用表：`source_type` / `source_id` / `external_id`（组唯一，保证幂等）
    / `source_updated_at` / `acl_principals text[]` + GIN / `metadata JSONB`
@@ -159,8 +159,10 @@ PostgreSQL + SQLAlchemy 2.x + Alembic。
 3. `audit_logs` append-only，含 `actor_type` + `on_behalf_of`
 4. `deleted_at`（软删）+ `purged_at`（合规清除）两个字段
 5. `acl_principals` 存带类型前缀的字符串（`user:123` / `group:eng`）
+6. **向量维度定 1024**，`chunks` 表加 `embedding_model` + `embedding_dim` 两列
+   （为将来换模型时新旧向量并存、灰度迁移留门）
 
-表：`organizations` `users` `resources` `conversations` `messages`
+表：`organizations` `users` `resources` `chunks` `conversations` `messages`
 `citations` `ingestion_jobs` `audit_logs`
 
 **验收**：从空库一键迁移和回滚；外键、唯一约束、常用查询索引完整。
@@ -231,29 +233,51 @@ pytest fixture、依赖覆盖、事务隔离、种子数据。
 | C6 | 评估：30-50 条黄金数据集，离线报告与基线 |
 | C7 | 只做一个经评估证明有效的优化（Query Rewrite / Reranker / 缓存三选一） |
 
-### 阶段 C 的一条环境约束：Provider 必须可换
+### 阶段 C 的 Provider 约束：任何一家都能接
 
-部署目标是**大陆境内服务器**，访问不了 OpenAI / Anthropic / Gemini。
-所以模型 Provider 从第一天就要做成 `base_url + model + key` 三件套，不写死任何一家。
+**支持范围**：OpenAI、Anthropic（Claude）、国产模型（DeepSeek / 通义 / 智谱 / Kimi）、
+**自建或第三方中转站**、客户内网自部署（vLLM / Ollama）。
 
-三个理由：
-1. 大陆服务器直连不了国外 API（开发时用的中转不能进生产——可靠性无保障、
-   数据经过第三方、企业客户的安全评审过不了）
-2. 私有部署的客户可能要求用他们内网自己部署的模型
-3. **中文企业知识库用中文优化的 embedding 检索效果更好**
+配置形状见 `.env.example`，设计理由与差异清单见 `apps/api/README.md` 的
+「Provider 抽象」一节。这里只列**必须在本阶段兑现的三件事**。
 
-推荐组合（都是 OpenAI 兼容接口，换家只改配置）：
+**一、协议类型和厂商解耦。**
 
-| 用途 | 选择 | 理由 |
+不能只有 `base_url`，还要 `LLM_PROVIDER` 指明协议：
+
+| 类型 | 端点 | 认证 |
 |---|---|---|
-| 生成 | DeepSeek | 便宜，中文强，OpenAI 兼容 |
-| 生成备选 | 通义千问 / 智谱 GLM | 阿里云内网调用延迟极低 |
-| **Embedding** | BGE-M3 或通义 text-embedding-v3 | **中文检索优于 OpenAI 的 embedding** |
+| `openai-compatible` | `POST {base}/chat/completions` | `Authorization: Bearer` |
+| `anthropic` | `POST {base}/messages` | `x-api-key` + `anthropic-version` |
 
-**Embedding 走 API，不本地跑模型**——本地跑 BGE-M3 要 1-2GB 常驻内存，
-而部署机只有 2GB。
+Claude 官方 API 需要**第二个适配器**，"换个 base_url"不成立。
+但中转站若把 Claude 包成 OpenAI 兼容格式（多数如此），用第一种类型即可。
 
-配置项形状见 `.env.example`。
+**二、六处差异要在适配器层抹平**：向量维度、流式格式、错误映射（归到 `ApiError`
+五种 kind）、上下文窗口、token 计数字段、工具调用格式。
+
+**三、★ 向量维度是唯一影响 schema 的，B2 建表时就要定。**
+
+pgvector 的 `vector(N)` 在建表时写死。OpenAI 1536/3072、通义与 BGE-M3 都是 1024。
+**换 embedding 模型 = 改列定义 + 重算所有历史向量**（十万 chunk 要跑几小时并重付一次费用）。
+
+推荐 **1024**：通义和 BGE-M3 都是这个值，而中文检索效果又优于 OpenAI 的 embedding。
+启动时必须校验配置与列维度相等，不一致就拒绝启动。
+
+**Embedding 走 API，不本地跑模型**——本地跑 BGE-M3 要 1-2GB 常驻，部署机只有 2GB。
+
+**四、中转站的数据风险要在产品里显式标注。**
+
+中转站会看到全部 prompt，也就是知识库原文——而那往往是全公司最敏感的资料。
+
+| 场景 | 推荐 | 风险 |
+|---|---|---|
+| 开发 / 演示 | 中转站 | 可接受 |
+| 企业生产 | 直连官方 API | 数据到模型厂商 |
+| 高敏感 / 合规 | 客户内网自部署 | 数据不出内网 |
+
+不能让管理员以为所有 Provider 都等价。这是「治理」的一部分，
+和智能体权限继承、审计日志属于同一根支柱。
 
 **阶段 C 出口标准**：
 - 20 个问题 Recall@5 ≥ 85%
@@ -262,6 +286,9 @@ pytest fixture、依赖覆盖、事务隔离、种子数据。
 - 前端取消会真的终止后端生成
 - 同一文档重复处理不产生重复 chunk
 - 报告含 Recall@k、引用正确性、回答忠实度、P50/P95 延迟、单次成本
+- **至少接通两家 Provider 且能靠改配置切换**（建议 DeepSeek + 一家 OpenAI 兼容中转，
+  验证适配器层真的抹平了差异——只接一家等于没有抽象）
+- 启动时校验 `EMBEDDING_DIM` 与数据库列维度一致，不一致拒绝启动
 
 **这是 MVP 的完成点。** 到这里可以给真人用了。
 

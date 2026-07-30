@@ -107,6 +107,86 @@ role:admin      按角色
 裸 id 的问题：将来接群组时无法区分 `123` 是用户还是群组，整个 ACL 逻辑要重写。
 带前缀之后，阶段 C 的检索过滤和阶段 H 的 SSO 群组同步都不用改这一层。
 
+### 6. 向量维度在建表时定死，且必须和配置校验一致
+
+**这一条是 Provider 可换带来的 schema 约束，属于建表前必须确定的。**
+
+pgvector 的列类型是 `vector(N)`，`N` 在建表时写死。而不同 embedding 模型维度不同：
+
+| 模型 | 维度 |
+|---|---|
+| OpenAI `text-embedding-3-small` | 1536 |
+| OpenAI `text-embedding-3-large` | 3072 |
+| 通义 `text-embedding-v3` | 1024 |
+| BGE-M3 | 1024 |
+
+**换 embedding 模型 = 改列定义 + 重算所有历史文档的向量。**
+一个十万 chunk 的库要重跑几小时，并重新付一次 embedding 费用。
+
+所以：
+- 建表时确定维度（**推荐 1024**：通义和 BGE-M3 都是这个值，
+  中文检索效果又优于 OpenAI 的 embedding）
+- **启动时校验 `EMBEDDING_DIM` 与数据库列维度相等，不一致就拒绝启动**
+
+最后这条校验不能省。不校验的后果是入库时才报维度错误——而那时用户已经上传了文件、
+任务已经跑到一半，失败信息是一句 pgvector 的类型错误，看不出根因是配置和 schema 不匹配。
+
+**给将来留的门**：`chunks` 表加 `embedding_model` 和 `embedding_dim` 两列。
+真要换模型时可以新旧向量并存、灰度迁移，而不是停服重建。
+这两列现在恒为同一个值，看着像废字段——和 `source_type` 那条同理。
+
+---
+
+## Provider 抽象：任何一家都能接（2026-07-30 决定）
+
+配置项形状见仓库根的 `.env.example`。这里记的是**为什么这么设计**和**必须处理的差异**。
+
+### 要支持的范围
+
+OpenAI、Anthropic、国产模型（DeepSeek / 通义 / 智谱 / Kimi）、
+**自建或第三方中转站**、客户内网自部署（vLLM / Ollama）。
+
+### 光有 base_url 不够，要 `LLM_PROVIDER` 指明协议
+
+两大阵营的接口形状不同，不是换个地址就能通：
+
+| 类型 | 端点 | 认证 | 差异 |
+|---|---|---|---|
+| `openai-compatible` | `POST {base}/chat/completions` | `Authorization: Bearer` | system 作为一条 message |
+| `anthropic` | `POST {base}/messages` | `x-api-key` + `anthropic-version` 头 | system 是顶层字段 |
+
+所以 Claude 官方 API 需要**第二个适配器**。
+但如果中转站把 Claude 包成了 OpenAI 兼容格式（多数中转站都这么做），
+那用 `openai-compatible` 就行——这也是为什么协议类型和厂商必须解耦。
+
+### 六处会漏出来的差异（都要在适配器层抹平）
+
+1. **向量维度** —— 见上面第 6 条，唯一影响 schema 的
+2. **流式格式** —— OpenAI 的 SSE 是 `data: {delta}`，Anthropic 是多种
+   `event:` 类型（`content_block_delta` 等）。前端只该看到统一的文本流
+3. **错误映射** —— 各家的状态码和 body 形状不同，要统一归到
+   `ApiError` 的五种 kind（前端已有这套，见 `apps/web/src/api/errors.ts`）
+4. **上下文窗口** —— 从 8k 到 200k 不等，上下文预算裁剪要读配置而非写死
+5. **token 计数** —— 分词器不同，成本核算（阶段 F 的账本）要按 Provider 取用量字段
+6. **工具调用格式** —— OpenAI 的 `tools` 和 Anthropic 的 `tools` 形状不同，
+   阶段 F 的智能体依赖它
+
+### 中转站要在产品里标注风险
+
+**中转站会看到全部 prompt 内容，也就是知识库原文。**
+而这个产品的定位是企业知识库，那些文档往往是全公司最敏感的资料。
+
+所以配置界面要显式区分：
+
+| 场景 | 推荐 | 风险 |
+|---|---|---|
+| 开发 / 演示 | 中转站 | 可接受 |
+| 企业生产 | 直连官方 API | 数据到模型厂商 |
+| 高敏感 / 合规要求 | 客户内网自部署（vLLM） | 数据不出内网 |
+
+**不能让管理员以为所有 Provider 都等价。** 把风险显式呈现出来是「治理」的一部分，
+和智能体的权限继承、审计日志属于同一根支柱（见 `docs/product-vision.md` 支柱三）。
+
 ---
 
 ## 跨平台客户端的四条约束（2026-07-30 决定）
