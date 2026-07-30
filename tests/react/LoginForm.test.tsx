@@ -42,7 +42,7 @@ const jsonResponse = (body: unknown, status = 200) =>
     headers: { "Content-Type": "application/json" },
   });
 
-const VALID_USER = { id: 1, email: "demo@tracebase.dev", displayName: "演示用户", role: "member" };
+const VALID_USER = { id: 1, email: "demo@cairn.dev", displayName: "演示用户", role: "member" };
 
 beforeEach(() => {
   stubFetch(async () => jsonResponse({ user: VALID_USER }));
@@ -79,7 +79,7 @@ describe("字段校验", () => {
 
     // getByLabelText 就是用户找输入框的方式：他看的是"邮箱"那两个字。
     await user.type(screen.getByLabelText("邮箱"), "zhangsan");
-    await user.type(screen.getByLabelText("密码"), "tracebase123");
+    await user.type(screen.getByLabelText("密码"), "cairn-demo-2026");
     await user.click(screen.getByRole("button", { name: "登录" }));
 
     // 断言完整文案。这条断言守的是「可读错误」标准第 1 条——
@@ -114,7 +114,7 @@ describe("字段校验", () => {
     // 没出错时只有说明
     expect(password).toHaveAccessibleDescription("至少 8 位");
 
-    await user.type(screen.getByLabelText("邮箱"), "demo@tracebase.dev");
+    await user.type(screen.getByLabelText("邮箱"), "demo@cairn.dev");
     await user.type(password, "abc123");
     await user.click(screen.getByRole("button", { name: "登录" }));
 
@@ -127,7 +127,7 @@ describe("字段校验", () => {
     render(<LoginForm onSuccess={vi.fn()} />);
 
     // 只有密码错（邮箱填对了）→ 焦点该到密码上，不是无脑跳第一个字段
-    await user.type(screen.getByLabelText("邮箱"), "demo@tracebase.dev");
+    await user.type(screen.getByLabelText("邮箱"), "demo@cairn.dev");
     await user.type(screen.getByLabelText("密码"), "abc");
     await user.click(screen.getByRole("button", { name: "登录" }));
 
@@ -153,7 +153,7 @@ describe("字段校验", () => {
     await user.click(screen.getByRole("button", { name: "登录" }));
     expect(screen.getAllByRole("alert")).toHaveLength(2);
 
-    await user.type(screen.getByLabelText("邮箱"), "demo@tracebase.dev");
+    await user.type(screen.getByLabelText("邮箱"), "demo@cairn.dev");
 
     // 邮箱那条消失，密码那条还在。
     // 「错误的消失可以是即时的，错误的出现不行」——这条断言和上一个测试
@@ -173,7 +173,7 @@ describe("服务端错误", () => {
     const onSuccess = vi.fn();
     render(<LoginForm onSuccess={onSuccess} />);
 
-    await user.type(screen.getByLabelText("邮箱"), "demo@tracebase.dev");
+    await user.type(screen.getByLabelText("邮箱"), "demo@cairn.dev");
     await user.type(screen.getByLabelText("密码"), "wrongpassword");
     await user.click(screen.getByRole("button", { name: "登录" }));
 
@@ -197,7 +197,7 @@ describe("服务端错误", () => {
     // 401：密码错了，重试一万次还是错。提示重试是骗用户。
     stubFetch(async () => jsonResponse({ message: "邮箱或密码不正确" }, 401));
     const { unmount } = render(<LoginForm onSuccess={vi.fn()} />);
-    await user.type(screen.getByLabelText("邮箱"), "demo@tracebase.dev");
+    await user.type(screen.getByLabelText("邮箱"), "demo@cairn.dev");
     await user.type(screen.getByLabelText("密码"), "wrongpassword");
     await user.click(screen.getByRole("button", { name: "登录" }));
     expect(await screen.findByRole("alert")).not.toHaveTextContent("可以再试一次");
@@ -206,8 +206,8 @@ describe("服务端错误", () => {
     // 500：服务器临时故障，重试有意义。
     stubFetch(async () => jsonResponse({ message: "服务器内部错误" }, 500));
     render(<LoginForm onSuccess={vi.fn()} />);
-    await user.type(screen.getByLabelText("邮箱"), "demo@tracebase.dev");
-    await user.type(screen.getByLabelText("密码"), "tracebase123");
+    await user.type(screen.getByLabelText("邮箱"), "demo@cairn.dev");
+    await user.type(screen.getByLabelText("密码"), "cairn-demo-2026");
     await user.click(screen.getByRole("button", { name: "登录" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("可以再试一次");
   });
@@ -218,7 +218,7 @@ describe("服务端错误", () => {
     const user = userEvent.setup();
     render(<LoginForm onSuccess={vi.fn()} />);
 
-    await user.type(screen.getByLabelText("邮箱"), "demo@tracebase.dev");
+    await user.type(screen.getByLabelText("邮箱"), "demo@cairn.dev");
     await user.type(screen.getByLabelText("密码"), "wrongpassword");
     await user.click(screen.getByRole("button", { name: "登录" }));
     expect(await screen.findByRole("alert")).toBeInTheDocument();
@@ -245,8 +245,8 @@ describe("提交中与成功", () => {
     const user = userEvent.setup();
     render(<LoginForm onSuccess={vi.fn()} />);
 
-    await user.type(screen.getByLabelText("邮箱"), "demo@tracebase.dev");
-    await user.type(screen.getByLabelText("密码"), "tracebase123");
+    await user.type(screen.getByLabelText("邮箱"), "demo@cairn.dev");
+    await user.type(screen.getByLabelText("密码"), "cairn-demo-2026");
     await user.click(screen.getByRole("button", { name: "登录" }));
 
     // 按 name 找按钮，找的是**用户读到的文字**。
@@ -265,8 +265,8 @@ describe("提交中与成功", () => {
     const onSuccess = vi.fn();
     render(<LoginForm onSuccess={onSuccess} />);
 
-    await user.type(screen.getByLabelText("邮箱"), "demo@tracebase.dev");
-    await user.type(screen.getByLabelText("密码"), "tracebase123");
+    await user.type(screen.getByLabelText("邮箱"), "demo@cairn.dev");
+    await user.type(screen.getByLabelText("密码"), "cairn-demo-2026");
     await user.click(screen.getByRole("button", { name: "登录" }));
 
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
@@ -277,14 +277,14 @@ describe("提交中与成功", () => {
     // 权限字段没有安全的兜底值（schemas/users.ts 的文件头论证过）：
     // 降级成 viewer 会让管理员看不到入口，降级成 admin 更糟。
     // 所以坏数据必须整个失败，而不是"尽力放进去"。
-    stubFetch(async () => jsonResponse({ user: { id: 1, email: "demo@tracebase.dev" } }));
+    stubFetch(async () => jsonResponse({ user: { id: 1, email: "demo@cairn.dev" } }));
 
     const user = userEvent.setup();
     const onSuccess = vi.fn();
     render(<LoginForm onSuccess={onSuccess} />);
 
-    await user.type(screen.getByLabelText("邮箱"), "demo@tracebase.dev");
-    await user.type(screen.getByLabelText("密码"), "tracebase123");
+    await user.type(screen.getByLabelText("邮箱"), "demo@cairn.dev");
+    await user.type(screen.getByLabelText("密码"), "cairn-demo-2026");
     await user.click(screen.getByRole("button", { name: "登录" }));
 
     // 给用户的文案不含技术术语——完整的 zod 报告在控制台（parse.ts 的两个受众）

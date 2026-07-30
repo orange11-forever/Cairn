@@ -29,9 +29,9 @@ const DOCS = [
 // Day 9：登录用的假账号。密码明文放在这里是因为它是 mock——
 // 真后端的密码哈希是 Day 18 的题目，那天要讲为什么明文存储不可接受。
 const DEMO_USER = {
-  email: "demo@tracebase.dev",
-  password: "tracebase123",
-  user: { id: 1, email: "demo@tracebase.dev", displayName: "演示用户", role: "member" },
+  email: "demo@cairn.dev",
+  password: "cairn-demo-2026",
+  user: { id: 1, email: "demo@cairn.dev", displayName: "演示用户", role: "member" },
 };
 
 // Day 9：上传的服务端约束。**故意和前端 lib/validation.ts 里的一样。**

@@ -167,7 +167,7 @@ async function checkLoginPage() {
 
   // 格式错误的文案要说清怎么改
   await page.fill("#login-email", "zhangsan");
-  await page.fill("#login-password", "tracebase123");
+  await page.fill("#login-password", "cairn-demo-2026");
   await page.click(".login-submit");
   const formatError = (await page.textContent("#login-email-error")).trim();
   expect(
@@ -178,7 +178,7 @@ async function checkLoginPage() {
   // 服务端错误：密码错 → 401。
   // 这是登录页关卡的核心——它证明真的发出了请求、真的处理了 401，
   // 而且错误显示在表单级别而不是挂在某个字段上。
-  await page.fill("#login-email", "demo@tracebase.dev");
+  await page.fill("#login-email", "demo@cairn.dev");
   await page.fill("#login-password", "wrongpassword");
   await page.click(".login-submit");
   await page.waitForSelector(".form-error", { timeout: 8000 });
@@ -210,8 +210,8 @@ async function checkLoginPage() {
  * 登录一坏这八帧全红，那是对的——真实用户也进不去。
  */
 async function login() {
-  await page.fill("#login-email", "demo@tracebase.dev");
-  await page.fill("#login-password", "tracebase123");
+  await page.fill("#login-email", "demo@cairn.dev");
+  await page.fill("#login-password", "cairn-demo-2026");
   await page.click(".login-submit");
   // 等工作台出现，而不是等固定毫秒数：登录请求有 700ms 延迟，
   // 固定等待会在慢机器上间歇性抢跑，而报出来的错是"找不到 #status-bar"，

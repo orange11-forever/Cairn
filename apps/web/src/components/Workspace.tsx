@@ -28,7 +28,7 @@ export function Workspace({ user, onLogout }: WorkspaceProps) {
     // body > .product-header + .workspace 这类相邻/子选择器（Day 8 的理由，仍然成立）。
     <>
       <Sidebar
-        brand="Tracebase"
+        brand="Cairn"
         items={NAV_ITEMS}
         activeHref="/documents"
         user={user}

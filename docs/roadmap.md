@@ -1,4 +1,4 @@
-# Tracebase 开发计划
+# Cairn 开发计划
 
 2026-07-30 制定。产品定义见 [`product-vision.md`](product-vision.md)，
 功能清单见 [`features.md`](features.md)。

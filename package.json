@@ -1,7 +1,7 @@
 {
-  "name": "tracebase",
+  "name": "cairn",
   "version": "0.1.0",
-  "description": "Tracebase 企业知识库 AI SaaS",
+  "description": "Cairn — 工程组织的知识层与智能体平台",
   "private": true,
   "type": "module",
   "scripts": {

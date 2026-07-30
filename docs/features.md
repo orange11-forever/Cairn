@@ -1,4 +1,4 @@
-# Tracebase 功能清单
+# Cairn 功能清单
 
 2026-07-30 制定。定位与阶段划分见 [`product-vision.md`](product-vision.md)，
 开发计划见 [`roadmap.md`](roadmap.md)。本文只列**功能**。
@@ -26,7 +26,7 @@ if user.plan == "legacy_pro" and created_at < CUTOFF:
 选中这三行，右键 → **"为什么这样写"**：
 
 ```
-┌─ Tracebase ─────────────────────────────────────────┐
+┌─ Cairn ─────────────────────────────────────────┐
 │                                                     │
 │  这个分支是 2024-03 为了兼容老客户加的。             │
 │  0.15 来自当时和销售定的过渡方案：legacy_pro         │
@@ -52,7 +52,7 @@ if user.plan == "legacy_pro" and created_at < CUTOFF:
 ## 场景二：改一个函数之前，先看会炸到哪（E）
 
 ```
-$ tracebase impact calculate_discount
+$ cairn impact calculate_discount
 
 影响面分析
 ──────────────────────────────────────────
@@ -80,7 +80,7 @@ $ tracebase impact calculate_discount
 ## 场景三：架构图，但每个格子都能点开（E）
 
 ```
-$ tracebase map billing/
+$ cairn map billing/
 ```
 
 ```
@@ -177,9 +177,9 @@ AI 只做一件事：给"变更热点"写那句人话总结。
 在飞书群里：
 
 ```
-张伟      @Tracebase 我们的日志保留多久？
+张伟      @Cairn 我们的日志保留多久？
 
-Tracebase 生产环境 30 天，审计日志 3 年。
+Cairn 生产环境 30 天，审计日志 3 年。
           📎 ① 运维手册 2.4  ② 合规要求清单
           （张伟你可见的 2 份文档）
 ```

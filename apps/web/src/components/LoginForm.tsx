@@ -123,7 +123,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
   return (
     <main className="login-page">
       <section className="login-card" aria-labelledby="login-title">
-        <h1 id="login-title">登录 Tracebase</h1>
+        <h1 id="login-title">登录 Cairn</h1>
         <p>用企业邮箱登录，查看属于你的知识文档。</p>
 
         {/*
@@ -141,7 +141,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
               // 它自带的校验被 noValidate 关掉了，所以不会和我们的校验打架。
               type="email"
               autoComplete="email"
-              placeholder="demo@tracebase.dev"
+              placeholder="demo@cairn.dev"
               value={email}
               onChange={(event) => handleChange("email", event.target.value)}
               {...fieldAria("login-email", fieldErrors.email)}
@@ -193,7 +193,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
 
         {/* 演示账号写在页面上。这是 mock 阶段的临时便利，Day 13 接真鉴权时删掉。 */}
         <p className="login-demo-hint">
-          演示账号：<code>demo@tracebase.dev</code> / <code>tracebase123</code>
+          演示账号：<code>demo@cairn.dev</code> / <code>cairn-demo-2026</code>
         </p>
       </section>
     </main>

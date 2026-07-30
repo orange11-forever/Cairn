@@ -28,11 +28,11 @@ const {
 
 test("合法邮箱通过", () => {
   for (const email of [
-    "demo@tracebase.dev",
+    "demo@cairn.dev",
     "zhang.san@company.com.cn",
     "a+tag@sub.domain.io",
     // 前后空格要被 trim 掉——复制粘贴常带空白
-    "  demo@tracebase.dev  ",
+    "  demo@cairn.dev  ",
   ]) {
     assert.equal(validateEmail(email), null, `${email} 应当通过`);
   }

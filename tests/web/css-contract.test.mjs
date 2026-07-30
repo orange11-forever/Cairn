@@ -10,7 +10,7 @@ async function readPage() {
   return parse(await readFile(htmlUrl, 'utf8'));
 }
 
-test('page loads the external Tracebase stylesheet', async () => {
+test('page loads the external Cairn stylesheet', async () => {
   const document = await readPage();
   const stylesheet = document.querySelector(
     'link[rel="stylesheet"][href="styles/main.css"]',
