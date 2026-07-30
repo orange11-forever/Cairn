@@ -174,6 +174,9 @@ docs/              product-vision.md（产品定义与阶段路线）+ specs/（
 
 ## 设计文档
 
+[`docs/features.md`](docs/features.md) 是按「用户能做什么」组织的功能清单，
+每项标注了所属阶段，末尾写明 MVP 是哪五条。
+
 [`docs/product-vision.md`](docs/product-vision.md) 是产品定义与阶段路线的权威文档：
 三根支柱（可追溯问答 / 代码感知 / 智能体治理）、成品的多端样貌、八个阶段的依赖关系，
 以及一份**明确不做的清单**（IM、独立向量库、自研 LLM、LLM 直接画图）。
