@@ -1,20 +1,29 @@
 # Tracebase
 
-企业知识库 AI 问答。文档上传后异步解析入库，用混合检索找到出处，再由 LLM 生成**带引用溯源**的回答。
+**工程组织的知识层与智能体平台。** 代码是一等公民，每个答案可追溯到出处，AI 智能体受治理。
 
-> **状态：Day 9 / 35 — 前端原型。** 界面与交互链路可用，对接 mock 后端；
-> 真实 API 从 Day 16 起建，RAG 链路从 Day 21 起建。下面「已实现 / 未实现」写清了边界。
+> **状态：阶段 A（Web 客户端地基）进行中 — 前端原型。**
+> 界面与交互链路可用，对接 mock 后端。真实 API 在阶段 B，RAG 链路在阶段 C。
+> 下面「已实现 / 未实现」写清了当前边界；完整产品定义与阶段路线见
+> [`docs/product-vision.md`](docs/product-vision.md)。
 
 ## 要解决的问题
 
-企业内部资料散落在几百份文档里，人找不到、也记不住哪份是最新的。通用聊天机器人能答，
-但答不出**依据**——而在企业场景里，一个没有出处的答案不能用来做决定。
+工程组织的知识散落在文档、代码、PR 讨论、事故复盘和聊天记录里。最难回答的问题是：
 
-Tracebase 的核心约束是一句话：**回答只依据已处理完成的知识文档，且每个事实型回答都必须
-附可点击的原文出处；找不到依据时明确拒答，不编。**
+> **"这段代码为什么是这样的？"**
+
+答案通常分散在五个地方，串起来的唯一办法是去问那个待了五年的人。
+通用聊天机器人能答，但答不出**依据**——而在企业场景里，没有出处的答案不能用来做决定。
+
+核心约束一句话：**回答只依据已处理完成的资料，每个事实型回答必须附可点击的原文出处；
+找不到依据时明确拒答，不编。**
 
 这条约束不是功能列表里的一项，它决定了整个数据模型——引用（citation）的校验比答案文本
 本身更严，因为一条指向不存在文档的引用比没有引用更坏：它让用户以为答案有依据。
+
+同一条原则约束将来的代码架构图：**图必须从真实的 import 与调用关系推导，不能让 LLM 画**。
+LLM 画的图会自信地错，而图比文字更容易让人相信。
 
 ## 跑起来
 
@@ -54,13 +63,15 @@ pnpm dev      # Vite dev server，端口 5500 —— 另开一个终端
 
 ## 未实现（当前边界）
 
-- **没有真后端。** `mocks/docs-server.mjs` 提供四个端点，Day 16 起换成 FastAPI。
+- **没有真后端。** `mocks/docs-server.mjs` 提供四个端点，阶段 B 换成 FastAPI。
 - **没有真鉴权。** 登录成功只在内存里留一个 user 对象，刷新即丢。token 怎么存、
-  为什么用 HttpOnly Cookie、401 怎么自动处理，是 Day 13 和 Day 18 的题目。
+  Web 用 HttpOnly Cookie 而原生客户端用 Bearer、401 怎么自动处理，都在阶段 B。
 - **没有真文件上传。** 上传接口发的是 `{files:[{name,size}]}` 元数据，不是二进制。
-  multipart 编码要等 Day 19 有了存储层。
+  multipart 与断点续传要等阶段 B 有了存储层。
 - **没有 RAG。** 回答是 mock 写死的，带一条固定引用。解析、切分、Embedding、
-  向量检索从 Day 21 起建。
+  向量检索在阶段 C。
+- **没有代码感知、没有智能体治理、没有多端客户端。** 分别在阶段 E、F、G，
+  见 [`docs/product-vision.md`](docs/product-vision.md)。
 
 ## 验证
 
@@ -105,7 +116,7 @@ pnpm build      # 生产构建
 
 ## 架构
 
-当前（Day 9）：
+当前（阶段 A）：
 
 ```
 Browser → Vite dev server → React 组件树
@@ -144,13 +155,13 @@ apps/web/          前端。五层分工，依赖单向朝下
   src/components/  React 组件，纯展示或持有自己那一份本地 state
   src/App.tsx      只把渲染交给 SessionGate——出现 useState 或 await 就说明状态提太高了
   src/main.tsx     挂载入口，不含业务逻辑
-apps/api/          FastAPI 后端占位，Day 16 起建（README 里有建表硬约束）
-apps/worker/       摄取 Worker 占位，Day 23 起建
-mocks/             mock 后端（docs / login / ask / uploads），Day 16 后废弃
+apps/api/          FastAPI 后端占位，阶段 B 起建（README 里有建表与跨平台硬约束）
+apps/worker/       摄取 Worker 占位，阶段 C 起建
+mocks/             mock 后端（docs / login / ask / uploads），阶段 B 后废弃
 scripts/           verify-web.mjs：真 Chromium 跑七组场景
 tests/web/         node --test：纯函数与静态文本，不需要 DOM
 tests/react/       vitest + RTL：组件行为
-docs/specs/        设计文档：已定决策与明确不做的事
+docs/              product-vision.md（产品定义与阶段路线）+ specs/（逐次的设计决策）
 ```
 
 **分层的判据是依赖方向和输入假设，不是文件数量。** `schemas/` 的输入是 `unknown`
@@ -162,6 +173,10 @@ docs/specs/        设计文档：已定决策与明确不做的事
 `api/` `schemas/` `lib/` `state/` **一行未改**。
 
 ## 设计文档
+
+[`docs/product-vision.md`](docs/product-vision.md) 是产品定义与阶段路线的权威文档：
+三根支柱（可追溯问答 / 代码感知 / 智能体治理）、成品的多端样貌、八个阶段的依赖关系，
+以及一份**明确不做的清单**（IM、独立向量库、自研 LLM、LLM 直接画图）。
 
 `docs/specs/` 下每份文档记的是**当时定下的决策和明确不做的事**，不是教程：
 
@@ -175,14 +190,16 @@ docs/specs/        设计文档：已定决策与明确不做的事
 
 ## 技术栈演进
 
-| 阶段 | 变化 |
-|---|---|
-| Day 1-5 | 原生 HTML/CSS/JS，ES Modules |
-| Day 6-10（现在） | TypeScript（禁用 `any`）、Zod、React、Vitest + RTL |
-| Day 11-15 | Next.js、Tailwind、TanStack Query |
-| Day 16-20 | FastAPI、PostgreSQL、SQLAlchemy、Alembic |
-| Day 21-27 | pgvector、Redis、Worker、混合检索、RAG 评估 |
-| Day 28-35 | Docker Compose、Nginx、HTTPS、GitHub Actions、可观测性 |
+| 阶段 | 内容 | 技术 |
+|---|---|---|
+| **A**（现在） | Web 客户端地基 | TypeScript、Zod、React、Vitest + RTL → Next.js、TanStack Query |
+| B | 后端与数据地基 | FastAPI、PostgreSQL、SQLAlchemy、Alembic |
+| C | RAG 垂直链路 | pgvector、Redis、Worker、混合检索、评估 |
+| D | 部署与工程化 | Docker Compose、Nginx、HTTPS、GitHub Actions、可观测性 |
+| E | 代码感知 ★ 差异化 | AST 解析、符号索引、调用图、推导式架构图 |
+| F | 智能体治理 | 权限继承、运行审计、成本账本、注入防线 |
+| G | 多端客户端 | PWA → VS Code 插件 → Tauri 桌面 → React Native |
+| H | 企业统一搜索 | 多连接器、增量同步、跨源排序、实体图谱 |
 
 依赖全部锁精确版本（无 `^` 范围）。
 
