@@ -85,4 +85,4 @@ docs/              设计文档（specs/）与自学清单
 
 目标形态：`Browser → Next.js → FastAPI → PostgreSQL+pgvector / Redis → Worker / 对象存储 / LLM API`
 
-博客站（xiaochublog.top）的主题与发布工具链已拆到独立仓库 `../xiaochublog`。
+这个仓库只含 Tracebase 本体。学习笔记与博客相关的东西在另一个仓库。
