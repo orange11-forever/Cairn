@@ -24,8 +24,9 @@ export function Citation({ sources }: CitationProps) {
   return (
     <>
       <h3>引用来源</h3>
-      {/* ol 而不是 ul：引用有顺序，第 1 条通常是最相关的那条 */}
-      <ol className="citation-list">
+      {/* ol 而不是 ul：引用有顺序，第 1 条通常是最相关的那条。
+          aria-label 同 MessageList：两个列表在同一屏，读屏用户要能分清。 */}
+      <ol className="citation-list" aria-label="引用来源">
         {sources.map((source) => (
           <li key={source.href}>
             <a href={source.href}>{source.label}</a>

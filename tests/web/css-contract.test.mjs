@@ -38,6 +38,17 @@ test('stylesheet keeps the layout hooks the components render', async () => {
     '.assistant-panel',
     '.question-form',
     '.document-list',
+    // Day 9 新增的钩子。每一条都对应一个"没有样式就会静默坏掉"的东西：
+    '.login-page', // 登录页整体布局，缺了它表单会贴在左上角
+    '.form-field', // 字段的 label/input/错误三行间距
+    '.field-error', // 错误文案的红色。它不是唯一信号（文案本身说清了问题），但缺了会很难注意到
+    '.form-error', // 表单级错误的边框和底色，用来和字段级错误区分开
+    '.status-filter', // 状态筛选器
+    '.upload-selection', // 已选文件列表
+    // 最关键的一条：.message-scroll 没有 max-height + overflow 时，
+    // 容器会随内容无限长高，scrollHeight === clientHeight，自动滚动代码照跑
+    // 但什么都不会发生。这是"JS 完全正确、CSS 缺一条"的失效。
+    '.message-scroll',
   ]) {
     assert.match(
       css,
@@ -50,6 +61,26 @@ test('stylesheet keeps the layout hooks the components render', async () => {
   // 这条约定是 Day 8 换掉整个渲染层却不用改一行 CSS 的原因。
   assert.match(css, /\[data-tone=/, 'stylesheet lost the [data-tone] status hook');
   assert.match(css, /\[data-state=/, 'stylesheet lost the [data-state] document hook');
+  // Day 9：出错字段的红边同样走 data-* 而不是拼 class
+  assert.match(css, /\[data-invalid=/, 'stylesheet lost the [data-invalid] form hook');
+});
+
+// Day 9：自动滚动的 CSS 前提。
+//
+// 单独一个测试而不是并进上面那串 class 检查：那串只查"选择器还在"，
+// 而这里要查的是**规则的内容**——.message-scroll 存在但没有 max-height，
+// 自动滚动就完全不工作，而选择器检查会照样通过。
+test('scroll container keeps the properties auto-scroll depends on', async () => {
+  const css = await readFile(cssUrl, 'utf8');
+
+  const rule = css.match(/\.message-scroll\s*\{([^}]*)\}/);
+  assert.ok(rule, 'missing .message-scroll rule');
+
+  // 没有 max-height：容器随内容长高，scrollHeight === clientHeight，
+  // scrollTop 永远是 0。hooks/useAutoScroll.ts 里那行赋值照跑，什么都不会发生。
+  assert.match(rule[1], /max-height:/, '.message-scroll needs max-height or it never scrolls');
+  // 没有 overflow-y：内容溢出但不产生滚动条，同样没有可滚动的距离。
+  assert.match(rule[1], /overflow-y:\s*auto/, '.message-scroll needs overflow-y: auto');
 });
 
 test('stylesheet styles every document status the data layer can produce', async () => {

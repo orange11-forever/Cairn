@@ -1,93 +1,202 @@
 # Handoff
 
-最后更新：2026-07-29（站点维护 + Qt 文档日，**没有推进 Day 9**）。
+最后更新：2026-07-30（**Day 9 完成**：Hooks、表单与副作用）。
 
-## 本次会话（2026-07-29）做了什么
+## 本次会话（2026-07-30）做了什么
 
-**不是学习日**，全部是收尾和站点维护。三个 commit，两个仓库工作区都干净：
+**Day 9 全部完成**，三层验证 + 生产构建全绿。**尚未 commit**（等用户批准）。
 
-- `xiaochublog` **f1c0556** — Day 8 两篇博客文章源入库
-- `xiaochublog` **2b61211** — Qt/C++ 飞书文档（新目录 `docs/feishu/`）
-- `ai-knowledge-base` **526bde3** — 交接笔记更新到 Day 8
-
-**1. Day 8 第二篇博客已发布**：post 1043 `safely-replacing-a-layer`《怎么安全地换掉一层》，八节 18309 字节，分类 19，标签 React/代码审查/前端/单元测试/系统架构，封面 1059。线上逐项核验过（八节齐、代码块转义正常、无锚点残留、上一篇导航正确）。**开头找了很久那篇"遗留的 C++ 博客"其实不存在**——C++ 那篇（post 996）2026-07-25 就发了，用户记混了，遗留的是 Day 8 这篇。
-
-**2. 站点性能实测**（移动/桌面）：性能 91/92、可访问性 95、最佳实践 100。LCP 1.0–1.5s、TBT 0ms、**CLS 已经是 0**（之前的 0.08 没了）。Lighthouse 无优化项。Speed Index 移动端 9.3–9.8s 仍飘，属主机 TTFB。
-
-**3. 确认这是私人博客**：用户明确说不对外公开，`blog_public=0` 是有意的。**SEO 分数（66）以后永远别报**——唯一扣分项就是 noindex，正是想要的效果。已告知 noindex ≠ 私密（要真私密得加登录墙/密码保护），用户没要求做。写进 [[wordpress-blog-setup]]。
-
-**4. 站点标题改为 `Aliya-devlog`**。注意 `blogname` 驱动三处：浏览器标签、左上角品牌名、**首页 hero 大标题**（`front-page.php` 渲染的就是站点名）。用户没反对 hero 一起变。想让 hero 保留独立文案得改模板。
-
-**5. 删掉首页标题的流动白光** —— 踩了个大坑，已写进 [[wpcode-snippet-dual-storage]]：**WPCode Lite 把片段代码存两份**，`post_content`（编辑器显示的）和 `wpcode_snippets` 选项（**前台实际输出的**）。我改了 `post_content` 三处（`.home-intro h1::after` 块、`@keyframes heroShine`、reduced-motion 覆盖），`replaced:1` 全成功、大括号也核对过，但白光照旧——因为选项那份没同步。**期间走了一串弯路**：以为是浏览器缓存让用户开无痕、查 LiteSpeed CCSS/UCSS、`litespeed-purge all`、甚至去数用户截图的像素亮度（那些亮区是背景夜景图自己的城市灯光 RGB≈(136,131,152)，会误导）。最后用户进 wp-admin 看了一眼，WPCode 自动用 `post_content` 重建了选项缓存，白光就没了。用户以为是缓存问题，已纠正过。
-
-**6. 写了 Qt/C++ 基础入门文档**：`~/projects/xiaochublog/docs/feishu/qt-cpp-getting-started.md`，1.5 万字八节，面向零基础同学。**我没有飞书接入能力**（无 API 凭据、无 MCP），只产出 Markdown，用户需自己粘贴或导入飞书。一开始说"直接粘进飞书就能用"让用户误以为云文档已建好，已澄清。
+设计文档：`docs/superpowers/specs/2026-07-30-day9-hooks-forms-effects-design.md`
+（七个已定决策 + 实测发现的五个问题 + 明确不做的六项都在里面）。
 
 ## State
 
 **两个仓库**：
-- `~/projects/ai-knowledge-base` — Tracebase 主项目。**Day 8 已 commit `d065931`**（24 文件，+1397/-206），工作区干净，未推远端（本项目一直只做本地提交）。
+- `~/projects/ai-knowledge-base` — Tracebase 主项目。Day 9 的改动全在工作区里，**未 commit**（本项目一直只做本地提交，不推远端）。
 - `~/projects/xiaochublog` — 博客站主题 + 文章源 + 发布工具链 + `practice/` 学习记录。
 
-**Day 8（React 组件与状态）已完成，三层验证全绿**：`pnpm typecheck` 0 错 / `pnpm test` 42 全过 / `pnpm verify` 九帧通过。
+**验证现状**：
+- `pnpm typecheck` 0 错
+- `pnpm test` = `test:unit`（node --test，**59 个**）+ `test:react`（vitest，**49 个**）
+- `pnpm verify` 八帧断言一行未改 + 登录前置 + 四帧新增，全通过
+- `pnpm build` 268.89 kB / gzip 82.99 kB
 
-设计文档在 `docs/superpowers/specs/2026-07-27-day8-react-components-design.md`（三个已定决策 + 明确不做的五项都在里面）。
+## Day 9 的代码地图
 
-## Day 8 的代码地图
+**新依赖**（全部 `-E` 精确锁版）：`vitest` 4.1.10、`jsdom` 30.0.1、
+`@testing-library/react` 16.3.2、`/dom` 10.4.1、`/user-event` 14.6.1、`/jest-dom` 7.0.0。
 
-**依赖**：`react`/`react-dom` 19.2.8、`@vitejs/plugin-react` **5.2.0**（不是 6.x——6.0.4 要 vite ^8，我们是 7.1.12，报未满足 peer；5.2.0 的 peer 范围同时含 ^7 和 ^8，将来升 vite 8 也不用动）。全部 `-E` 精确锁版。
+**测试双运行器并存**，不迁移旧测试：
+```
+pnpm test       = test:unit && test:react
+pnpm test:unit  = node --test "tests/web/**/*.test.mjs"   （不需要 DOM 的纯函数）
+pnpm test:react = vitest run                              （tests/react/*.test.tsx，jsdom）
+```
+理由：Day 7/Day 8 各验证过一次「不要在引入新东西的同一步动既有的验证网」。
 
-**组件（9 个，都在 `apps/web/src/components/`）**
-- 大纲六项：`Sidebar` `DocumentList` `UploadZone` `MessageList` `MessageInput` `Citation`
-- 另外三个：`StatusBar`、`DocumentsPanel`（**唯一消费 store 的组件**）、`AssistantPanel`（持有 messages 本地 state）
-- `App.tsx` 只做布局组合——**里面出现 useState 或 await 就说明状态提得太高了**，这条约束是「无超大页面组件」验收的落点。
+**新增文件**
+- `lib/validation.ts` — 校验纯函数。返回**错误文案**而非 boolean/错误码（文案就是这层的产出物）。
+  `FileLike = {name,size}` 结构类型，不依赖 `File`，所以能在两个运行器里都跑。
+- `lib/messages.ts` — `MessageDto → Message` 视图模型。`createUserMessage` 用 `crypto.randomUUID()`。
+- `hooks/useAsyncAction.ts` — 请求生命周期。抽它的**硬理由**是卸载时 abort（前三条只是啰嗦）。
+- `hooks/useAutoScroll.ts` — 贴底自动滚动。**用 ref 回调不用 useEffect**，理由见下面「Learned」第 1 条。
+- `api/auth.ts` / `api/conversations.ts` / `api/uploads.ts` — 三个端点，`signal` 是**必需参数**（漏传不会编译错误但取消会静默失效）。
+- `components/FormField.tsx` — label + input + 错误，把四条 aria 要求集中在一处。
+  导出 `fieldAria(id, error, hasHint)` 供调用方展开（不用 cloneElement——那是脆弱且无法类型检查的做法）。
+- `components/LoginForm.tsx` / `SessionGate.tsx` / `Workspace.tsx`
+- `vitest.config.ts` / `tests/react/setup.ts`
 
-**状态**
-- `state/useDocumentStore.ts` 用 `useSyncExternalStore(store.subscribe, store.getState)` 桥接，`documentStore.ts` 一行未改。
-- store 必须模块级单例（写组件体里 = 每次渲染造新 store，状态永远回 idle 还可能死循环）。
-- `getSnapshot` 要求状态未变时返回同一引用。现有 store 恰好满足，因为 `setState` 是整体替换而非合并——**那个决定当初纯粹是为「可辨识联合不能合并」的类型正确性做的**，在这里意外满足了一个无关的运行时要求。
-- `UploadZone`/`MessageInput` 持本地 state，和 store 的服务端状态对照（铺垫 Day 9/10）。
+**登录做成门**（`SessionGate`），未登录看不到工作台。session 在内存里，刷新即丢。
+Day 8 的布局组合搬到 `Workspace.tsx`，`App.tsx` 现在只有 `<SessionGate />`——
+那条「App 里出现 useState 或 await 就说明状态提太高了」的约束仍然成立。
 
-**抽离**
-- `lib/statusText.ts` — `describeStatus(state) => {tone,text}` 从旧 `renderStatusBar` 抽出。硬理由：Node `--test` 不认 JSX，纯 `.ts` 才能直接单测；原来嵌在 DOM 操作里，只能靠八帧脚本验证。
-- `ui/` 目录（`main.ts`/`statusBar.ts`/`documentList.ts`）**已删**，先证新层等价再删旧实现（Day 7 教训）。
+**mock 后端加了三个 POST 端点** + CORS 预检（OPTIONS）+ `readJsonBody`：
+- `POST /api/login` 700ms 延迟，`demo@tracebase.dev` / `tracebase123`，错密码回 **401**
+- `POST /api/ask` **1500ms** 延迟（留出点「停止生成」的窗口，仍小于客户端 3000ms 超时）
+- `POST /api/uploads` 服务端**重复**校验大小/类型，415/413/201
 
-**纯逻辑层 `api/`/`schemas/`/`lib/documents.ts`/`documentStore.ts` 一行未改**——换 UI 框架没波及任何业务逻辑，这是 Day 5 分层的回报，本次实测确认。
+`api/client.ts` 加了 `method` / `body`。两个细节：`Content-Type` 只在有 body 时才发
+（给 GET 加会触发多余的 preflight），`body` 用 `undefined` 不用 `null`。
 
-## 验证的三个变化
+## useEffect 的用与不用（本日核心）
 
-1. `tests/web/status-text.test.mjs` 新增 14 个（总数 28 → 42）。
-2. `html-structure.test.mjs` / `css-contract.test.mjs` 瘦身：结构断言搬进浏览器（结构进了组件，检查跟着进）；静态测试只留 `index.html` 真正拥有的东西（lang/charset/stylesheet/`#root`/入口 `.tsx`），CSS 侧改为守「CSS 文件仍持有组件渲染的那些钩子」——这个方向同样会坏且更隐蔽（改了 class 名页面照渲染，只是样式静悄悄失效）。
-3. `verify-web.mjs`：**既有八帧一条未改**（独立回归网，逐帧与 Day 7 一致），追加两段——
-   - **结构关卡，必须在首次截图之前跑**：Playwright 的 `fullPage` 截图会临时注入样式并留残留，晚一步就会被测量工具自己弄脏（第一次跑就撞上了，报「内联样式 2 处」而源码里 0 处）。
-   - **第九帧「状态污染」**：写好草稿 + 选好文件后跑完整轮加载，断言草稿/已选文件完好且列表正常更到 4 行。这类「重渲染吃掉用户输入」是换渲染层引入的新失败模式，手写 DOM 时代不存在。
-   - `expect` 从 try 块里的 `const` 提成模块级函数声明——结构关卡在它之前调用会撞 TDZ 直接崩。
+**只用在三处**：`useAsyncAction` 的卸载清理、`useAutoScroll` 的滚动、内容变化后滚到底。
+共同点是「有一个需要对称释放的资源」或「无法用渲染表达的 DOM 命令」。
+
+**刻意不用的地方**，每处都在代码注释里写了理由：
+- 派生数据 → `useMemo`（`DocumentsPanel` 的筛选和角标计数）。
+  错误形状 `useEffect(() => setVisible(filter(...)))` 的三个具体问题：渲染两遍且中间那帧显示过期数据、
+  多一份可推导的真相、依赖漏一个就静默失效。
+- 响应事件 → 写在事件处理函数里（提交后清空草稿）。
+- 请求本身**不**在 Effect 里发——它由用户点击触发。
+
+**`useMemo` 的注释明确写了"理由不是性能"**：4 条数据下省的时间是零，
+包 memo 大概比不包还慢。包它是为了建立「派生值从 state 算出来，不存进 state」的形状。
+性能优化的决定必须在测量之后，这里没测量。
+
+**`countByStatus`（Day 6 写的）今天第一次有 UI 消费者。** 角标统计**全部**文档而非筛选后——
+否则筛到 completed 之后其他角标全变 0，用户没法用角标判断该切到哪。
+
+## 可读错误的五条标准（已落进代码和测试）
+
+1. 说清怎么改：「邮箱缺少 @，例如 name@company.com」而不是「格式错误」
+2. 挨着出错的字段，不堆在表单顶部
+3. `aria-describedby` 关联 + `aria-invalid="true"`
+4. `role="alert"` 让读屏立刻播报
+5. **提交时才校验**，已提交过后改为实时清除——
+   **错误的消失可以是即时的，出现不行**
+
+**校验时机的例外：`UploadZone` 选完文件立刻校验。**
+判据是「输入是否已经完整」：打字是渐进的（"z" 还不是邮箱），选文件是原子的
+（点"打开"那一刻输入就完整了）。
+
+**两类错误必须分开**（`LoginForm` 文件头有完整论证）：
+字段错误显示在字段旁（前端自己知道），服务端错误显示在表单级
+（密码不对不代表密码字段填错了，可能是邮箱记错）。
+把 401 挂到密码字段上会让用户盯着密码反复改。这条有专门的测试守着。
+
+## 测试关注行为的具体落点
+
+- 用 `getByLabelText("邮箱")` 而不是 `querySelector("#login-email")`
+- 用 `getByRole("alert")` 而不是找 `.field-error`（alert 才是"用户会知道"的真正含义）
+- 用 `toBeDisabled()` 而不是 `hasAttribute("disabled")`
+- 断言**完整文案**而不只是"返回了非 null"——只断言非 null 的话，
+  把文案改成"错误"仍会通过，而那违反标准第 1 条
+- `toHaveAccessibleDescription` 走的是读屏解析 `aria-describedby` 的完整过程，没法手写等价断言
+
+判据：**把组件从头重写一遍、只保证外部行为一致，这些测试应当全绿。**
+
+**桩打在 `fetch` 上，不 mock `api/auth.ts`**：桩打得越靠外，被测范围越大
+（真实的 client.ts 超时/错误分类 + 真实的 schema 校验都进来了）。
 
 ## Next
 
-1. **Day 9：Hooks、表单与副作用**（大纲第 9 天）。学 `useState`/`useEffect`/`useMemo`/`useRef`、受控表单、自定义 Hook、何时不该用 Effect。项目：登录表单、上传表单、消息输入、自动滚动、请求取消。测试：引入 Vitest + React Testing Library 测表单校验与消息渲染。验收：关键表单有可读错误；测试关注用户行为而非组件内部。
-2. **两件我没能亲自核验的事**（2026-07-29 撞上 WPVibe 免费版 24 小时用量上限，额度约 **2026-07-30 08:15 UTC**（北京时间 7/30 下午 4:15）恢复）：
-   - **确认 `wpcode_snippets` 选项里那三段扫光代码真的清掉了**。`wp option pluck wpcode_snippets site_wide_header 0 code` 读回来比对。白光消失只是间接证据；万一那份缓存被某个操作回滚，白光会复发，处理办法是让用户去后台重新保存一次片段。
-   - **可访问性扣的 5 分是一处 `color-contrast`**（对比度不足）。`audit_page` 不返回具体元素，要定位得用 PageSpeed Insights 网页版看那一项的元素列表，或读主题 CSS 逐个算对比度。用户没催，可以留到下次动样式时一起做。
-3. **Qt 飞书文档等用户自己导入**：文件已 commit（2b61211），用户需在飞书里粘贴或用「导入 Markdown」。Windows 侧路径 `\\wsl$\Ubuntu\home\chr\projects\xiaochublog\docs\feishu\qt-cpp-getting-started.md`。**别再说"已经建好飞书文档"**。
-4. **Day 8 复盘未写**：`~/projects/xiaochublog/practice/day8-review.md`（用大纲第 8 节模板）。`practice/day6-review.md` 已 commit（b0aec34），`day7-review.md` 仍未建。
+1. **Day 10：服务端状态与 React 阶段验收**（大纲第 10 天）。
+   学服务端状态 vs 本地状态、缓存、失效、重试；接 TanStack Query。
+   项目：文档查询、上传 mutation、删除、自动刷新。
+   验收：可交互 React 原型 + 核心组件测试通过 + **能现场解释一次状态更新为何触发重渲染**。
+   - `useAsyncAction` 刻意做得薄，好让 Day 10 换掉它时能看清手写服务端状态缺了什么
+     （缓存、失效、重试、去重）。别在 Day 10 之前给它加功能。
+2. **Day 9 复盘未写**：`~/projects/xiaochublog/practice/day9-review.md`（用大纲第 8 节模板）。
+   `day7-review.md` / `day8-review.md` 也仍未建（`day6-review.md` 已 commit b0aec34）。
+3. **两件仍未亲自核验的事**（从 2026-07-29 挂过来，WPVibe 额度当时用尽，现已恢复）：
+   - 确认 `wpcode_snippets` 选项里那三段扫光代码真的清掉了。
+     `wp option pluck wpcode_snippets site_wide_header 0 code` 读回来比对。
+     白光消失只是间接证据；万一那份缓存被回滚，白光会复发，办法是让用户去后台重新保存一次片段。
+   - 可访问性扣的 5 分是一处 `color-contrast`。`audit_page` 不返回具体元素，
+     要定位得用 PageSpeed Insights 网页版看那一项的元素列表，或读主题 CSS 逐个算对比度。
+4. **Qt 飞书文档等用户自己导入**：文件已 commit（xiaochublog 2b61211），
+   Windows 侧路径 `\\wsl$\Ubuntu\home\chr\projects\xiaochublog\docs\feishu\qt-cpp-getting-started.md`。
+   **别再说"已经建好飞书文档"**——我没有飞书接入能力。
 5. Day 7 的 5 道问答验收——**用户 2026-07-27 明确说忽略**，不用再提。
 6. `mock` 加 dirty 场景 + UI 消费 `dropped` 计数（可选、非阻塞，从 Day 7 挂到现在）。
 7. Recheck the `wpmu.php` null guard after any Colibri Page Builder update.
 
 ## 未决 / 设计问题
 
-- **`describeStatus` 的误导文案**：`documents` 为空且 `dropped > 0` 时（校验层丢光所有数据）命中 empty 早返回，显示「还没有文档，上传第一个吧」——可用户明明上传过，真相是前端一条都没看懂。Day 8 刻意没改（改了会让八帧的「行为等价」判决失效），当前行为已固定进 `status-text.test.mjs` 的「全部被丢掉」用例并注明理由。**Day 12 接正式请求层时重新考虑。**
-- **`Sidebar` 组件名与现实不符**：它渲染的是横向顶栏 `.product-header`，名字跟的是大纲措辞。Day 11 迁 Next.js 重排布局时一起改，今天为改名去动 CSS 类名不值得。
+- **错误文案的路径不一致（Day 9 新发现）**：`AssistantPanel` 显示 `error.message`（后端原话），
+  文档列表走 `describeStatus` 做统一映射（"服务器出错（500），请稍后重试"）。
+  同一应用两条路径。写测试断言 500 那条时才发现。
+  **Day 12 建统一请求层时收口**——那时该有"错误文案在哪一层决定"的答案。
+- **`describeStatus` 的误导文案**：`documents` 为空且 `dropped > 0` 时命中 empty 早返回，
+  显示「还没有文档，上传第一个吧」——可用户明明上传过，真相是前端一条都没看懂。
+  当前行为已固定进 `status-text.test.mjs` 并注明理由。**Day 12 接正式请求层时重新考虑。**
+- **`Sidebar` 组件名与现实不符**：它渲染的是横向顶栏 `.product-header`。
+  Day 11 迁 Next.js 重排布局时一起改。
+- **上传发的是元数据不是文件**：`{files:[{name,size}]}`。真 multipart 是 Day 19 的题目。
+  客户端校验/错误显示/提交中禁用那些逻辑到时候一行不用改（它们和 body 怎么编码无关）。
 
-## Learned（Day 8）
+## Learned（Day 9）
 
-**1. 断言报错时先分清三种情况**：断言写错了 / 代码真有问题 / **测量方式有问题**。结构关卡第一次报「内联样式 2 处」，源码里 0 处、单独探针查也是 0 处——两个结果都真，差别是有没有先截图。根因是 Playwright `fullPage` 截图污染了被测对象。当时完全可以把断言从「必须 0 处」放宽到「不超过 2 处」让它过去，代价是这条检查从此永久瞎掉。修的是测量时机，不是断言。
+**1. 条件渲染的元素上，`useEffect(..., [])` 挂不上监听器——要用 ref 回调。**
 
-**2. 验收的裁判必须没参与被验收的改动。** 换渲染层时组件照原样输出既有 id 和 `data-*`，不是因为那套选择器更好，而是不改它，八帧脚本才仍然是独立裁判。如果同时换选择器 + 改断言，全绿只证明「新代码和新断言自洽」——同 Day 7 的独立预言机那一课。
+`useAutoScroll` 原来在 `useEffect(..., [])` 里 `addEventListener`。
+但滚动容器是条件渲染的（消息为空时 `MessageList` 渲染 `<p>` 而不是 `.message-scroll`），
+首次挂载时 `containerRef.current` 是 null，Effect 直接 return，而依赖 `[]` 让它**再也不会重跑**。
+监听器从此不存在，`stickToBottom` 永远停在初始 `true`，"是否贴底"的判断彻底失效，
+退化成无条件滚动。
 
-**3. 测试成本决定了哪些问题会被问。** `describeStatus` 抽成纯函数后，问「dropped=4 但列表为空时文案对不对」只需三行；原来嵌在 DOM 操作里，得起 mock 服务器 + 浏览器，成本高到没人愿意为边缘 case 加一帧，于是那个问题一直没被问。
+症状极隐蔽：**自动滚动看起来是好的**（无条件滚也会滚到底），坏掉的只有
+"用户读历史时不打扰他"这一半。手工测试几乎发现不了。
 
-**4. 接入新框架时让新框架适应旧代码。** 选 `useSyncExternalStore` 而不是把 store 重写成 Context/状态库：后者等于把 store 里那些实战细节（取消在飞请求防陈旧响应、用户取消不算错误、四态可辨识联合）全部重新经历一遍风险，而它们跟 React 半点关系没有。
+改成 ref 回调（React 19 支持从 ref 回调返回清理函数）：它由 React 在节点真正
+挂载/卸载时调用，条件渲染的元素出现时一定被调到。
+
+**2. 新写的断言要先证明它会失败。**
+
+自动滚动帧写完就是绿的，但那不说明什么——它可能因为无关原因通过。
+把 hook 换回旧实现跑一遍，确认它报 `✗ 实际 scrollTop=375`，再换回来确认转绿。
+这一步花了两分钟，买到的是"这条断言是真裁判"这个结论。
+没做这一步的话，那 30 行代码只是一段装饰。
+（和 Day 7/Day 8 的「裁判不能参与被验收的改动」是同一条的另一面。）
+
+**3. 测试工具的默认行为可能让整段代码在测试里等于不存在。**
+
+`userEvent.upload` 默认按 `accept` 属性**静默丢掉**不匹配的文件，
+于是 `virus.exe` 根本进不了组件，`validateFiles` 里的类型校验分支永远不被走到。
+失败信息是"找不到 alert"，看起来像组件忘了渲染错误——指不到真正的原因。
+
+关掉 `applyAccept` 不是放宽测试，恰恰相反：**accept 是便利不是校验**，
+真实用户能在系统选择器里切到"所有文件"绕过它。默认的 user 实例永远走不到那条路径。
+
+**4. 源码排版会渗进无障碍输出。**
+
+JSX 里折行会在两个文本节点之间留一个空格，`aria-describedby` 拼出来的描述里
+它真实存在（读屏播报「10.0 MB， 一次最多」），而肉眼看页面看不出来（HTML 折叠空白）。
+写 `toHaveAccessibleDescription` 断言时才发现。
+
+**5. 写测试的过程会暴露产品问题，不只是代码问题。**
+
+「按角色找 list」拿到两个匹配而失败 → 发现"对话记录"和"引用来源"两个列表
+都没有 `aria-label`，读屏用户听到的是"列表，2 项"，不知道是哪个。
+那个测试失败指向的是真实的可访问性缺陷，不是测试写法问题。
+断言 500 错误文案时发现两条错误路径的文案策略不一致（见上面「未决」）。
+
+**6. 库的入口选择会影响类型而不影响运行时。**
+
+`expect.extend(matchers)` 和 `import "@testing-library/jest-dom/vitest"`
+运行时行为一样，但前者不扩展 vitest 的 `Assertion` 接口——
+测试跑得过，`tsc` 对每个 `toBeDisabled` 都报错。
 
 ## Context
 
@@ -107,8 +216,12 @@
 - `get_page_html` 的 selector 只吃裸标签/单 class/单 id，`nav.primary-nav` 这种组合写法不支持。
 - 发布需显式批准，不用 subagent，未经授权不 commit。本环境 Playwright MCP 缺 chrome 二进制，截不了图（但项目自己的 `pnpm verify` 用的是 devDependency 里的 playwright，能正常跑）。
 - **2026-07-29 复核**：路子仍然有效，16 块零失败。两个新坑——① `get_page_html` 传 `path=` 会走草稿主题预览分支并报「No draft theme to preview」，必须传完整 `url=`；② 本机 shell 的 `curl` 连 xiaochublog.top 直接 TLS 握手失败（`SSL_ERROR_SYSCALL`），线上核验只能靠 MCP，别浪费时间调 curl 参数。`upload_media` 的 `title` 会变成媒体库文件名，传中文标题就得到百分号编码的图片 URL（能用但难看）——**下次传 ASCII title**。
-- **Day 8 两篇博客均已上线**：post 1024 `react-basics-declarative-rendering`、post 1043 `safely-replacing-a-layer`（2026-07-29 发，八节 18309 字节，分类 19，标签 React/代码审查/前端/单元测试/系统架构，封面 1059）。
+- **Day 8 两篇博客均已上线**：post 1024 `react-basics-declarative-rendering`、post 1043 `safely-replacing-a-layer`。
+- **站点是私人博客**，`blog_public=0` 有意为之。**SEO 分数（66）永远别报**——唯一扣分项就是 noindex，正是想要的效果。
+- 站点标题是 `Aliya-devlog`。`blogname` 驱动三处：浏览器标签、左上角品牌名、**首页 hero 大标题**。
 
 **站点主题（2026-07-27 改动）**：按用户要求删掉了顶部导航的 C++ 项，现在是首页/文章/专题/关于/搜索五项。那一项是 `header.php` 里 `get_category_by_slug('cpp')` 动态生成的（连 `if/endif` 四行），搜 `category/cpp` 搜不到。改主题走 `create_draft_theme` → 改 → 预览 → `publish_draft_theme`，备份在 `colibri-wp-wpvibe-backup`。首页专题区是分类驱动的，删导航不影响它。
+
+**WPCode Lite 存两份代码**（2026-07-29 踩的坑，已进 memory）：`post_content`（编辑器显示的）和 `wpcode_snippets` 选项（**前台实际输出的**）。改前者前台不生效，要进 wp-admin 让它重建选项缓存。
 
 **注意**：`~/.claude/settings.json` 里 `ANTHROPIC_BASE_URL` 指向第三方中转端点，`ANTHROPIC_AUTH_TOKEN` 明文存储。会话内容都经由该第三方。已告知用户，处理生产密钥前值得重新评估。

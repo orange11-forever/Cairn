@@ -16,6 +16,22 @@ export interface RequestOptions {
   timeoutMs?: number;
   /** 外部取消信号（用户点取消、组件卸载）。 */
   signal?: AbortSignal;
+
+  /**
+   * HTTP 方法。默认 GET。
+   *
+   * Day 9 加。收窄成联合而不是 string：写成 "PSOT" 会在编译期被拦下，
+   * 而 string 只会让服务器返回 405，排查时先怀疑的是后端路由。
+   */
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+
+  /**
+   * 请求体。传普通对象，这一层负责 JSON.stringify 和 Content-Type。
+   *
+   * 类型是 unknown 而不是泛型或 Record：调用方传什么形状是它自己的契约，
+   * 这一层只管序列化。收窄成 Record<string, unknown> 会拒掉合法的数组体。
+   */
+  body?: unknown;
 }
 
 /**
@@ -28,7 +44,13 @@ export interface RequestOptions {
  */
 export async function request(
   path: string,
-  { query, timeoutMs = DEFAULT_TIMEOUT_MS, signal }: RequestOptions = {},
+  {
+    query,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    signal,
+    method = "GET",
+    body,
+  }: RequestOptions = {},
 ): Promise<unknown> {
   // fetch 没有原生超时。做法：自己开一个 controller，用 setTimeout 到点 abort。
   // 超时和用户取消因此走同一条路径，区别只在事后判断谁先 abort 的。
@@ -47,10 +69,23 @@ export async function request(
     url.searchParams.set(key, value);
   }
 
-  const context = `GET ${path}`;
+  // context 带上方法：错误日志里只写 "/api/uploads" 分不清是列表查询还是上传，
+  // 而这两条路径的故障原因完全不同。
+  const context = `${method} ${path}`;
 
   try {
-    const response = await fetch(url, { signal: controller.signal });
+    const response = await fetch(url, {
+      method,
+      signal: controller.signal,
+      // Content-Type 只在真有 body 时才发。
+      // 给 GET 加这个头会让浏览器对跨域请求发一次 preflight（OPTIONS），
+      // 平白多一个往返，而且 mock 后端不处理 OPTIONS 时会直接 404——
+      // 表现出来是"GET 突然连不上了"，很难联想到是一个多余的请求头。
+      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+      // undefined 而不是 null：fetch 对 body: null 的处理是"空 body"，
+      // 对 GET/HEAD 来说带 body 本身就是非法的，会抛 TypeError。
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
 
     // 坑一：fetch 对 4xx/5xx 不 reject。服务器返回 500，上面这行照样 resolve。
     // 只有网络层挂了才会进 catch。所以 HTTP 错误必须在这里手动抛。

@@ -1,48 +1,65 @@
-// AI 问答面板。持有消息列表的本地 state。
+// AI 问答面板。持有消息列表，并发真正的问答请求。
 //
-// 今天不发请求：提交一个问题只会把它 append 到本地消息列表，
-// 外加一条写死的助手回答（保留 Day 2 静态 HTML 里那段文案和引用，
-// 好让 CSS 仍有真实内容可排版）。真正的问答链路 Day 10 之后接。
+// Day 8 版本提交后 append 一条**写死的**回答。Day 9 换成 POST /api/ask，
+// 于是三件之前不存在的事必须处理：等待、失败、取消。
 //
-// 为什么 messages 放在这里而不是提到 App：
+// 为什么 messages 放在这里而不是提到 App/Workspace：
 // 只有这个子树需要它。状态该待在"所有需要它的组件的最近共同父节点"——
-// 提得过高会让无关组件跟着重渲染，也让 App 从纯布局变成状态容器。
+// 提得过高会让无关组件跟着重渲染，也让上层从纯布局变成状态容器。
+//
+// ---------------------------------------------------------------------------
+// 乐观更新（optimistic update）：用户的提问**不等服务器**就先显示出来。
+//
+// 理由是体感。等 1.5 秒再一起显示"提问 + 回答"，用户在这 1.5 秒里
+// 看不到自己刚说的话，会怀疑发送没成功（然后再点一次）。
+// 先显示提问、再等回答，等待期间屏幕上有他自己的话在，这个等待才是可理解的。
+//
+// 代价是失败时要**回滚**：那条提问必须撤掉，否则列表里留下一条永远等不到回答的
+// 孤儿提问。这个回滚就是 lib/messages.ts 里 createUserMessage 用 randomUUID
+// 而不用序号的原因——一旦有删除，prev.length 做 id 就会和历史某条撞 key。
+// ---------------------------------------------------------------------------
 
 import { useState } from "react";
 
 import { MessageInput } from "./MessageInput.tsx";
 import { MessageList } from "./MessageList.tsx";
 import type { Message } from "./MessageList.tsx";
-
-// Day 2 静态 HTML 里那条写死的回答，原样搬过来当占位。
-const PLACEHOLDER_ANSWER = "严重故障需要先通知当班负责人，再按照升级矩阵联系服务负责人。";
-const PLACEHOLDER_SOURCES = [
-  { href: "/documents/on-call#section-4", label: "值班流程，第 4 节" },
-];
+import { askQuestion } from "../api/conversations.ts";
+import { useAsyncAction } from "../hooks/useAsyncAction.ts";
+import { createUserMessage, toViewMessage } from "../lib/messages.ts";
 
 export function AssistantPanel() {
   const [messages, setMessages] = useState<Message[]>([]);
 
-  function handleSubmit(text: string) {
+  // 上一次失败的提问文本。留着它是为了能重试——
+  // 而重试要用**原文**，不能让用户重新打一遍（他的草稿在提交时已经清了）。
+  const [lastQuestion, setLastQuestion] = useState<string | null>(null);
+
+  const action = useAsyncAction(askQuestion);
+
+  async function ask(text: string) {
+    const userMessage = createUserMessage(text);
+
     // 用函数式更新 setMessages(prev => ...) 而不是 setMessages([...messages, ...])。
     // 后者读的是本次渲染闭包里的 messages，连续两次快速提交会让第二次
-    // 覆盖掉第一次——因为两次读到的都是同一个旧数组。函数式更新拿到的
-    // 一定是最新值，这是 React 状态更新"异步批处理"的直接后果。
-    setMessages((prev) => {
-      // id 必须稳定且唯一，因为它是列表的 key。
-      // 不用 Date.now()：连续提交可能落在同一毫秒，产生重复 key。
-      // 用累加的序号——prev.length 在这里够用（消息只增不删）；
-      // Day 10 接真接口后 id 该由后端给，或者用 crypto.randomUUID()。
-      const base = prev.length;
-      const question: Message = { id: `m${base}`, role: "user", text };
-      const answer: Message = {
-        id: `m${base + 1}`,
-        role: "assistant",
-        text: PLACEHOLDER_ANSWER,
-        sources: PLACEHOLDER_SOURCES,
-      };
-      return [...prev, question, answer];
-    });
+    // 覆盖掉第一次——因为两次读到的都是同一个旧数组。
+    setMessages((prev) => [...prev, userMessage]);
+    setLastQuestion(text);
+
+    const answer = await action.run({ question: text });
+
+    if (answer === undefined) {
+      // 失败或被取消：回滚那条乐观插入的提问。
+      //
+      // 按 id 过滤而不是 `prev.slice(0, -1)`：今天输入框在 pending 时被禁用，
+      // 所以列表末尾一定是自己那条；但 Day 14 做流式时会允许打断并重新提问，
+      // 那时 slice(-1) 会删错人。按 id 删是任何情况下都对的写法。
+      setMessages((prev) => prev.filter((message) => message.id !== userMessage.id));
+      return;
+    }
+
+    setMessages((prev) => [...prev, toViewMessage(answer)]);
+    setLastQuestion(null); // 成功了，没有可重试的东西
   }
 
   return (
@@ -50,11 +67,46 @@ export function AssistantPanel() {
       <h2 id="assistant-title">AI 问答</h2>
       <p>回答只依据已经处理完成的知识文档。</p>
 
-      <MessageInput onSubmit={handleSubmit} />
+      <MessageInput
+        // void 前缀：ask 是 async，返回一个 Promise 而 onSubmit 声明返回 void。
+        // 不加 void 会有一个"返回值被忽略"的类型问题，加了它是在明确说
+        // "这个 Promise 不需要被等待"——因为错误已经由 useAsyncAction 收进 state 了。
+        onSubmit={(text) => void ask(text)}
+        pending={action.pending}
+        // 停止生成。这一下真的会终止请求——signal 一路传到了 fetch
+        //（useAsyncAction → askQuestion → request → fetch），
+        // 中间任何一环漏传 signal，UI 会显示"已停止"而请求还在飞。
+        // 这条链路由 verify-web.mjs 的取消帧实测。
+        onCancel={action.cancel}
+      />
+
+      {/*
+        请求级错误。位置在输入框和回答之间——它说的是"刚才那次提问失败了"，
+        挨着提问框才读得通。放在消息列表底部会看起来像一条助手消息。
+      */}
+      {action.state.phase === "error" && (
+        <p className="form-error" role="alert">
+          {action.state.error.message}
+          {/*
+            重试按钮只在 retryable 时出现。
+            contract 错误（响应格式不对）和 4xx 都不该给重试——
+            那是代码 bug 或请求本身有问题，重试一万次结果一样，
+            让用户重试是骗他（ApiError.retryable 的注释里论证过）。
+          */}
+          {action.state.error.retryable && lastQuestion !== null && (
+            <button type="button" className="retry-btn" onClick={() => void ask(lastQuestion)}>
+              重试
+            </button>
+          )}
+        </p>
+      )}
 
       <article aria-labelledby="answer-title">
         <h2 id="answer-title">回答</h2>
-        <MessageList messages={messages} />
+        {/* pending 传下去让列表显示"正在检索…"占位。
+            空着的话，用户提交后看到自己的提问下面什么都没有，
+            不知道是在等，还是已经答完了而答案是空的。 */}
+        <MessageList messages={messages} pending={action.pending} />
       </article>
     </section>
   );

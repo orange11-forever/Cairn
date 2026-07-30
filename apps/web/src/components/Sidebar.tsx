@@ -14,9 +14,12 @@ interface SidebarProps {
   items: NavItem[];
   /** 当前页面的 href。用来渲染 aria-current，读屏用户靠它知道自己在哪。 */
   activeHref: string;
+  /** Day 9：当前登录用户。显示身份 + 提供退出入口。 */
+  user: { email: string; displayName?: string };
+  onLogout: () => void;
 }
 
-export function Sidebar({ brand, items, activeHref }: SidebarProps) {
+export function Sidebar({ brand, items, activeHref, user, onLogout }: SidebarProps) {
   return (
     <header className="product-header">
       <a href="/">{brand}</a>
@@ -38,6 +41,23 @@ export function Sidebar({ brand, items, activeHref }: SidebarProps) {
           ))}
         </ul>
       </nav>
+
+      {/*
+        Day 9：当前用户 + 退出。
+        显示身份不只是装饰——用户需要能确认"我现在是谁"。
+        企业环境里一个人常有多个账号（自己的 + 测试账号），
+        看不到当前身份就会在错误的账号下上传文档。
+      */}
+      <div className="product-header-user">
+        {/*
+          displayName 缺失时退回 email（schemas/users.ts 里说了这是展示决策，
+          不是校验决策——所以判断落在这里，不在 schema 里）。
+        */}
+        <span className="current-user">{user.displayName ?? user.email}</span>
+        <button type="button" className="logout-btn" onClick={onLogout}>
+          退出
+        </button>
+      </div>
     </header>
   );
 }
