@@ -8,6 +8,7 @@ apps/web/screenshots/
 
 # 工具目录
 .superpowers/
+docs/superpowers/
 
 # 交接笔记：我和用户之间的工作笔记，不是项目文档。
 # 里面有本机路径、学习进度、以及本地工具链的配置细节，不进公开仓库。
