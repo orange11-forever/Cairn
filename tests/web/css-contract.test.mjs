@@ -65,6 +65,27 @@ test('stylesheet keeps the layout hooks the components render', async () => {
   assert.match(css, /\[data-invalid=/, 'stylesheet lost the [data-invalid] form hook');
 });
 
+test('stylesheet covers every interactive surface rendered by current components', async () => {
+  const css = await readFile(cssUrl, 'utf8');
+
+  for (const hook of [
+    '.login-card',
+    '.field-hint',
+    '.product-header-user',
+    '.status-filter-option',
+    '.upload-zone',
+    '.upload-actions',
+    '.question-actions',
+    '.question-counter',
+  ]) {
+    assert.match(
+      css,
+      new RegExp(hook.replace('.', '\\.')),
+      `stylesheet lost the rule for ${hook}`,
+    );
+  }
+});
+
 // Day 9：自动滚动的 CSS 前提。
 //
 // 单独一个测试而不是并进上面那串 class 检查：那串只查"选择器还在"，

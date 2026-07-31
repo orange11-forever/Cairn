@@ -238,18 +238,14 @@ input:focus-visible {
   color: var(--color-muted);
 }
 
-/*
-  Day 9：从两列网格改成单列。
-  原来是「输入框 | 按钮」并排，label 跨两列。加了错误提示和字数之后，
-  两列网格会让错误文案挤在按钮旁边那一格里。单列 + 一个 .question-actions
-  容器装按钮，各元素的归属更清楚，改一处不会挤到另一处。
-*/
 .question-form {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--space-3);
 }
 
 .question-form label {
+  grid-column: 1 / -1;
   font-weight: 600;
 }
 
@@ -265,10 +261,6 @@ input:focus-visible {
   border-top: 1px solid var(--color-border);
 }
 
-/* ==========================================================================
-   Day 9：表单
-   ========================================================================== */
-
 .form-field {
   display: grid;
   gap: var(--space-2);
@@ -279,18 +271,12 @@ input:focus-visible {
   font-weight: 600;
 }
 
-/* 常驻说明文字。比正文小、比错误淡——它一直在，不该抢注意力 */
 .field-hint {
   margin: 0;
   color: var(--color-muted);
   font-size: 0.875rem;
 }
 
-/*
-  错误文案。
-  颜色**不是**唯一的信号：文字本身就说清了问题（"密码至少 8 位，当前 6 位"），
-  色盲用户读文字一样能懂。只靠红色边框而不给文字是常见的可访问性错误。
-*/
 .field-error {
   margin: 0;
   color: var(--color-danger);
@@ -298,14 +284,11 @@ input:focus-visible {
   font-weight: 500;
 }
 
-/* 出错的输入框加红边。和上面那条不矛盾——边框是**辅助**信号，帮人快速定位，
-   而文案是**主要**信号。两个都有才完整。 */
+/* Error copy remains the primary signal; the border only improves scanning. */
 .form-field[data-invalid='true'] input {
   border-color: var(--color-danger);
 }
 
-/* 表单级错误（服务端错误）。给个底色，和字段级错误在视觉上分开——
-   它们的含义不同（见 LoginForm 文件头的「两类错误」），看起来也该不同。 */
 .form-error {
   display: flex;
   align-items: center;
@@ -324,10 +307,6 @@ input:focus-visible {
   padding: 6px 12px;
   font-size: 0.875rem;
 }
-
-/* ==========================================================================
-   Day 9：登录页
-   ========================================================================== */
 
 .login-page {
   display: grid;
@@ -364,10 +343,6 @@ input:focus-visible {
   background: var(--color-canvas);
 }
 
-/* ==========================================================================
-   Day 9：顶栏用户区
-   ========================================================================== */
-
 .product-header-user {
   display: flex;
   align-items: center;
@@ -391,10 +366,6 @@ input:focus-visible {
   background: var(--color-canvas);
 }
 
-/* ==========================================================================
-   Day 9：状态筛选器
-   ========================================================================== */
-
 .status-filter {
   display: flex;
   align-items: center;
@@ -412,8 +383,6 @@ input:focus-visible {
   font-size: 0.875rem;
 }
 
-/* radio 画成按钮样子。语义仍是 radiogroup（读屏能听出这是单选），
-   外观是按钮（视觉上更紧凑）。语义和外观是两件事，这里刻意让它们不同。 */
 .status-filter-option {
   display: inline-flex;
   align-items: center;
@@ -432,8 +401,7 @@ input:focus-visible {
   font-weight: 600;
 }
 
-/* :focus-within 而不是 :focus-visible——真正接收焦点的是里面那个 radio，
-   而视觉上该被高亮的是整个标签。少了这条，键盘用户看不到自己选到了哪个。 */
+/* The radio owns focus; the surrounding option owns the visible outline. */
 .status-filter-option:focus-within {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
@@ -443,10 +411,6 @@ input:focus-visible {
   margin: 0 0 var(--space-4);
   color: var(--color-muted);
 }
-
-/* ==========================================================================
-   Day 9：上传表单
-   ========================================================================== */
 
 .upload-zone {
   display: grid;
@@ -474,7 +438,6 @@ input:focus-visible {
   border-bottom: 1px solid var(--color-border);
 }
 
-/* 错误占满整行（跨两列），在文件名下方 */
 .upload-selection .field-error {
   grid-column: 1 / -1;
 }
@@ -500,28 +463,16 @@ input:focus-visible {
   flex-wrap: wrap;
 }
 
-/* 成功提示用绿色。说的是"加入处理队列"而不是"上传成功"——
-   文案上的区别见 UploadZone 里的注释。 */
 .upload-result {
   margin: 0;
   color: var(--color-success);
   font-size: 0.9375rem;
 }
 
-/* ==========================================================================
-   Day 9：消息滚动容器
-   ========================================================================== */
-
-/*
-  固定最大高度 + overflow-y 是自动滚动能成立的前提：
-  没有 max-height 时容器会随内容无限长高，scrollHeight === clientHeight，
-  scrollTop 永远是 0——自动滚动代码照跑，但什么都不会发生。
-  这类"代码没错、CSS 缺一条"的失效很难查，因为 JS 里看不出问题。
-*/
+/* A bounded overflowing box is required for useAutoScroll to have an effect. */
 .message-scroll {
   max-height: 420px;
   overflow-y: auto;
-  /* 滚动时不要把整页也带着滚（滚动链） */
   overscroll-behavior: contain;
 }
 
@@ -562,8 +513,15 @@ input:focus-visible {
     justify-self: start;
   }
 
-  /* 小屏上消息区矮一些：420px 在手机上几乎占满整屏，
-     用户会看不到下面的提问框（而那是他要用的东西）。 */
+  .question-form {
+    grid-template-columns: 1fr;
+  }
+
+  .question-form label {
+    grid-column: auto;
+  }
+
+  /* Leave room for the question input below the conversation. */
   .message-scroll {
     max-height: 300px;
   }
@@ -572,7 +530,6 @@ input:focus-visible {
     padding: var(--space-5);
   }
 
-  /* 顶栏在小屏是纵向排列，用户区跟着靠左对齐 */
   .product-header-user {
     width: 100%;
     justify-content: space-between;
