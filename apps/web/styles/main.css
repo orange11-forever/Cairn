@@ -241,7 +241,12 @@ input:focus-visible {
 .question-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
   gap: var(--space-3);
+}
+
+.question-form .form-field {
+  margin-bottom: 0;
 }
 
 .question-form label {
@@ -414,10 +419,16 @@ input:focus-visible {
 
 .upload-zone {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-2);
   margin-top: var(--space-5);
   padding-top: var(--space-5);
   border-top: 1px solid var(--color-border);
+}
+
+.upload-zone input[type='file'] {
+  min-width: 0;
+  width: 100%;
 }
 
 .upload-zone > label {

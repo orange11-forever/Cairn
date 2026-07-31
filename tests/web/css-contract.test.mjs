@@ -86,6 +86,35 @@ test('stylesheet covers every interactive surface rendered by current components
   }
 });
 
+test('question form keeps action buttons aligned without stretching them', async () => {
+  const css = await readFile(cssUrl, 'utf8');
+
+  const formRule = css.match(/\.question-form\s*\{([^}]*)\}/);
+  assert.ok(formRule, 'missing .question-form rule');
+  assert.match(formRule[1], /align-items:\s*end/, '.question-form must align compact actions');
+
+  const fieldRule = css.match(/\.question-form \.form-field\s*\{([^}]*)\}/);
+  assert.ok(fieldRule, 'missing .question-form .form-field rule');
+  assert.match(fieldRule[1], /margin-bottom:\s*0/, 'question field must not enlarge its grid row');
+});
+
+test('upload form keeps the native file input inside narrow panels', async () => {
+  const css = await readFile(cssUrl, 'utf8');
+
+  const uploadRule = css.match(/\.upload-zone\s*\{([^}]*)\}/);
+  assert.ok(uploadRule, 'missing .upload-zone rule');
+  assert.match(
+    uploadRule[1],
+    /grid-template-columns:\s*minmax\(0,\s*1fr\)/,
+    '.upload-zone needs a shrinkable grid track',
+  );
+
+  const inputRule = css.match(/\.upload-zone input\[type=['"]file['"]\]\s*\{([^}]*)\}/);
+  assert.ok(inputRule, 'missing constrained upload file input rule');
+  assert.match(inputRule[1], /min-width:\s*0/, 'file input must be allowed to shrink');
+  assert.match(inputRule[1], /width:\s*100%/, 'file input must use the available track width');
+});
+
 // Day 9：自动滚动的 CSS 前提。
 //
 // 单独一个测试而不是并进上面那串 class 检查：那串只查"选择器还在"，
