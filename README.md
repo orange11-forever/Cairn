@@ -1,4 +1,6 @@
-<h1 align="center">Cairn</h1>
+<p align="center">
+  <img src="assets/brand/cairn-wordmark.png" width="560" alt="Cairn" />
+</p>
 
 <p align="center">
   面向软件研发团队的企业知识、项目任务与 Agent 协作平台
