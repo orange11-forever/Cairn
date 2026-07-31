@@ -42,11 +42,6 @@ export const CitationDtoSchema = z.object({
 
 export type CitationDto = z.infer<typeof CitationDtoSchema>;
 
-/** 消息作者。 */
-export const MESSAGE_ROLES = ["user", "assistant"] as const;
-export const MessageRoleSchema = z.enum(MESSAGE_ROLES);
-export type MessageRole = z.infer<typeof MessageRoleSchema>;
-
 /**
  * 消息 DTO —— 用可辨识联合建模，而不是"一个 role 字段 + 一堆可选字段"。
  *
@@ -81,14 +76,3 @@ export const MessageDtoSchema = z.discriminatedUnion("role", [
 ]);
 
 export type MessageDto = z.infer<typeof MessageDtoSchema>;
-
-/** 一轮完整对话。 */
-export const ConversationDtoSchema = z.object({
-  id: ResourceIdSchema,
-  title: NonEmptyStringSchema,
-  messages: z.array(MessageDtoSchema),
-  createdAt: IsoDateTimeSchema,
-  updatedAt: IsoDateTimeSchema,
-});
-
-export type ConversationDto = z.infer<typeof ConversationDtoSchema>;

@@ -18,9 +18,6 @@ import { fetchDocuments } from "../api/documents.ts";
 import { ApiError, toApiError } from "../api/errors.ts";
 import type { Document } from "../schemas/documents.ts";
 
-/** 加载阶段。 */
-export type Phase = "idle" | "loading" | "success" | "error";
-
 /**
  * 状态的可辨识联合。判别字段是 phase。
  *

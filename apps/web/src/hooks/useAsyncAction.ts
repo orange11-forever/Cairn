@@ -30,9 +30,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApiError, toApiError } from "../api/errors.ts";
 
-/** 请求阶段。刻意不含 success：见下面 State 的注释。 */
-export type ActionPhase = "idle" | "pending" | "error";
-
 /**
  * 用可辨识联合表达，和 documentStore 同一套思路（Day 7）。
  *

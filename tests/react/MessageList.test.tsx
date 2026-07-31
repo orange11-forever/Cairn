@@ -17,7 +17,7 @@
 // ---------------------------------------------------------------------------
 
 import { describe, expect, test } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 
 import { MessageList } from "../../apps/web/src/components/MessageList.tsx";
 import type { Message } from "../../apps/web/src/components/MessageList.tsx";
