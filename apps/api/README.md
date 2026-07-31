@@ -1,278 +1,145 @@
-# apps/api — FastAPI 后端
+# apps/api: FastAPI 后端
 
-**阶段 B 开始建。** 现在是空占位。
+当前处于阶段 0。此目录将在阶段 0 建立 ASGI、配置、日志、健康检查和 OpenAPI 骨架，并在阶段 1-6 逐步承载企业基础、任务图、智能搜索、Agent 执行和治理能力。
 
-阶段 A（Web 客户端地基）期间前端对接的是 `mocks/docs-server.mjs`，
-契约由 `apps/web/src/api/` 那一层定义。
+现有 Web 原型仍连接 `mocks/docs-server.mjs`。当前产品、架构和阶段路线以 [`docs/specs/2026-07-31-cairn-platform-reorientation-design.md`](../../docs/specs/2026-07-31-cairn-platform-reorientation-design.md) 为准。
 
-产品目标与阶段划分见 `docs/product-vision.md`。
+## 实施顺序
 
-阶段 B 的落地顺序：
-
-| 步骤 | 内容 |
+| 阶段 | API 侧主要交付 |
 |---|---|
-| B1 | ASGI 骨架、配置、日志、`/health`、OpenAPI、**API 版本前缀**、CORS 白名单、统一异常响应 |
-| B2 | PostgreSQL + SQLAlchemy 2.x + Alembic；按下面的硬约束建表迁移 |
-| B3 | 密码哈希、Access/Refresh Token、令牌轮换、**鉴权双模式**、RBAC、资源归属校验 |
-| B4 | 资源/对话/消息 CRUD、分页、上传校验（MIME + 大小）、**断点续传的接口形状** |
-| B5 | pytest fixture、依赖覆盖、事务隔离、权限隔离测试（跨用户 **+ 跨组织**）、种子数据 |
+| 0 | FastAPI 骨架、`/health`、`/api/v1`、统一错误、OpenAPI SDK、测试和 CI |
+| 1 | 组织、成员、Cookie/Bearer 双鉴权、RBAC、ACL、审计和 PostgreSQL 迁移 |
+| 2 | 项目与任务 DAG、状态机、Outbox 和 SSE 查询模型 |
+| 3 | 通用资源、对象存储、摄取状态、权限感知搜索和引用 |
+| 4 | Agent、模型策略、运行、预算、审批与 AgentRunner 契约 |
+| 5-6 | 外部编程 Agent、代码智能、OIDC/SAML、配额、审计查询和部署治理 |
 
----
+## 数据模型不变量
 
-## 建表时的硬约束（阶段 B2 之前必须已确定）
+### 1. 组织是租户边界
 
-这一节的每一条都属于同一类判断：**现在不做，以后要重写迁移和全部查询。**
-不属于这一类的东西（SSO、合规、高可用、计费）刻意不在这里，留到真的需要时再做。
+每张租户业务表带 `org_id`。所有高频查询、唯一约束和索引都必须从组织边界开始设计，任何资源读取同时校验组织和资源权限。
 
-判据是一句话：**这个字段/表如果事后再加，需不需要回填历史数据或改写每一条查询？**
-需要就现在建，即使当下看着像废字段。
+最低要求：
 
-### 1. 资源表建成通用形状
+- `organizations`、`users`、`memberships` 分表；
+- 项目、任务、资源、对话、运行、审计和摄取记录均带 `org_id`；
+- 跨组织访问测试覆盖列表、详情、搜索、下载和 Agent 工具调用；
+- 服务层从受保护上下文取得 `current_org` 与 `current_user`，不接受客户端自行指定可信组织。
 
-（见记忆 `tracebase-phase2-enterprise-search`）
-`documents` 直接建成通用 `resources` 表，带 `source_type` / `source_id` /
-`external_id`（与 source_id 组唯一约束，保证摄取幂等）/ `source_updated_at` /
-`acl_principals text[]` + GIN 索引 / `metadata JSONB`。
+### 2. ACL 使用规范化条目
 
-当时只有 `upload` 一个来源，这些列看着像废字段，但事后补要重写迁移和全部检索 SQL。
-检索层（阶段 C）带 `source_type` 过滤。
+授权事实来源是规范化 ACL 表，不是资源行上的字符串数组：
 
-### 2. 租户模型：组织级（2026-07-30 决定）
+```text
+resources 1 --- N resource_acl_entries
 
-**每张业务表带 `org_id`，用户属于组织。** 不是以用户为隔离单位。
-
-理由：企业客户买的不是"一个人的知识库"，是"我们公司的知识库，里面有部门、
-有权限组、有离职交接"。以用户为隔离单位的设计卖不进企业。
-
-事后补的代价是这一节里最高的：六张表加列 + **每一条查询**加过滤 + 历史数据回填，
-而漏掉任何一处就是跨租户数据泄漏——那是企业客户唯一不能接受的故障类型。
-
-落地要求：
-- `organizations` 表；`users.org_id` 外键
-- 所有业务表（resources、conversations、messages、citations、ingestion_jobs）带 `org_id`
-- `org_id` 进复合索引的**第一列**（几乎所有查询都按它过滤）
-- 受保护依赖里解析出 `current_org`，不只是 `current_user`（B3）
-- 权限隔离测试要覆盖**跨组织**，不只是跨用户（B5）
-- 检索过滤必须同时按 org 和 ACL，两层都要有测试（阶段 C）
-
-### 3. 审计日志：append-only，建表时就建
-
-企业安全评审必问"谁在什么时候看了哪份文档"。
-
-`audit_logs` 表：`org_id` / `actor_id` / `action` / `resource_type` / `resource_id` /
-`ip` / `user_agent` / `created_at` / `metadata JSONB`。**只插入，不更新不删除。**
-
-**外加两列，为智能体预留**（2026-07-30 加，见 `docs/product-vision.md` 支柱三）：
-
-```
-actor_type      'user' | 'agent'      这次操作是人做的还是智能体做的
-on_behalf_of    user_id，可空          智能体代表谁行动
+resource_acl_entries:
+  org_id
+  resource_id
+  principal_type   user | group | role | org
+  principal_id
+  permission       read | write | manage
+  created_at
+  revoked_at
 ```
 
-智能体上线后必答的问题是"上个月哪些操作是智能体做的、代表谁做的"。
-这两列现在加几乎零成本，事后补要面对一堆**无法回填**的历史行——
-和审计日志本身不能推后是同一个理由。
+`principal_type` 与 `principal_id` 分列保存，避免裸 id 在用户、群组和角色之间产生歧义。唯一约束至少覆盖组织、资源、principal 和 permission，普通授权查询忽略 `revoked_at` 非空的条目。
 
-配套的不变量：**智能体以用户身份行动，继承那个人的权限，绝不越权。**
-否则它是一个越权通道（实习生的智能体读到 CEO 的文档）。
-检索层做权限过滤时，principal 集合取的是 `on_behalf_of` 那个人的，不是智能体自己的。
+搜索索引可以保存版本化 principal token 快照并建立 GIN 索引，但快照只用于查询加速：
 
-为什么不能推后：**它没有历史。** 今天不建，下个月想查上个月的访问记录是查不到的——
-审计数据不会追溯生成。这是这一节里唯一"晚一天就永久少一天数据"的项。
+- 成员、角色或 ACL 变化时必须失效或重建快照；
+- 最终授权仍由规范化 ACL 和当前成员关系决定；
+- 快照过期只能导致暂时拒绝或重建，不能独立授予访问；
+- 权限过滤在检索前完成，禁止先取 Top-k 再在应用层过滤。
 
-至少记录：登录成功/失败、文档上传/删除/下载、问答提问、权限变更。
+### 3. 审计日志只追加
 
-### 4. 软删除 + 彻底清除：两个字段，不是一个
+`audit_logs` 至少包含：
 
-企业要两个相反的能力，所以需要两个字段：
-- `deleted_at` — 软删除。误删能恢复，回收站，离职员工的文档先保留再交接
-- `purged_at` — 依法彻底清除（个保法 / GDPR 的删除权）。内容已抹除但记录留痕
-
-只做硬删除的后果是恢复不了；只做软删除的后果是无法满足合规的删除请求。
-两个都要，且必须建表时就有——硬删掉的数据补不回来。
-
-所有查询默认带 `deleted_at IS NULL`。这条容易漏，B5 要有一个测试守它。
-
-### 5. ACL principal 带类型前缀
-
-`acl_principals` 里存**带类型前缀的字符串**，不是裸 id：
-
-```
-user:123        单个用户
-group:eng       权限组（B3 的 RBAC，将来接 SSO 群组同步）
-org:7           整个组织可见
-role:admin      按角色
+```text
+org_id, actor_type, actor_id, on_behalf_of,
+action, resource_type, resource_id,
+ip, user_agent, trace_id, metadata, created_at
 ```
 
-裸 id 的问题：将来接群组时无法区分 `123` 是用户还是群组，整个 ACL 逻辑要重写。
-带前缀之后，阶段 C 的检索过滤和阶段 H 的 SSO 群组同步都不用改这一层。
+审计记录只插入，不更新、不删除。Agent 必须以 `on_behalf_of` 用户身份行动并继承其权限。登录、资源读写、权限变化、搜索、Agent 工具调用、审批和费用均写审计。
 
-### 6. 向量维度在建表时定死，且必须和配置校验一致
+### 4. 软删除与合规清除分开
 
-**这一条是 Provider 可换带来的 schema 约束，属于建表前必须确定的。**
+- `deleted_at` 表示可恢复的普通删除；
+- `purged_at` 和清除证据表示内容已按合规要求不可恢复地清除；
+- 普通业务查询默认排除 `deleted_at` 非空记录；
+- 清除流程必须覆盖数据库内容、对象存储、搜索索引和缓存，并保留不可反推原文的审计证据。
 
-pgvector 的列类型是 `vector(N)`，`N` 在建表时写死。而不同 embedding 模型维度不同：
+### 5. 通用资源与摄取幂等
 
-| 模型 | 维度 |
-|---|---|
-| OpenAI `text-embedding-3-small` | 1536 |
-| OpenAI `text-embedding-3-large` | 3072 |
-| 通义 `text-embedding-v3` | 1024 |
-| BGE-M3 | 1024 |
+上传文档、GitHub 内容、项目、任务和 Agent 产物通过通用资源模型进入知识层。资源至少记录 `source_type`、`source_id`、`external_id`、`source_updated_at`、`metadata` 和处理状态。
 
-**换 embedding 模型 = 改列定义 + 重算所有历史文档的向量。**
-一个十万 chunk 的库要重跑几小时，并重新付一次 embedding 费用。
+`source_id + external_id + source_version` 形成摄取幂等边界。外部来源删除必须传播到资源、切片和搜索索引。
 
-所以：
-- 建表时确定维度（**推荐 1024**：通义和 BGE-M3 都是这个值，
-  中文检索效果又优于 OpenAI 的 embedding）
-- **启动时校验 `EMBEDDING_DIM` 与数据库列维度相等，不一致就拒绝启动**
+### 6. Embedding Profile 版本化
 
-最后这条校验不能省。不校验的后果是入库时才报维度错误——而那时用户已经上传了文件、
-任务已经跑到一半，失败信息是一句 pgvector 的类型错误，看不出根因是配置和 schema 不匹配。
+向量维度属于 Embedding Profile，不是全产品永久固定的全局配置：
 
-**给将来留的门**：`chunks` 表加 `embedding_model` 和 `embedding_dim` 两列。
-真要换模型时可以新旧向量并存、灰度迁移，而不是停服重建。
-这两列现在恒为同一个值，看着像废字段——和 `source_type` 那条同理。
+```text
+embedding_profiles:
+  id, org_id/null, provider, model, dimensions,
+  distance_metric, chunking_config, index_config,
+  version, status
 
----
+chunk_embeddings:
+  chunk_id, embedding_profile_id, embedding
+```
 
-## Provider 抽象：任何一家都能接（2026-07-30 决定）
+首个 profile 可以使用 1024 维，以降低首版检索和评估复杂度。每个向量必须通过 `embedding_profile_id` 解释；不同模型、维度或距离度量不能混入同一个相似度索引。
 
-配置项形状见仓库根的 `.env.example`。这里记的是**为什么这么设计**和**必须处理的差异**。
+更换模型或维度时创建新 profile，新旧向量在重建和灰度期间并存。启动与写入时校验实际向量维度符合 profile，失败时返回可定位到 provider、model 和 profile 的错误。
 
-### 要支持的范围
+## 鉴权与 API 契约
 
-OpenAI、Anthropic、国产模型（DeepSeek / 通义 / 智谱 / Kimi）、
-**自建或第三方中转站**、客户内网自部署（vLLM / Ollama）。
+### Cookie 与 Bearer 双模式
 
-### 光有 base_url 不够，要 `LLM_PROVIDER` 指明协议
-
-两大阵营的接口形状不同，不是换个地址就能通：
-
-| 类型 | 端点 | 认证 | 差异 |
-|---|---|---|---|
-| `openai-compatible` | `POST {base}/chat/completions` | `Authorization: Bearer` | system 作为一条 message |
-| `anthropic` | `POST {base}/messages` | `x-api-key` + `anthropic-version` 头 | system 是顶层字段 |
-
-所以 Claude 官方 API 需要**第二个适配器**。
-但如果中转站把 Claude 包成了 OpenAI 兼容格式（多数中转站都这么做），
-那用 `openai-compatible` 就行——这也是为什么协议类型和厂商必须解耦。
-
-### 六处会漏出来的差异（都要在适配器层抹平）
-
-1. **向量维度** —— 见上面第 6 条，唯一影响 schema 的
-2. **流式格式** —— OpenAI 的 SSE 是 `data: {delta}`，Anthropic 是多种
-   `event:` 类型（`content_block_delta` 等）。前端只该看到统一的文本流
-3. **错误映射** —— 各家的状态码和 body 形状不同，要统一归到
-   `ApiError` 的五种 kind（前端已有这套，见 `apps/web/src/api/errors.ts`）
-4. **上下文窗口** —— 从 8k 到 200k 不等，上下文预算裁剪要读配置而非写死
-5. **token 计数** —— 分词器不同，成本核算（阶段 F 的账本）要按 Provider 取用量字段
-6. **工具调用格式** —— OpenAI 的 `tools` 和 Anthropic 的 `tools` 形状不同，
-   阶段 F 的智能体依赖它
-
-### 中转站要在产品里标注风险
-
-**中转站会看到全部 prompt 内容，也就是知识库原文。**
-而这个产品的定位是企业知识库，那些文档往往是全公司最敏感的资料。
-
-所以配置界面要显式区分：
-
-| 场景 | 推荐 | 风险 |
+| 客户端 | 凭据 | 存储 |
 |---|---|---|
-| 开发 / 演示 | 中转站 | 可接受 |
-| 企业生产 | 直连官方 API | 数据到模型厂商 |
-| 高敏感 / 合规要求 | 客户内网自部署（vLLM） | 数据不出内网 |
+| Web/PWA | HttpOnly Cookie | 浏览器 Cookie 存储 |
+| iOS/Android | `Authorization: Bearer` | Keychain/Keystore |
+| Tauri/CLI/VS Code | Bearer 或受控 Cookie 会话 | 系统凭据存储 |
 
-**不能让管理员以为所有 Provider 都等价。** 把风险显式呈现出来是「治理」的一部分，
-和智能体的权限继承、审计日志属于同一根支柱（见 `docs/product-vision.md` 支柱三）。
+Cookie 路径启用 CSRF 防护；Bearer 路径不依赖浏览器自动携带凭据。Refresh token 轮换、撤销和设备会话管理对两种模式使用同一服务端策略。测试必须覆盖两条路径和凭据冲突时的确定优先级。
 
----
+### 版本化契约
 
-## 跨平台客户端的四条约束（2026-07-30 决定）
+- 所有业务端点使用 `/api/v1` 前缀；
+- FastAPI OpenAPI 是跨客户端网络契约的来源；
+- TypeScript SDK 从 OpenAPI 生成，不手工维护第二套网络 DTO；
+- Web、Tauri、Expo、VS Code 和 CLI 共享 SDK、事件契约与权限语义，不共享服务端业务实现；
+- 创建运行、触发任务和外部副作用的命令支持幂等键；
+- 列表使用稳定游标分页，错误响应包含机器错误码和 `trace_id`。
 
-**最终目标形态是全平台**：Web + iOS/Android + Windows/macOS/Linux 桌面端。
+### 跨端约束
 
-客户端本身在阶段 G 才做（它要连的 API 到阶段 B 才存在），
-但下面四条**必须在建后端时（阶段 B）就兑现**——它们的共同点和上面那张单子一样：
-事后补要改的地方太多。
+- 业务规则和状态转换由服务端校验，客户端只做展示和即时输入校验；
+- 上传协议预留分片、偏移查询、续传和内容校验；
+- 普通进度和日志使用 SSE，多人实时编辑等双向场景才使用 WebSocket；
+- 老版本客户端可能长期存在，破坏性契约变化必须通过新 API 版本演进。
 
-### 1. 鉴权必须双模式：Cookie（Web）+ Bearer（原生）★最硬的一条
+## 模型与 Provider
 
-**兑现期限：前端阶段 A 的鉴权部分 + 后端 B3。这两处的决定最不该返工。**
+模型访问统一经过 LiteLLM Gateway 和 Cairn 策略层。Provider、模型、能力、上下文窗口、成本、数据边界和风险策略分开配置。
 
-原大纲前端鉴权那天的验收标准是「令牌不存放在 localStorage；能解释选择 HttpOnly Cookie 的原因」。
-HttpOnly Cookie 对 Web 确实是最佳选择（浏览器管，JS 读不到，防 XSS 偷 token）。
-**但它是 Web 专属的思路。** 原生 App 里没有浏览器的 Cookie 机制，
-idiomatic 做法是 Bearer token 存在系统安全存储里。
+适配层必须统一：
 
-| 客户端 | 凭据怎么传 | 存在哪 |
-|---|---|---|
-| Web | HttpOnly Cookie（浏览器自动带上） | 浏览器管，JS 读不到 |
-| iOS / Android | `Authorization: Bearer <token>` | Keychain / Keystore |
-| 桌面（Tauri） | 二者皆可，取决于用不用 WebView 的 Cookie 罐 | 系统凭据存储 |
+1. 流式事件格式；
+2. 错误分类与可重试性；
+3. 上下文窗口和 token 用量；
+4. 工具调用格式；
+5. Embedding Profile 与向量维度；
+6. 超时、取消、预算和审计字段。
 
-落地要求：
-- 受保护依赖里的凭据提取要**同时**认 Cookie 和 `Authorization` 头，按优先级取
-- CSRF 防护只对 Cookie 路径生效（Bearer 不受 CSRF 影响，因为它不会被浏览器自动带上）
-- Refresh token 轮换对两条路径都要生效，且撤销要能一次撤掉某个设备
-- B5 的测试要覆盖两种凭据方式，不能只测 Cookie
+企业生产部署必须明确区分官方 API、第三方中转和客户内网模型。Secret 不进入仓库、镜像或普通日志；模型调用记录 provider、model、版本、token、费用、trace 和数据策略结果。
 
-**只按 Cookie 做的后果**：后来加 App 要重做整条鉴权链路。而鉴权是最不该返工的东西——
-每次改动都是一个安全风险窗口。
+## 暂不提前实现
 
-### 2. API 版本前缀必需（B1，这里说明为什么）
-
-Web 是部署一次所有人立刻是新版；**App 的更新靠用户**，你会长期面对
-"用着三个月前 App 的用户"。服务端必须能同时支持旧版契约。
-
-所以 `/api/v1/...` 不是形式主义，它是多客户端下唯一能安全演进契约的机制。
-
-### 3. 业务逻辑严禁进前端
-
-放了就得在每个平台重新实现一遍，而三份实现必然逐渐不一致
-（然后你会有一类只在某个平台出现的 bug）。
-
-前端只允许有展示决策。`apps/web/src/lib/` 那一层是纯函数、`schemas/` 是校验，
-这个分层在多客户端下价值会放大——它们可以被复用，或至少被照着移植。
-
-判据：**这段逻辑如果在 iOS 上算出不同结果，是不是 bug？** 是就该放后端。
-
-### 4. 文件上传要支持断点续传
-
-手机网络会断。一份 50MB 的 PDF 传到 80% 掉线就得重来，
-那是原生 App 用户会直接卸载的体验。
-
-B4 做上传接口时要留分片和续传的余地（至少：可查询已上传偏移、可从偏移继续）。
-Web 端不做也能用，所以容易被忽略——但接口形状定了之后再改要动客户端和服务端两边。
-
-### 客户端的推进顺序（Phase 3，仅备忘）
-
-```
-PWA（最便宜，加 manifest + Service Worker，可安装、能离线打开）
-  → 收集真实使用数据，再决定要不要投入原生
-  → React Native + Expo（复用 React 知识，一套码出 iOS/Android）
-  → Tauri（系统 WebView + Rust 外壳，可直接复用 Next.js 前端，产物几 MB）
-```
-
-**先 PWA 验证的理由**：企业内部工具的真相是员工多数在电脑前工作，
-手机端使用率可能低到不值得做原生。先用零成本的一步收数据，比直接投三个月更稳。
-
-**不要提前动客户端**：App 要连的 API 到阶段 B 才存在，
-而阶段 A 的 Next.js 是唯一一次系统学前端工程结构的机会，跳过它两边都学不扎实。
-
----
-
-## 明确推后的（不在上面那张单子里）
-
-这些是**在既有架构上加模块**，不是改地基，所以真的需要时再做比现在猜着做更准：
-
-SSO / SAML / SCIM 用户同步、SOC 2 / ISO 27001 合规、多可用区高可用、
-按租户加密密钥、计费与配额分层、数据驻留（数据不出境要求）。
-
-## 「企业可用」里不属于代码的部分
-
-SLA 承诺、值班轮换、备份**恢复**演练（备份成功 ≠ 能恢复；阶段 D 要求演练一次）、
-事故复盘流程、数据处理协议。
-
-纯技术做到满分，缺这些也签不了合同。列在这里是为了别把"代码写完了"误认为"企业可用了"。
+当前只固定会造成数据迁移、权限漏洞或跨客户端返工的不变量。计费、多可用区、SCIM、按租户密钥和数据驻留策略在对应阶段实现，但接口和表结构不得阻塞后续加入这些能力。
