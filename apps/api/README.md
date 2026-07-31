@@ -4,6 +4,8 @@
 
 现有 Web 原型仍连接 `mocks/docs-server.mjs`。当前产品、架构和阶段路线以 [`docs/specs/2026-07-31-cairn-platform-reorientation-design.md`](../../docs/specs/2026-07-31-cairn-platform-reorientation-design.md) 为准。
 
+Local Web、Compose 与 Helm 必须使用同一 `/api/v1` 契约、数据库迁移和权限规则。Local Web 默认绑定 `127.0.0.1:8080`；它不是当前的 Vite + mock 原型，也不使用 SQLite 分叉。
+
 ## 实施顺序
 
 | 阶段 | API 侧主要交付 |
