@@ -1,0 +1,25 @@
+[project]
+name = "cairn-workspace"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["apps/api"]
+
+[tool.pytest.ini_options]
+testpaths = ["apps/api/tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.pyright]
+include = ["apps/api/src", "apps/api/tests"]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+venvPath = "."
+venv = ".venv"

@@ -1,5 +1,13 @@
 node_modules/
 
+# Python workspace：uv 本地环境、缓存和构建产物均可重新生成
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.pyright/
+apps/api/dist/
+
 # Web 构建产物：由 apps/web 的 pnpm build 生成，不进仓库
 apps/web/dist/
 

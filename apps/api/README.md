@@ -1,10 +1,23 @@
 # apps/api: FastAPI 后端
 
-当前处于阶段 0。此目录将在阶段 0 建立 ASGI、配置、日志、健康检查和 OpenAPI 骨架，并在阶段 1-6 逐步承载企业基础、任务图、智能搜索、Agent 执行和治理能力。
+当前处于阶段 0。`apps/api` 已经是根 uv workspace 中可安装的 Python package；ASGI、配置、日志、健康检查和 OpenAPI 骨架将在阶段 0.2 的下一步建立，并在阶段 1-6 逐步承载企业基础、任务图、智能搜索、Agent 执行和治理能力。
 
 现有 Web 原型仍连接 `mocks/docs-server.mjs`。当前产品、架构和阶段路线以 [`docs/specs/2026-07-31-cairn-platform-reorientation-design.md`](../../docs/specs/2026-07-31-cairn-platform-reorientation-design.md) 为准。
 
 Local Web、Compose 与 Helm 必须使用同一 `/api/v1` 契约、数据库迁移和权限规则。Local Web 默认绑定 `127.0.0.1:8080`；它不是当前的 Vite + mock 原型，也不使用 SQLite 分叉。
+
+## 当前工程命令
+
+在仓库根目录运行：
+
+```bash
+uv sync --all-packages --all-groups
+uv run --package cairn-api pytest
+uv run --package cairn-api ruff check apps/api/src apps/api/tests
+uv run --package cairn-api pyright
+```
+
+当前 package 只固定 Python 工程边界；FastAPI 服务入口和探针完成前不能把它称为可用 API。
 
 ## 实施顺序
 
