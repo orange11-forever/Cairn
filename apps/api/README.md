@@ -1,6 +1,6 @@
 # apps/api: FastAPI 后端
 
-当前处于阶段 0。`apps/api` 已经是根 uv workspace 中可安装的 Python package；ASGI、配置、日志、健康检查和 OpenAPI 骨架将在阶段 0.2 的下一步建立，并在阶段 1-6 逐步承载企业基础、任务图、智能搜索、Agent 执行和治理能力。
+当前处于阶段 0。`apps/api` 是根 uv workspace 中可安装、可独立启动的 FastAPI package，现已提供配置、请求 ID、统一错误、健康检查、版本探针和 OpenAPI 骨架，并将在阶段 1-6 逐步承载企业基础、任务图、智能搜索、Agent 执行和治理能力。
 
 现有 Web 原型仍连接 `mocks/docs-server.mjs`。当前产品、架构和阶段路线以 [`docs/specs/2026-07-31-cairn-platform-reorientation-design.md`](../../docs/specs/2026-07-31-cairn-platform-reorientation-design.md) 为准。
 
@@ -12,12 +12,14 @@ Local Web、Compose 与 Helm 必须使用同一 `/api/v1` 契约、数据库迁�
 
 ```bash
 uv sync --all-packages --all-groups
+pnpm dev:api
 uv run --package cairn-api pytest
 uv run --package cairn-api ruff check apps/api/src apps/api/tests
 uv run --package cairn-api pyright
+uv build --package cairn-api
 ```
 
-当前 package 只固定 Python 工程边界；FastAPI 服务入口和探针完成前不能把它称为可用 API。
+API 默认监听 `127.0.0.1:8080`，提供 `/health`、`/api/v1`、`/docs` 和 `/openapi.json`。当前 package 只是无外部服务依赖的 FastAPI 工程基线，不能称为正式 Local Web 或业务 API。
 
 ## 实施顺序
 

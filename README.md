@@ -11,7 +11,7 @@
 </p>
 
 > [!IMPORTANT]
-> Cairn 当前处于阶段 0：仓库与工程基线重建。现阶段可运行内容是 React/Vite 前端原型与 Node mock API，用于保留交互和测试基线；FastAPI、真实数据层和正式 Local Web 仍在后续阶段建设。
+> Cairn 当前处于阶段 0：仓库与工程基线重建。现阶段可运行内容包括 React/Vite 前端原型、Node mock API，以及可独立启动的 FastAPI 工程基线；真实数据层和正式 Local Web 仍在后续阶段建设。
 
 ## 核心能力
 
@@ -55,13 +55,14 @@
 | Web | React 19、TypeScript 5、Vite 7、Zod | 当前已使用 |
 | Web 数据与图形 | React Router、TanStack Query、React Flow、ELK.js、Mermaid | 规划 |
 | 桌面与移动 | Tauri、React Native、Expo | 规划 |
-| API | Python、FastAPI、Pydantic、SQLAlchemy 2、Alembic | 规划 |
+| API | Python 3.12、FastAPI、Pydantic Settings、Uvicorn | 当前已使用 |
+| API 数据访问 | SQLAlchemy 2、Alembic | 规划 |
 | 数据与文件 | PostgreSQL、pgvector、Redis、S3/MinIO | 规划 |
 | 工作流与 Agent | Temporal、LangGraph、AgentRunner | 规划 |
 | 模型接入 | LiteLLM Gateway 与 Cairn 模型策略层 | 规划 |
 | 实时与可观测 | Transactional Outbox、SSE、OpenTelemetry | 规划 |
 | 部署 | Local Web、Docker Compose、Kubernetes/Helm | 规划 |
-| 测试与工具 | pnpm、Vitest、Testing Library、Playwright；uv、pytest、Ruff、Pyright | 前端已使用，Python 侧规划 |
+| 测试与工具 | pnpm、Vitest、Testing Library、Playwright；uv、pytest、Ruff、Pyright | 当前已使用 |
 
 ## 最终部署形式
 
@@ -74,7 +75,7 @@
 | Kubernetes/Helm | 企业 Ingress 或网关 | 集群、高可用和外部基础设施接入 |
 | 隔离网络 | 内网地址 | Compose/Helm 配合私有镜像仓库、内网模型和离线安装包 |
 
-## 当前原型开发
+## 当前 Web 原型开发
 
 环境要求：Node.js 22+、pnpm 10+。
 
@@ -97,6 +98,26 @@ pnpm dev:web
 - Web：`http://localhost:5500`
 - Mock API：`http://localhost:8787`
 
+Web 原型仍只连接 Node mock API，不会调用下方的 FastAPI 基线。
+
+## 当前 API 基线
+
+环境要求：Python 3.12+、uv。
+
+安装依赖并启动独立 API：
+
+```bash
+uv sync --all-packages --all-groups
+pnpm dev:api
+```
+
+- API：`http://127.0.0.1:8080`
+- 存活探针：`http://127.0.0.1:8080/health`
+- 版本探针：`http://127.0.0.1:8080/api/v1`
+- OpenAPI：`http://127.0.0.1:8080/docs`
+
+这个进程只提供 FastAPI 工程骨架和稳定探针，不包含数据库、鉴权或业务接口，也不是正式 Local Web。
+
 ## 质量检查
 
 ```bash
@@ -106,9 +127,9 @@ pnpm build
 pnpm verify
 ```
 
-`pnpm verify` 会启动真实浏览器，验证登录、文档状态、筛选、上传、提问、取消和自动滚动等关键流程。
-这些根命令是 `apps/web` workspace package 的跨包入口；也可以使用
-`pnpm --filter cairn-web <command>` 直接运行 Web package 命令。
+根聚合命令依次检查 Web 和 API。`pnpm verify` 会运行真实浏览器验收，以及 API 的测试、Ruff 和 Pyright；浏览器部分覆盖登录、文档状态、筛选、上传、提问、取消和自动滚动等关键流程。
+
+也可以使用 `pnpm test:web`、`pnpm test:api`、`pnpm typecheck:web`、`pnpm typecheck:api`、`pnpm build:web` 和 `pnpm build:api` 分别检查单个 package。
 
 ## 设计文档
 
