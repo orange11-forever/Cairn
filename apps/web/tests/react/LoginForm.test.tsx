@@ -20,7 +20,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { LoginForm } from "../../apps/web/src/components/LoginForm.tsx";
+import { LoginForm } from "../../src/components/LoginForm.tsx";
 
 /**
  * 假的 fetch。

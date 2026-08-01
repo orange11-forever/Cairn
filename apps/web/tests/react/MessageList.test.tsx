@@ -19,8 +19,8 @@
 import { describe, expect, test } from "vitest";
 import { render, screen } from "@testing-library/react";
 
-import { MessageList } from "../../apps/web/src/components/MessageList.tsx";
-import type { Message } from "../../apps/web/src/components/MessageList.tsx";
+import { MessageList } from "../../src/components/MessageList.tsx";
+import type { Message } from "../../src/components/MessageList.tsx";
 
 const USER_MESSAGE: Message = { id: "u1", role: "user", text: "值班故障如何升级" };
 

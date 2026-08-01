@@ -8,36 +8,43 @@
 // 生产构建路径由 `pnpm build` 单独覆盖。
 
 import { chromium } from "playwright";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 
-const ROOT = fileURLToPath(new URL("..", import.meta.url));
+const WEB_ROOT = fileURLToPath(new URL("..", import.meta.url));
+const ROOT = join(WEB_ROOT, "../..");
 const SHOT_DIR = join(ROOT, "apps/web/screenshots");
 mkdirSync(SHOT_DIR, { recursive: true });
 
 const WEB = "http://localhost:5500";
 
-// mock 后端用子进程起，这样「网络失败」那帧可以直接 kill 掉它
-let mock = spawn("node", [join(ROOT, "mocks/docs-server.mjs")], { stdio: "ignore" });
+// mock 后端用子进程起，这样「网络失败」那帧可以直接 kill 掉它。
+const mock = spawn(process.execPath, [join(ROOT, "apps/web/mocks/docs-server.mjs")], {
+  cwd: WEB_ROOT,
+  stdio: "ignore",
+});
 
 // Vite dev server。
 //
-// detached:true 不是随手加的：shell:true 会让 spawn 返回的 pid 是那个 shell，
-// web.kill() 只杀 shell，Vite 变孤儿进程继续占着 5500。下一次 verify 因为
-// strictPort 直接失败，而报出来的错看起来像端口配置问题。
-// detached 把子进程放进独立进程组，结束时用 -pid 杀整组。
-const web = spawn("pnpm", ["exec", "vite"], {
-  cwd: ROOT,
+// macOS/Linux 把子进程放进独立进程组，结束时杀整组；Windows 使用 taskkill
+// 递归结束 pnpm、Vite 及其子进程。shell 保持关闭，避免平台 shell 差异。
+const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const web = spawn(pnpm, ["exec", "vite"], {
+  cwd: WEB_ROOT,
   stdio: "ignore",
-  shell: true,
-  detached: true,
+  shell: false,
+  detached: process.platform !== "win32",
 });
 
-/** 杀掉整个进程组（Vite 及其 shell 父进程）。 */
+/** 杀掉 Vite 及其子进程。 */
 function killWebTree() {
   if (web.pid === undefined) return;
+  if (process.platform === "win32") {
+    spawnSync("taskkill", ["/pid", String(web.pid), "/t", "/f"], { stdio: "ignore" });
+    return;
+  }
   try {
     process.kill(-web.pid, "SIGTERM");
   } catch {
@@ -63,7 +70,8 @@ async function waitForServer(url, timeoutMs = 20000) {
 
 await waitForServer(WEB);
 
-const browser = await chromium.launch();
+let browser;
+browser = await chromium.launch();
 const page = await browser.newPage();
 
 // 「控制台零错误」是 Day 5 的硬验收项，但要分清两类：
@@ -703,7 +711,7 @@ try {
   console.error("验证异常：", error.message);
   failed = true;
 } finally {
-  await browser.close();
+  await browser?.close();
   mock.kill();
   killWebTree();
   process.exitCode = failed ? 1 : 0;

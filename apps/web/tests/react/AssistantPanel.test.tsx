@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { AssistantPanel } from "../../apps/web/src/components/AssistantPanel.tsx";
+import { AssistantPanel } from "../../src/components/AssistantPanel.tsx";
 
 const ANSWER = {
   id: "a-1",

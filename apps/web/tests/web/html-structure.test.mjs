@@ -13,7 +13,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { parse } from 'node-html-parser';
 
-const htmlUrl = new URL('../../apps/web/index.html', import.meta.url);
+const htmlUrl = new URL('../../index.html', import.meta.url);
 
 async function readPage() {
   return parse(await readFile(htmlUrl, 'utf8'));

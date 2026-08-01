@@ -20,7 +20,7 @@ const {
   validateFiles,
   validatePassword,
   validateQuestion,
-} = await import(new URL("../../apps/web/src/lib/validation.ts", import.meta.url));
+} = await import(new URL("../../src/lib/validation.ts", import.meta.url));
 
 // ---------------------------------------------------------------------------
 // 邮箱

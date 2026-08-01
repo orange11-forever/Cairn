@@ -16,9 +16,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { DocumentSchema } from '../../apps/web/src/schemas/documents.ts';
-import { parseList } from '../../apps/web/src/schemas/parse.ts';
-import { ApiError } from '../../apps/web/src/api/errors.ts';
+import { DocumentSchema } from '../../src/schemas/documents.ts';
+import { parseList } from '../../src/schemas/parse.ts';
+import { ApiError } from '../../src/api/errors.ts';
 
 /** 用校验层跑一遍，只取 items，便于直接和期望值比。 */
 const viaSchema = (raw) => parseList(DocumentSchema, raw, 'TEST').items;

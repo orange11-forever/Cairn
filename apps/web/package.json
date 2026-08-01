@@ -1,0 +1,42 @@
+{
+  "name": "cairn-web",
+  "version": "0.1.0",
+  "description": "Cairn — 工程组织的知识层与智能体平台",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node scripts/run-tests.mjs",
+    "test:unit": "node scripts/run-unit-tests.mjs",
+    "test:react": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "mock": "node mocks/docs-server.mjs",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 5500 --strictPort",
+    "verify": "node scripts/verify-web.mjs"
+  },
+  "license": "ISC",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "10.4.1",
+    "@testing-library/jest-dom": "7.0.0",
+    "@testing-library/react": "16.3.2",
+    "@testing-library/user-event": "14.6.1",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "5.2.0",
+    "jsdom": "30.0.1",
+    "node-html-parser": "^9.0.0",
+    "playwright": "1.61.1",
+    "typescript": "5.9.3",
+    "vite": "7.1.12",
+    "vitest": "4.1.10"
+  },
+  "dependencies": {
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "zod": "4.1.12"
+  }
+}

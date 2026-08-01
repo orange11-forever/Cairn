@@ -84,14 +84,14 @@
 pnpm install
 ```
 
-分别在两个终端启动 mock API 与 Web：
+分别在两个终端启动 Web package 的 mock API 与开发服务器：
 
 ```bash
-pnpm mock
+pnpm mock:web
 ```
 
 ```bash
-pnpm dev
+pnpm dev:web
 ```
 
 - Web：`http://localhost:5500`
@@ -107,6 +107,8 @@ pnpm verify
 ```
 
 `pnpm verify` 会启动真实浏览器，验证登录、文档状态、筛选、上传、提问、取消和自动滚动等关键流程。
+这些根命令是 `apps/web` workspace package 的跨包入口；也可以使用
+`pnpm --filter cairn-web <command>` 直接运行 Web package 命令。
 
 ## 设计文档
 

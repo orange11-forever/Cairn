@@ -9,8 +9,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { describeStatus } from "../../apps/web/src/lib/statusText.ts";
-import { ApiError } from "../../apps/web/src/api/errors.ts";
+import { describeStatus } from "../../src/lib/statusText.ts";
+import { ApiError } from "../../src/api/errors.ts";
 
 describe("describeStatus —— 四个 phase 的语气与文案", () => {
   it("idle 给的是引导，不是空白", () => {

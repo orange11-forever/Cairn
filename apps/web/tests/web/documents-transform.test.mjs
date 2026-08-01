@@ -15,7 +15,7 @@ import {
   countByStatus,
   filterByStatus,
   statusLabel,
-} from '../../apps/web/src/lib/documents.ts';
+} from '../../src/lib/documents.ts';
 
 const sample = [
   { id: 1, title: 'A', status: 'completed' },

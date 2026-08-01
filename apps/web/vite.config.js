@@ -10,6 +10,10 @@
 
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { join } from "node:path";
+
+const WEB_ROOT = import.meta.dirname;
+const REPOSITORY_ROOT = join(WEB_ROOT, "../..");
 
 export default defineConfig({
   // Day 8：JSX 也是浏览器读不懂的语法，和上面的 .ts 同理——
@@ -20,9 +24,9 @@ export default defineConfig({
   // 降到 5.2.0，它的 peer 范围同时含 ^7 和 ^8——现在可用，将来升 vite 8 也不用再动。
   plugins: [react()],
 
-  // 仓库是 monorepo 布局，前端不在根目录。root 指到 index.html 所在处，
-  // Vite 才知道从哪找入口；node_modules 仍在仓库根，Vite 会自己往上找。
-  root: "apps/web",
+  // 配置文件现在和 index.html 一起属于 apps/web，使用绝对路径确保从
+  // workspace 根或 package 目录调用 Vite 时都指向同一个入口。
+  root: WEB_ROOT,
 
   // 从仓库根读 .env，不是从 root（apps/web）读。
   //
@@ -34,7 +38,7 @@ export default defineConfig({
   // VITE_API_URL 永远是 undefined，然后 client.ts 的 ?? 兜底生效，
   // 于是"配了但没生效"——而页面看起来完全正常，只是连的是 localhost。
   // 这类"兜底值掩盖了配置没读到"的问题非常难查，所以宁可显式写明。
-  envDir: import.meta.dirname,
+  envDir: REPOSITORY_ROOT,
 
   server: {
     port: 5500,
