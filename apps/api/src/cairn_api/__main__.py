@@ -1,2 +1,13 @@
+import uvicorn
+
+from cairn_api.settings import Settings
+
+
 def main() -> None:
-    """Run the API service once the application is added in stage 0.2."""
+    settings = Settings()
+    uvicorn.run(
+        "cairn_api.app:app",
+        host=settings.bind_host,
+        port=settings.http_port,
+        log_level=settings.log_level.lower(),
+    )

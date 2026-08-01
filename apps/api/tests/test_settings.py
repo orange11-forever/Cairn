@@ -1,0 +1,33 @@
+import pytest
+from cairn_api.settings import Settings
+from pydantic import ValidationError
+
+
+def test_settings_defaults() -> None:
+    settings = Settings(_env_file=None)  # pyright: ignore[reportCallIssue]
+
+    assert settings.bind_host == "127.0.0.1"
+    assert settings.http_port == 8080
+    assert settings.app_url is None
+    assert settings.cors_origins == []
+    assert settings.log_level == "INFO"
+
+
+@pytest.mark.parametrize("port", [0, 65536])
+def test_settings_rejects_invalid_port(port: int) -> None:
+    with pytest.raises(ValidationError):
+        Settings(http_port=port, _env_file=None)  # pyright: ignore[reportCallIssue]
+
+
+def test_settings_parses_comma_separated_cors_origins() -> None:
+    settings = Settings(
+        cors_origins=" https://one.example,https://two.example ,, ",
+        _env_file=None,  # pyright: ignore[reportCallIssue]
+    )
+
+    assert settings.cors_origins == ["https://one.example", "https://two.example"]
+
+
+def test_settings_rejects_wildcard_cors_origin() -> None:
+    with pytest.raises(ValidationError):
+        Settings(cors_origins="*", _env_file=None)  # pyright: ignore[reportCallIssue]
