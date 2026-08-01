@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/brand/cairn-wordmark.png" width="560" alt="Cairn" />
+  <img src="./assets/brand/cairn-wordmark.png" width="560" alt="Cairn" />
 </p>
 
 <p align="center">
