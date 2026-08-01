@@ -13,6 +13,19 @@
 > [!IMPORTANT]
 > Cairn 当前处于阶段 0：仓库与工程基线重建。现阶段可运行内容包括 React/Vite 前端原型、Node mock API，以及可独立启动的 FastAPI 工程基线；真实数据层和正式 Local Web 仍在后续阶段建设。
 
+## 阶段 0.3 进度
+
+阶段 0.3“平台边界收敛”范围已经确认，功能实现尚未开始。
+
+今天确定的边界包括：
+
+- Web 继续使用 React 19 + Vite，并在明日引入 React Router 7、TanStack Query 5 和受保护路由；
+- session 在阶段 0.3 仍为内存实现，注销时取消请求并清空查询缓存；
+- 文档服务端状态迁移到 TanStack Query，命令型操作使用可取消、可防竞态的 action hook；
+- 前端错误保留 `code` 和 `traceId`，Node mock 统一使用 `/api/v1`，FastAPI 完善 CORS 与请求 ID 日志；
+- 资源 ID 收紧为 UUID，问答响应区分 `grounded_answer` 与 `not_found`；
+- 本阶段不引入数据库、真实鉴权、组织租户、搜索、流式问答或 Agent。
+
 ## 核心能力
 
 | 能力 | 目标 |
@@ -53,7 +66,7 @@
 | 领域 | 技术选择 | 状态 |
 |---|---|---|
 | Web | React 19、TypeScript 5、Vite 7、Zod | 当前已使用 |
-| Web 数据与图形 | React Router、TanStack Query、React Flow、ELK.js、Mermaid | 规划 |
+| Web 数据与图形 | React Router、TanStack Query、React Flow、ELK.js、Mermaid | Router/Query 为阶段 0.3 待实施；其余规划 |
 | 桌面与移动 | Tauri、React Native、Expo | 规划 |
 | API | Python 3.12、FastAPI、Pydantic Settings、Uvicorn | 当前已使用 |
 | API 数据访问 | SQLAlchemy 2、Alembic | 规划 |
@@ -127,7 +140,7 @@ pnpm build
 pnpm verify
 ```
 
-根聚合命令依次检查 Web 和 API。`pnpm verify` 会运行真实浏览器验收，以及 API 的测试、Ruff 和 Pyright；浏览器部分覆盖登录、文档状态、筛选、上传、提问、取消和自动滚动等关键流程。
+根聚合命令依次检查 Web 和 API。当前 `pnpm verify` 会运行真实浏览器验收，以及 API 的测试、Ruff 和 Pyright；浏览器部分覆盖登录、文档状态、筛选、上传、提问、取消和自动滚动等关键流程。阶段 0.3 实施完成后，验证范围还会增加路由保护、注销隔离、并发取消、CORS、请求追踪和生产构建边界。
 
 也可以使用 `pnpm test:web`、`pnpm test:api`、`pnpm typecheck:web`、`pnpm typecheck:api`、`pnpm build:web` 和 `pnpm build:api` 分别检查单个 package。
 
