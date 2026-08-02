@@ -36,7 +36,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     application = FastAPI(title="Cairn API", version=__version__)
     application.state.settings = current_settings
-    application.add_middleware(RequestIdMiddleware)
     if current_settings.cors_origins:
         application.add_middleware(
             CORSMiddleware,
@@ -45,6 +44,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
             allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
         )
+    application.add_middleware(RequestIdMiddleware)
 
     @application.exception_handler(StarletteHTTPException)
     async def http_exception_handler(  # pyright: ignore[reportUnusedFunction]

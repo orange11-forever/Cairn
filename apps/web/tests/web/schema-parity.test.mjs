@@ -16,7 +16,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { DocumentSchema } from '../../src/schemas/documents.ts';
+import { DocumentDtoSchema, DocumentSchema } from '../../src/schemas/documents.ts';
 import { parseList, parseUniqueResourceList } from '../../src/schemas/parse.ts';
 import { ApiError } from '../../src/api/errors.ts';
 
@@ -60,6 +60,26 @@ test('合规数据原样通过', () => {
   ];
 
   assert.deepEqual(viaSchema(raw), expected);
+});
+
+test('严格文档契约拒绝纯空白标题', () => {
+  const result = DocumentDtoSchema.safeParse({
+    id: uuid(1),
+    title: '   ',
+    status: 'completed',
+  });
+
+  assert.equal(result.success, false);
+});
+
+test('严格文档契约裁掉合法标题两端的空白', () => {
+  const document = DocumentDtoSchema.parse({
+    id: uuid(1),
+    title: '  设计评审.pdf \n',
+    status: 'completed',
+  });
+
+  assert.equal(document.title, '设计评审.pdf');
 });
 
 test('整体不是数组 —— 拒绝并抛 ApiError("contract")', () => {

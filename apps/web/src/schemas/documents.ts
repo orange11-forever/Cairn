@@ -14,7 +14,7 @@
 // 两个类型各自诚实，中间用一个显式的转换函数连接，那个函数就是边界。
 
 import { z } from "zod";
-import { ResourceIdSchema } from "./primitives.ts";
+import { NonEmptyStringSchema, ResourceIdSchema } from "./primitives.ts";
 
 /**
  * 后端认可的处理状态。
@@ -48,7 +48,7 @@ export type DocumentStatus = z.infer<typeof DocumentStatusSchema>;
  */
 export const DocumentDtoSchema = z.object({
   id: ResourceIdSchema,
-  title: z.string().min(1),
+  title: NonEmptyStringSchema,
   status: KnownStatusSchema,
 });
 

@@ -107,7 +107,9 @@ def test_internal_error_does_not_leak_details() -> None:
     assert "secret stack detail" not in response.text
 
 
-def test_configured_cors_origin_handles_credentialed_preflight() -> None:
+def test_configured_cors_origin_handles_credentialed_preflight(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     from cairn_api.settings import Settings
 
     settings = Settings(
@@ -124,6 +126,11 @@ def test_configured_cors_origin_handles_credentialed_preflight() -> None:
         )
 
     assert response.status_code == 200
+    request_id = response.headers["x-request-id"]
+    captured = capsys.readouterr()
+    assert request_id
+    assert f"request_id={request_id}" in captured.err
+    assert "OPTIONS /health status=200" in captured.err
     assert response.headers["access-control-allow-origin"] == "http://localhost:5500"
     assert response.headers["access-control-allow-credentials"] == "true"
 
