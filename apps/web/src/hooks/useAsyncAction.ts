@@ -35,7 +35,7 @@ import { ApiError, toApiError } from "../api/errors.ts";
  *
  * 没有 success 态是刻意的：这个 Hook 不持有结果。
  * 结果的归属方是调用者——AssistantPanel 要把回答 append 进消息列表，
- * LoginForm 要把 user 交给 SessionGate。如果 Hook 自己存一份结果，
+ * LoginForm 要把 user 交给路由会话层。如果 Hook 自己存一份结果，
  * 就有两处真相（Hook 里的 last result + 组件里的列表），
  * 而"哪个才是当前的"这个问题没有好答案。
  *

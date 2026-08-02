@@ -28,7 +28,7 @@ const ASSISTANT_MESSAGE: Message = {
   id: "a1",
   role: "assistant",
   text: "先通知当班负责人。",
-  sources: [{ href: "/documents/1#section-4", label: "值班流程，section-4" }],
+  sources: [{ label: "值班流程，section-4" }],
 };
 
 describe("空状态", () => {
@@ -64,12 +64,12 @@ describe("消息渲染", () => {
     expect(screen.queryByText("引用来源")).toBeNull();
   });
 
-  test("助手消息渲染引用链接", () => {
+  test("助手消息渲染非链接引用标签", () => {
     render(<MessageList messages={[ASSISTANT_MESSAGE]} />);
 
     expect(screen.getByText("引用来源")).toBeInTheDocument();
-    const link = screen.getByRole("link", { name: "值班流程，section-4" });
-    expect(link).toHaveAttribute("href", "/documents/1#section-4");
+    expect(screen.getByText("值班流程，section-4")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "值班流程，section-4" })).toBeNull();
   });
 
   test("引用为空数组时不渲染引用区", () => {

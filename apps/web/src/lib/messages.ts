@@ -2,30 +2,26 @@
 //
 // 这是 Day 5 那条分层界线的第四次出现（前三次：documents 转换、statusText、validation）：
 //   后端发什么（MessageDto，含 createdAt / score / snippet / documentId）是它的事
-//   组件需要什么（Message，含 text / href / label）是组件的事
+//   组件需要什么（Message，含 text / label）是组件的事
 // 中间这个函数就是边界，也是两边能各自演进的原因。
 //
-// 具体的回报：后端把 anchor 从字符串改成 { start, end } 偏移量时，
-// 改动只落在这一个文件的 citationHref 里。MessageList 和 Citation 一行不动。
+// 具体的回报：后端调整引用定位结构时，改动只落在这个文件的标签转换里。
+// MessageList 和 Citation 一行不动。
 
 import type { AskResponseDto, CitationDto } from "../schemas/conversations.ts";
 import type { CitationSource } from "../components/Citation.tsx";
 import type { Message } from "../components/MessageList.tsx";
 
 /**
- * 引用 → 可点击的链接。
+ * 引用 → 可读标签。
  *
- * anchor 可选（有的来源切不出段落编号，见 schemas/conversations.ts 的注释），
- * 缺失时退化成"跳到文档开头"。**不**因此丢掉这条引用：
- * 能跳到文档但落在开头，仍然比没有引用有用得多。
+ * anchor 可选（有的来源切不出段落编号，见 schemas/conversations.ts 的注释）。
+ * 还没有文档详情路由，因此不构造目标 URL；仍保留来源标签。
  */
 export function toCitationSource(citation: CitationDto): CitationSource {
-  const base = `/documents/${citation.documentId}`;
-
   return {
-    href: citation.anchor === undefined ? base : `${base}#${citation.anchor}`,
     // label 是给人读的定位说明。带上锚点信息，否则五条引用指向同一份文档时，
-    // 用户看到五行一模一样的文字，不知道该点哪个。
+    // 用户看到五行一模一样的文字，无法区分来源位置。
     label:
       citation.anchor === undefined
         ? citation.documentTitle

@@ -235,6 +235,7 @@ async function checkStructure() {
     documentsPanel: !!document.querySelector(".documents-panel"),
     assistantPanel: !!document.querySelector(".assistant-panel"),
     questionForm: !!document.querySelector(".question-form"),
+    uploadZone: !!document.querySelector(".upload-zone"),
     currentNavLabel:
       document
         .querySelector('nav[aria-label="主导航"] a[aria-current="page"]')
@@ -247,13 +248,8 @@ async function checkStructure() {
     // 看不到自己是谁，企业环境里会在错误的账号下上传文档。
     currentUser: document.querySelector(".current-user")?.textContent.trim() ?? null,
     hasLogout: !!document.querySelector(".logout-btn"),
-    // 消息滚动容器必须存在且真的可滚动（有 max-height）。
-    // 这条查的是 CSS 的运行时效果，css-contract 那边查的是规则文本——
-    // 两边都要，因为规则可能被后面的规则覆盖掉，而那只在浏览器里看得出来。
-    scrollMaxHeight: (() => {
-      const el = document.querySelector(".message-scroll");
-      return el === null ? null : getComputedStyle(el).maxHeight;
-    })(),
+    workspaceWidth: document.querySelector("main.workspace")?.getBoundingClientRect().width ?? 0,
+    panelWidth: document.querySelector(".documents-panel")?.getBoundingClientRect().width ?? 0,
   }));
 
   console.log("\n=== 结构关卡 ===\n");
@@ -261,8 +257,9 @@ async function checkStructure() {
   expect(found.nav, "缺少带 aria-label 的主导航");
   expect(found.main, "缺少 main.workspace");
   expect(found.documentsPanel, "缺少 .documents-panel");
-  expect(found.assistantPanel, "缺少 .assistant-panel");
-  expect(found.questionForm, "缺少 .question-form");
+  expect(!found.assistantPanel, "文档页不应渲染 .assistant-panel");
+  expect(!found.questionForm, "文档页不应渲染 .question-form");
+  expect(found.uploadZone, "文档页缺少 .upload-zone");
   expect(found.currentNavLabel === "知识文档",
     `当前页导航项应为「知识文档」，实际 ${found.currentNavLabel}`);
   // 状态区必须被读屏软件播报，不能只靠颜色传达——颜色对色盲用户不存在。
@@ -277,14 +274,42 @@ async function checkStructure() {
     `顶栏应显示当前用户「演示用户」，实际 ${found.currentUser}`,
   );
   expect(found.hasLogout, "顶栏缺少退出按钮");
-  // 首帧列表是空的（还没提问），所以 .message-scroll 此时不存在——空状态渲染的是
-  // 一个 <p>。这里只在它存在时检查，真正的滚动验证在自动滚动帧。
-  if (found.scrollMaxHeight !== null) {
-    expect(
-      found.scrollMaxHeight !== "none",
-      "消息容器没有生效的 max-height，自动滚动会静默失效",
-    );
-  }
+  expect(
+    Math.abs(found.workspaceWidth - found.panelWidth) < 1,
+    `文档面板应占满工作区，实际 ${found.panelWidth}px / ${found.workspaceWidth}px`,
+  );
+}
+
+async function checkAskStructure() {
+  await page.click('nav[aria-label="主导航"] a:has-text("知识问答")');
+  await page.waitForSelector(".assistant-panel");
+
+  const found = await page.evaluate(() => ({
+    documentsPanel: !!document.querySelector(".documents-panel"),
+    assistantPanel: !!document.querySelector(".assistant-panel"),
+    questionForm: !!document.querySelector(".question-form"),
+    currentNavLabel:
+      document
+        .querySelector('nav[aria-label="主导航"] a[aria-current="page"]')
+        ?.textContent.trim() ?? null,
+    workspaceWidth: document.querySelector("main.workspace")?.getBoundingClientRect().width ?? 0,
+    panelWidth: document.querySelector(".assistant-panel")?.getBoundingClientRect().width ?? 0,
+  }));
+
+  expect(!found.documentsPanel, "问答页不应渲染 .documents-panel");
+  expect(found.assistantPanel, "问答页缺少 .assistant-panel");
+  expect(found.questionForm, "问答页缺少 .question-form");
+  expect(
+    found.currentNavLabel === "知识问答",
+    `当前页导航项应为「知识问答」，实际 ${found.currentNavLabel}`,
+  );
+  expect(
+    Math.abs(found.workspaceWidth - found.panelWidth) < 1,
+    `问答面板应占满工作区，实际 ${found.panelWidth}px / ${found.workspaceWidth}px`,
+  );
+
+  await page.click('nav[aria-label="主导航"] a:has-text("知识文档")');
+  await page.waitForSelector(".documents-panel");
 }
 
 /**
@@ -563,6 +588,7 @@ try {
   // Playwright 的 fullPage 截图会临时往页面注入样式，跑完留下内联样式残留——
   // 于是「不应有内联样式」会被测量工具自己弄脏。查未被任何工具动过的初始 DOM。
   await checkStructure();
+  await checkAskStructure();
 
   await snapshot("0-idle");
 
@@ -590,16 +616,9 @@ try {
   await waitForStatus(/请求超过/);
   await snapshot("6-timeout");
 
-  // ---- 第九帧：状态污染（Day 8 加）----
+  // ---- 第九帧：文档查询重渲染不丢已选文件 ----
   //
-  // React 引入的新失败模式，手写 DOM 时代不存在：一次远端状态变化触发重渲染，
-  // 如果组件树接错（输入框的 state 被提到公共祖先、或 key 不稳定导致组件卸载重建），
-  // 用户正在打的字和已选的文件会凭空消失。
-  //
-  // 这一帧证明本地 state（草稿、已选文件、场景选择）和服务端 state（文档列表）
-  // 各自独立：后者整轮变化，前者一个字符都不能丢。
-  const DRAFT = "这批文档里关于计费的部分怎么说的？";
-  await page.fill("#question", DRAFT);
+  // 文档远端状态变化会触发整页重渲染，UploadZone 的本地文件选择不能因此丢失。
   await page.setInputFiles("#upload-input", {
     name: "污染测试.pdf",
     mimeType: "application/pdf",
@@ -608,7 +627,6 @@ try {
 
   const readLocalState = () =>
     page.evaluate(() => ({
-      draft: document.querySelector("#question").value,
       // 已选文件渲染成 .upload-selection 里的列表项；同时读 data-selected-count，
       // 那是 UploadZone 把自己的 state 直接暴露出来的属性。
       files: [...document.querySelectorAll(".upload-selection li")].map((li) =>
@@ -621,19 +639,16 @@ try {
 
   await loadWith("success");
   await waitForStatus(/已加载/);
-  await snapshot("8-no-cross-contamination");
+  await snapshot("8-document-state-preserved");
 
   const afterLoad = await readLocalState();
   const afterRows = await page.$$eval("#document-list li", (els) => els.length);
 
-  console.log("\n=== 第九帧：状态污染 ===\n");
+  console.log("\n=== 第九帧：文档页本地状态 ===\n");
   // 先证明前置条件成立，否则后面全是 null === null 的假通过。
-  expect(beforeLoad.draft === DRAFT, "草稿在加载前就没写进去，这一帧无意义");
   expect(beforeLoad.files.length === 1,
     `选文件在加载前就没生效（实际 ${beforeLoad.files.length} 项），这一帧无意义`);
 
-  expect(afterLoad.draft === DRAFT,
-    `文档加载后草稿被清空/篡改：期望 "${DRAFT}"，实际 "${afterLoad.draft}"`);
   expect(afterLoad.files.join("|") === beforeLoad.files.join("|"),
     `文档加载后已选文件变了：加载前 [${beforeLoad.files}]，加载后 [${afterLoad.files}]`);
   expect(afterLoad.selectedCount === "1",
@@ -641,8 +656,7 @@ try {
   // 反向也要成立：本地 state 存在不该阻止服务端 state 正常更新。
   expect(afterRows === 4, `服务端状态应正常更新到 4 行，实际 ${afterRows} 行`);
 
-  // 清掉草稿和已选文件，别污染后面两帧的截图。
-  await page.fill("#question", "");
+  // 清掉已选文件，别污染后面的截图。
   await page.setInputFiles("#upload-input", []);
 
   // ---- Day 9 追加的四帧 ----
@@ -656,8 +670,14 @@ try {
   // "消息数回到取消前"，前面有多少条不重要，只要数得准。
   await checkStatusFilter();
   await checkUploadForm();
+
+  await page.click('nav[aria-label="主导航"] a:has-text("知识问答")');
+  await page.waitForSelector(".assistant-panel");
   await checkAutoScroll();
   await checkCancelQuestion();
+
+  await page.click('nav[aria-label="主导航"] a:has-text("知识文档")');
+  await page.waitForSelector(".documents-panel");
 
   mock.kill();
   await new Promise((r) => setTimeout(r, 400));

@@ -83,7 +83,7 @@ a:hover {
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-5);
   width: min(calc(100% - 2 * var(--space-5)), var(--content-max));
   margin: var(--space-6) auto;

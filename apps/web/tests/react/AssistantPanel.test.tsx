@@ -6,7 +6,7 @@
 // 测试的价值和"手工验证这条路径有多难"成正比。
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { AssistantPanel } from "../../src/components/AssistantPanel.tsx";
@@ -60,7 +60,7 @@ describe("消息渲染", () => {
     expect(screen.getByText("还没有提问。问一个问题试试。")).toBeInTheDocument();
   });
 
-  test("成功后显示提问、回答和引用链接", async () => {
+  test("成功后显示提问、回答和非链接引用标签", async () => {
     const user = userEvent.setup();
     render(<AssistantPanel />);
 
@@ -75,14 +75,8 @@ describe("消息渲染", () => {
     if (call === undefined) return;
     expect(new URL(String(call[0])).pathname).toBe("/api/v1/ask");
 
-    // 引用渲染成一个**可点的链接**。
-    // 按 role="link" 找而不是找 <a>：用户要的是"能点过去"，
-    // 而一个没有 href 的 <a> 在 DOM 里还是 a，但不是 link 角色，也点不了。
-    const citation = await screen.findByRole("link", { name: "值班流程，section-4" });
-    expect(citation).toHaveAttribute(
-      "href",
-      "/documents/00000000-0000-4000-8000-000000000001#section-4",
-    );
+    expect(await screen.findByText("值班流程，section-4")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "值班流程，section-4" })).toBeNull();
   });
 
   test("引用标题带上锚点，否则多条引用指向同一文档时看起来一样", async () => {
@@ -100,13 +94,16 @@ describe("消息渲染", () => {
     render(<AssistantPanel />);
     await ask(user);
 
-    const links = await screen.findAllByRole("link");
+    const citationList = await screen.findByRole("list", { name: "引用来源" });
     // 两条引用的可读文本必须不同——都显示"值班流程"的话，
-    // 用户看到两行一样的字，不知道该点哪个。
-    expect(links.map((el) => el.textContent)).toEqual(["值班流程，section-4", "值班流程，section-7"]);
+    // 用户看到两行一样的字，就分不清来源位置。
+    expect(within(citationList).getAllByRole("listitem").map((el) => el.textContent)).toEqual([
+      "值班流程，section-4",
+      "值班流程，section-7",
+    ]);
   });
 
-  test("没有 anchor 的引用退化成跳文档开头，而不是被丢掉", async () => {
+  test("没有 anchor 的引用仍显示文档标题，而不是被丢掉", async () => {
     stubFetch(async () =>
       jsonResponse({
         ...ANSWER,
@@ -124,9 +121,8 @@ describe("消息渲染", () => {
     render(<AssistantPanel />);
     await ask(user);
 
-    // 能跳到文档但落在开头，仍然比没有引用有用得多
-    const link = await screen.findByRole("link", { name: "部署手册" });
-    expect(link).toHaveAttribute("href", "/documents/00000000-0000-4000-8000-000000000007");
+    expect(await screen.findByText("部署手册")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "部署手册" })).toBeNull();
   });
 
   test("grounded_answer without citations is rejected", async () => {

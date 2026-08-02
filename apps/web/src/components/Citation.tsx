@@ -6,8 +6,6 @@
 // 现在把它隔离出来，那些变化就只影响这一个文件。
 
 export interface CitationSource {
-  /** 文档内的锚点链接，例如 /documents/on-call#section-4 */
-  href: string;
   /** 人类可读的位置，例如 "值班流程，第 4 节" */
   label: string;
 }
@@ -27,9 +25,9 @@ export function Citation({ sources }: CitationProps) {
       {/* ol 而不是 ul：引用有顺序，第 1 条通常是最相关的那条。
           aria-label 同 MessageList：两个列表在同一屏，读屏用户要能分清。 */}
       <ol className="citation-list" aria-label="引用来源">
-        {sources.map((source) => (
-          <li key={source.href}>
-            <a href={source.href}>{source.label}</a>
+        {sources.map((source, index) => (
+          <li key={`${source.label}-${index}`}>
+            <span>{source.label}</span>
           </li>
         ))}
       </ol>
