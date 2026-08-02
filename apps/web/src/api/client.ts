@@ -5,7 +5,10 @@
 // 见 toApiError 里的注释。
 
 import { ApiError } from "./errors.ts";
-import { extractErrorMessage } from "../schemas/apiError.ts";
+import {
+  parseApiErrorResponse,
+  type ParsedApiErrorResponse,
+} from "../schemas/apiError.ts";
 
 /**
  * 后端地址。**从环境变量读，不写死。**
@@ -118,13 +121,22 @@ export async function request(
       // 错误响应体里可能有后端给的具体原因，比"服务器返回 500"有用。
       // 但读它本身可能失败（body 是 HTML 错误页 / 空 body），所以整个包在 catch 里：
       // 错误处理路径不能成为新的失败源。
-      let detail = `服务器返回 ${response.status}`;
+      let detail: ParsedApiErrorResponse = {
+        message: `服务器返回 ${response.status}`,
+        code: "http_error",
+        traceId: response.headers.get("X-Request-ID"),
+      };
       try {
-        detail = extractErrorMessage(await response.json(), detail);
+        detail = parseApiErrorResponse(await response.json(), detail);
       } catch {
         // body 不是 JSON，用默认文案。这不是问题，网关经常这样。
       }
-      throw new ApiError("http", detail, { status: response.status, context });
+      throw new ApiError("http", detail.message, {
+        status: response.status,
+        code: detail.code,
+        traceId: detail.traceId,
+        context,
+      });
     }
 
     // 坑二：fetch 是两段式。上面只等到响应头，body 要再 await 一次，

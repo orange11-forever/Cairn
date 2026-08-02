@@ -35,20 +35,23 @@ export const ApiErrorResponseSchema = z.looseObject({
 
 export type ApiErrorResponse = z.infer<typeof ApiErrorResponseSchema>;
 
-/**
- * 尽力从任意响应体里挖出一句能给用户看的话。
- *
- * 入参是 unknown 而不是 ApiErrorResponse：调用它的地方恰恰是"响应体是什么都不知道"
- * 的时候（可能是 HTML 错误页、可能是空 body、可能是网关吐的纯文本）。
- * 标成 ApiErrorResponse 会要求调用方先解析成功，而解析失败正是要处理的情况之一。
- *
- * 永不抛错、永远返回字符串。这是错误路径上的函数，它自己不能成为新的失败源。
- */
-export function extractErrorMessage(body: unknown, fallback: string): string {
+export interface ParsedApiErrorResponse {
+  message: string;
+  code: string | null;
+  traceId: string | null;
+}
+
+export function parseApiErrorResponse(
+  body: unknown,
+  fallback: ParsedApiErrorResponse,
+): ParsedApiErrorResponse {
   const parsed = ApiErrorResponseSchema.safeParse(body);
-  if (parsed.success && parsed.data.message !== undefined) {
-    const trimmed = parsed.data.message.trim();
-    if (trimmed !== "") return trimmed;
-  }
-  return fallback;
+  if (!parsed.success) return fallback;
+
+  const message = parsed.data.message?.trim();
+  return {
+    message: message ? message : fallback.message,
+    code: parsed.data.code?.trim() || fallback.code,
+    traceId: parsed.data.traceId?.trim() || fallback.traceId,
+  };
 }

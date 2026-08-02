@@ -18,11 +18,22 @@
  */
 export type ErrorKind = "network" | "http" | "timeout" | "aborted" | "contract";
 
+export interface ApiErrorOptions {
+  status?: number | null;
+  code?: string | null;
+  traceId?: string | null;
+  context?: string | null;
+  cause?: unknown;
+}
+
 export class ApiError extends Error {
   readonly kind: ErrorKind;
 
   /** 仅 kind === "http" 时有值。 */
   readonly status: number | null;
+
+  readonly code: string | null;
+  readonly traceId: string | null;
 
   /**
    * 出错的位置，例如 "GET /api/docs"。仅诊断用，不显示给用户。
@@ -33,13 +44,15 @@ export class ApiError extends Error {
   constructor(
     kind: ErrorKind,
     message: string,
-    options: { status?: number | null; context?: string | null; cause?: unknown } = {},
+    options: ApiErrorOptions = {},
   ) {
     // cause 传给 Error 基类：保留原始错误的堆栈，排查时能看到最初是哪一行抛的
     super(message, { cause: options.cause });
     this.name = "ApiError";
     this.kind = kind;
     this.status = options.status ?? null;
+    this.code = options.code ?? null;
+    this.traceId = options.traceId ?? null;
     this.context = options.context ?? null;
   }
 
