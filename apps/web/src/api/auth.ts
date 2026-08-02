@@ -1,12 +1,10 @@
 // 登录端点。
 //
-// Day 9 只做到"验证凭据、拿到当前用户"。**没有 token、没有持久化**：
+// 当前只做到"验证凭据、拿到当前用户"。**没有 token、没有持久化**：
 // 登录成功的结果只是一个内存里的 user 对象，刷新页面就没了。
 //
-// 这不是偷懒，是刻意把 Day 13 的题目留给 Day 13：token 存哪（不能存 localStorage）、
-// HttpOnly Cookie 为什么是默认选择、CSRF 怎么防、401 怎么自动处理。
-// 今天随手往 localStorage 写一个 token，Day 13 第一件事就是把它删掉——
-// 而删掉的过程里很容易漏掉一处读取，那是真实项目里最常见的鉴权漏洞形状。
+// 真实鉴权需要统一决定 HttpOnly Cookie、CSRF 和 401 处理策略。
+// 这里不把临时 token 写进 localStorage，避免留下分散且不安全的读取路径。
 
 import { request } from "./client.ts";
 import { UserDtoSchema, type UserDto } from "../schemas/users.ts";

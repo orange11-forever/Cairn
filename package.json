@@ -19,7 +19,7 @@
     "test": "node scripts/run-tasks.mjs test:web test:api",
     "typecheck": "node scripts/run-tasks.mjs typecheck:web typecheck:api",
     "build": "node scripts/run-tasks.mjs build:web build:api",
-    "verify": "node scripts/run-tasks.mjs verify:web test:api lint:api typecheck:api"
+    "verify": "node scripts/run-tasks.mjs test:web typecheck:web verify:web test:api lint:api typecheck:api build:api"
   },
   "license": "ISC",
   "packageManager": "pnpm@10.34.5",

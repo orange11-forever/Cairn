@@ -176,8 +176,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
           {action.state.phase === "error" && (
             <p className="form-error" role="alert">
               {action.state.error.message}
-              {/* retryable 是 Day 6 给 ApiError 加的，今天第一次有 UI 消费它。
-                  401 是不可重试的（密码错了，重试一万次还是错），
+              {/* 401 是不可重试的（密码错了，重试一万次还是错），
                   500/断网是可重试的。给用户看的引导因此不同。 */}
               {action.state.error.retryable && "（可以再试一次）"}
             </p>
@@ -191,7 +190,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
           </button>
         </form>
 
-        {/* 演示账号写在页面上。这是 mock 阶段的临时便利，Day 13 接真鉴权时删掉。 */}
+        {/* 演示账号是 mock 阶段的临时便利，接入真实鉴权时必须移除。 */}
         <p className="login-demo-hint">
           演示账号：<code>demo@cairn.dev</code> / <code>cairn-demo-2026</code>
         </p>

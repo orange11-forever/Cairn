@@ -329,7 +329,7 @@ describe("取消", () => {
     // 这里就是 false——而 UI 照样会显示"已停止"，看起来一切正常。
     await waitFor(() => expect(capturedSignal?.aborted).toBe(true));
 
-    // 取消**不是错误**：不该弹红条（同 documentStore 里那条判断）
+    // 取消**不是错误**：不该弹红条。
     expect(screen.queryByRole("alert")).toBeNull();
 
     // 提问也要撤掉：用户主动放弃了，留着它没有意义

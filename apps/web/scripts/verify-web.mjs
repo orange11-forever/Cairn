@@ -619,6 +619,7 @@ try {
   );
 
   await page.goto(`${WEB}/unknown`, { waitUntil: "networkidle" });
+  await page.waitForURL((url) => url.pathname === "/login");
   expect(new URL(page.url()).pathname === "/login", "未登录未知路径应重定向到登录页");
   await page.goto(WEB, { waitUntil: "networkidle" });
 

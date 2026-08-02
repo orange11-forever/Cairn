@@ -15,9 +15,7 @@ export function StatusBar({ state }: StatusBarProps) {
 
   return (
     // id 和 data-tone 照原样保留：CSS 靠 data-tone 选颜色，
-    // verify-web.mjs 的八帧靠 #status-bar + data-tone 断言。
-    // Day 8 换了整个渲染层，那个脚本一行不改——它没参与这次改动，
-    // 所以它的判决才能证明"行为没变"，而不只是"新代码和新断言自洽"。
+    // verify-web.mjs 的浏览器帧靠 #status-bar + data-tone 断言。
     //
     // aria-live：状态变化要让读屏用户听到，而不只是看到颜色变了。
     <p id="status-bar" className="status" data-tone={tone} role="status" aria-live="polite">

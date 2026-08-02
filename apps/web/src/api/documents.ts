@@ -1,6 +1,5 @@
 // 文档资源的端点定义。
 // 一个资源一个文件：调用方看到的是 fetchDocuments()，看不到 URL 和查询参数长什么样。
-// Day 19 后端真正实现 /api/documents 时，改动只落在这一层。
 
 import { request } from "./client.ts";
 import { DocumentSchema, type Document } from "../schemas/documents.ts";
@@ -19,7 +18,7 @@ export interface FetchDocumentsResult {
   /**
    * 被校验层丢弃的条数。往上传而不是就地咽掉：
    * UI 需要它来决定是否显示"部分数据无法显示"的提示 ——
-   * 用户有权知道他看到的列表是不完整的。Day 30 还要把它上报到监控。
+   * 用户有权知道他看到的列表是不完整的，监控也应记录该计数。
    */
   dropped: number;
 }

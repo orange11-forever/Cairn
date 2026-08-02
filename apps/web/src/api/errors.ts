@@ -1,13 +1,10 @@
 // 统一错误模型。
 // 整个前端只认这一种错误类型，调用方靠 kind 决定给用户什么反馈。
-// Day 12 会把它接进正式请求层，Day 25 还要把后端 LLM Provider 的错误映射进这几类。
-//
-// Day 7 从 .js 迁到 .ts，并新增 "contract" 这一类，理由见下。
 
 /**
  * 错误种类。决定 UI 文案和是否可重试。
  *
- * Day 7 新增 "contract"：数据校验失败。
+ * contract 表示数据校验失败。
  *
  * 为什么不复用 "http"：两者的处置方式完全相反。
  *   http 500  → 后端临时故障，重试有意义，用户等一会儿再点。
@@ -75,8 +72,8 @@ export class ApiError extends Error {
  *
  * 为什么入参是 unknown：TypeScript 里 catch 变量的类型就是 unknown，因为
  * JS 允许 `throw "字符串"`、`throw null`、`throw {code:1}`。
- * Day 6 交接里记的 `documentStore.js:54` 那个 `error.message` 问题就在这 ——
- * 它在 JS 里能跑只是因为运行时碰巧 throw 的都是 Error 实例，那是运气不是保证。
+ * 直接读取 `error.message` 只在运行时碰巧 throw 的都是 Error 实例时成立，
+ * 那是运气，不是保证。
  */
 export function toApiError(value: unknown, fallbackMessage = "未知错误"): ApiError {
   if (value instanceof ApiError) return value;

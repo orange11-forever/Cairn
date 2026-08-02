@@ -74,11 +74,11 @@ export interface ParseListResult<T> {
  * 但"整体不是数组"必须抛错，不能返回 []：
  * 这说明契约整个坏了（后端改成了 {items:[...]} 分页格式而前端不知道）。
  * 静默返回 [] 会把"后端故障"显示成"你还没有文档"，是最坏的一种谎报 ——
- * 用户会以为数据丢了，而真相是前端没看懂响应。这条规则从 Day 5 起就在测试里钉着。
+ * 用户会以为数据丢了，而真相是前端没看懂响应。这条规则由契约测试持续保护。
  *
  * dropped 计数不是可选的诊断信息，是这个设计能成立的前提：
  * 静默丢数据的系统会让"后端某个字段改名"变成一个没人发现的慢性 bug ——
- * 列表一天比一天短，没有任何报错。有了计数才能在控制台看到、Day 30 上报到监控。
+ * 列表逐渐变短却没有报错。有了计数才能在控制台和监控中发现。
  */
 export function parseList<T>(
   schema: z.ZodType<T>,
@@ -106,7 +106,7 @@ export function parseList<T>(
 
   if (problems.length > 0) {
     // warn 而不是 error：这条路径是"降级后继续工作"，不是失败。
-    // 用 error 会让控制台零错误这条 Day 5 验收项失效，而它本身是有价值的信号。
+    // 用 error 会破坏控制台零错误约束，而这条降级警告本身仍是有价值的信号。
     console.warn(
       `[contract] ${context} 丢弃了 ${problems.length}/${data.length} 条不合格数据：\n${problems.join("\n")}`,
     );

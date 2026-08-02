@@ -11,8 +11,7 @@
 // 而那个症状不打开读屏软件根本发现不了。集中在一处之后，
 // 它变成一件做对一次就永远对的事，而且能被一个测试守住。
 //
-// 这也是 Day 8「组件的合理边界」那个判断的延续：值得抽的不是"长得像"的东西，
-// 是"容易做错且做错了不响"的东西。
+// 值得抽的不是"长得像"的东西，是"容易做错且做错了不响"的东西。
 
 import type { ReactNode } from "react";
 
@@ -64,7 +63,7 @@ export function fieldAria(
 
   return {
     // undefined 而不是 "false"：aria-invalid="false" 是一个真实存在的属性值，
-    // 部分读屏软件会播报它。同 Day 8 Sidebar 里 aria-current 那条。
+    // 部分读屏软件会播报它，因此无错误时直接省略该属性。
     "aria-invalid": error !== null ? "true" : undefined,
     "aria-describedby": ids.length > 0 ? ids.join(" ") : undefined,
   };

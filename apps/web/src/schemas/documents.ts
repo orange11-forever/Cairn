@@ -10,7 +10,7 @@
 //   选宽的（含 unknown）→ 契约文档撒谎，看代码的人会以为后端可能发 unknown，
 //                        于是在后端代码里也去处理这个值，白写。
 //   选窄的（不含 unknown）→ 前端的兜底分支在类型上成了死代码，而运行时天天走到
-//                        （Day 6 交接里那个未决问题就是这个形状）。
+//                        ，让前端的运行时兜底与类型声明相互矛盾。
 // 两个类型各自诚实，中间用一个显式的转换函数连接，那个函数就是边界。
 
 import { z } from "zod";
@@ -19,7 +19,7 @@ import { ResourceIdSchema } from "./primitives.ts";
 /**
  * 后端认可的处理状态。
  *
- * 从 Day 6 的 `DOCUMENT_STATUSES as const` 搬到这里，因为它现在是**契约的一部分**，
+ * 状态集合放在 schema 层，因为它是**契约的一部分**，
  * 而不只是前端的一个常量。数组仍然导出：UI 要遍历它渲染筛选器和角标。
  */
 export const DOCUMENT_STATUSES = ["completed", "processing", "failed"] as const;
@@ -42,7 +42,7 @@ export type DocumentStatus = z.infer<typeof DocumentStatusSchema>;
  *
  * 这个 schema 的用途不是日常解析（日常解析用下面宽松的那套），而是：
  * 1. 当文档：读代码的人想知道"后端到底发什么"，看这里，不用去翻后端仓库。
- * 2. Day 19 后端实现 /api/documents 时，拿它当验收断言，检测契约漂移。
+ * 2. 与服务端实现做契约验收，检测字段漂移。
  *
  * 严格在两处：status 必须是三种之一（不降级），title 必须非空（不给占位符）。
  */
@@ -76,8 +76,8 @@ const LenientTitleSchema = z.unknown().transform((value) => {
  *   status: "pending"（后端加了新状态）、status: null（脏数据）、
  *   status 字段整个缺失（catch 对 undefined 也生效，已实测）。
  *
- * 这条降级路径是有产品理由的：Day 21 后端会加 pending/running 状态。
- * 那天后端先上线、前端后上线的窗口期里，前端必须还能显示文档列表 ——
+ * 这条降级路径有产品理由：服务端增加新状态而前端尚未更新的窗口期里，
+ * 前端必须还能显示文档列表 ——
  * 而不是让用户看到一个空列表，以为文档都没了。
  *
  * 建在 DocumentStatusSchema（含 unknown）上而不是 KnownStatusSchema 上：

@@ -17,8 +17,8 @@ export function DocumentList({ documents }: DocumentListProps) {
         // React 靠 key 判断"这一项还是不是原来那一项"，下标做 key 等于说
         // "第 2 个位置永远是同一项"——删掉第 1 项后，原来的第 3 项占到位置 2，
         // React 认为它没变，于是复用了错误的 DOM 节点和它内部的状态。
-        // Day 10 给列表项加上「展开/折叠」这类局部 state 后，这个 bug 会表现为
-        // 删掉一项后展开状态跳到了另一项身上。
+        // 列表项存在「展开/折叠」等局部 state 时，这个 bug 会表现为删掉一项后
+        // 展开状态跳到了另一项身上。
         //
         // doc.id 由 schema 保证存在且唯一（schemas/documents.ts 里校验过），
         // 所以这里能安全地用它。
@@ -31,7 +31,7 @@ export function DocumentList({ documents }: DocumentListProps) {
             JSX 在这里顺带解决了旧代码的一个隐患：手写版本必须用 textContent
             而不能拼 innerHTML，因为标题来自用户上传的文件名，拼字符串就是 XSS 入口。
             JSX 的 {doc.title} 默认转义，同样安全，但不需要靠人记得。
-            这是"安全的做法同时是最省事的做法"——Day 32 会正经讲这件事。
+            这是"安全的做法同时是最省事的做法"。
           */}
           <span className="document-status" data-state={doc.status}>
             {statusLabel(doc.status)}

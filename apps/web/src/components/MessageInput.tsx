@@ -1,10 +1,6 @@
-// 提问输入框。受控组件，Day 9 补上校验、可读错误、提交中禁用、字数提示。
+// 提问输入框。受控组件，包含校验、可读错误、提交中禁用和字数提示。
 //
-// Day 8 版本只判 `trim() === ""` 并且**安静地什么都不做**。那个行为当时标了
-// 「今天只做到能收集能提交」，今天要还这笔账：用户按了发送而什么都没发生，
-// 他不知道是自己的问题还是系统坏了。沉默是最差的一种错误处理。
-//
-// 受控组件的机制（Day 8 已讲，这里不重复）：
+// 受控组件的机制：
 //   value={draft} 说"你显示的必须是这个值"，onChange 说"用户想改时去改 state"。
 //   少了 onChange 输入框会变成只读——每次渲染 React 都把 value 重置回 state 的值。
 
@@ -45,7 +41,7 @@ export function MessageInput({ onSubmit, pending = false, onCancel }: MessageInp
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     // 必须阻止默认行为：form 的默认提交会让浏览器整页刷新，
     // 单页应用里那等于把所有 state 清零——包括 UploadZone 里已选的文件，
-    // 以及 Day 9 之后的 session（登录状态在内存里，刷新就回登录页）。
+    // 以及内存 session（刷新就回登录页）。
     event.preventDefault();
 
     const problem = validateQuestion(draft);
@@ -81,7 +77,7 @@ export function MessageInput({ onSubmit, pending = false, onCancel }: MessageInp
           //
           // 不禁用会怎样：用户在等待期间改了问题，回答到达时显示在他已经改掉的
           // 问题下面——他会以为系统答错了。这不是理论问题，慢网络下必然发生。
-          // Day 14 做流式回答时会换成更好的处理（允许打断并重新提问）。
+          // 若以后支持流式回答，可允许用户先打断再重新提问。
           disabled={pending}
           {...fieldAria("question", error)}
         />
@@ -90,9 +86,7 @@ export function MessageInput({ onSubmit, pending = false, onCancel }: MessageInp
       <div className="question-actions">
         {/*
           disabled 只绑 pending，**不再绑 draft.trim() === ""**。
-          这是 Day 8 那一行的反转，理由变了：
-            Day 8 没有错误提示，所以按钮必须先禁用，否则点了没反应像坏了。
-            Day 9 有了可读错误，让用户点下去并**看到一句解释**比拦着他更有用——
+          有可读错误时，让用户点下去并**看到一句解释**比提前拦住更有用——
             禁用的按钮不解释自己为什么禁用，这对读屏用户尤其不友好
             （他只听到"按钮，不可用"，不知道缺什么）。
           原则：能给出理由的时候给理由，给不出理由才禁用。

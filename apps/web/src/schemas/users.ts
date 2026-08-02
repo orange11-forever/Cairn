@@ -14,7 +14,7 @@ import { z } from "zod";
 import { NonEmptyStringSchema, ResourceIdSchema } from "./primitives.ts";
 
 /**
- * 用户角色。Day 20 后端做鉴权时这套值要和数据库枚举对齐。
+ * 用户角色。接入真实鉴权时必须与服务端权限枚举对齐。
  *
  * 刻意不加 `.catch()`：见文件头。权限字段的兜底值只有"错得离谱"和"错得危险"两种选择。
  */

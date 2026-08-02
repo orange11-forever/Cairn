@@ -13,7 +13,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview --port 5500 --strictPort",
-    "verify": "node scripts/verify-web.mjs"
+    "verify": "node scripts/run-verification.mjs"
   },
   "license": "ISC",
   "engines": {

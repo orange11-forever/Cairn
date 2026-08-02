@@ -1,7 +1,4 @@
 // 问答端点。
-//
-// Day 8 的 AssistantPanel 提交后 append 一条写死的回答。今天换成真请求，
-// 于是三件之前不存在的事必须处理：等待、失败、取消。
 
 import { request } from "./client.ts";
 import { AskResponseSchema, type AskResponseDto } from "../schemas/conversations.ts";

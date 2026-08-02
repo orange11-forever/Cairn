@@ -26,7 +26,7 @@ export const ApiErrorResponseSchema = z.looseObject({
   /** 给用户看的话。缺失时由前端按 HTTP 状态码兜一句，见 toUserMessage。 */
   message: z.string().optional(),
 
-  /** 机器可读的错误码，例如 "quota_exceeded"。Day 25 映射 LLM Provider 错误时会用到。 */
+  /** 机器可读的错误码，例如 "quota_exceeded"，供调用方稳定分类。 */
   code: z.string().optional(),
 
   /** 链路追踪 id。用户报障时让他把这个念出来，比截图有用得多。 */

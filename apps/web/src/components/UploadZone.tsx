@@ -1,10 +1,8 @@
-// 上传区。Day 9 从"按钮禁用着的占位"变成一个能用的表单。
-//
-// Day 8 版本的按钮写着 `disabled title="上传功能在 Day 10 接入"`。今天还这笔账：
+// 上传区：
 // 选文件 → 客户端校验（每个文件各自报错）→ POST /api/uploads → 显示处理任务。
 //
-// 它仍然是「本地 state」和「服务端状态」对照的样本（Day 8 写下的那条）：
-//   服务端状态（documentStore）：数据的真相在后端，前端只是缓存
+// 本地 state 与服务端状态职责不同：
+//   服务端状态：数据的真相在后端，前端只是缓存
 //   本地 state（已选文件）：真相就在这个组件里，关掉就没了
 //
 // ---------------------------------------------------------------------------
@@ -36,8 +34,7 @@ import {
 export function UploadZone({ parentSignal }: { parentSignal?: AbortSignal }) {
   // useState 而不是模块级变量：这个状态属于这个组件的这次挂载。
   // 放模块级会让状态在组件卸载后残留，下次挂载时诡异地"记得"上次选的文件——
-  // 而 Day 9 加了退出登录之后，那个"诡异"变成了真问题：
-  // 下一个人登录后会看到前一个人选的文件名。
+  // 登录用户切换后，下一个人不能看到前一个人选的文件名。
   const [selected, setSelected] = useState<File[]>([]);
   const [issues, setIssues] = useState<FileIssue[]>([]);
   const [result, setResult] = useState<UploadResponse | null>(null);

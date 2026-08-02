@@ -35,7 +35,7 @@ export const CitationDtoSchema = z.object({
    *
    * 用 min/max 夹住而不是裸 number：得分超出 [0,1] 说明检索层的归一化写错了，
    * 这是那种"能一路跑到 UI 上、把进度条画到屏幕外"的 bug。
-   * Day 24 做混合检索（向量 + 关键词）时，两路得分融合最容易在这里出界。
+   * 多路检索得分融合时尤其需要守住这个边界。
    */
   score: z.number().min(0).max(1).optional(),
 });

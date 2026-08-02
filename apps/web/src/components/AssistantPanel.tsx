@@ -1,8 +1,5 @@
 // AI 问答面板。持有消息列表，并发真正的问答请求。
 //
-// Day 8 版本提交后 append 一条**写死的**回答。Day 9 换成 POST /api/ask，
-// 于是三件之前不存在的事必须处理：等待、失败、取消。
-//
 // 为什么 messages 放在这里而不是提到 App/AuthenticatedLayout：
 // 只有这个子树需要它。状态该待在"所有需要它的组件的最近共同父节点"——
 // 提得过高会让无关组件跟着重渲染，也让上层从纯布局变成状态容器。
@@ -51,9 +48,8 @@ export function AssistantPanel({ parentSignal }: { parentSignal?: AbortSignal })
     if (answer === undefined) {
       // 失败或被取消：回滚那条乐观插入的提问。
       //
-      // 按 id 过滤而不是 `prev.slice(0, -1)`：今天输入框在 pending 时被禁用，
-      // 所以列表末尾一定是自己那条；但 Day 14 做流式时会允许打断并重新提问，
-      // 那时 slice(-1) 会删错人。按 id 删是任何情况下都对的写法。
+      // 按 id 过滤而不是 `prev.slice(0, -1)`：即使未来允许打断并重新提问，
+      // 按 id 删除也不会误删列表末尾的另一条消息。
       setMessages((prev) => prev.filter((message) => message.id !== userMessage.id));
       return;
     }

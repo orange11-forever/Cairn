@@ -1,8 +1,5 @@
 // 通用请求层：超时、取消、错误分类只在这里写一遍。
-// 页面代码永远不直接调 fetch —— 这是 Day 12「所有请求都走统一错误处理」的约束提前落地。
-//
-// Day 7 从 .js 迁到 .ts。运行时逻辑基本没动，两处改进都来自类型检查逼出来的问题，
-// 见 toApiError 里的注释。
+// 页面代码永远不直接调 fetch，所有请求都走统一错误处理。
 
 import { ApiError } from "./errors.ts";
 import {
@@ -30,9 +27,8 @@ import {
  *    否则服务器上的 `DATABASE_PASSWORD` 之类会被打进前端产物发给浏览器。
  *    换句话说：能出现在这里的值，都是公开的。别把密钥放进 VITE_ 变量。
  *
- * 2. **改了它要重新构建**，不是重启就行。客户换域名需要重新 build，
- *    这对私有部署是个真实的不便。阶段 A11 迁 Next.js 后会好转——
- *    Server Component 能在运行时读环境变量，那时前端可以做到"改配置即生效"。
+ * 2. **改了它要重新构建**，不是重启就行。客户换域名需要重新 build。
+ *    若部署需要运行时改配置，应由启动时注入的配置端点解决。
  */
 const BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8787";
 
@@ -48,7 +44,7 @@ export interface RequestOptions {
   /**
    * HTTP 方法。默认 GET。
    *
-   * Day 9 加。收窄成联合而不是 string：写成 "PSOT" 会在编译期被拦下，
+   * 收窄成联合而不是 string：写成 "PSOT" 会在编译期被拦下，
    * 而 string 只会让服务器返回 405，排查时先怀疑的是后端路由。
    */
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";

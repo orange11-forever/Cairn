@@ -1,6 +1,6 @@
 // 消息的 DTO → 视图模型转换。纯函数，不碰 DOM、不碰网络。
 //
-// 这是 Day 5 那条分层界线的第四次出现（前三次：documents 转换、statusText、validation）：
+// DTO 与视图模型保持明确边界：
 //   后端发什么（MessageDto，含 createdAt / score / snippet / documentId）是它的事
 //   组件需要什么（Message，含 text / label）是组件的事
 // 中间这个函数就是边界，也是两边能各自演进的原因。
@@ -34,7 +34,6 @@ export function toCitationSource(citation: CitationDto): CitationSource {
  *
  * 入参是可辨识联合（MessageDtoSchema 用 discriminatedUnion 建的），
  * 所以 assistant 分支里 citations 必然存在，不用判空。
- * 这是 Day 6 学的可辨识联合在真实数据流上的回报，出现在两个方向：
  * schema 保证了输入的形状，视图模型保证了输出的形状。
  */
 export function toViewMessage(dto: AskResponseDto): Message {
@@ -61,7 +60,7 @@ export function toViewMessage(dto: AskResponseDto): Message {
  * 用户的提问是**乐观更新**：不等服务器回，立刻显示在列表里。
  * 所以它的 id 必须由前端生成——这条消息在后端还不存在。
  *
- * 用 crypto.randomUUID() 而不是 Day 8 那个 `m${prev.length}` 序号：
+ * 用 crypto.randomUUID() 而不是基于数组长度的序号：
  * 序号在"消息只增不删"的前提下够用，而今天这个前提要破了——
  * 请求失败时那条已经显示出来的提问要能被移除（否则列表里留着一条
  * 永远等不到回答的孤儿提问）。一旦有删除，序号就会重复：

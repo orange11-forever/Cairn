@@ -51,7 +51,7 @@ export default defineConfig({
   build: {
     // 产物放 apps/web/dist（相对 root）。
     outDir: "dist",
-    // 构建产物要能对照源码排错，Day 7 之后 bundle 会越来越大。
-    sourcemap: true,
+    // 不发布包含完整前端源码的 source map；生产诊断使用服务端 traceId 和版本号。
+    sourcemap: false,
   },
 });

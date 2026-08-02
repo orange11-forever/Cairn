@@ -1,9 +1,4 @@
-// 文档面板。整个应用里唯一消费 documentStore 的组件。
-//
-// "唯一"是刻意的：状态订阅集中在一处，子组件全是纯展示（props 进、UI 出）。
-// 好处是子组件能被单独测试和复用，且看一眼这个文件就知道数据从哪来。
-// 反过来的做法——每个子组件自己 useDocumentState()——会让"谁依赖了服务端状态"
-// 散落在整棵树里，重构时得逐个文件找。
+// 文档面板集中消费用户级查询，子组件保持纯展示（props 进、UI 出）。
 
 import { useMemo, useState } from "react";
 
@@ -42,7 +37,6 @@ export function DocumentsPanel({
   const [scenario, setScenario] = useState<string>("success");
   const query = useDocumentsQuery(userId, scenario);
 
-  // Day 9：状态筛选。
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
   const loadState: DocumentLoadState = query.isFetching
@@ -55,7 +49,7 @@ export function DocumentsPanel({
 
   const isLoading = loadState.phase === "loading";
 
-  // documents 只存在于 success 态（Day 7 可辨识联合的结果）。
+  // documents 只存在于 success 态。
   // 其余状态一律空数组——"出错时列表显示什么"是展示决策，所以这个判断属于 UI 层。
   const documents = loadState.phase === "success" ? loadState.documents : [];
 
@@ -78,7 +72,7 @@ export function DocumentsPanel({
   //   2. visible 成了第二份真相，而它完全可以从 documents + filter 算出来。
   //   3. 依赖数组漏一个就静默失效——筛选器点了没反应，且不报任何错。
   //
-  // 等数据量真的上来（Day 24 检索结果分页、上千条文档），这个结构不用改，
+  // 数据量增长到分页或上千条文档时，这个结构不用改，
   // 只是那时 memo 才真的开始省时间。而**性能优化的决定必须在测量之后**——
   // 这里没测量，所以不拿性能当理由。
   // ---------------------------------------------------------------------------
@@ -88,8 +82,7 @@ export function DocumentsPanel({
     [documents, statusFilter],
   );
 
-  // countByStatus 是 Day 6 写的，至今**没有 UI 消费者**——今天是它第一次被用上。
-  // 注意它统计的是 documents（全部），不是 visibleDocuments（筛选后）：
+  // countByStatus 统计的是 documents（全部），不是 visibleDocuments（筛选后）：
   // 角标要显示"处理中 1"而不是"当前筛选下处理中 0"，否则筛到 completed 之后
   // 其他角标全变成 0，用户就没法用角标判断该切到哪个筛选了。
   const counts = useMemo(() => countByStatus(documents), [documents]);
@@ -100,18 +93,22 @@ export function DocumentsPanel({
       <p>管理用于企业问答的内部资料。</p>
 
       <div className="documents-controls">
-        <label htmlFor="scenario">模拟场景</label>
-        <select
-          id="scenario"
-          value={scenario}
-          onChange={(event) => setScenario(event.target.value)}
-        >
-          {SCENARIOS.map((item) => (
-            <option key={item.value} value={item.value}>
-              {item.label}
-            </option>
-          ))}
-        </select>
+        {import.meta.env.DEV && (
+          <>
+            <label htmlFor="scenario">模拟场景</label>
+            <select
+              id="scenario"
+              value={scenario}
+              onChange={(event) => setScenario(event.target.value)}
+            >
+              {SCENARIOS.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </>
+        )}
 
         {/*
           两个按钮的 disabled 都从 state.phase 算出来，不再手动赋值。
@@ -141,7 +138,7 @@ export function DocumentsPanel({
       <StatusBar state={loadState} />
 
       {/*
-        Day 9：状态筛选器。只在真的有文档时出现——
+        状态筛选器只在真的有文档时出现——
         0 个文档时显示一排"已就绪 0 / 处理中 0"的按钮是在给用户提供
         一个点了什么都不会变的控件。
 

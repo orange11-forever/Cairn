@@ -1,8 +1,7 @@
 // 文档数据的纯函数层：只做数据 → 数据的转换，不碰 DOM、不碰网络、不碰校验。
 // 纯函数没有副作用、给定输入必得同样输出，所以是整个前端最容易测、也最值得测的一层。
 //
-// Day 6 从 .js 迁到 .ts。
-// Day 7 把**校验**搬走了，搬去 schemas/。这一层现在只剩"已经可信的数据之间的变换"。
+// 校验属于 schemas/；这一层只处理已经可信的数据之间的变换。
 //
 // 为什么要分开这两件事：它们的输入假设相反。
 //   校验层的输入是 unknown（来自网络，不可信），职责是"证明它是什么"。
@@ -59,7 +58,7 @@ export function countByStatus(documents: Document[]): Record<string, number> {
 
   for (const doc of documents) {
     // 这里的 `?? 0` 有两个独立的理由，别把它们混成一个：
-    //   运行时：null 原型保证查不到继承成员，未知 key 得到 undefined 而非函数（Day 5 的 bug）
+    //   运行时：null 原型保证查不到继承成员，未知 key 得到 undefined 而非函数
     //   编译期：noUncheckedIndexedAccess 让 counts[key] 的类型是 number | undefined
     // 一个防脏数据，一个防漏判空。恰好落在同一行代码上。
     counts[doc.status] = (counts[doc.status] ?? 0) + 1;
@@ -71,16 +70,14 @@ export function countByStatus(documents: Document[]): Record<string, number> {
 /**
  * 状态 → 中文文案。UI 不该自己散落这套映射。
  *
- * 入参是 unknown 而不是 DocumentStatus —— Day 6 交接里把这个记为"未决的设计问题"，
- * Day 7 的答案是：**保持 unknown，而且现在有了正当理由**。
+ * 入参保持 unknown，而不是 DocumentStatus。
  *
  * 变化在于职责重新划分了。校验层（schemas/parse.ts）现在负责把不可信数据收口，
  * 所以正常路径上进来的一定是合法 DocumentStatus。但这个函数还要服务另一类调用者：
  * 绕过校验层的代码（测试、将来的 localStorage 读取、URL 查询参数）。
  *
  * 标成 DocumentStatus 的代价是兜底分支在类型上变成死代码，
- * 而运行时它仍然会被走到 —— 那正是"类型系统相信了签名的承诺"这个陷阱
- * （Day 6 实测：TS 抓不住原型链 bug，就是因为它信了签名）。
+ * 而运行时它仍然会被走到 —— 那正是"类型系统相信了签名的承诺"这个陷阱。
  * 一个函数如果真实契约是"任何东西进来都吐合法文案"，签名就该那么写。
  *
  * 用 Object.hasOwn 而不是 `STATUS_LABELS[status] ?? fallback`：后者查的是整条原型链，

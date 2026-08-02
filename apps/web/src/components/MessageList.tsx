@@ -8,8 +8,7 @@ import { useAutoScroll } from "../hooks/useAutoScroll.ts";
  * 一条消息。
  *
  * 形状刻意和 schemas/conversations.ts 的后端 DTO 分开：
- * 这是**视图模型**，只含渲染需要的字段。Day 7 学到的 DTO vs 领域模型那条界线
- * 在这里第三次出现——后端发什么是它的事，组件需要什么是组件的事，
+ * 这是**视图模型**，只含渲染需要的字段。后端发什么是它的事，组件需要什么是组件的事，
  * 中间那层转换（lib/）是两边都能独立演进的原因。
  *
  * 引用只出现在 assistant 消息上：用户提的问题不带引用。
@@ -27,7 +26,7 @@ interface MessageListProps {
 }
 
 export function MessageList({ messages, pending = false }: MessageListProps) {
-  // Day 9：自动滚动。传**条数**而不是数组本身——
+  // 自动滚动传**条数**而不是数组本身——
   // 数组每次渲染都是新引用（setMessages 返回新数组），用它做依赖等于每次渲染都滚。
   // 条数是原始值，只在真的多了一条时才触发。详见 hooks/useAutoScroll.ts。
   //
