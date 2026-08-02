@@ -1,7 +1,22 @@
 import { spawn } from "node:child_process";
 
+const POLL_INTERVAL_MS = 200;
+const FORCE_KILL_AFTER_MS = 5000;
+const CLEANUP_DEADLINE_MS = 10000;
+
 function hasExited(child) {
   return child.exitCode !== null || child.signalCode !== null;
+}
+
+export async function settleCleanupTasks(tasks) {
+  const results = await Promise.allSettled(
+    tasks.map(({ run }) => Promise.resolve().then(run)),
+  );
+  return results.flatMap((result, index) =>
+    result.status === "rejected"
+      ? [{ name: tasks[index].name, reason: result.reason }]
+      : [],
+  );
 }
 
 function requireProcessId(child) {
@@ -23,26 +38,49 @@ export function waitForChildSpawn(child) {
 export async function waitForServer(url, timeoutMs = 20000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
+    const remaining = deadline - Date.now();
     try {
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(Math.max(1, Math.min(POLL_INTERVAL_MS, remaining))),
+      });
       if (response.ok) return;
     } catch {
-      // The managed server is still starting.
+      // The managed server is still starting or this attempt reached its deadline.
     }
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    const delayMs = Math.min(POLL_INTERVAL_MS, Math.max(0, deadline - Date.now()));
+    if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
   throw new Error(`Server did not become ready within ${timeoutMs}ms: ${url}`);
+}
+
+function signalDirectChild(child, signal) {
+  try {
+    child.kill(signal);
+  } catch (error) {
+    if (error?.code !== "ESRCH") throw error;
+  }
+}
+
+function signalPosixProcessTree(child, pid, signal) {
+  try {
+    process.kill(-pid, signal);
+  } catch (error) {
+    if (error?.code !== "ESRCH") throw error;
+    signalDirectChild(child, signal);
+  }
 }
 
 async function waitForExitOrKill(child, pid) {
   if (hasExited(child)) return;
 
   await new Promise((resolve, reject) => {
-    let timer;
+    let forceKillTimer;
+    let deadlineTimer;
     let settled = false;
 
     const cleanup = () => {
-      if (timer !== undefined) clearTimeout(timer);
+      if (forceKillTimer !== undefined) clearTimeout(forceKillTimer);
+      if (deadlineTimer !== undefined) clearTimeout(deadlineTimer);
       child.removeListener("exit", finish);
       child.removeListener("close", finish);
     };
@@ -66,15 +104,17 @@ async function waitForExitOrKill(child, pid) {
       return;
     }
 
-    timer = setTimeout(() => {
-      if (process.platform === "win32") return;
+    forceKillTimer = setTimeout(() => {
       try {
-        process.kill(-pid, "SIGKILL");
+        if (process.platform === "win32") signalDirectChild(child, "SIGKILL");
+        else signalPosixProcessTree(child, pid, "SIGKILL");
       } catch (error) {
-        if (error?.code !== "ESRCH") fail(error);
-        else if (hasExited(child)) finish();
+        fail(error);
       }
-    }, 5000);
+    }, FORCE_KILL_AFTER_MS);
+    deadlineTimer = setTimeout(() => {
+      fail(new Error(`Process ${pid} did not exit within ${CLEANUP_DEADLINE_MS}ms`));
+    }, CLEANUP_DEADLINE_MS);
   });
 }
 
@@ -90,12 +130,9 @@ export async function stopProcessTree(child) {
       killer.once("close", resolve);
       killer.once("error", resolve);
     });
+    if (!hasExited(child)) signalDirectChild(child, "SIGKILL");
   } else {
-    try {
-      process.kill(-pid, "SIGTERM");
-    } catch (error) {
-      if (error?.code !== "ESRCH") throw error;
-    }
+    signalPosixProcessTree(child, pid, "SIGTERM");
   }
 
   await waitForExitOrKill(child, pid);

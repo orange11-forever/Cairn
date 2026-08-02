@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
+import { spawnInvocation } from "../../../scripts/spawn-command.mjs";
+
 const WEB_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 
@@ -12,7 +14,8 @@ function runChild(command, args) {
       settled = true;
       resolve(exitCode);
     };
-    const child = spawn(command, args, {
+    const invocation = spawnInvocation(command, args);
+    const child = spawn(invocation.command, invocation.args, {
       cwd: WEB_ROOT,
       shell: false,
       stdio: "inherit",

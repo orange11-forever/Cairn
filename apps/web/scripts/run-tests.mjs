@@ -1,12 +1,15 @@
 import { spawn } from "node:child_process";
 import { dirname } from "node:path";
 
+import { spawnInvocation } from "../../../scripts/spawn-command.mjs";
+
 const WEB_ROOT = dirname(import.meta.dirname);
 const PNPM = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 
 function run(command, args) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
+    const invocation = spawnInvocation(command, args);
+    const child = spawn(invocation.command, invocation.args, {
       cwd: WEB_ROOT,
       stdio: "inherit",
       shell: false,

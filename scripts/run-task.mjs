@@ -2,6 +2,8 @@ import { spawn } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { spawnInvocation } from "./spawn-command.mjs";
+
 const REPOSITORY_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const PNPM = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const UV = process.platform === "win32" ? "uv.exe" : "uv";
@@ -32,7 +34,8 @@ export function runTask(taskName) {
 
   const [command, args] = task;
   return new Promise((resolveExitCode) => {
-    const child = spawn(command, args, {
+    const invocation = spawnInvocation(command, args);
+    const child = spawn(invocation.command, invocation.args, {
       cwd: REPOSITORY_ROOT,
       shell: false,
       stdio: "inherit",

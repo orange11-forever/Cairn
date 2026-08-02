@@ -13,7 +13,10 @@ import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 
+import { spawnInvocation } from "../../../scripts/spawn-command.mjs";
+
 import {
+  settleCleanupTasks,
   stopProcessTree,
   waitForChildSpawn,
   waitForServer,
@@ -25,7 +28,7 @@ const SHOT_DIR = join(ROOT, "apps/web/screenshots");
 mkdirSync(SHOT_DIR, { recursive: true });
 
 const WEB = "http://localhost:5500";
-const MOCK_HEALTH = "http://localhost:8787/api/v1/documents?scenario=empty";
+const MOCK_HEALTH = "http://localhost:8787/health";
 
 // Vite dev server。
 //
@@ -601,7 +604,14 @@ function expect(cond, message) {
 try {
   mock = spawn(process.execPath, [join(WEB_ROOT, "mocks/docs-server.mjs")], managedOptions);
   await waitForChildSpawn(mock);
-  web = spawn(pnpm, ["exec", "vite", "--port", "5500", "--strictPort"], managedOptions);
+  const viteInvocation = spawnInvocation(pnpm, [
+    "exec",
+    "vite",
+    "--port",
+    "5500",
+    "--strictPort",
+  ]);
+  web = spawn(viteInvocation.command, viteInvocation.args, managedOptions);
   await waitForChildSpawn(web);
   await Promise.all([waitForServer(WEB), waitForServer(MOCK_HEALTH)]);
 
@@ -783,7 +793,14 @@ try {
   console.error("验证异常：", error instanceof Error ? error.message : String(error));
   failed = true;
 } finally {
-  await browser?.close();
-  await Promise.all([stopProcessTree(mock), stopProcessTree(web)]);
+  const cleanupFailures = await settleCleanupTasks([
+    { name: "Chromium", run: () => browser?.close() },
+    { name: "Mock API", run: () => stopProcessTree(mock) },
+    { name: "Vite", run: () => stopProcessTree(web) },
+  ]);
+  for (const failure of cleanupFailures) {
+    console.error(`${failure.name} 清理失败：`, failure.reason);
+  }
+  if (cleanupFailures.length > 0) failed = true;
   process.exitCode = failed ? 1 : 0;
 }

@@ -97,6 +97,12 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (url.pathname === "/health" && req.method === "GET") {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
   // ---- POST /api/v1/login ----
   if (url.pathname === "/api/v1/login" && req.method === "POST") {
     const body = await readJsonBody(req);
