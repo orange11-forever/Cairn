@@ -77,6 +77,31 @@
 | 部署 | Local Web、Docker Compose、Kubernetes/Helm | 规划 |
 | 测试与工具 | pnpm、Vitest、Testing Library、Playwright；uv、pytest、Ruff、Pyright | 当前已使用 |
 
+## 项目结构
+
+以下目录树只列出公开维护的源码、测试与工程入口，不包含私有文档、依赖缓存和构建产物。
+
+```text
+ai-knowledge-base/
+├── apps/
+│   ├── api/                  # FastAPI 工程基线
+│   │   ├── src/cairn_api/    # API 应用、配置、中间件与错误契约
+│   │   └── tests/            # pytest 测试
+│   ├── web/                  # React/Vite Web 原型
+│   │   ├── mocks/            # Node mock API
+│   │   ├── scripts/          # Web 测试、构建与浏览器验收脚本
+│   │   ├── src/              # 页面、组件、查询、会话与数据契约
+│   │   ├── styles/           # 全局样式
+│   │   └── tests/            # Node 契约测试与 React 组件测试
+│   └── worker/               # 后续异步任务 Worker 的预留边界
+├── assets/brand/             # Cairn 品牌图片
+├── scripts/                  # 跨 package 的任务编排与进程工具
+├── package.json              # 根命令与 Node.js 工程约束
+├── pnpm-workspace.yaml       # pnpm workspace 定义
+├── pyproject.toml            # Python workspace 与工具配置
+└── uv.lock                   # Python 依赖锁文件
+```
+
 ## 最终部署形式
 
 正式 Local Web、单服务器私有部署和 Kubernetes 私有部署将共享同一套 API、数据库迁移和应用镜像。当前阶段只有下方的 Vite + mock 原型，正式交付能力仍在建设中。
@@ -143,7 +168,3 @@ pnpm verify
 `pnpm verify` 是完整的跨 package 门禁：它覆盖 Web 单测、类型检查、生产构建与真实浏览器验收，以及 API 测试、Ruff、Pyright 和发行包构建。浏览器部分覆盖路由保护、注销隔离、并发取消、文档状态、筛选、上传、提问和自动滚动；生产构建还会检查 Mock 场景控件没有进入产物。
 
 也可以使用 `pnpm test:web`、`pnpm test:api`、`pnpm typecheck:web`、`pnpm typecheck:api`、`pnpm build:web` 和 `pnpm build:api` 分别检查单个 package。
-
-## 设计文档
-
-- [Cairn 平台重构设计](docs/specs/2026-07-31-cairn-platform-reorientation-design.md)：产品边界、系统架构、数据不变量、技术栈、部署模型与阶段路线。

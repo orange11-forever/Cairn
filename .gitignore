@@ -14,8 +14,10 @@ apps/web/dist/
 # Web 验证产物：由 pnpm verify 重新生成
 apps/web/screenshots/
 
-# 工具目录
+# 本地工具和私有设计文档
 .superpowers/
+docs/specs/
+docs/archive/
 docs/superpowers/
 
 # 交接笔记：我和用户之间的工作笔记，不是项目文档。
