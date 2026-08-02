@@ -31,7 +31,7 @@ export interface LoginInput {
  * 登录。
  *
  * signal 是**必需参数**而不是可选的 options 字段。
- * 这是配合 useAsyncAction 的类型约定（见那个文件里 fn 的签名）：
+ * 这是配合 useAbortableAction 的类型约定（见那个 Hook 里 fn 的签名）：
  * 强制每个端点都把取消信号接进来，就不会出现"UI 上取消了、请求还在飞"。
  * 写成可选的话，漏传不会有任何编译错误，而症状要到用户真去点取消才暴露。
  */

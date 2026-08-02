@@ -20,7 +20,7 @@ import { useState } from "react";
 
 import { FormField, fieldAria } from "./FormField.tsx";
 import { login } from "../api/auth.ts";
-import { useAsyncAction } from "../hooks/useAsyncAction.ts";
+import { useAbortableAction } from "../hooks/useAbortableAction.ts";
 import { PASSWORD_MIN_LENGTH, validateEmail, validatePassword } from "../lib/validation.ts";
 import type { UserDto } from "../schemas/users.ts";
 
@@ -50,7 +50,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
   // 换句话说：**错误的消失可以是即时的，错误的出现不行。**
   const [submitted, setSubmitted] = useState(false);
 
-  const action = useAsyncAction(login);
+  const action = useAbortableAction(login);
 
   /**
    * 算出当前的字段错误。纯函数调用，不改 state。

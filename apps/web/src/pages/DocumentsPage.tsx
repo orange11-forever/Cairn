@@ -6,5 +6,5 @@ export function DocumentsPage() {
 
   if (session === null) return null;
 
-  return <DocumentsPanel userId={session.user.id} />;
+  return <DocumentsPanel userId={session.user.id} parentSignal={session.signal} />;
 }

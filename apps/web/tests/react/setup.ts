@@ -34,7 +34,7 @@ import "@testing-library/jest-dom/vitest";
 // "Found multiple elements"，看起来像组件里重复渲染了 label，
 // 完全指不到真正的原因（前一个测试没清理）。
 //
-// 顺带：cleanup 会触发组件卸载，于是 useAsyncAction 的卸载清理 Effect
+// 顺带：cleanup 会触发组件卸载，于是 useAbortableAction 的卸载清理 Effect
 // 真的会跑。那意味着这些测试同时在验证"卸载时 abort"没有崩溃——
 // 免费拿到的一层保障。
 afterEach(() => {

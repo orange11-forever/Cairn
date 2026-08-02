@@ -25,17 +25,17 @@ import { MessageInput } from "./MessageInput.tsx";
 import { MessageList } from "./MessageList.tsx";
 import type { Message } from "./MessageList.tsx";
 import { askQuestion } from "../api/conversations.ts";
-import { useAsyncAction } from "../hooks/useAsyncAction.ts";
+import { useAbortableAction } from "../hooks/useAbortableAction.ts";
 import { createUserMessage, toViewMessage } from "../lib/messages.ts";
 
-export function AssistantPanel() {
+export function AssistantPanel({ parentSignal }: { parentSignal?: AbortSignal }) {
   const [messages, setMessages] = useState<Message[]>([]);
 
   // 上一次失败的提问文本。留着它是为了能重试——
   // 而重试要用**原文**，不能让用户重新打一遍（他的草稿在提交时已经清了）。
   const [lastQuestion, setLastQuestion] = useState<string | null>(null);
 
-  const action = useAsyncAction(askQuestion);
+  const action = useAbortableAction(askQuestion, parentSignal);
 
   async function ask(text: string) {
     const userMessage = createUserMessage(text);
@@ -70,11 +70,11 @@ export function AssistantPanel() {
       <MessageInput
         // void 前缀：ask 是 async，返回一个 Promise 而 onSubmit 声明返回 void。
         // 不加 void 会有一个"返回值被忽略"的类型问题，加了它是在明确说
-        // "这个 Promise 不需要被等待"——因为错误已经由 useAsyncAction 收进 state 了。
+        // "这个 Promise 不需要被等待"——因为错误已经由 useAbortableAction 收进 state 了。
         onSubmit={(text) => void ask(text)}
         pending={action.pending}
         // 停止生成。这一下真的会终止请求——signal 一路传到了 fetch
-        //（useAsyncAction → askQuestion → request → fetch），
+        //（useAbortableAction → askQuestion → request → fetch），
         // 中间任何一环漏传 signal，UI 会显示"已停止"而请求还在飞。
         // 这条链路由 verify-web.mjs 的取消帧实测。
         onCancel={action.cancel}

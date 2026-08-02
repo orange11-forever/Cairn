@@ -27,7 +27,13 @@ const SCENARIOS = [
 /** 状态筛选的选项。"all" 是哨兵值，不是真实状态（见 lib/documents.ts）。 */
 type StatusFilter = DocumentStatus | "all";
 
-export function DocumentsPanel({ userId }: { userId: ResourceId }) {
+export function DocumentsPanel({
+  userId,
+  parentSignal,
+}: {
+  userId: ResourceId;
+  parentSignal?: AbortSignal;
+}) {
   // 场景选择器：迁到 React 后必须变成受控 state。
   // 旧的 main.ts 是在点击时读 elements.scenario.value——让 DOM 自己记着状态。
   // 那样能跑，但它意味着有两处状态真相（React 树 + DOM 节点），
@@ -177,7 +183,7 @@ export function DocumentsPanel({ userId }: { userId: ResourceId }) {
         </p>
       )}
 
-      <UploadZone />
+      <UploadZone parentSignal={parentSignal} />
     </section>
   );
 }

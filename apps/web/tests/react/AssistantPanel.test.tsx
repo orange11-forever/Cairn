@@ -325,7 +325,7 @@ describe("取消", () => {
     await user.click(screen.getByRole("button", { name: "停止生成" }));
 
     // 这条断言是整条取消链路的证据：
-    // useAsyncAction → askQuestion → request → fetch，任何一环漏传 signal，
+    // useAbortableAction → askQuestion → request → fetch，任何一环漏传 signal，
     // 这里就是 false——而 UI 照样会显示"已停止"，看起来一切正常。
     await waitFor(() => expect(capturedSignal?.aborted).toBe(true));
 

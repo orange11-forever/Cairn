@@ -23,7 +23,7 @@
 import { useRef, useState } from "react";
 
 import { uploadDocuments, type UploadResponse } from "../api/uploads.ts";
-import { useAsyncAction } from "../hooks/useAsyncAction.ts";
+import { useAbortableAction } from "../hooks/useAbortableAction.ts";
 import {
   ALLOWED_EXTENSIONS,
   MAX_FILE_BYTES,
@@ -33,7 +33,7 @@ import {
   type FileIssue,
 } from "../lib/validation.ts";
 
-export function UploadZone() {
+export function UploadZone({ parentSignal }: { parentSignal?: AbortSignal }) {
   // useState 而不是模块级变量：这个状态属于这个组件的这次挂载。
   // 放模块级会让状态在组件卸载后残留，下次挂载时诡异地"记得"上次选的文件——
   // 而 Day 9 加了退出登录之后，那个"诡异"变成了真问题：
@@ -45,7 +45,7 @@ export function UploadZone() {
   // file input 的引用。用途见文件头：清空选择必须动 DOM。
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const action = useAsyncAction(uploadDocuments);
+  const action = useAbortableAction(uploadDocuments, parentSignal);
 
   function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
     // event.target.files 是 FileList，不是数组——没有 .map/.filter。
