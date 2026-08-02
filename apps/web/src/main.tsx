@@ -9,6 +9,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { App } from "./App.tsx";
+import { AppProviders } from "./app/AppProviders.tsx";
 
 const container = document.getElementById("root");
 
@@ -25,6 +26,8 @@ createRoot(container).render(
   // 比如在渲染期间改外部变量、或者 effect 没写清理函数。
   // 看到 console 打印两遍不是 bug，是它在替你找 bug。
   <StrictMode>
-    <App />
+    <AppProviders>
+      <App />
+    </AppProviders>
   </StrictMode>,
 );

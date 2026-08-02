@@ -18,4 +18,6 @@ test("Web tooling belongs to apps/web", async () => {
   assert.deepEqual(root.devDependencies ?? {}, {});
   assert.equal(web.scripts.test, "node scripts/run-tests.mjs");
   assert.equal(web.scripts.verify, "node scripts/verify-web.mjs");
+  assert.match(web.dependencies["@tanstack/react-query"], /^5\./);
+  assert.match(web.dependencies["react-router-dom"], /^7\./);
 });
