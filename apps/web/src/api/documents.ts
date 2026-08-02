@@ -34,7 +34,7 @@ export interface FetchDocumentsResult {
 export async function fetchDocuments(
   { scenario, timeoutMs, signal }: FetchDocumentsOptions = {},
 ): Promise<FetchDocumentsResult> {
-  const raw = await request("/api/docs", {
+  const raw = await request("/api/v1/documents", {
     query: scenario ? { scenario } : undefined,
     timeoutMs,
     signal,
@@ -44,7 +44,11 @@ export async function fetchDocuments(
   //
   // 用 parseList（逐条筛）而不是 parseOrThrow（全有或全无）：
   // 一条脏数据不该让用户的整个知识库看起来是空的。判据见 schemas/parse.ts 文件头。
-  const { items, dropped } = parseUniqueResourceList(DocumentSchema, raw, "GET /api/docs");
+  const { items, dropped } = parseUniqueResourceList(
+    DocumentSchema,
+    raw,
+    "GET /api/v1/documents",
+  );
 
   return { documents: items, dropped };
 }

@@ -12,8 +12,8 @@ import userEvent from "@testing-library/user-event";
 import { AssistantPanel } from "../../src/components/AssistantPanel.tsx";
 
 const ANSWER = {
+  kind: "grounded_answer",
   id: "00000000-0000-4000-8000-000000002001",
-  role: "assistant",
   content: "严重故障需要先通知当班负责人，再按照升级矩阵联系服务负责人。",
   createdAt: "2026-07-30T10:00:00Z",
   citations: [
@@ -70,6 +70,11 @@ describe("消息渲染", () => {
     expect(await screen.findByText(QUESTION)).toBeInTheDocument();
     expect(await screen.findByText(ANSWER.content)).toBeInTheDocument();
 
+    const call = vi.mocked(fetch).mock.calls[0];
+    expect(call).toBeDefined();
+    if (call === undefined) return;
+    expect(new URL(String(call[0])).pathname).toBe("/api/v1/ask");
+
     // 引用渲染成一个**可点的链接**。
     // 按 role="link" 找而不是找 <a>：用户要的是"能点过去"，
     // 而一个没有 href 的 <a> 在 DOM 里还是 a，但不是 link 角色，也点不了。
@@ -122,6 +127,43 @@ describe("消息渲染", () => {
     // 能跳到文档但落在开头，仍然比没有引用有用得多
     const link = await screen.findByRole("link", { name: "部署手册" });
     expect(link).toHaveAttribute("href", "/documents/00000000-0000-4000-8000-000000000007");
+  });
+
+  test("grounded_answer without citations is rejected", async () => {
+    stubFetch(async () =>
+      jsonResponse({
+        kind: "grounded_answer",
+        id: ANSWER.id,
+        content: "没有证据的事实回答",
+        createdAt: ANSWER.createdAt,
+        citations: [],
+      }),
+    );
+
+    const user = userEvent.setup();
+    render(<AssistantPanel />);
+    await ask(user);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("格式不正确");
+    expect(screen.queryByText("没有证据的事实回答")).toBeNull();
+  });
+
+  test("not_found renders the explicit no-result message", async () => {
+    stubFetch(async () =>
+      jsonResponse({
+        kind: "not_found",
+        id: ANSWER.id,
+        createdAt: ANSWER.createdAt,
+      }),
+    );
+
+    const user = userEvent.setup();
+    render(<AssistantPanel />);
+    await ask(user);
+
+    expect(await screen.findByText("未在知识文档中找到相关内容。"))
+      .toBeInTheDocument();
+    expect(screen.queryByText("引用来源")).toBeNull();
   });
 });
 

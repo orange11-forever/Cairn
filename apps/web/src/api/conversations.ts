@@ -4,7 +4,7 @@
 // 于是三件之前不存在的事必须处理：等待、失败、取消。
 
 import { request } from "./client.ts";
-import { MessageDtoSchema, type MessageDto } from "../schemas/conversations.ts";
+import { AskResponseSchema, type AskResponseDto } from "../schemas/conversations.ts";
 import { parseOrThrow } from "../schemas/parse.ts";
 
 export interface AskInput {
@@ -26,12 +26,12 @@ export interface AskInput {
 export async function askQuestion(
   { question }: AskInput,
   signal: AbortSignal,
-): Promise<MessageDto> {
-  const raw = await request("/api/ask", {
+): Promise<AskResponseDto> {
+  const raw = await request("/api/v1/ask", {
     method: "POST",
     body: { question: question.trim() },
     signal,
   });
 
-  return parseOrThrow(MessageDtoSchema, raw, "POST /api/ask");
+  return parseOrThrow(AskResponseSchema, raw, "POST /api/v1/ask");
 }

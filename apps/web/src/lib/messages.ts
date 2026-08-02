@@ -8,7 +8,7 @@
 // 具体的回报：后端把 anchor 从字符串改成 { start, end } 偏移量时，
 // 改动只落在这一个文件的 citationHref 里。MessageList 和 Citation 一行不动。
 
-import type { CitationDto, MessageDto } from "../schemas/conversations.ts";
+import type { AskResponseDto, CitationDto } from "../schemas/conversations.ts";
 import type { CitationSource } from "../components/Citation.tsx";
 import type { Message } from "../components/MessageList.tsx";
 
@@ -41,20 +41,22 @@ export function toCitationSource(citation: CitationDto): CitationSource {
  * 这是 Day 6 学的可辨识联合在真实数据流上的回报，出现在两个方向：
  * schema 保证了输入的形状，视图模型保证了输出的形状。
  */
-export function toViewMessage(dto: MessageDto): Message {
-  if (dto.role === "assistant") {
+export function toViewMessage(dto: AskResponseDto): Message {
+  if (dto.kind === "not_found") {
     return {
-      // id 直接用后端的。它是 ResourceId（number | string），而视图模型的 id
-      // 是 string（要当 React key）。String() 转换放在这里而不是让组件转：
-      // 组件不该知道后端的 id 可能是数字。
-      id: String(dto.id),
+      id: dto.id,
       role: "assistant",
-      text: dto.content,
-      sources: dto.citations.map(toCitationSource),
+      text: "未在知识文档中找到相关内容。",
+      sources: [],
     };
   }
 
-  return { id: String(dto.id), role: "user", text: dto.content };
+  return {
+    id: dto.id,
+    role: "assistant",
+    text: dto.content,
+    sources: dto.citations.map(toCitationSource),
+  };
 }
 
 /**

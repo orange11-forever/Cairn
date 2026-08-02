@@ -68,6 +68,14 @@ async function readJsonBody(req) {
   }
 }
 
+function writeError(req, res, status, code, message) {
+  const incoming = req.headers["x-request-id"];
+  const traceId = typeof incoming === "string" && incoming !== "" ? incoming : crypto.randomUUID();
+  res.setHeader("X-Request-ID", traceId);
+  res.writeHead(status);
+  res.end(JSON.stringify({ message, code, traceId }));
+}
+
 const server = createServer(async (req, res) => {
   // 浏览器从 file:// 或别的端口打过来会触发跨域，这里放行（Day 16 会正经讲 CORS）
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -82,15 +90,15 @@ const server = createServer(async (req, res) => {
   // 而浏览器控制台报的是 CORS 错误，很容易误以为是 Allow-Origin 没设对。
   if (req.method === "OPTIONS") {
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Request-ID");
     res.setHeader("Access-Control-Max-Age", "86400");
     res.writeHead(204);
     res.end();
     return;
   }
 
-  // ---- Day 9：POST /api/login ----
-  if (url.pathname === "/api/login" && req.method === "POST") {
+  // ---- POST /api/v1/login ----
+  if (url.pathname === "/api/v1/login" && req.method === "POST") {
     const body = await readJsonBody(req);
     // 延迟 700ms：不为好看，是为了让"提交中"这个状态真的存在足够长的时间，
     // 好让 Playwright 能断言按钮变成禁用、文案变成"登录中…"。
@@ -98,19 +106,17 @@ const server = createServer(async (req, res) => {
     await delay(700);
 
     if (body === null || typeof body.email !== "string" || typeof body.password !== "string") {
-      res.writeHead(400);
-      res.end(JSON.stringify({ message: "请求体必须包含 email 和 password" }));
+      writeError(req, res, 400, "validation_error", "请求体必须包含 email 和 password");
       return;
     }
 
-    console.log(`[mock] POST /api/login email=${body.email}`);
+    console.log(`[mock] POST /api/v1/login email=${body.email}`);
 
     if (body.email.trim().toLowerCase() !== DEMO_USER.email || body.password !== DEMO_USER.password) {
       // 401 + 一句**不区分**"邮箱不存在"和"密码错误"的文案。
       // 区分开会变成账号枚举漏洞：攻击者能靠错误文案批量确认哪些邮箱注册过。
       // Day 13/18 讲鉴权时会重提这条。
-      res.writeHead(401);
-      res.end(JSON.stringify({ message: "邮箱或密码不正确" }));
+      writeError(req, res, 401, "invalid_credentials", "邮箱或密码不正确");
       return;
     }
 
@@ -119,17 +125,16 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  // ---- Day 9：POST /api/ask ----
-  if (url.pathname === "/api/ask" && req.method === "POST") {
+  // ---- POST /api/v1/ask ----
+  if (url.pathname === "/api/v1/ask" && req.method === "POST") {
     const body = await readJsonBody(req);
 
     if (body === null || typeof body.question !== "string" || body.question.trim() === "") {
-      res.writeHead(400);
-      res.end(JSON.stringify({ message: "question 不能为空" }));
+      writeError(req, res, 400, "validation_error", "question 不能为空");
       return;
     }
 
-    console.log(`[mock] POST /api/ask question=${body.question.slice(0, 30)}`);
+    console.log(`[mock] POST /api/v1/ask question=${body.question.slice(0, 30)}`);
 
     // 1500ms：比 login 长，因为这一条要留出「用户点停止生成」的窗口。
     // 仍然小于客户端 3000ms 的超时，所以不打断它就会正常成功。
@@ -142,8 +147,8 @@ const server = createServer(async (req, res) => {
     res.writeHead(200);
     res.end(
       JSON.stringify({
+        kind: "grounded_answer",
         id: crypto.randomUUID(),
-        role: "assistant",
         content: "严重故障需要先通知当班负责人，再按照升级矩阵联系服务负责人。",
         createdAt: new Date().toISOString(),
         citations: [
@@ -160,38 +165,40 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  // ---- Day 9：POST /api/uploads ----
-  if (url.pathname === "/api/uploads" && req.method === "POST") {
+  // ---- POST /api/v1/uploads ----
+  if (url.pathname === "/api/v1/uploads" && req.method === "POST") {
     const body = await readJsonBody(req);
     await delay(600);
 
     if (body === null || !Array.isArray(body.files) || body.files.length === 0) {
-      res.writeHead(400);
-      res.end(JSON.stringify({ message: "files 必须是非空数组" }));
+      writeError(req, res, 400, "validation_error", "files 必须是非空数组");
       return;
     }
 
-    console.log(`[mock] POST /api/uploads files=${body.files.length}`);
+    console.log(`[mock] POST /api/v1/uploads files=${body.files.length}`);
 
     // 服务端**重新**校验一遍。见文件头 SERVER_MAX_FILE_BYTES 的注释。
     for (const file of body.files) {
       if (typeof file?.name !== "string" || typeof file?.size !== "number") {
-        res.writeHead(400);
-        res.end(JSON.stringify({ message: "每个文件必须有 name 和 size" }));
+        writeError(req, res, 400, "validation_error", "每个文件必须有 name 和 size");
         return;
       }
 
       const dot = file.name.lastIndexOf(".");
       const ext = dot > 0 ? file.name.slice(dot).toLowerCase() : "";
       if (!SERVER_ALLOWED_EXTENSIONS.includes(ext)) {
-        res.writeHead(415); // Unsupported Media Type
-        res.end(JSON.stringify({ message: `服务端不接受 ${ext || "无扩展名"} 类型的文件` }));
+        writeError(
+          req,
+          res,
+          415,
+          "unsupported_media_type",
+          `服务端不接受 ${ext || "无扩展名"} 类型的文件`,
+        );
         return;
       }
 
       if (file.size > SERVER_MAX_FILE_BYTES) {
-        res.writeHead(413); // Payload Too Large
-        res.end(JSON.stringify({ message: `${file.name} 超过服务端 10MB 上限` }));
+        writeError(req, res, 413, "payload_too_large", `${file.name} 超过服务端 10MB 上限`);
         return;
       }
     }
@@ -213,14 +220,13 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  if (url.pathname !== "/api/docs") {
-    res.writeHead(404);
-    res.end(JSON.stringify({ message: "Not Found" }));
+  if (url.pathname !== "/api/v1/documents") {
+    writeError(req, res, 404, "not_found", "Not Found");
     return;
   }
 
   const scenario = url.searchParams.get("scenario") ?? "success";
-  console.log(`[mock] GET /api/docs?scenario=${scenario}`);
+  console.log(`[mock] GET /api/v1/documents?scenario=${scenario}`);
 
   switch (scenario) {
     // 正常：延迟 600ms 后返回完整数据
@@ -242,8 +248,7 @@ const server = createServer(async (req, res) => {
     // HTTP 错误：服务器 500。关键点——fetch 不会因此 reject，前端必须自己查 response.ok
     case "error": {
       await delay(600);
-      res.writeHead(500);
-      res.end(JSON.stringify({ message: "服务器内部错误" }));
+      writeError(req, res, 500, "internal_error", "服务器内部错误");
       return;
     }
 
@@ -256,15 +261,14 @@ const server = createServer(async (req, res) => {
     }
 
     default: {
-      res.writeHead(400);
-      res.end(JSON.stringify({ message: `未知 scenario: ${scenario}` }));
+      writeError(req, res, 400, "validation_error", `未知 scenario: ${scenario}`);
     }
   }
 });
 
 server.listen(PORT, () => {
   console.log(`Mock 后端已启动：http://localhost:${PORT}`);
-  console.log(`试试：http://localhost:${PORT}/api/docs?scenario=success`);
+  console.log(`试试：http://localhost:${PORT}/api/v1/documents?scenario=success`);
   console.log(`登录账号：${DEMO_USER.email} / ${DEMO_USER.password}`);
   console.log(`停止：Ctrl+C（停掉后前端 fetch 会真的抛网络错误，用来演示网络失败状态）`);
 });

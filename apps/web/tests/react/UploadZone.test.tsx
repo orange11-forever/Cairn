@@ -216,6 +216,7 @@ describe("上传成功", () => {
     if (call === undefined) return;
 
     const [, init] = call;
+    expect(new URL(String(call[0])).pathname).toBe("/api/v1/uploads");
     expect(init?.method).toBe("POST");
     // 这条断言守的是 api/uploads.ts 里那个坑：直接 JSON.stringify(File) 得到 `{}`，
     // 因为 File 的属性在原型上不是自有可枚举属性。必须显式取值。

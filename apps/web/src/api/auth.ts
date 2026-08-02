@@ -36,7 +36,7 @@ export interface LoginInput {
  * 写成可选的话，漏传不会有任何编译错误，而症状要到用户真去点取消才暴露。
  */
 export async function login({ email, password }: LoginInput, signal: AbortSignal): Promise<UserDto> {
-  const raw = await request("/api/login", {
+  const raw = await request("/api/v1/login", {
     method: "POST",
     // email 在这里 trim 而不是让调用方 trim：归一化属于边界层。
     // 密码不 trim——空格是合法密码字符（见 lib/validation.ts 里同一条）。
@@ -44,6 +44,6 @@ export async function login({ email, password }: LoginInput, signal: AbortSignal
     signal,
   });
 
-  const { user } = parseOrThrow(LoginResponseSchema, raw, "POST /api/login");
+  const { user } = parseOrThrow(LoginResponseSchema, raw, "POST /api/v1/login");
   return user;
 }

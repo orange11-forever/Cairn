@@ -42,37 +42,25 @@ export const CitationDtoSchema = z.object({
 
 export type CitationDto = z.infer<typeof CitationDtoSchema>;
 
-/**
- * 消息 DTO —— 用可辨识联合建模，而不是"一个 role 字段 + 一堆可选字段"。
- *
- * 为什么值得这样写：user 消息永远没有 citations，assistant 消息永远有（可能是空数组）。
- * 若写成 `{ role, content, citations?: Citation[] }`，类型允许出现
- * "role 是 user 却带着 citations" 这种后端不会发、前端也不该处理的组合，
- * 而 UI 代码为了让编译器满意，得到处写 `msg.citations?.map(...)`。
- *
- * 用 discriminatedUnion 之后，在 `if (msg.role === "assistant")` 分支里
- * citations 是必有的，编译器自己知道，不用判空。Day 6 学的可辨识联合，
- * 这就是它在真实数据上的第一次应用。
- */
-export const MessageDtoSchema = z.discriminatedUnion("role", [
-  z.object({
-    role: z.literal("user"),
-    id: ResourceIdSchema,
-    content: NonEmptyStringSchema,
-    createdAt: IsoDateTimeSchema,
-  }),
-  z.object({
-    role: z.literal("assistant"),
-    id: ResourceIdSchema,
-    content: NonEmptyStringSchema,
-    createdAt: IsoDateTimeSchema,
-    /**
-     * 空数组是合法的，含义是"这个问题在知识库里没找到依据"。
-     * 那种情况 UI 要显示"未在文档中找到相关内容"，而不是编一个答案 ——
-     * 所以字段必须存在（能区分"没找到"和"忘了带引用"），只是可以为空。
-     */
-    citations: z.array(CitationDtoSchema),
-  }),
+export const GroundedAnswerDtoSchema = z.object({
+  kind: z.literal("grounded_answer"),
+  id: ResourceIdSchema,
+  content: NonEmptyStringSchema,
+  createdAt: IsoDateTimeSchema,
+  citations: z.array(CitationDtoSchema).min(1),
+});
+
+export const NotFoundAnswerDtoSchema = z.object({
+  kind: z.literal("not_found"),
+  id: ResourceIdSchema,
+  createdAt: IsoDateTimeSchema,
+});
+
+export const AskResponseSchema = z.discriminatedUnion("kind", [
+  GroundedAnswerDtoSchema,
+  NotFoundAnswerDtoSchema,
 ]);
 
-export type MessageDto = z.infer<typeof MessageDtoSchema>;
+export type GroundedAnswerDto = z.infer<typeof GroundedAnswerDtoSchema>;
+export type NotFoundAnswerDto = z.infer<typeof NotFoundAnswerDtoSchema>;
+export type AskResponseDto = z.infer<typeof AskResponseSchema>;

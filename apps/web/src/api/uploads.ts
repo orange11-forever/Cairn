@@ -46,7 +46,7 @@ export async function uploadDocuments(
   files: UploadFileInput[],
   signal: AbortSignal,
 ): Promise<UploadResponse> {
-  const raw = await request("/api/uploads", {
+  const raw = await request("/api/v1/uploads", {
     method: "POST",
     // 显式挑字段而不是直接传 files。
     // 传进来的可能是真 File 对象，JSON.stringify(File) 的结果是 `{}`——
@@ -59,5 +59,5 @@ export async function uploadDocuments(
     timeoutMs: 15000,
   });
 
-  return parseOrThrow(UploadResponseSchema, raw, "POST /api/uploads");
+  return parseOrThrow(UploadResponseSchema, raw, "POST /api/v1/uploads");
 }

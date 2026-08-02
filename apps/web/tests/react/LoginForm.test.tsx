@@ -276,6 +276,11 @@ describe("提交中与成功", () => {
 
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
     expect(onSuccess).toHaveBeenCalledWith(VALID_USER);
+
+    const call = vi.mocked(fetch).mock.calls[0];
+    expect(call).toBeDefined();
+    if (call === undefined) return;
+    expect(new URL(String(call[0])).pathname).toBe("/api/v1/login");
   });
 
   test("响应缺 role 字段：拒绝登录，不降级放行", async () => {
