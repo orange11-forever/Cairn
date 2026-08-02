@@ -1,4 +1,3 @@
-import logging
 from typing import Literal
 
 from fastapi import FastAPI, Request
@@ -10,10 +9,9 @@ from starlette.responses import JSONResponse
 
 from cairn_api import __version__
 from cairn_api.errors import error_response
+from cairn_api.logging import configure_app_logging
 from cairn_api.middleware import RequestIdMiddleware, new_request_id
 from cairn_api.settings import Settings
-
-logger = logging.getLogger("cairn_api")
 
 
 class HealthResponse(BaseModel):
@@ -34,7 +32,7 @@ def get_request_id(request: Request) -> str:
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     current_settings = settings or Settings()
-    logger.setLevel(current_settings.log_level)
+    logger = configure_app_logging(current_settings.log_level)
 
     application = FastAPI(title="Cairn API", version=__version__)
     application.state.settings = current_settings

@@ -1,3 +1,4 @@
+import logging
 import re
 import secrets
 
@@ -6,6 +7,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 REQUEST_ID_PATTERN = re.compile(r"[A-Za-z0-9._:-]{1,128}")
+logger = logging.getLogger("cairn_api")
 
 
 def new_request_id() -> str:
@@ -23,5 +25,12 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         request_id = select_request_id(request.headers.get("X-Request-ID"))
         request.state.request_id = request_id
         response = await call_next(request)
+        logger.info(
+            "%s %s status=%s",
+            request.method,
+            request.url.path,
+            response.status_code,
+            extra={"request_id": request_id},
+        )
         response.headers["X-Request-ID"] = request_id
         return response

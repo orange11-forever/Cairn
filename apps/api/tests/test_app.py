@@ -1,7 +1,9 @@
 from collections.abc import Iterator
+from io import StringIO
 
 import pytest
 from cairn_api.app import create_app
+from cairn_api.logging import configure_app_logging
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -134,3 +136,44 @@ def test_unconfigured_origin_receives_no_cors_permission() -> None:
         response = client.get("/health", headers={"Origin": "https://attacker.example"})
 
     assert "access-control-allow-origin" not in response.headers
+
+
+def test_cairn_logger_formats_request_id() -> None:
+    stream = StringIO()
+    logger = configure_app_logging("INFO", stream=stream)
+    logger.error("probe", extra={"request_id": "req-log-123"})
+
+    assert "request_id=req-log-123" in stream.getvalue()
+    logger.handlers.clear()
+
+
+def test_request_completion_log_contains_response_request_id(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with TestClient(create_app()) as client:
+        response = client.get("/health", headers={"X-Request-ID": "req-access-456"})
+
+    captured = capsys.readouterr()
+    assert response.status_code == 200
+    assert "request_id=req-access-456" in captured.err
+    assert "GET /health status=200" in captured.err
+
+
+def test_unhandled_error_correlates_response_body_header_and_formatted_log(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    app = create_app()
+
+    @app.get("/_test/log-error", include_in_schema=False)
+    def _log_error() -> None:  # pyright: ignore[reportUnusedFunction]
+        raise RuntimeError("private detail")
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/_test/log-error", headers={"X-Request-ID": "req-correlated-789"})
+
+    captured = capsys.readouterr()
+    assert response.status_code == 500
+    assert response.headers["x-request-id"] == "req-correlated-789"
+    assert response.json()["traceId"] == "req-correlated-789"
+    assert "request_id=req-correlated-789" in captured.err
+    assert "Unhandled API exception" in captured.err
