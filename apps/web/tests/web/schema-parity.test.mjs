@@ -17,11 +17,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { DocumentSchema } from '../../src/schemas/documents.ts';
-import { parseList } from '../../src/schemas/parse.ts';
+import { parseList, parseUniqueResourceList } from '../../src/schemas/parse.ts';
 import { ApiError } from '../../src/api/errors.ts';
 
 /** 用校验层跑一遍，只取 items，便于直接和期望值比。 */
 const viaSchema = (raw) => parseList(DocumentSchema, raw, 'TEST').items;
+const uuid = (suffix) => `00000000-0000-4000-8000-${String(suffix).padStart(12, '0')}`;
 
 // parseList 在丢数据时会 console.warn，测试里会刷屏。
 // 静音但**记录调用次数**——次数本身是要断言的东西（丢了数据必须有信号）。
@@ -50,12 +51,12 @@ function silenceErrors(fn) {
 
 test('合规数据原样通过', () => {
   const raw = [
-    { id: 1, title: '季度复盘.md', status: 'completed' },
-    { id: 'abc', title: '架构评审记录', status: 'processing' },
+    { id: uuid(1), title: '季度复盘.md', status: 'completed' },
+    { id: uuid(2), title: '架构评审记录', status: 'processing' },
   ];
   const expected = [
-    { id: 1, title: '季度复盘.md', status: 'completed' },
-    { id: 'abc', title: '架构评审记录', status: 'processing' },
+    { id: uuid(1), title: '季度复盘.md', status: 'completed' },
+    { id: uuid(2), title: '架构评审记录', status: 'processing' },
   ];
 
   assert.deepEqual(viaSchema(raw), expected);
@@ -83,7 +84,7 @@ test('整体不是数组 —— 拒绝并抛 ApiError("contract")', () => {
 
 test('丢弃没有可用 id 的条目', () => {
   const raw = [
-    { id: 1, title: '有 id', status: 'completed' },
+    { id: uuid(1), title: '有 id', status: 'completed' },
     { title: '没有 id', status: 'completed' },
     { id: null, title: 'id 是 null', status: 'completed' },
     { id: undefined, title: 'id 是 undefined', status: 'completed' },
@@ -93,29 +94,43 @@ test('丢弃没有可用 id 的条目', () => {
 
   const { result, warnings } = silenceWarnings(() => parseList(DocumentSchema, raw, 'TEST'));
   assert.equal(result.items.length, 1);
-  assert.equal(result.items[0].id, 1);
+  assert.equal(result.items[0].id, uuid(1));
   // 丢了 5 条就必须报 5 条，静默丢数据是不可接受的
   assert.equal(result.dropped, 5);
   assert.equal(warnings.length, 1, '丢弃数据必须留下一条可见的信号');
   assert.match(warnings[0], /5\/6/);
 });
 
-test('保留 id 为 0 和空字符串的条目（Day 5 回归点）', () => {
-  // 用 `!item.id` 判断会把合法的 0 和 '' 一起丢掉，这是最容易写错的一处。
+test('资源 id 只接受 UUID', () => {
   const raw = [
-    { id: 0, title: '第零号文档', status: 'completed' },
-    { id: '', title: '空串 id', status: 'completed' },
+    { id: uuid(1), title: '有效文档', status: 'completed' },
+    { id: 0, title: '数字 id', status: 'completed' },
+    { id: '', title: '空 id', status: 'completed' },
+    { id: 'document-1', title: '任意字符串 id', status: 'completed' },
   ];
 
-  assert.deepEqual(viaSchema(raw).map(({ id }) => id), [0, '']);
+  const { items, dropped } = parseList(DocumentSchema, raw, 'TEST');
+  assert.deepEqual(items.map((item) => item.id), [uuid(1)]);
+  assert.equal(dropped, 3);
+});
+
+test('重复资源 id 让整个列表契约失败', () => {
+  const duplicate = uuid(9);
+  assert.throws(
+    () => parseUniqueResourceList(DocumentSchema, [
+      { id: duplicate, title: 'A', status: 'completed' },
+      { id: duplicate, title: 'B', status: 'failed' },
+    ], 'TEST'),
+    (error) => error instanceof ApiError && error.kind === 'contract',
+  );
 });
 
 test('标题缺失/空白/非字符串都换成占位符', () => {
   const raw = [
-    { id: 1, status: 'completed' },
-    { id: 2, title: '', status: 'completed' },
-    { id: 3, title: '   ', status: 'completed' },
-    { id: 4, title: 42, status: 'completed' },
+    { id: uuid(1), status: 'completed' },
+    { id: uuid(2), title: '', status: 'completed' },
+    { id: uuid(3), title: '   ', status: 'completed' },
+    { id: uuid(4), title: 42, status: 'completed' },
   ];
   const expected = ['未命名文档', '未命名文档', '未命名文档', '未命名文档'];
 
@@ -123,7 +138,7 @@ test('标题缺失/空白/非字符串都换成占位符', () => {
 });
 
 test('标题两端空白被裁掉', () => {
-  const raw = [{ id: 1, title: '  设计评审.pdf \n', status: 'completed' }];
+  const raw = [{ id: uuid(1), title: '  设计评审.pdf \n', status: 'completed' }];
 
   assert.equal(viaSchema(raw)[0].title, '设计评审.pdf');
 });
@@ -131,10 +146,10 @@ test('标题两端空白被裁掉', () => {
 test('不认识的状态降级成 unknown，文档不消失', () => {
   // 后端加新状态（Day 21 的 pending/running）时前端应降级显示，不能让文档凭空消失。
   const raw = [
-    { id: 1, title: 'A', status: 'pending' },
-    { id: 2, title: 'B' },
-    { id: 3, title: 'C', status: null },
-    { id: 4, title: 'D', status: 'COMPLETED' },
+    { id: uuid(1), title: 'A', status: 'pending' },
+    { id: uuid(2), title: 'B' },
+    { id: uuid(3), title: 'C', status: null },
+    { id: uuid(4), title: 'D', status: 'COMPLETED' },
   ];
   const expected = ['unknown', 'unknown', 'unknown', 'unknown'];
 
@@ -144,7 +159,7 @@ test('不认识的状态降级成 unknown，文档不消失', () => {
 });
 
 test('不改动入参，且剥掉未声明的字段', () => {
-  const raw = [{ id: 1, title: 'A', status: 'completed', extra: 'keep me' }];
+  const raw = [{ id: uuid(1), title: 'A', status: 'completed', extra: 'keep me' }];
 
   const input = structuredClone(raw);
   const result = viaSchema(input);
@@ -164,19 +179,19 @@ test('空数组返回空数组，且不算错误', () => {
 test('混合脏数据 —— 好的留下、坏的丢掉、可降级的降级', () => {
   // 这条是前面各条的组合，模拟真实的脏响应：三种处置同时发生。
   const raw = [
-    { id: 1, title: '正常', status: 'completed' },
-    { id: 2, title: '', status: 'pending' },   // 标题占位 + 状态降级，留下
+    { id: uuid(1), title: '正常', status: 'completed' },
+    { id: uuid(2), title: '', status: 'pending' },   // 标题占位 + 状态降级，留下
     { title: '无 id', status: 'completed' },   // 丢弃
     'not an object',                            // 丢弃
-    { id: 3, title: '  裁空白  ', status: 'failed' },
+    { id: uuid(3), title: '  裁空白  ', status: 'failed' },
   ];
 
   const { result } = silenceWarnings(() => parseList(DocumentSchema, raw, 'TEST'));
 
   assert.deepEqual(result.items, [
-    { id: 1, title: '正常', status: 'completed' },
-    { id: 2, title: '未命名文档', status: 'unknown' },
-    { id: 3, title: '裁空白', status: 'failed' },
+    { id: uuid(1), title: '正常', status: 'completed' },
+    { id: uuid(2), title: '未命名文档', status: 'unknown' },
+    { id: uuid(3), title: '裁空白', status: 'failed' },
   ]);
   assert.equal(result.dropped, 2);
 });

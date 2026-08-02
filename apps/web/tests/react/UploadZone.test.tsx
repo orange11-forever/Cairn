@@ -64,7 +64,7 @@ const okResponse = (names: string[]) =>
     {
       accepted: names.length,
       jobs: names.map((name, index) => ({
-        id: `job-${index}`,
+        id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
         documentTitle: name,
         status: "pending",
       })),

@@ -42,7 +42,12 @@ const jsonResponse = (body: unknown, status = 200) =>
     headers: { "Content-Type": "application/json" },
   });
 
-const VALID_USER = { id: 1, email: "demo@cairn.dev", displayName: "演示用户", role: "member" };
+const VALID_USER = {
+  id: "00000000-0000-4000-8000-000000001001",
+  email: "demo@cairn.dev",
+  displayName: "演示用户",
+  role: "member",
+};
 
 beforeEach(() => {
   stubFetch(async () => jsonResponse({ user: VALID_USER }));
@@ -277,7 +282,11 @@ describe("提交中与成功", () => {
     // 权限字段没有安全的兜底值（schemas/users.ts 的文件头论证过）：
     // 降级成 viewer 会让管理员看不到入口，降级成 admin 更糟。
     // 所以坏数据必须整个失败，而不是"尽力放进去"。
-    stubFetch(async () => jsonResponse({ user: { id: 1, email: "demo@cairn.dev" } }));
+    stubFetch(async () =>
+      jsonResponse({
+        user: { id: "00000000-0000-4000-8000-000000001001", email: "demo@cairn.dev" },
+      }),
+    );
 
     const user = userEvent.setup();
     const onSuccess = vi.fn();

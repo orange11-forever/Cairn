@@ -17,11 +17,13 @@ import {
   statusLabel,
 } from '../../src/lib/documents.ts';
 
+const uuid = (suffix) => `00000000-0000-4000-8000-${String(suffix).padStart(12, '0')}`;
+
 const sample = [
-  { id: 1, title: 'A', status: 'completed' },
-  { id: 2, title: 'B', status: 'processing' },
-  { id: 3, title: 'C', status: 'completed' },
-  { id: 4, title: 'D', status: 'unknown' },
+  { id: uuid(1), title: 'A', status: 'completed' },
+  { id: uuid(2), title: 'B', status: 'processing' },
+  { id: uuid(3), title: 'C', status: 'completed' },
+  { id: uuid(4), title: 'D', status: 'unknown' },
 ];
 
 test('filterByStatus returns everything for the "all" sentinel', () => {
@@ -31,11 +33,11 @@ test('filterByStatus returns everything for the "all" sentinel', () => {
 test('filterByStatus selects only the requested status', () => {
   assert.deepEqual(
     filterByStatus(sample, 'completed').map(({ id }) => id),
-    [1, 3],
+    [uuid(1), uuid(3)],
   );
   assert.deepEqual(
     filterByStatus(sample, 'unknown').map(({ id }) => id),
-    [4],
+    [uuid(4)],
   );
 });
 
@@ -45,7 +47,7 @@ test('filterByStatus returns empty for a status nobody has', () => {
 
 test('filterByStatus preserves the incoming order', () => {
   const ordered = filterByStatus(sample, 'completed');
-  assert.deepEqual(ordered.map(({ id }) => id), [1, 3]);
+  assert.deepEqual(ordered.map(({ id }) => id), [uuid(1), uuid(3)]);
 });
 
 test('countByStatus reports zero for known statuses nobody has', () => {
@@ -72,8 +74,8 @@ test('countByStatus is immune to prototype-shaped status names', () => {
   // 累加结果变成字符串拼接。正常路径上 status 已被校验层收敛过，
   // 这里守的是有人绕过它直接调用的情况。
   const counts = countByStatus([
-    { id: 1, title: 'A', status: 'toString' },
-    { id: 2, title: 'B', status: 'constructor' },
+    { id: uuid(1), title: 'A', status: 'toString' },
+    { id: uuid(2), title: 'B', status: 'constructor' },
   ]);
 
   assert.equal(counts.toString, 1);

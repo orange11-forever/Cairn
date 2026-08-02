@@ -18,12 +18,20 @@ import { createServer } from "node:http";
 
 const PORT = 8787;
 
+const IDS = Object.freeze({
+  user: "00000000-0000-4000-8000-000000001001",
+  document1: "00000000-0000-4000-8000-000000000001",
+  document2: "00000000-0000-4000-8000-000000000002",
+  document3: "00000000-0000-4000-8000-000000000003",
+  document4: "00000000-0000-4000-8000-000000000004",
+});
+
 // 模拟数据库里的文档
 const DOCS = [
-  { id: 1, title: "产品需求文档", status: "completed" },
-  { id: 2, title: "API 接口设计", status: "processing" },
-  { id: 3, title: "测试报告 v2", status: "completed" },
-  { id: 4, title: "部署手册", status: "failed" },
+  { id: IDS.document1, title: "产品需求文档", status: "completed" },
+  { id: IDS.document2, title: "API 接口设计", status: "processing" },
+  { id: IDS.document3, title: "测试报告 v2", status: "completed" },
+  { id: IDS.document4, title: "部署手册", status: "failed" },
 ];
 
 // Day 9：登录用的假账号。密码明文放在这里是因为它是 mock——
@@ -31,7 +39,7 @@ const DOCS = [
 const DEMO_USER = {
   email: "demo@cairn.dev",
   password: "cairn-demo-2026",
-  user: { id: 1, email: "demo@cairn.dev", displayName: "演示用户", role: "member" },
+  user: { id: IDS.user, email: "demo@cairn.dev", displayName: "演示用户", role: "member" },
 };
 
 // Day 9：上传的服务端约束。**故意和前端 lib/validation.ts 里的一样。**
@@ -134,13 +142,13 @@ const server = createServer(async (req, res) => {
     res.writeHead(200);
     res.end(
       JSON.stringify({
-        id: `a-${Date.now()}`,
+        id: crypto.randomUUID(),
         role: "assistant",
         content: "严重故障需要先通知当班负责人，再按照升级矩阵联系服务负责人。",
         createdAt: new Date().toISOString(),
         citations: [
           {
-            documentId: 1,
+            documentId: IDS.document1,
             documentTitle: "值班流程",
             snippet: "P0 故障 5 分钟内通知当班负责人，15 分钟内拉起服务负责人。",
             anchor: "section-4",
@@ -195,8 +203,8 @@ const server = createServer(async (req, res) => {
         // 上传只创建"待处理"的任务，不返回已就绪的文档——解析和索引是异步的
         // （Day 21 的 worker 干这个活）。这个形状现在就定下来，
         // 好让前端从今天起就知道"上传成功 ≠ 可以问答了"。
-        jobs: body.files.map((file, index) => ({
-          id: `job-${Date.now()}-${index}`,
+        jobs: body.files.map((file) => ({
+          id: crypto.randomUUID(),
           documentTitle: file.name,
           status: "pending",
         })),

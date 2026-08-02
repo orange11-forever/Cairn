@@ -4,7 +4,7 @@
 
 import { request } from "./client.ts";
 import { DocumentSchema, type Document } from "../schemas/documents.ts";
-import { parseList } from "../schemas/parse.ts";
+import { parseUniqueResourceList } from "../schemas/parse.ts";
 
 export interface FetchDocumentsOptions {
   /** 仅 Mock 阶段使用，让后端切换返回哪种情况。 */
@@ -44,7 +44,7 @@ export async function fetchDocuments(
   //
   // 用 parseList（逐条筛）而不是 parseOrThrow（全有或全无）：
   // 一条脏数据不该让用户的整个知识库看起来是空的。判据见 schemas/parse.ts 文件头。
-  const { items, dropped } = parseList(DocumentSchema, raw, "GET /api/docs");
+  const { items, dropped } = parseUniqueResourceList(DocumentSchema, raw, "GET /api/docs");
 
   return { documents: items, dropped };
 }

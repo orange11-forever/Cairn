@@ -12,13 +12,13 @@ import userEvent from "@testing-library/user-event";
 import { AssistantPanel } from "../../src/components/AssistantPanel.tsx";
 
 const ANSWER = {
-  id: "a-1",
+  id: "00000000-0000-4000-8000-000000002001",
   role: "assistant",
   content: "严重故障需要先通知当班负责人，再按照升级矩阵联系服务负责人。",
   createdAt: "2026-07-30T10:00:00Z",
   citations: [
     {
-      documentId: 1,
+      documentId: "00000000-0000-4000-8000-000000000001",
       documentTitle: "值班流程",
       snippet: "P0 故障 5 分钟内通知当班负责人。",
       anchor: "section-4",
@@ -74,7 +74,10 @@ describe("消息渲染", () => {
     // 按 role="link" 找而不是找 <a>：用户要的是"能点过去"，
     // 而一个没有 href 的 <a> 在 DOM 里还是 a，但不是 link 角色，也点不了。
     const citation = await screen.findByRole("link", { name: "值班流程，section-4" });
-    expect(citation).toHaveAttribute("href", "/documents/1#section-4");
+    expect(citation).toHaveAttribute(
+      "href",
+      "/documents/00000000-0000-4000-8000-000000000001#section-4",
+    );
   });
 
   test("引用标题带上锚点，否则多条引用指向同一文档时看起来一样", async () => {
@@ -102,7 +105,13 @@ describe("消息渲染", () => {
     stubFetch(async () =>
       jsonResponse({
         ...ANSWER,
-        citations: [{ documentId: 7, documentTitle: "部署手册", snippet: "先备份。" }],
+        citations: [
+          {
+            documentId: "00000000-0000-4000-8000-000000000007",
+            documentTitle: "部署手册",
+            snippet: "先备份。",
+          },
+        ],
       }),
     );
 
@@ -112,7 +121,7 @@ describe("消息渲染", () => {
 
     // 能跳到文档但落在开头，仍然比没有引用有用得多
     const link = await screen.findByRole("link", { name: "部署手册" });
-    expect(link).toHaveAttribute("href", "/documents/7");
+    expect(link).toHaveAttribute("href", "/documents/00000000-0000-4000-8000-000000000007");
   });
 });
 
@@ -237,7 +246,13 @@ describe("失败与回滚", () => {
   test("契约错误不给重试——重试一万次结果一样", async () => {
     // content 缺失 → schema 拒绝 → contract 错误。
     // 这是代码 bug（前后端版本不匹配），不是临时故障。
-    stubFetch(async () => jsonResponse({ id: "a-1", role: "assistant", citations: [] }));
+    stubFetch(async () =>
+      jsonResponse({
+        id: "00000000-0000-4000-8000-000000002001",
+        role: "assistant",
+        citations: [],
+      }),
+    );
 
     const user = userEvent.setup();
     render(<AssistantPanel />);

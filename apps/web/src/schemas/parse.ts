@@ -15,6 +15,7 @@
 
 import { z } from "zod";
 import { ApiError } from "../api/errors.ts";
+import type { ResourceId } from "./primitives.ts";
 
 /**
  * 严格解析：不符合 schema 就抛 ApiError("contract")。
@@ -112,6 +113,25 @@ export function parseList<T>(
   }
 
   return { items, dropped: problems.length };
+}
+
+export function parseUniqueResourceList<T extends { id: ResourceId }>(
+  schema: z.ZodType<T>,
+  data: unknown,
+  context: string,
+): ParseListResult<T> {
+  const result = parseList(schema, data, context);
+  const seen = new Set<ResourceId>();
+  for (const item of result.items) {
+    if (seen.has(item.id)) {
+      console.error(`[contract] ${context} 响应包含重复资源 id：${item.id}`);
+      throw new ApiError("contract", "服务器返回的数据格式不正确，请联系管理员", {
+        context,
+      });
+    }
+    seen.add(item.id);
+  }
+  return result;
 }
 
 /** 给人看的类型描述。typeof null === "object" 帮不上忙，数组也一样。 */
