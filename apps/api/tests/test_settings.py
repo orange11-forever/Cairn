@@ -31,3 +31,15 @@ def test_settings_parses_comma_separated_cors_origins() -> None:
 def test_settings_rejects_wildcard_cors_origin() -> None:
     with pytest.raises(ValidationError):
         Settings(cors_origins="*", _env_file=None)  # pyright: ignore[reportCallIssue]
+
+
+def test_settings_rejects_invalid_app_url_and_origin() -> None:
+    with pytest.raises(ValidationError):
+        Settings(app_url="not-a-url", _env_file=None)  # pyright: ignore[reportCallIssue]
+    with pytest.raises(ValidationError):
+        Settings(cors_origins="https://example.com/path", _env_file=None)  # pyright: ignore[reportCallIssue]
+
+
+def test_settings_rejects_wildcard_subdomain_origin() -> None:
+    with pytest.raises(ValidationError):
+        Settings(cors_origins="https://*.example.com", _env_file=None)  # pyright: ignore[reportCallIssue]

@@ -5,6 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 
 from cairn_api import __version__
@@ -38,6 +39,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application = FastAPI(title="Cairn API", version=__version__)
     application.state.settings = current_settings
     application.add_middleware(RequestIdMiddleware)
+    if current_settings.cors_origins:
+        application.add_middleware(
+            CORSMiddleware,
+            allow_origins=current_settings.cors_origins,
+            allow_credentials=True,
+            allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+            allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+        )
 
     @application.exception_handler(StarletteHTTPException)
     async def http_exception_handler(  # pyright: ignore[reportUnusedFunction]

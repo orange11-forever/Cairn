@@ -1,6 +1,6 @@
 from typing import Annotated, Literal, cast
 
-from pydantic import Field, field_validator
+from pydantic import AnyHttpUrl, Field, TypeAdapter, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -15,7 +15,7 @@ class Settings(BaseSettings):
 
     bind_host: str = Field(default="127.0.0.1", validation_alias="CAIRN_BIND_HOST")
     http_port: int = Field(default=8080, ge=1, le=65535, validation_alias="CAIRN_HTTP_PORT")
-    app_url: str | None = Field(default=None, validation_alias="APP_URL")
+    app_url: AnyHttpUrl | None = Field(default=None, validation_alias="APP_URL")
     cors_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=list,
         validation_alias="CORS_ORIGINS",
@@ -41,6 +41,15 @@ class Settings(BaseSettings):
         else:
             raise ValueError("CORS_ORIGINS must be a comma-separated string or string list")
 
-        if "*" in origins:
-            raise ValueError("CORS_ORIGINS cannot contain wildcard '*' when cookies are used")
-        return origins
+        origin_adapter = TypeAdapter(AnyHttpUrl)
+        normalized_origins: list[str] = []
+        for origin in origins:
+            if "*" in origin:
+                raise ValueError("CORS_ORIGINS cannot contain wildcard hosts")
+            parsed = origin_adapter.validate_python(origin)
+            if parsed.username is not None or parsed.password is not None:
+                raise ValueError("CORS_ORIGINS cannot contain credentials")
+            if parsed.path not in (None, "", "/") or parsed.query is not None or parsed.fragment is not None:
+                raise ValueError("CORS_ORIGINS entries must be origins without path, query, or fragment")
+            normalized_origins.append(str(parsed).rstrip("/"))
+        return normalized_origins

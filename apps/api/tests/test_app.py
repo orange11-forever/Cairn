@@ -103,3 +103,34 @@ def test_internal_error_does_not_leak_details() -> None:
     assert response.json()["message"] == "服务器内部错误"
     assert response.json()["traceId"] == response.headers["x-request-id"]
     assert "secret stack detail" not in response.text
+
+
+def test_configured_cors_origin_handles_credentialed_preflight() -> None:
+    from cairn_api.settings import Settings
+
+    settings = Settings(
+        cors_origins="http://localhost:5500",
+        _env_file=None,  # pyright: ignore[reportCallIssue]
+    )
+    with TestClient(create_app(settings)) as client:
+        response = client.options(
+            "/health",
+            headers={
+                "Origin": "http://localhost:5500",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5500"
+    assert response.headers["access-control-allow-credentials"] == "true"
+
+
+def test_unconfigured_origin_receives_no_cors_permission() -> None:
+    from cairn_api.settings import Settings
+
+    settings = Settings(cors_origins="http://localhost:5500", _env_file=None)  # pyright: ignore[reportCallIssue]
+    with TestClient(create_app(settings)) as client:
+        response = client.get("/health", headers={"Origin": "https://attacker.example"})
+
+    assert "access-control-allow-origin" not in response.headers
