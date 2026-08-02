@@ -4,10 +4,10 @@
 // 分开的理由见那个文件的头注释（一句话：纯函数能被 node --test 直接调用，JSX 不能）。
 
 import { describeStatus } from "../lib/statusText.ts";
-import type { DocumentState } from "../state/documentStore.ts";
+import type { DocumentLoadState } from "../lib/statusText.ts";
 
 interface StatusBarProps {
-  state: DocumentState;
+  state: DocumentLoadState;
 }
 
 export function StatusBar({ state }: StatusBarProps) {

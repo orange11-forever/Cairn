@@ -13,7 +13,13 @@
 // 所有面向用户的文案集中在这里，方便日后接 i18n，也方便 review 文案是否得体。
 
 import type { ApiError } from "../api/errors.ts";
-import type { DocumentState } from "../state/documentStore.ts";
+import type { Document } from "../schemas/documents.ts";
+
+export type DocumentLoadState =
+  | { phase: "idle" }
+  | { phase: "loading" }
+  | { phase: "success"; documents: Document[]; dropped: number }
+  | { phase: "error"; error: ApiError };
 
 /** 语气。CSS 靠 data-tone 选择颜色，测试靠它断言。 */
 export type Tone = "idle" | "loading" | "ok" | "empty" | "error";
@@ -23,7 +29,7 @@ export interface StatusText {
   text: string;
 }
 
-export function describeStatus(state: DocumentState): StatusText {
+export function describeStatus(state: DocumentLoadState): StatusText {
   switch (state.phase) {
     case "idle":
       return { tone: "idle", text: "点击「加载文档」开始" };

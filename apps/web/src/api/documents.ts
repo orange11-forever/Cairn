@@ -11,7 +11,7 @@ export interface FetchDocumentsOptions {
   scenario?: string;
   timeoutMs?: number;
   /** 外部取消信号（用户点取消、组件卸载）。 */
-  signal?: AbortSignal;
+  signal: AbortSignal;
 }
 
 export interface FetchDocumentsResult {
@@ -32,7 +32,7 @@ export interface FetchDocumentsResult {
  *（parseList 需要 context 才能报出有用的日志）。往外一层就丢失这个信息了。
  */
 export async function fetchDocuments(
-  { scenario, timeoutMs, signal }: FetchDocumentsOptions = {},
+  { scenario, timeoutMs, signal }: FetchDocumentsOptions,
 ): Promise<FetchDocumentsResult> {
   const raw = await request("/api/v1/documents", {
     query: scenario ? { scenario } : undefined,

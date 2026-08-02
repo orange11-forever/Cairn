@@ -10,9 +10,12 @@ import { useMemo, useState } from "react";
 import { DocumentList } from "./DocumentList.tsx";
 import { StatusBar } from "./StatusBar.tsx";
 import { UploadZone } from "./UploadZone.tsx";
-import { documentStore, useDocumentState } from "../state/useDocumentStore.ts";
+import { toApiError } from "../api/errors.ts";
 import { countByStatus, filterByStatus, statusLabel } from "../lib/documents.ts";
+import type { DocumentLoadState } from "../lib/statusText.ts";
+import { useDocumentsQuery } from "../queries/documents.ts";
 import { DOCUMENT_STATUSES, type DocumentStatus } from "../schemas/documents.ts";
+import type { ResourceId } from "../schemas/primitives.ts";
 
 const SCENARIOS = [
   { value: "success", label: "成功（有数据）" },
@@ -24,24 +27,31 @@ const SCENARIOS = [
 /** 状态筛选的选项。"all" 是哨兵值，不是真实状态（见 lib/documents.ts）。 */
 type StatusFilter = DocumentStatus | "all";
 
-export function DocumentsPanel() {
-  const state = useDocumentState();
-
+export function DocumentsPanel({ userId }: { userId: ResourceId }) {
   // 场景选择器：迁到 React 后必须变成受控 state。
   // 旧的 main.ts 是在点击时读 elements.scenario.value——让 DOM 自己记着状态。
   // 那样能跑，但它意味着有两处状态真相（React 树 + DOM 节点），
   // 而 React 重渲染时不保证保留未受控节点的值。这是"UI 是 state 的函数"
   // 这条原则的实际约束：想让 React 管渲染，就不能有它不知道的状态。
   const [scenario, setScenario] = useState<string>("success");
+  const query = useDocumentsQuery(userId, scenario);
 
   // Day 9：状态筛选。
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
-  const isLoading = state.phase === "loading";
+  const loadState: DocumentLoadState = query.isFetching
+    ? { phase: "loading" }
+    : query.isError
+      ? { phase: "error", error: toApiError(query.error) }
+      : query.isSuccess
+        ? { phase: "success", ...query.data }
+        : { phase: "idle" };
+
+  const isLoading = loadState.phase === "loading";
 
   // documents 只存在于 success 态（Day 7 可辨识联合的结果）。
   // 其余状态一律空数组——"出错时列表显示什么"是展示决策，所以这个判断属于 UI 层。
-  const documents = state.phase === "success" ? state.documents : [];
+  const documents = loadState.phase === "success" ? loadState.documents : [];
 
   // ---------------------------------------------------------------------------
   // useMemo：派生数据。这是本日 useMemo 的唯一用处，理由要说清楚。
@@ -108,7 +118,7 @@ export function DocumentsPanel() {
           id="load-btn"
           type="button"
           disabled={isLoading}
-          onClick={() => void documentStore.load({ scenario })}
+          onClick={() => void query.refetch()}
         >
           加载文档
         </button>
@@ -116,13 +126,13 @@ export function DocumentsPanel() {
           id="cancel-btn"
           type="button"
           disabled={!isLoading}
-          onClick={() => documentStore.cancel()}
+          onClick={() => void query.cancel()}
         >
           取消
         </button>
       </div>
 
-      <StatusBar state={state} />
+      <StatusBar state={loadState} />
 
       {/*
         Day 9：状态筛选器。只在真的有文档时出现——

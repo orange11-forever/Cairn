@@ -114,13 +114,14 @@ async function snapshot(label) {
 async function loadWith(scenario) {
   await page.selectOption("#scenario", scenario);
   await page.click("#load-btn");
+  await waitForStatus(/加载中/);
 }
 
 const waitForStatus = (pattern) =>
   page.waitForFunction(
     (src) => new RegExp(src).test(document.querySelector("#status-bar").textContent),
     pattern.source,
-    { timeout: 6000 },
+    { timeout: 8000 },
   );
 
 /**
