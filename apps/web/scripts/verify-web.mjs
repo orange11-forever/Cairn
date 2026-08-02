@@ -8,10 +8,16 @@
 // 生产构建路径由 `pnpm build` 单独覆盖。
 
 import { chromium } from "playwright";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
+
+import {
+  stopProcessTree,
+  waitForChildSpawn,
+  waitForServer,
+} from "./process-utils.mjs";
 
 const WEB_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const ROOT = join(WEB_ROOT, "../..");
@@ -19,60 +25,24 @@ const SHOT_DIR = join(ROOT, "apps/web/screenshots");
 mkdirSync(SHOT_DIR, { recursive: true });
 
 const WEB = "http://localhost:5500";
-
-// mock 后端用子进程起，这样「网络失败」那帧可以直接 kill 掉它。
-const mock = spawn(process.execPath, [join(ROOT, "apps/web/mocks/docs-server.mjs")], {
-  cwd: WEB_ROOT,
-  stdio: "ignore",
-});
+const MOCK_HEALTH = "http://localhost:8787/api/v1/documents?scenario=empty";
 
 // Vite dev server。
 //
 // macOS/Linux 把子进程放进独立进程组，结束时杀整组；Windows 使用 taskkill
 // 递归结束 pnpm、Vite 及其子进程。shell 保持关闭，避免平台 shell 差异。
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
-const web = spawn(pnpm, ["exec", "vite"], {
+const managedOptions = {
   cwd: WEB_ROOT,
   stdio: "ignore",
   shell: false,
   detached: process.platform !== "win32",
-});
+};
 
-/** 杀掉 Vite 及其子进程。 */
-function killWebTree() {
-  if (web.pid === undefined) return;
-  if (process.platform === "win32") {
-    spawnSync("taskkill", ["/pid", String(web.pid), "/t", "/f"], { stdio: "ignore" });
-    return;
-  }
-  try {
-    process.kill(-web.pid, "SIGTERM");
-  } catch {
-    // 进程组可能已经不在了，忽略
-  }
-}
-
-// 等端口真的可连，而不是盲等固定毫秒数。
-// Vite 冷启动比静态服务器慢且不稳定，固定 900ms 会间歇性地在 CI 上抢跑。
-async function waitForServer(url, timeoutMs = 20000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) return;
-    } catch {
-      // 还没起来，继续等
-    }
-    await new Promise((r) => setTimeout(r, 200));
-  }
-  throw new Error(`前端在 ${timeoutMs}ms 内没起来：${url}`);
-}
-
-await waitForServer(WEB);
-
-let browser;
-browser = await chromium.launch();
-const page = await browser.newPage();
+let mock = null;
+let web = null;
+let browser = null;
+let page = null;
 
 // 「控制台零错误」是 Day 5 的硬验收项，但要分清两类：
 //
@@ -83,17 +53,6 @@ const page = await browser.newPage();
 //    500 和断网场景，这两条恰恰证明请求真的发出去并真的失败了。
 const jsErrors = [];
 const networkNotices = [];
-
-page.on("console", (msg) => {
-  if (msg.type() !== "error") return;
-  const text = msg.text();
-  if (text.includes("Failed to load resource")) networkNotices.push(text);
-  else jsErrors.push(text);
-});
-page.on("pageerror", (err) => jsErrors.push(`pageerror: ${err.message}`));
-page.on("requestfailed", (req) =>
-  networkNotices.push(`requestfailed: ${req.url()} ${req.failure()?.errorText ?? ""}`),
-);
 
 const frames = [];
 
@@ -282,8 +241,17 @@ async function checkStructure() {
 }
 
 async function checkAskStructure() {
-  await page.click('nav[aria-label="主导航"] a:has-text("知识问答")');
+  await page.evaluate(() => {
+    window.__cairnNavigationSentinel = "alive";
+  });
+  await page.getByRole("link", { name: "知识问答" }).click();
   await page.waitForSelector(".assistant-panel");
+
+  expect(
+    (await page.evaluate(() => window.__cairnNavigationSentinel)) === "alive",
+    "应用内导航发生了整页刷新",
+  );
+  expect(new URL(page.url()).pathname === "/ask", "知识问答路由不正确");
 
   const found = await page.evaluate(() => ({
     documentsPanel: !!document.querySelector(".documents-panel"),
@@ -309,8 +277,66 @@ async function checkAskStructure() {
     `问答面板应占满工作区，实际 ${found.panelWidth}px / ${found.workspaceWidth}px`,
   );
 
-  await page.click('nav[aria-label="主导航"] a:has-text("知识文档")');
+  await page.getByRole("link", { name: "知识文档" }).click();
   await page.waitForSelector(".documents-panel");
+  expect(new URL(page.url()).pathname === "/documents", "知识文档路由不正确");
+}
+
+async function checkAuthenticatedUnknownRoute() {
+  await page.evaluate(() => {
+    history.pushState({}, "", "/unknown");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  await page.waitForURL((url) => url.pathname === "/documents");
+  expect(
+    new URL(page.url()).pathname === "/documents",
+    "已登录未知路径应重定向到文档页",
+  );
+}
+
+async function logoutAndLogin() {
+  await page.getByRole("button", { name: "退出" }).click();
+  await page.waitForSelector(".login-card");
+  await login();
+}
+
+async function checkSessionIsolation() {
+  console.log("\n=== 会话隔离关卡 ===\n");
+
+  const beforeLogout = await page.$$eval("#document-list li", (items) => items.length);
+  expect(beforeLogout === 4, `退出前应有 4 条文档作为缓存清理前置条件，实际 ${beforeLogout}`);
+
+  await logoutAndLogin();
+  const afterLogin = await page.evaluate(() => ({
+    rows: document.querySelectorAll("#document-list li").length,
+    status: document.querySelector("#status-bar")?.textContent.trim() ?? null,
+  }));
+  expect(afterLogin.rows === 0, `重新登录不应看到上一会话文档，实际 ${afterLogin.rows} 条`);
+  expect(
+    afterLogin.status === "点击「加载文档」开始",
+    `重新登录应回到 idle，实际「${afterLogin.status}」`,
+  );
+  await page.screenshot({ path: join(SHOT_DIR, "S1-session-cleared.png"), fullPage: true });
+
+  await loadWith("slow");
+  await page.getByRole("button", { name: "退出" }).click();
+  await page.waitForSelector(".login-card");
+  await login();
+  await page.waitForTimeout(5500);
+
+  const afterSlowResponse = await page.evaluate(() => ({
+    rows: document.querySelectorAll("#document-list li").length,
+    status: document.querySelector("#status-bar")?.textContent.trim() ?? null,
+  }));
+  expect(
+    afterSlowResponse.rows === 0,
+    `旧会话慢请求不应回填下一会话，实际 ${afterSlowResponse.rows} 条`,
+  );
+  expect(
+    afterSlowResponse.status === "点击「加载文档」开始",
+    `旧会话慢请求结束后新会话应保持 idle，实际「${afterSlowResponse.status}」`,
+  );
+  await page.screenshot({ path: join(SHOT_DIR, "S2-slow-session-isolated.png"), fullPage: true });
 }
 
 /**
@@ -573,6 +599,27 @@ function expect(cond, message) {
 }
 
 try {
+  mock = spawn(process.execPath, [join(WEB_ROOT, "mocks/docs-server.mjs")], managedOptions);
+  await waitForChildSpawn(mock);
+  web = spawn(pnpm, ["exec", "vite", "--port", "5500", "--strictPort"], managedOptions);
+  await waitForChildSpawn(web);
+  await Promise.all([waitForServer(WEB), waitForServer(MOCK_HEALTH)]);
+
+  browser = await chromium.launch();
+  page = await browser.newPage();
+  page.on("console", (msg) => {
+    if (msg.type() !== "error") return;
+    const text = msg.text();
+    if (text.includes("Failed to load resource")) networkNotices.push(text);
+    else jsErrors.push(text);
+  });
+  page.on("pageerror", (err) => jsErrors.push(`pageerror: ${err.message}`));
+  page.on("requestfailed", (req) =>
+    networkNotices.push(`requestfailed: ${req.url()} ${req.failure()?.errorText ?? ""}`),
+  );
+
+  await page.goto(`${WEB}/unknown`, { waitUntil: "networkidle" });
+  expect(new URL(page.url()).pathname === "/login", "未登录未知路径应重定向到登录页");
   await page.goto(WEB, { waitUntil: "networkidle" });
 
   // Day 9：登录门。八帧之前必须先过这一关。
@@ -590,6 +637,7 @@ try {
   // 于是「不应有内联样式」会被测量工具自己弄脏。查未被任何工具动过的初始 DOM。
   await checkStructure();
   await checkAskStructure();
+  await checkAuthenticatedUnknownRoute();
 
   await snapshot("0-idle");
 
@@ -672,13 +720,15 @@ try {
   await checkStatusFilter();
   await checkUploadForm();
 
-  await page.click('nav[aria-label="主导航"] a:has-text("知识问答")');
+  await page.getByRole("link", { name: "知识问答" }).click();
   await page.waitForSelector(".assistant-panel");
   await checkAutoScroll();
   await checkCancelQuestion();
 
-  await page.click('nav[aria-label="主导航"] a:has-text("知识文档")');
+  await page.getByRole("link", { name: "知识文档" }).click();
   await page.waitForSelector(".documents-panel");
+
+  await checkSessionIsolation();
 
   mock.kill();
   await new Promise((r) => setTimeout(r, 400));
@@ -729,11 +779,10 @@ try {
   console.log(failed ? "\n✗ 验证未通过" : "\n✓ 八帧全部通过");
   console.log(`截图：${SHOT_DIR}`);
 } catch (error) {
-  console.error("验证异常：", error.message);
+  console.error("验证异常：", error instanceof Error ? error.message : String(error));
   failed = true;
 } finally {
   await browser?.close();
-  mock.kill();
-  killWebTree();
+  await Promise.all([stopProcessTree(mock), stopProcessTree(web)]);
   process.exitCode = failed ? 1 : 0;
 }
