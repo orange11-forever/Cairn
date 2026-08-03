@@ -69,6 +69,24 @@ test('stylesheet keeps the layout hooks the components render', async () => {
   assert.match(css, /\[data-invalid=/, 'stylesheet lost the [data-invalid] form hook');
 });
 
+test('stylesheet defines semantic light and dark theme tokens', async () => {
+  const css = await readFile(cssUrl, 'utf8');
+  assert.match(css, /:root\[data-theme=['"]dark['"]\]/);
+  for (const token of [
+    '--color-canvas',
+    '--color-surface',
+    '--color-ink',
+    '--color-border',
+    '--color-idle-bg',
+    '--color-loading-bg',
+    '--color-success-bg',
+    '--color-empty-bg',
+    '--color-danger-bg',
+  ]) {
+    assert.match(css, new RegExp(`${token}:`), `missing theme token ${token}`);
+  }
+});
+
 test('stylesheet covers every interactive surface rendered by current components', async () => {
   const css = await readFile(cssUrl, 'utf8');
 

@@ -37,6 +37,16 @@ test('stylesheet is linked statically, not injected by script', async () => {
   assert.equal(link.getAttribute('href'), 'styles/main.css');
 });
 
+test('theme initialization runs before the stylesheet is requested', async () => {
+  const source = await readFile(htmlUrl, 'utf8');
+  const themeIndex = source.indexOf('localStorage.getItem("cairn-theme")');
+  const stylesheetIndex = source.indexOf('rel="stylesheet"');
+
+  assert.ok(themeIndex >= 0, 'missing pre-paint theme initialization');
+  assert.ok(stylesheetIndex >= 0, 'missing stylesheet link');
+  assert.ok(themeIndex < stylesheetIndex, 'theme must be selected before CSS paint');
+});
+
 test('page provides a mount point for the React tree', async () => {
   const document = await readPage();
 

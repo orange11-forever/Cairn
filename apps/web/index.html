@@ -4,6 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Cairn — 工程组织的知识层</title>
+    <script>
+      (() => {
+        let stored = null;
+        try {
+          stored = localStorage.getItem("cairn-theme");
+        } catch {
+          stored = null;
+        }
+        const theme = stored === "light" || stored === "dark"
+          ? stored
+          : matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
     <link rel="stylesheet" href="styles/main.css">
   </head>
   <body>

@@ -9,6 +9,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { AppRoutes } from "../../src/app/AppRoutes.tsx";
 import { createAppQueryClient } from "../../src/app/queryClient.ts";
 import { SessionProvider, useSession } from "../../src/session/SessionContext.tsx";
+import { ThemeProvider } from "../../src/theme/ThemeContext.tsx";
 
 const USER: UserDto = {
   id: "00000000-0000-4000-8000-000000001001",
@@ -41,20 +42,35 @@ function renderTestRoutes(path: string, options: { initialUser?: UserDto } = {})
   const queryClient = createAppQueryClient();
 
   return render(
-    <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[path]}>
-        <SessionProvider>
-          <InitialSession user={options.initialUser}>
-            <AppRoutes />
-          </InitialSession>
-        </SessionProvider>
-      </MemoryRouter>
-    </QueryClientProvider>,
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={[path]}>
+          <SessionProvider>
+            <InitialSession user={options.initialUser}>
+              <AppRoutes />
+            </InitialSession>
+          </SessionProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    </ThemeProvider>,
   );
 }
 
 beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ user: USER })));
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn(() => ({
+      matches: false,
+      media: "(prefers-color-scheme: dark)",
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  );
 });
 
 afterEach(() => {

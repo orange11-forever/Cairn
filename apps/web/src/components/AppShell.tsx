@@ -3,6 +3,7 @@ import { Link, Outlet } from "react-router-dom";
 
 import { AccountMenu } from "./AccountMenu.tsx";
 import { PrimaryNavigation } from "./PrimaryNavigation.tsx";
+import { ThemeControl } from "./ThemeControl.tsx";
 
 export function AppShell({ user, onLogout }: { user: UserDto; onLogout: () => Promise<void> }) {
   return (
@@ -12,7 +13,7 @@ export function AppShell({ user, onLogout }: { user: UserDto; onLogout: () => Pr
           Cairn
         </Link>
         <PrimaryNavigation />
-        <AccountMenu user={user} onLogout={onLogout} />
+        <AccountMenu user={user} onLogout={onLogout} appearance={<ThemeControl />} />
       </header>
       <main className="workspace">
         <Outlet />

@@ -1,14 +1,23 @@
-:root {
+:root,
+:root[data-theme='light'] {
+  color-scheme: light;
   --color-canvas: #f4f6f8;
   --color-surface: #ffffff;
+  --color-surface-subtle: #f1f3f5;
   --color-ink: #18212b;
   --color-muted: #5f6b78;
   --color-border: #d8dee6;
   --color-accent: #1d5fd1;
-  --color-accent-dark: #174ba5;
+  --color-accent-strong: #174ba5;
+  --color-on-accent: #ffffff;
   --color-success: #18794e;
   --color-warning: #8a6100;
   --color-danger: #b42318;
+  --color-idle-bg: #f1f3f5;
+  --color-loading-bg: #fdf6e3;
+  --color-success-bg: #e6f4ec;
+  --color-empty-bg: #e7f0fb;
+  --color-danger-bg: #fdeceb;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -17,6 +26,27 @@
   --space-6: 32px;
   --radius: 6px;
   --content-max: 1180px;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --color-canvas: #151719;
+  --color-surface: #202326;
+  --color-surface-subtle: #292d31;
+  --color-ink: #f4f6f8;
+  --color-muted: #b5bdc7;
+  --color-border: #3b424a;
+  --color-accent: #79aef8;
+  --color-accent-strong: #a9c9ff;
+  --color-on-accent: #101820;
+  --color-success: #7fd4a8;
+  --color-warning: #e6c66a;
+  --color-danger: #ff9c96;
+  --color-idle-bg: #2a2e32;
+  --color-loading-bg: #35301f;
+  --color-success-bg: #1d3529;
+  --color-empty-bg: #223248;
+  --color-danger-bg: #3d2525;
 }
 
 *,
@@ -89,7 +119,7 @@ a:hover {
 }
 
 .primary-nav a[aria-current='page'] {
-  color: var(--color-accent-dark);
+  color: var(--color-accent-strong);
   font-weight: 700;
   text-decoration: underline;
   text-underline-offset: 6px;
@@ -137,12 +167,12 @@ input:not([type='radio']):not([type='checkbox']),
 button {
   padding: 10px 16px;
   background: var(--color-accent);
-  color: var(--color-surface);
+  color: var(--color-on-accent);
   cursor: pointer;
 }
 
 button:hover {
-  background: var(--color-accent-dark);
+  background: var(--color-accent-strong);
 }
 
 button:disabled {
@@ -197,27 +227,27 @@ input:focus-visible {
 }
 
 .status[data-tone='idle'] {
-  background: #f1f3f5;
+  background: var(--color-idle-bg);
   color: var(--color-muted);
 }
 
 .status[data-tone='loading'] {
-  background: #fdf6e3;
+  background: var(--color-loading-bg);
   color: var(--color-warning);
 }
 
 .status[data-tone='ok'] {
-  background: #e6f4ec;
+  background: var(--color-success-bg);
   color: var(--color-success);
 }
 
 .status[data-tone='empty'] {
-  background: #e7f0fb;
-  color: var(--color-accent-dark);
+  background: var(--color-empty-bg);
+  color: var(--color-accent-strong);
 }
 
 .status[data-tone='error'] {
-  background: #fdeceb;
+  background: var(--color-danger-bg);
   color: var(--color-danger);
 }
 
@@ -325,7 +355,7 @@ input:focus-visible {
   padding: var(--space-3);
   border: 1px solid var(--color-danger);
   border-radius: var(--radius);
-  background: #fef3f2;
+  background: var(--color-danger-bg);
   color: var(--color-danger);
   font-size: 0.9375rem;
 }
@@ -367,7 +397,7 @@ input:focus-visible {
 .login-demo-hint code {
   padding: 2px 4px;
   border-radius: 4px;
-  background: var(--color-canvas);
+  background: var(--color-surface-subtle);
 }
 
 .nav-label-short,
@@ -463,9 +493,61 @@ input:focus-visible {
 
 .status-filter-option:has(input:checked) {
   border-color: var(--color-accent);
-  background: #eaf1fd;
-  color: var(--color-accent-dark);
+  background: var(--color-empty-bg);
+  color: var(--color-accent-strong);
   font-weight: 600;
+}
+
+.theme-control {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-1);
+  margin: var(--space-3) 0;
+  padding: 0;
+  border: 0;
+}
+
+.theme-control legend {
+  grid-column: 1 / -1;
+  margin-bottom: var(--space-2);
+  color: var(--color-muted);
+  font-size: 0.875rem;
+}
+
+.theme-control label {
+  position: relative;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.theme-control input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.theme-control span {
+  display: grid;
+  width: 100%;
+  min-height: 44px;
+  place-items: center;
+  padding-inline: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font-size: 0.8125rem;
+}
+
+.theme-control input:checked + span {
+  border-color: var(--color-accent);
+  background: var(--color-empty-bg);
+  color: var(--color-accent-strong);
+}
+
+.theme-control input:focus-visible + span {
+  outline: 3px solid color-mix(in srgb, var(--color-accent) 35%, transparent);
+  outline-offset: 2px;
 }
 
 /* The radio owns focus; the surrounding option owns the visible outline. */
