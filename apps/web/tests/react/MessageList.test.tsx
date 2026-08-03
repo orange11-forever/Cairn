@@ -117,4 +117,16 @@ describe("消息渲染", () => {
     expect(container.querySelectorAll('[data-role="assistant"]')).toHaveLength(0);
     expect(container.querySelectorAll('[data-role="pending"]')).toHaveLength(1);
   });
+
+  test("标识助手消息和检索占位而不改变消息数据", () => {
+    render(<MessageList messages={[USER_MESSAGE, ASSISTANT_MESSAGE]} pending />);
+
+    expect(screen.getByRole("list", { name: "对话记录" })).toHaveClass("message-list");
+    expect(screen.getByText(ASSISTANT_MESSAGE.text).closest("li")).toHaveAttribute(
+      "data-role",
+      "assistant",
+    );
+    expect(screen.getAllByRole("img", { name: "Cairn 看板娘助手" })).toHaveLength(2);
+    expect(screen.getByText("正在检索知识文档…")).toHaveAttribute("aria-live", "polite");
+  });
 });

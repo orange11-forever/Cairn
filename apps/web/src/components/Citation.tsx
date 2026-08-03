@@ -5,6 +5,8 @@
 // 它将来要长出更多东西（跳转到文档内锚点、显示相关度、标记引用片段是否已过期），
 // 现在把它隔离出来，那些变化就只影响这一个文件。
 
+import { BookOpenText } from "lucide-react";
+
 export interface CitationSource {
   /** 人类可读的位置，例如 "值班流程，第 4 节" */
   label: string;
@@ -21,7 +23,10 @@ export function Citation({ sources }: CitationProps) {
 
   return (
     <>
-      <h3>引用来源</h3>
+      <h3>
+        <BookOpenText aria-hidden="true" size={15} strokeWidth={1.8} />
+        引用来源
+      </h3>
       {/* ol 而不是 ul：引用有顺序，第 1 条通常是最相关的那条。
           aria-label 同 MessageList：两个列表在同一屏，读屏用户要能分清。 */}
       <ol className="citation-list" aria-label="引用来源">

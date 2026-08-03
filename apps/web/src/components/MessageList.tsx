@@ -2,6 +2,7 @@
 
 import { Citation } from "./Citation.tsx";
 import type { CitationSource } from "./Citation.tsx";
+import { MascotFigure } from "./MascotFigure.tsx";
 import { useAutoScroll } from "../hooks/useAutoScroll.ts";
 
 /**
@@ -59,13 +60,25 @@ export function MessageList({ messages, pending = false }: MessageListProps) {
         {messages.map((message) => (
           // data-role 给 CSS 做左右分栏和配色的挂钩，同时是测试的选择器依据
           <li key={message.id} data-role={message.role}>
-            <p className="message-text">{message.text}</p>
+            {message.role === "assistant" ? (
+              <MascotFigure
+                className="message-mascot"
+                label="Cairn 看板娘助手"
+                state="success"
+              />
+            ) : null}
+            <div className="message-bubble">
+              <span className="message-author">
+                {message.role === "assistant" ? "看板娘助手" : "你"}
+              </span>
+              <p className="message-text">{message.text}</p>
             {/*
               联合类型的回报：这个分支里 message.sources 必然存在，不用判空。
               如果哪天 user 消息也要带引用，改的是上面的类型，
               编译器会把所有需要跟着改的地方列出来。
             */}
-            {message.role === "assistant" && <Citation sources={message.sources} />}
+              {message.role === "assistant" && <Citation sources={message.sources} />}
+            </div>
           </li>
         ))}
 
@@ -79,8 +92,16 @@ export function MessageList({ messages, pending = false }: MessageListProps) {
           会在还没答完时就通过。
         */}
         {pending && (
-          <li data-role="pending" className="message-pending" aria-live="polite">
-            <p className="message-text">正在检索知识文档…</p>
+          <li data-role="pending" className="message-pending">
+            <MascotFigure
+              className="message-mascot"
+              label="Cairn 看板娘助手"
+              state="thinking"
+            />
+            <div className="message-bubble">
+              <span className="message-author">看板娘助手</span>
+              <p className="message-text" aria-live="polite">正在检索知识文档…</p>
+            </div>
           </li>
         )}
       </ol>

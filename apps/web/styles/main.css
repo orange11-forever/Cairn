@@ -400,6 +400,15 @@ summary:focus-visible {
   gap: var(--space-3);
 }
 
+.question-actions,
+.question-actions button,
+.retry-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
 .question-form .form-field {
   margin-bottom: 0;
 }
@@ -415,10 +424,66 @@ summary:focus-visible {
   padding: 10px 12px;
 }
 
-.assistant-panel article {
-  margin-top: 28px;
-  padding-top: 24px;
-  border-top: 1px solid var(--color-border);
+.assistant-panel article > h2 {
+  margin-bottom: var(--space-3);
+  color: var(--color-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.conversation-workspace {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.assistant-empty-state .workspace-status {
+  align-items: center;
+  min-height: 280px;
+  padding: var(--space-5);
+  background: var(--color-surface);
+}
+
+.assistant-empty-state .workspace-status-content {
+  max-width: 600px;
+}
+
+.question-suggestions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.question-suggestions button {
+  min-width: 0;
+  border-color: var(--color-border);
+  background: var(--color-surface-subtle);
+  color: var(--color-ink);
+  text-align: left;
+}
+
+.question-suggestions button:hover {
+  border-color: var(--color-accent);
+  background: var(--color-empty-bg);
+  color: var(--color-accent-strong);
+}
+
+.conversation-error {
+  margin: 0;
+}
+
+.conversation-composer {
+  position: sticky;
+  z-index: 10;
+  bottom: 0;
+  padding-top: var(--space-2);
+  background: var(--color-canvas);
+}
+
+.conversation-composer .question-form {
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
 }
 
 .form-field {
@@ -953,13 +1018,116 @@ summary:focus-visible {
 
 /* A bounded overflowing box is required for useAutoScroll to have an effect. */
 .message-scroll {
-  max-height: 420px;
+  min-height: 280px;
+  max-height: min(58vh, 580px);
   overflow-y: auto;
   overscroll-behavior: contain;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  scrollbar-gutter: stable;
+}
+
+.message-list {
+  display: grid;
+  gap: var(--space-4);
+  margin: 0;
+  padding: var(--space-4);
+  list-style: none;
+}
+
+.message-list > li {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-2);
+}
+
+.message-list > li[data-role='user'] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.message-bubble {
+  width: fit-content;
+  max-width: min(76%, 720px);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface-subtle);
+}
+
+.message-list > li[data-role='user'] .message-bubble {
+  justify-self: end;
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+.message-author {
+  display: block;
+  margin-bottom: var(--space-1);
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.message-list > li[data-role='user'] .message-author {
+  color: color-mix(in srgb, var(--color-on-accent) 78%, transparent);
+}
+
+.message-text {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.message-mascot {
+  display: block;
+}
+
+.message-mascot > img,
+.message-mascot .mascot-image-fallback {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+}
+
+.message-mascot .mascot-state {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
 }
 
 .message-pending {
   color: var(--color-muted);
+}
+
+.message-pending .message-bubble {
+  background: var(--color-loading-bg);
+}
+
+.message-empty {
+  margin: 0;
+  padding: var(--space-4);
+  color: var(--color-muted);
+}
+
+.message-bubble h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: var(--space-3) 0 var(--space-2);
+  font-size: 0.8125rem;
+}
+
+.citation-list {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding-left: var(--space-5);
+  color: var(--color-muted);
+  font-size: 0.8125rem;
 }
 
 .question-counter {
@@ -1114,6 +1282,25 @@ summary:focus-visible {
     padding-left: 0;
     border-top: 1px solid var(--color-border);
     border-left: 0;
+  }
+
+  .assistant-empty-state .workspace-status,
+  .question-suggestions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .assistant-empty-state .workspace-status {
+    min-height: 0;
+    padding: var(--space-4);
+  }
+
+  .message-bubble {
+    max-width: 88%;
+  }
+
+  .conversation-composer {
+    bottom: calc(52px + env(safe-area-inset-bottom));
   }
 
   .mascot-assistant-panel {
