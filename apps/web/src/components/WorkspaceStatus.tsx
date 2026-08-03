@@ -28,7 +28,7 @@ export function WorkspaceStatus({
   return (
     <section className="workspace-status" data-state={state} aria-live="polite">
       {mascot === undefined ? null : (
-        <MascotFigure state={MASCOT_STATE[state]} {...mascot} />
+        <MascotFigure {...mascot} state={MASCOT_STATE[state]} />
       )}
       <div className="workspace-status-content">
         <h2>{title}</h2>
