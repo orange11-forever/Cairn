@@ -44,10 +44,14 @@ a:hover {
   text-decoration: underline;
 }
 
+.app-shell {
+  min-height: 100vh;
+}
+
 .product-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-5);
   width: 100%;
   padding-block: var(--space-4);
@@ -59,22 +63,32 @@ a:hover {
   border-bottom: 1px solid var(--color-border);
 }
 
-.product-header > a {
+.product-brand {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   color: var(--color-ink);
   font-size: 22px;
   font-weight: 700;
 }
 
-.product-header ul {
+.primary-nav ul {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-4);
+  align-items: center;
+  gap: var(--space-2);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.product-header a[aria-current='page'] {
+.primary-nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding-inline: var(--space-3);
+}
+
+.primary-nav a[aria-current='page'] {
   color: var(--color-accent-dark);
   font-weight: 700;
   text-decoration: underline;
@@ -110,6 +124,14 @@ input {
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   font: inherit;
+}
+
+button,
+select,
+input:not([type='radio']):not([type='checkbox']),
+.status-filter-option,
+.theme-control label {
+  min-height: 44px;
 }
 
 button {
@@ -348,10 +370,50 @@ input:focus-visible {
   background: var(--color-canvas);
 }
 
-.product-header-user {
+.nav-label-short,
+.account-label-short {
+  display: none;
+}
+
+.account-menu {
+  position: relative;
+}
+
+.account-menu summary {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.account-menu-panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  min-width: 240px;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.account-email {
+  margin-bottom: var(--space-3);
+  color: var(--color-muted);
+  font-size: 0.875rem;
+}
+
+.workspace-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.workspace-header p {
+  margin-bottom: 0;
 }
 
 .current-user {
@@ -541,8 +603,4 @@ input:focus-visible {
     padding: var(--space-5);
   }
 
-  .product-header-user {
-    width: 100%;
-    justify-content: space-between;
-  }
 }

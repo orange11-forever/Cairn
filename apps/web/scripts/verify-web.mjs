@@ -190,6 +190,13 @@ async function login() {
   await page.waitForSelector("main.workspace", { timeout: 10000 });
 }
 
+async function logout() {
+  const menu = page.locator(".account-menu");
+  if (!(await menu.getAttribute("open"))) await menu.locator("summary").click();
+  await menu.getByRole("button", { name: "退出" }).click();
+  await page.waitForSelector(".login-card");
+}
+
 async function checkStructure() {
   const found = await page.evaluate(() => ({
     header: !!document.querySelector("header.product-header"),
@@ -202,7 +209,7 @@ async function checkStructure() {
     currentNavLabel:
       document
         .querySelector('nav[aria-label="主导航"] a[aria-current="page"]')
-        ?.textContent.trim() ?? null,
+        ?.getAttribute("aria-label") ?? null,
     statusRole: document.querySelector("#status-bar")?.getAttribute("role") ?? null,
     statusLive: document.querySelector("#status-bar")?.getAttribute("aria-live") ?? null,
     inlineStyles: document.querySelectorAll("[style]").length,
@@ -263,7 +270,7 @@ async function checkAskStructure() {
     currentNavLabel:
       document
         .querySelector('nav[aria-label="主导航"] a[aria-current="page"]')
-        ?.textContent.trim() ?? null,
+        ?.getAttribute("aria-label") ?? null,
     workspaceWidth: document.querySelector("main.workspace")?.getBoundingClientRect().width ?? 0,
     panelWidth: document.querySelector(".assistant-panel")?.getBoundingClientRect().width ?? 0,
   }));
@@ -298,8 +305,7 @@ async function checkAuthenticatedUnknownRoute() {
 }
 
 async function logoutAndLogin() {
-  await page.getByRole("button", { name: "退出" }).click();
-  await page.waitForSelector(".login-card");
+  await logout();
   await login();
 }
 
@@ -322,8 +328,7 @@ async function checkSessionIsolation() {
   await page.screenshot({ path: join(SHOT_DIR, "S1-session-cleared.png"), fullPage: true });
 
   await loadWith("slow");
-  await page.getByRole("button", { name: "退出" }).click();
-  await page.waitForSelector(".login-card");
+  await logout();
   await login();
   await page.waitForTimeout(5500);
 

@@ -32,8 +32,12 @@ test('stylesheet keeps the layout hooks the components render', async () => {
   const css = await readFile(cssUrl, 'utf8');
 
   for (const hook of [
+    '.app-shell',
     '.product-header',
+    '.primary-nav',
+    '.account-menu',
     '.workspace',
+    '.workspace-header',
     '.documents-panel',
     '.assistant-panel',
     '.question-form',
@@ -71,7 +75,7 @@ test('stylesheet covers every interactive surface rendered by current components
   for (const hook of [
     '.login-card',
     '.field-hint',
-    '.product-header-user',
+    '.account-menu-panel',
     '.status-filter-option',
     '.upload-zone',
     '.upload-actions',

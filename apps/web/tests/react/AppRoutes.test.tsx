@@ -1,8 +1,8 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import type { UserDto } from "@cairn/contracts";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useLayoutEffect } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
@@ -24,13 +24,17 @@ const jsonResponse = (body: unknown, status = 200) =>
   });
 
 function InitialSession({ user, children }: { user?: UserDto; children: React.ReactNode }) {
-  const { session, establishSession } = useSession();
+  const { establishSession } = useSession();
+  const initialized = useRef(user === undefined);
 
   useLayoutEffect(() => {
-    if (user !== undefined && session === null) establishSession(user);
-  }, [establishSession, session, user]);
+    if (user !== undefined && !initialized.current) {
+      initialized.current = true;
+      establishSession(user);
+    }
+  }, [establishSession, user]);
 
-  return user !== undefined && session === null ? null : children;
+  return initialized.current ? children : null;
 }
 
 function renderTestRoutes(path: string, options: { initialUser?: UserDto } = {}) {
@@ -88,4 +92,29 @@ test("authenticated login and unknown routes resolve to documents", async () => 
 
   renderTestRoutes("/not-a-route", { initialUser: USER });
   expect(await screen.findByRole("heading", { name: "知识文档" })).toBeInTheDocument();
+});
+
+test("authenticated routes use one extensible application shell", async () => {
+  renderTestRoutes("/documents", { initialUser: USER });
+
+  expect(await screen.findByRole("banner")).toBeInTheDocument();
+  const navigation = screen.getByRole("navigation", { name: "主导航" });
+  expect(within(navigation).getAllByRole("link")).toHaveLength(2);
+  expect(within(navigation).getByRole("link", { name: "知识文档" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  expect(within(navigation).queryByRole("link", { name: /项目|Agent|治理/ })).toBeNull();
+  expect(screen.getByRole("heading", { level: 1, name: "知识文档" })).toBeInTheDocument();
+  expect(screen.getByText("管理用于企业问答的内部资料。")).toBeInTheDocument();
+});
+
+test("account menu exposes identity and logout without duplicating session state", async () => {
+  const user = userEvent.setup();
+  renderTestRoutes("/documents", { initialUser: USER });
+
+  await user.click(await screen.findByText("演示用户"));
+  expect(screen.getByText("demo@cairn.dev")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "退出" }));
+  expect(await screen.findByRole("heading", { name: "登录 Cairn" })).toBeInTheDocument();
 });

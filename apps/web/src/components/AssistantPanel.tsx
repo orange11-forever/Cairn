@@ -21,6 +21,7 @@ import { useState } from "react";
 import { MessageInput } from "./MessageInput.tsx";
 import { MessageList } from "./MessageList.tsx";
 import type { Message } from "./MessageList.tsx";
+import { WorkspaceHeader } from "./WorkspaceHeader.tsx";
 import { askQuestion } from "../api/conversations.ts";
 import { useAbortableAction } from "../hooks/useAbortableAction.ts";
 import { createUserMessage, toViewMessage } from "../lib/messages.ts";
@@ -60,8 +61,11 @@ export function AssistantPanel({ parentSignal }: { parentSignal?: AbortSignal })
 
   return (
     <section className="assistant-panel" aria-labelledby="assistant-title">
-      <h2 id="assistant-title">AI 问答</h2>
-      <p>回答只依据已经处理完成的知识文档。</p>
+      <WorkspaceHeader
+        id="assistant-title"
+        title="AI 问答"
+        description="回答只依据已经处理完成的知识文档。"
+      />
 
       <MessageInput
         // void 前缀：ask 是 async，返回一个 Promise 而 onSubmit 声明返回 void。

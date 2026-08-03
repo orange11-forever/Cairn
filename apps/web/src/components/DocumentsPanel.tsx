@@ -6,6 +6,7 @@ import type { ResourceId } from "@cairn/contracts";
 import { DocumentList } from "./DocumentList.tsx";
 import { StatusBar } from "./StatusBar.tsx";
 import { UploadZone } from "./UploadZone.tsx";
+import { WorkspaceHeader } from "./WorkspaceHeader.tsx";
 import { toApiError } from "../api/errors.ts";
 import { countByStatus, filterByStatus, statusLabel } from "../lib/documents.ts";
 import type { DocumentLoadState } from "../lib/statusText.ts";
@@ -89,8 +90,11 @@ export function DocumentsPanel({
 
   return (
     <section className="documents-panel" aria-labelledby="documents-title">
-      <h1 id="documents-title">知识文档</h1>
-      <p>管理用于企业问答的内部资料。</p>
+      <WorkspaceHeader
+        id="documents-title"
+        title="知识文档"
+        description="管理用于企业问答的内部资料。"
+      />
 
       <div className="documents-controls">
         {import.meta.env.DEV && (
