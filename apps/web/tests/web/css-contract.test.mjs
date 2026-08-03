@@ -176,9 +176,24 @@ test('stylesheet keeps focus visible and avoids priority escape hatches', async 
   const css = await readFile(cssUrl, 'utf8');
 
   assert.match(css, /:focus-visible/);
-  assert.match(css, /@media \(max-width: 960px\)/);
+  assert.match(css, /@media \(max-width: 1023px\)/);
   assert.doesNotMatch(css, /!important/);
   assert.doesNotMatch(css, /outline:\s*none/);
+});
+
+test('stylesheet defines the approved tablet and mobile application-shell transitions', async () => {
+  const css = await readFile(cssUrl, 'utf8');
+
+  assert.match(css, /@media \(max-width:\s*1023px\)/);
+  assert.match(css, /@media \(max-width:\s*599px\)/);
+  assert.match(css, /min-height:\s*44px/, 'touch targets must be at least 44px high');
+  assert.match(css, /env\(safe-area-inset-bottom\)/, 'mobile nav must reserve the safe area');
+
+  const mobile = css.match(/@media \(max-width:\s*599px\)\s*\{([\s\S]*)\}\s*$/);
+  assert.ok(mobile, 'missing final mobile media query');
+  assert.match(mobile[1], /\.primary-nav[\s\S]*position:\s*fixed/);
+  assert.match(mobile[1], /\.document-list li[\s\S]*grid-template-columns:\s*1fr/);
+  assert.match(mobile[1], /\.question-form[\s\S]*grid-template-columns:\s*1fr/);
 });
 
 // 导航当前项、status region 的 role/aria-live、语义 landmark

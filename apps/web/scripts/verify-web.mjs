@@ -21,6 +21,7 @@ import {
   waitForChildSpawn,
   waitForServer,
 } from "./process-utils.mjs";
+import { checkResponsiveFoundation } from "./verify-responsive.mjs";
 
 const WEB_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const ROOT = join(WEB_ROOT, "../..");
@@ -654,6 +655,23 @@ try {
   await checkStructure();
   await checkAskStructure();
   await checkAuthenticatedUnknownRoute();
+
+  await checkResponsiveFoundation({
+    page,
+    expect,
+    screenshotDir: SHOT_DIR,
+    login,
+    logout,
+  });
+  expect(new URL(page.url()).pathname === "/documents", "响应式验收后应回到文档页");
+  expect(
+    (await page.locator("html").getAttribute("data-theme")) === "light",
+    "响应式验收后应恢复日间主题",
+  );
+  expect(
+    (await page.viewportSize())?.width === 1280 && (await page.viewportSize())?.height === 900,
+    "响应式验收后应恢复 1280 x 900 视口",
+  );
 
   await snapshot("0-idle");
 

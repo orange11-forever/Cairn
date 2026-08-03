@@ -412,6 +412,8 @@ input:focus-visible {
 .account-menu summary {
   display: flex;
   align-items: center;
+  justify-content: center;
+  min-width: 44px;
   min-height: 44px;
   cursor: pointer;
 }
@@ -641,48 +643,125 @@ input:focus-visible {
   font-size: 0.875rem;
 }
 
-@media (max-width: 960px) {
+@media (max-width: 1023px) {
   .product-header {
-    align-items: flex-start;
-    flex-direction: column;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-2) var(--space-4);
     padding-inline: var(--space-4);
   }
 
+  .primary-nav {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    border-top: 1px solid var(--color-border);
+  }
+
+  .primary-nav ul {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .primary-nav a {
+    justify-content: center;
+  }
+
   .workspace {
-    grid-template-columns: 1fr;
     width: min(calc(100% - 2 * var(--space-4)), var(--content-max));
     margin-block: var(--space-4);
   }
 
+  .documents-controls,
+  .question-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .message-scroll {
+    max-height: 300px;
+  }
+}
+
+@media (max-width: 599px) {
+  .product-header {
+    position: relative;
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: 56px;
+    padding-block: var(--space-2);
+  }
+
+  .account-label-full,
+  .nav-label-full {
+    display: none;
+  }
+
+  .account-label-short,
+  .nav-label-short {
+    display: inline;
+  }
+
+  .primary-nav {
+    position: fixed;
+    z-index: 30;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    grid-column: auto;
+    padding-bottom: env(safe-area-inset-bottom);
+    border-top: 1px solid var(--color-border);
+    background: var(--color-surface);
+  }
+
+  .primary-nav a {
+    min-height: 52px;
+  }
+
+  .workspace {
+    width: 100%;
+    margin: 0;
+    padding: var(--space-3);
+    padding-bottom: calc(52px + var(--space-5) + env(safe-area-inset-bottom));
+  }
+
   .documents-panel,
-  .assistant-panel {
+  .assistant-panel,
+  .login-card {
     padding: var(--space-4);
   }
 
-  .document-list li {
+  .workspace-header {
+    display: grid;
+  }
+
+  .documents-controls,
+  .question-form,
+  .upload-actions,
+  .question-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .documents-controls button,
+  .question-actions button,
+  .upload-actions button {
+    width: 100%;
+  }
+
+  .document-list li,
+  .upload-selection li {
     grid-template-columns: 1fr;
     gap: var(--space-2);
   }
 
-  .document-list button {
+  .document-status,
+  .upload-file-size {
     justify-self: start;
   }
 
-  .question-form {
-    grid-template-columns: 1fr;
+  .account-menu-panel {
+    position: fixed;
+    top: 56px;
+    right: var(--space-3);
+    left: var(--space-3);
+    min-width: 0;
   }
-
-  .question-form label {
-    grid-column: auto;
-  }
-
-  /* Leave room for the question input below the conversation. */
-  .message-scroll {
-    max-height: 300px;
-  }
-
-  .login-card {
-    padding: var(--space-5);
-  }
-
 }
