@@ -563,6 +563,88 @@ input:focus-visible {
   color: var(--color-muted);
 }
 
+/* The supplied illustration has a light background, including in dark mode. */
+.mascot-figure {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.mascot-figure > img,
+.mascot-image-fallback {
+  display: block;
+  width: 72px;
+  height: 72px;
+  padding: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: #f8f7f2;
+  color: #18212b;
+  object-fit: cover;
+  object-position: center top;
+}
+
+.mascot-figure[data-variant='half'] > img,
+.mascot-figure[data-variant='half'] .mascot-image-fallback {
+  width: 128px;
+  height: 128px;
+}
+
+.mascot-figure[data-variant='full'] > img,
+.mascot-figure[data-variant='full'] .mascot-image-fallback {
+  width: 176px;
+  height: 224px;
+  object-fit: contain;
+}
+
+.mascot-state {
+  color: var(--color-muted);
+  font-size: 0.875rem;
+}
+
+.mascot-figure[data-state='thinking'] > img {
+  animation: mascot-thinking 1.6s ease-in-out infinite;
+}
+
+@keyframes mascot-thinking {
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+.workspace-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface-subtle);
+}
+
+.workspace-status-content {
+  min-width: 0;
+}
+
+.workspace-status h2,
+.workspace-status p {
+  margin-bottom: var(--space-1);
+}
+
+.workspace-status p {
+  color: var(--color-muted);
+}
+
+.workspace-status-action {
+  margin-top: var(--space-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mascot-figure[data-state='thinking'] > img {
+    animation: none;
+  }
+}
+
 .upload-zone {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
