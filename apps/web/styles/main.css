@@ -261,7 +261,7 @@ summary:focus-visible {
 }
 
 .documents-dev-toolbar select {
-  min-height: 36px;
+  min-height: 44px;
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
@@ -899,8 +899,8 @@ summary:focus-visible {
   gap: var(--space-1);
 }
 
-.mascot-assistant-body .mascot-figure > img,
-.mascot-assistant-body .mascot-image-fallback {
+.mascot-assistant-body .mascot-figure[data-variant='half'] > img,
+.mascot-assistant-body .mascot-figure[data-variant='half'] .mascot-image-fallback {
   width: 92px;
   height: 108px;
 }

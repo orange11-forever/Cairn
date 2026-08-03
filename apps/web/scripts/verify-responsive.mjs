@@ -30,6 +30,7 @@ async function readLayout(page) {
       viewportHeight: window.innerHeight,
       workspacePaddingBottom:
         workspaceStyle === null ? 0 : Number.parseFloat(workspaceStyle.paddingBottom),
+      workspaceOverflowX: workspaceStyle?.overflowX ?? null,
       navHeight: navRect?.height ?? 0,
       panelInsideViewport:
         panel === null
@@ -48,9 +49,55 @@ async function readLayout(page) {
           const rect = element.getBoundingClientRect();
           return rect.width > 0 && rect.height > 0 && (rect.width < 44 || rect.height < 44);
         })
-        .map((element) => element.getAttribute("aria-label") ?? element.textContent.trim()),
+        .map((element) => {
+          const rect = element.getBoundingClientRect();
+          const name =
+            element.getAttribute("aria-label") ??
+            element.getAttribute("id") ??
+            element.textContent.trim();
+          return `${element.tagName.toLowerCase()}#${name} (${rect.width.toFixed(1)}x${rect.height.toFixed(1)})`;
+        }),
     };
   });
+}
+
+async function readImageHealth(page) {
+  return page.evaluate(() =>
+    [...document.querySelectorAll(".login-wordmark, .product-brand img, .mascot-figure img")].map(
+      (image) => ({
+        alt: image.getAttribute("alt"),
+        src: image.getAttribute("src"),
+        complete: image.complete,
+        naturalWidth: image.naturalWidth,
+        naturalHeight: image.naturalHeight,
+      }),
+    ),
+  );
+}
+
+async function readAssistantContentLayout(page) {
+  return page.evaluate(() => {
+    const image = document.querySelector(
+      ".mascot-assistant-body .mascot-figure > img, .mascot-assistant-body .mascot-image-fallback",
+    );
+    const copy = document.querySelector(".mascot-assistant-body > p");
+    const imageRect = image?.getBoundingClientRect();
+    const copyRect = copy?.getBoundingClientRect();
+    return {
+      imageRight: imageRect?.right ?? null,
+      copyLeft: copyRect?.left ?? null,
+    };
+  });
+}
+
+function expectHealthyImages(images, expect, context) {
+  expect(images.length > 0, `${context} 应渲染品牌或看板娘图片`);
+  for (const image of images) {
+    expect(
+      image.complete && image.naturalWidth > 0 && image.naturalHeight > 0,
+      `${context} 图片未加载：${image.src} (${image.naturalWidth}x${image.naturalHeight})`,
+    );
+  }
 }
 
 export async function checkResponsiveFoundation({ page, expect, screenshotDir, login, logout }) {
@@ -71,11 +118,66 @@ export async function checkResponsiveFoundation({ page, expect, screenshotDir, l
       expect(documents.theme === themeValue, `${viewport.name} 应使用 ${themeValue} 主题`);
       expect(documents.overflow <= 0, `${viewport.name} 文档页横向溢出 ${documents.overflow}px`);
       expect(documents.panelInsideViewport, `${viewport.name} 文档面板超出视口`);
+      expect(
+        documents.workspaceOverflowX !== "scroll",
+        `${viewport.name} 文档工作区不应强制横向滚动`,
+      );
       expect(documents.activeLabel?.includes("文档"), `${viewport.name} 文档导航未激活`);
       expect(
         documents.undersizedTargets.length === 0,
         `${viewport.name} 文档页存在小于 44px 的交互目标：${documents.undersizedTargets.join(" / ")}`,
       );
+      expect(
+        await page.getByRole("button", { name: "打开看板娘助手" }).isVisible(),
+        `${viewport.name} 看板娘助手入口不可见`,
+      );
+      expectHealthyImages(await readImageHealth(page), expect, `${viewport.name} 文档页`);
+
+      await page.screenshot({
+        path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-documents.png`),
+        fullPage: true,
+      });
+
+      const assistantTrigger = page.getByRole("button", { name: "打开看板娘助手" });
+      await assistantTrigger.click();
+      expect(
+        await page.getByRole("dialog", { name: "看板娘助手" }).isVisible(),
+        `${viewport.name} 看板娘助手面板未打开`,
+      );
+      const assistantLayout = await readAssistantContentLayout(page);
+      expect(
+        assistantLayout.imageRight !== null &&
+          assistantLayout.copyLeft !== null &&
+          assistantLayout.imageRight <= assistantLayout.copyLeft,
+        `${viewport.name} 看板娘图片与助手说明发生重叠：图片右侧 ${assistantLayout.imageRight}px，文字左侧 ${assistantLayout.copyLeft}px`,
+      );
+      await page.screenshot({
+        path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-assistant.png`),
+        fullPage: true,
+      });
+      await page.keyboard.press("Escape");
+      expect(
+        !(await page.getByRole("dialog", { name: "看板娘助手" }).isVisible()),
+        `${viewport.name} Escape 后看板娘助手仍可见`,
+      );
+      expect(
+        await assistantTrigger.evaluate((element) => document.activeElement === element),
+        `${viewport.name} Escape 后焦点应返回助手入口`,
+      );
+
+      await page.selectOption("#scenario", "empty");
+      await page.click("#load-btn");
+      await page.waitForFunction(() =>
+        document.querySelector("#status-bar")?.textContent.includes("还没有文档"),
+      );
+      expect(
+        await page.getByRole("heading", { name: "建立知识空间" }).isVisible(),
+        `${viewport.name} 文档空态缺少看板娘提示`,
+      );
+      await page.screenshot({
+        path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-documents-empty.png`),
+        fullPage: true,
+      });
 
       await page.getByRole("link", { name: "知识问答" }).click();
       await page.waitForSelector(".assistant-panel");
@@ -87,6 +189,22 @@ export async function checkResponsiveFoundation({ page, expect, screenshotDir, l
         ask.undersizedTargets.length === 0,
         `${viewport.name} 问答页存在小于 44px 的交互目标：${ask.undersizedTargets.join(" / ")}`,
       );
+      expectHealthyImages(await readImageHealth(page), expect, `${viewport.name} 问答页`);
+
+      await page.screenshot({
+        path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-ask-empty.png`),
+        fullPage: true,
+      });
+
+      await page.fill("#question", "值班故障如何升级？");
+      await page.click('.question-form button[type="submit"]');
+      await page.waitForSelector('[data-role="pending"]');
+      await page.screenshot({
+        path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-ask-pending.png`),
+        fullPage: true,
+      });
+      await page.getByRole("button", { name: "停止生成" }).click();
+      await page.waitForSelector('[data-role="pending"]', { state: "detached" });
 
       if (viewport.width < 600) {
         expect(ask.navPosition === "fixed", "手机导航必须固定在视口底部");
@@ -102,10 +220,13 @@ export async function checkResponsiveFoundation({ page, expect, screenshotDir, l
         expect(ask.navPosition !== "fixed", `${viewport.name} 不应使用固定底部导航`);
       }
 
+      await logout();
+      expectHealthyImages(await readImageHealth(page), expect, `${viewport.name} 登录页`);
       await page.screenshot({
-        path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}.png`),
+        path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-login.png`),
         fullPage: true,
       });
+      await login();
     }
 
     await logout();

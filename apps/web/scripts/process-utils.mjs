@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { createServer } from "node:net";
 
 const POLL_INTERVAL_MS = 200;
 const FORCE_KILL_AFTER_MS = 5000;
@@ -6,6 +7,27 @@ const CLEANUP_DEADLINE_MS = 10000;
 
 function hasExited(child) {
   return child.exitCode !== null || child.signalCode !== null;
+}
+
+export function assertPortAvailable(port, host = "127.0.0.1") {
+  return new Promise((resolve, reject) => {
+    const probe = createServer();
+
+    probe.once("error", (error) => {
+      if (error?.code === "EADDRINUSE") {
+        reject(new Error(`Port ${port} is already in use`));
+        return;
+      }
+      reject(error);
+    });
+    probe.once("listening", () => {
+      probe.close((error) => {
+        if (error) reject(error);
+        else resolve();
+      });
+    });
+    probe.listen({ host, port, exclusive: true });
+  });
 }
 
 export async function settleCleanupTasks(tasks) {

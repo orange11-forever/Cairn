@@ -16,11 +16,13 @@ async function listFiles(directory) {
   return files;
 }
 
-const forbidden = "模拟场景";
+const forbidden = ["模拟场景", "data-dev-only"];
 const offenders = [];
 for (const file of await listFiles(DIST_ROOT)) {
   const content = await readFile(file, "utf8");
-  if (content.includes(forbidden)) offenders.push(relative(DIST_ROOT, file));
+  if (forbidden.some((value) => content.includes(value))) {
+    offenders.push(relative(DIST_ROOT, file));
+  }
 }
 
 if (offenders.length > 0) {
