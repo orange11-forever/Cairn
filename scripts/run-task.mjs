@@ -9,6 +9,8 @@ const PNPM = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const UV = process.platform === "win32" ? "uv.exe" : "uv";
 
 const TASKS = Object.freeze({
+  "test:contracts": [PNPM, ["--filter", "@cairn/contracts", "test"]],
+  "typecheck:contracts": [PNPM, ["--filter", "@cairn/contracts", "typecheck"]],
   "dev:web": [PNPM, ["--filter", "cairn-web", "dev"]],
   "mock:web": [PNPM, ["--filter", "cairn-web", "mock"]],
   "test:web": [PNPM, ["--filter", "cairn-web", "test"]],

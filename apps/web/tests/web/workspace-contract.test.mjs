@@ -13,11 +13,18 @@ test("Web tooling belongs to apps/web", async () => {
     await readFile(join(REPOSITORY_ROOT, "apps/web/package.json"), "utf8"),
   );
 
-  assert.match(workspace, /apps\/web/);
+  assert.match(workspace, /apps\/\*/);
+  assert.match(workspace, /packages\/\*/);
   assert.deepEqual(root.dependencies ?? {}, {});
   assert.deepEqual(root.devDependencies ?? {}, {});
   assert.equal(web.scripts.test, "node scripts/run-tests.mjs");
   assert.equal(web.scripts.verify, "node scripts/run-verification.mjs");
   assert.match(web.dependencies["@tanstack/react-query"], /^5\./);
   assert.match(web.dependencies["react-router-dom"], /^7\./);
+
+  const contracts = JSON.parse(
+    await readFile(join(REPOSITORY_ROOT, "packages/contracts/package.json"), "utf8"),
+  );
+  assert.equal(contracts.name, "@cairn/contracts");
+  assert.equal(contracts.exports["."].default, "./src/index.ts");
 });

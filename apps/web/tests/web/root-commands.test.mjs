@@ -14,9 +14,11 @@ const APPROVED_SCRIPTS = [
   "mock:web",
   "test",
   "test:api",
+  "test:contracts",
   "test:web",
   "typecheck",
   "typecheck:api",
+  "typecheck:contracts",
   "typecheck:web",
   "verify",
   "verify:api",
@@ -46,7 +48,7 @@ test("root commands are allowlisted and shell neutral", async () => {
   assert.equal(root.scripts["build:api"], "node scripts/run-task.mjs build:api");
   assert.equal(
     root.scripts.verify,
-    "node scripts/run-tasks.mjs test:web typecheck:web verify:web test:api lint:api typecheck:api build:api",
+    "node scripts/run-tasks.mjs test:contracts typecheck:contracts test:web typecheck:web verify:web test:api lint:api typecheck:api build:api",
   );
 
   for (const [name, command] of Object.entries(root.scripts)) {
