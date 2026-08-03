@@ -82,6 +82,7 @@ test("unauthenticated document route redirects to login", async () => {
   renderTestRoutes("/documents");
 
   expect(await screen.findByRole("heading", { name: "登录 Cairn" })).toBeInTheDocument();
+  expect(screen.getByRole("img", { name: "Cairn 看板娘" })).toBeInTheDocument();
 });
 
 test("login reaches documents and NavLink reaches ask without a reload", async () => {

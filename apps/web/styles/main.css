@@ -536,12 +536,51 @@ summary:focus-visible {
 .login-page {
   display: grid;
   place-items: center;
-  min-height: 100vh;
+  min-height: 100dvh;
   padding: var(--space-5);
 }
 
+.login-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(360px, 0.92fr);
+  align-items: stretch;
+  width: min(100%, 1040px);
+  min-height: min(680px, calc(100dvh - 2 * var(--space-5)));
+}
+
+.login-brand-scene {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: var(--space-5);
+  min-width: 0;
+  padding: var(--space-6);
+  background: var(--color-surface-subtle);
+}
+
+.login-wordmark {
+  display: block;
+  width: min(210px, 58%);
+  height: auto;
+  object-fit: contain;
+}
+
+.login-brand-scene .mascot-figure {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+}
+
+.login-brand-scene .mascot-figure[data-variant='full'] > img,
+.login-brand-scene .mascot-figure[data-variant='full'] .mascot-image-fallback {
+  width: min(260px, 78%);
+  height: min(390px, 48vh);
+}
+
 .login-card {
-  width: min(100%, 420px);
+  display: grid;
+  align-content: center;
+  width: 100%;
   padding: var(--space-6);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
@@ -552,7 +591,22 @@ summary:focus-visible {
   margin-top: 0;
 }
 
+.login-card > p:first-of-type {
+  color: var(--color-muted);
+}
+
+.login-form input {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--color-surface);
+  color: var(--color-ink);
+}
+
 .login-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
   width: 100%;
 }
 
@@ -1181,6 +1235,21 @@ summary:focus-visible {
   .documents-secondary {
     padding-left: var(--space-4);
   }
+
+  .login-layout {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .login-brand-scene,
+  .login-card {
+    padding: var(--space-5);
+  }
+
+  .login-brand-scene .mascot-figure[data-variant='full'] > img,
+  .login-brand-scene .mascot-figure[data-variant='full'] .mascot-image-fallback {
+    width: min(210px, 78%);
+    height: min(315px, 44vh);
+  }
 }
 
 @media (max-width: 599px) {
@@ -1189,6 +1258,44 @@ summary:focus-visible {
     grid-template-columns: minmax(0, 1fr) auto;
     min-height: 56px;
     padding-block: var(--space-2);
+  }
+
+  .login-page {
+    min-height: 100dvh;
+    padding: var(--space-3);
+    place-items: start center;
+  }
+
+  .login-layout {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  .login-brand-scene {
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: 116px;
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .login-wordmark {
+    justify-self: start;
+    width: 116px;
+  }
+
+  .login-brand-scene .mascot-figure {
+    gap: var(--space-1);
+  }
+
+  .login-brand-scene .mascot-figure[data-variant='full'] > img,
+  .login-brand-scene .mascot-figure[data-variant='full'] .mascot-image-fallback {
+    width: 82px;
+    height: 88px;
+    object-fit: cover;
+    object-position: center top;
+  }
+
+  .login-brand-scene .mascot-state {
+    font-size: 0.6875rem;
   }
 
   .account-label-full,

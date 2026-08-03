@@ -58,6 +58,20 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+test("显示 Cairn 品牌场景且不改变登录表单契约", () => {
+  render(<LoginForm onSuccess={vi.fn()} />);
+
+  expect(screen.getByRole("region", { name: "Cairn 品牌场景" })).toBeInTheDocument();
+  expect(screen.getByRole("img", { name: "Cairn" })).toBeInTheDocument();
+  expect(screen.getByRole("img", { name: "Cairn 看板娘" })).toHaveAttribute(
+    "data-variant",
+    "full",
+  );
+  expect(screen.getByRole("heading", { name: "登录 Cairn" })).toBeInTheDocument();
+  expect(screen.getByLabelText("邮箱")).toHaveAttribute("id", "login-email");
+  expect(screen.getByLabelText("密码")).toHaveAttribute("id", "login-password");
+});
+
 describe("字段校验", () => {
   test("空表单提交：两个字段各显示一条可读错误，且不发请求", async () => {
     const user = userEvent.setup();
