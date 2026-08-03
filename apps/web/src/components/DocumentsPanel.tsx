@@ -1,6 +1,7 @@
 // 文档面板集中消费用户级查询，子组件保持纯展示（props 进、UI 出）。
 
 import { useMemo, useState } from "react";
+import type { ResourceId } from "@cairn/contracts";
 
 import { DocumentList } from "./DocumentList.tsx";
 import { StatusBar } from "./StatusBar.tsx";
@@ -10,7 +11,6 @@ import { countByStatus, filterByStatus, statusLabel } from "../lib/documents.ts"
 import type { DocumentLoadState } from "../lib/statusText.ts";
 import { useDocumentsQuery } from "../queries/documents.ts";
 import { DOCUMENT_STATUSES, type DocumentStatus } from "../schemas/documents.ts";
-import type { ResourceId } from "../schemas/primitives.ts";
 
 const SCENARIOS = [
   { value: "success", label: "成功（有数据）" },

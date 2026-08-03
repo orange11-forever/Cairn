@@ -6,10 +6,10 @@
 // 真实鉴权需要统一决定 HttpOnly Cookie、CSRF 和 401 处理策略。
 // 这里不把临时 token 写进 localStorage，避免留下分散且不安全的读取路径。
 
+import { LoginResponseSchema, type LoginRequest, type UserDto } from "@cairn/contracts";
+
 import { request } from "./client.ts";
-import { UserDtoSchema, type UserDto } from "../schemas/users.ts";
 import { parseOrThrow } from "../schemas/parse.ts";
-import { z } from "zod";
 
 /**
  * 登录响应。
@@ -18,12 +18,7 @@ import { z } from "zod";
  * 的文件头已经论证过：role 字段没有安全的兜底值。降级成 viewer 会让管理员
  * 看不到入口，降级成 admin 更糟。所以坏数据就整个失败，让用户重新登录。
  */
-const LoginResponseSchema = z.object({ user: UserDtoSchema });
-
-export interface LoginInput {
-  email: string;
-  password: string;
-}
+export type LoginInput = LoginRequest;
 
 /**
  * 登录。
@@ -34,11 +29,12 @@ export interface LoginInput {
  * 写成可选的话，漏传不会有任何编译错误，而症状要到用户真去点取消才暴露。
  */
 export async function login({ email, password }: LoginInput, signal: AbortSignal): Promise<UserDto> {
+  const body: LoginRequest = { email: email.trim(), password };
   const raw = await request("/api/v1/login", {
     method: "POST",
     // email 在这里 trim 而不是让调用方 trim：归一化属于边界层。
     // 密码不 trim——空格是合法密码字符（见 lib/validation.ts 里同一条）。
-    body: { email: email.trim(), password },
+    body,
     signal,
   });
 

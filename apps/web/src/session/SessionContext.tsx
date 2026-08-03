@@ -1,8 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import type { UserDto } from "@cairn/contracts";
 import { useNavigate } from "react-router-dom";
-
-import type { UserDto } from "../schemas/users.ts";
 
 export interface ActiveSession {
   user: UserDto;

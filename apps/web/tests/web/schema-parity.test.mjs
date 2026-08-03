@@ -16,7 +16,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { DocumentDtoSchema, DocumentSchema } from '../../src/schemas/documents.ts';
+import { DocumentDtoSchema } from '@cairn/contracts';
+import { DocumentSchema } from '../../src/schemas/documents.ts';
 import { parseList, parseUniqueResourceList } from '../../src/schemas/parse.ts';
 import { ApiError } from '../../src/api/errors.ts';
 

@@ -5,7 +5,7 @@ import { ApiError } from "./errors.ts";
 import {
   parseApiErrorResponse,
   type ParsedApiErrorResponse,
-} from "../schemas/apiError.ts";
+} from "./parseApiErrorResponse.ts";
 
 /**
  * 后端地址。**从环境变量读，不写死。**

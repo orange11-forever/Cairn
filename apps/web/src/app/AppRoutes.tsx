@@ -1,11 +1,11 @@
 import { Navigate, Outlet, Route, Routes, useNavigate } from "react-router-dom";
+import type { UserDto } from "@cairn/contracts";
 
 import { AuthenticatedLayout } from "../components/AuthenticatedLayout.tsx";
 import { LoginForm } from "../components/LoginForm.tsx";
 import { AskPage } from "../pages/AskPage.tsx";
 import { DocumentsPage } from "../pages/DocumentsPage.tsx";
 import { useSession } from "../session/SessionContext.tsx";
-import type { UserDto } from "../schemas/users.ts";
 
 function LoginRoute() {
   const { session, establishSession } = useSession();

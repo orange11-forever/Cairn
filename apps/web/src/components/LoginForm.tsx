@@ -17,12 +17,12 @@
 // ---------------------------------------------------------------------------
 
 import { useState } from "react";
+import type { UserDto } from "@cairn/contracts";
 
 import { FormField, fieldAria } from "./FormField.tsx";
 import { login } from "../api/auth.ts";
 import { useAbortableAction } from "../hooks/useAbortableAction.ts";
 import { PASSWORD_MIN_LENGTH, validateEmail, validatePassword } from "../lib/validation.ts";
-import type { UserDto } from "../schemas/users.ts";
 
 interface LoginFormProps {
   /** 登录成功后把用户交出去。这个组件不决定登录后干什么。 */

@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { ResourceId } from "@cairn/contracts";
 
 import { fetchDocuments } from "../api/documents.ts";
-import type { ResourceId } from "../schemas/primitives.ts";
 
 export const documentKeys = {
   all: ["documents"] as const,

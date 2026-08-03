@@ -8,7 +8,7 @@
 // 具体的回报：后端调整引用定位结构时，改动只落在这个文件的标签转换里。
 // MessageList 和 Citation 一行不动。
 
-import type { AskResponseDto, CitationDto } from "../schemas/conversations.ts";
+import type { AskResponseDto, CitationDto } from "@cairn/contracts";
 import type { CitationSource } from "../components/Citation.tsx";
 import type { Message } from "../components/MessageList.tsx";
 

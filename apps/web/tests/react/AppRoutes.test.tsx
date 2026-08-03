@@ -1,4 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
+import type { UserDto } from "@cairn/contracts";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useLayoutEffect } from "react";
@@ -8,7 +9,6 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { AppRoutes } from "../../src/app/AppRoutes.tsx";
 import { createAppQueryClient } from "../../src/app/queryClient.ts";
 import { SessionProvider, useSession } from "../../src/session/SessionContext.tsx";
-import type { UserDto } from "../../src/schemas/users.ts";
 
 const USER: UserDto = {
   id: "00000000-0000-4000-8000-000000001001",

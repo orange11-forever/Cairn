@@ -14,8 +14,8 @@
 //                     猜一个身份是安全问题，不是体验问题。
 
 import { z } from "zod";
+import type { ResourceId } from "@cairn/contracts";
 import { ApiError } from "../api/errors.ts";
-import type { ResourceId } from "./primitives.ts";
 
 /**
  * 严格解析：不符合 schema 就抛 ApiError("contract")。

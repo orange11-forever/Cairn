@@ -1,12 +1,11 @@
 // 问答端点。
 
+import { AskResponseSchema, type AskRequest, type AskResponseDto } from "@cairn/contracts";
+
 import { request } from "./client.ts";
-import { AskResponseSchema, type AskResponseDto } from "../schemas/conversations.ts";
 import { parseOrThrow } from "../schemas/parse.ts";
 
-export interface AskInput {
-  question: string;
-}
+export type AskInput = AskRequest;
 
 /**
  * 提一个问题，拿一条回答。
@@ -24,9 +23,10 @@ export async function askQuestion(
   { question }: AskInput,
   signal: AbortSignal,
 ): Promise<AskResponseDto> {
+  const body: AskRequest = { question: question.trim() };
   const raw = await request("/api/v1/ask", {
     method: "POST",
-    body: { question: question.trim() },
+    body,
     signal,
   });
 
