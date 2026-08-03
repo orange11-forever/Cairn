@@ -170,10 +170,6 @@ a:hover {
 .documents-panel,
 .assistant-panel {
   min-width: 0;
-  padding: var(--space-5);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
 }
 
 h1,
@@ -236,6 +232,71 @@ summary:focus-visible {
   margin-bottom: var(--space-4);
 }
 
+.documents-controls button,
+.upload-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.documents-dev-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface-subtle);
+  color: var(--color-muted);
+  font-size: 0.8125rem;
+}
+
+.documents-dev-toolbar > div {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.documents-dev-toolbar select {
+  min-height: 36px;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-ink);
+}
+
+.documents-workbench {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.52fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.documents-primary,
+.documents-secondary {
+  min-width: 0;
+}
+
+.documents-primary {
+  padding: var(--space-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.documents-secondary {
+  padding-left: var(--space-5);
+  border-left: 1px solid var(--color-border);
+}
+
+.documents-secondary .workspace-status {
+  display: grid;
+}
+
 .documents-controls label {
   font-weight: 600;
 }
@@ -293,7 +354,7 @@ summary:focus-visible {
 }
 
 .document-list {
-  margin: 24px 0 0;
+  margin: var(--space-4) 0 0;
   padding: 0;
   list-style: none;
 }
@@ -303,7 +364,8 @@ summary:focus-visible {
   grid-template-columns: minmax(0, 1fr) minmax(120px, auto);
   align-items: center;
   gap: var(--space-4);
-  padding: 16px 0;
+  min-height: 64px;
+  padding: var(--space-3) 0;
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -526,10 +588,10 @@ summary:focus-visible {
   align-items: center;
   gap: var(--space-2);
   flex-wrap: wrap;
-  margin: 0 0 var(--space-4);
-  padding: var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
+  margin: var(--space-4) 0 0;
+  padding: var(--space-3) 0 0;
+  border: 0;
+  border-top: 1px solid var(--color-border);
 }
 
 .status-filter legend {
@@ -618,7 +680,10 @@ summary:focus-visible {
 }
 
 .document-list-empty {
-  margin: 0 0 var(--space-4);
+  margin: var(--space-4) 0 0;
+  padding: var(--space-3);
+  border-left: 3px solid var(--color-accent);
+  background: var(--color-empty-bg);
   color: var(--color-muted);
 }
 
@@ -825,13 +890,16 @@ summary:focus-visible {
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-2);
   margin-top: var(--space-5);
-  padding-top: var(--space-5);
+  padding-top: var(--space-4);
   border-top: 1px solid var(--color-border);
 }
 
 .upload-zone input[type='file'] {
   min-width: 0;
   width: 100%;
+  padding: var(--space-2);
+  background: var(--color-surface);
+  color: var(--color-ink);
 }
 
 .upload-zone > label {
@@ -936,6 +1004,15 @@ summary:focus-visible {
   .message-scroll {
     max-height: 300px;
   }
+
+  .documents-workbench {
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 0.58fr);
+    gap: var(--space-4);
+  }
+
+  .documents-secondary {
+    padding-left: var(--space-4);
+  }
 }
 
 @media (max-width: 599px) {
@@ -1020,6 +1097,23 @@ summary:focus-visible {
     right: var(--space-3);
     left: var(--space-3);
     min-width: 0;
+  }
+
+  .documents-dev-toolbar,
+  .documents-dev-toolbar > div {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .documents-workbench {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .documents-secondary {
+    padding-top: var(--space-4);
+    padding-left: 0;
+    border-top: 1px solid var(--color-border);
+    border-left: 0;
   }
 
   .mascot-assistant-panel {
