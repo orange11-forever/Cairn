@@ -34,4 +34,9 @@ test("Web tooling belongs to apps/web", async () => {
   );
   assert.equal(contracts.name, "@cairn/contracts");
   assert.equal(contracts.exports["."].default, "./src/index.ts");
+
+  const readme = await readFile(join(REPOSITORY_ROOT, "README.md"), "utf8");
+  assert.match(readme, /contracts\/\s+# 共享运行时契约/);
+  assert.match(readme, /共享 API 契约与响应式 Web 基础已经完成/);
+  assert.match(readme, /真实鉴权、组织权限和数据库仍未实现/);
 });

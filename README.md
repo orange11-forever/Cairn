@@ -11,20 +11,17 @@
 </p>
 
 > [!IMPORTANT]
-> Cairn 当前处于阶段 0：仓库与工程基线重建。现阶段可运行内容包括 React/Vite 前端原型、Node mock API，以及可独立启动的 FastAPI 工程基线；真实数据层和正式 Local Web 仍在后续阶段建设。
+> Cairn 当前处于阶段 1 基础建设。现阶段可运行内容包括 React/Vite 前端原型、共享运行时契约、Node mock API，以及可独立启动的 FastAPI 工程基线；真实数据层、真实鉴权和正式 Local Web 仍在后续阶段建设。
 
-## 阶段 0.3 进度
+## 阶段 1 基础进度
 
-阶段 0.3“平台边界收敛”已经完成。
+共享 API 契约与响应式 Web 基础已经完成。
 
-当前边界包括：
-
-- Web 使用 React 19、Vite、React Router 7 和 TanStack Query 5，并继续连接 Node mock API；
-- session 在阶段 0.3 仍为内存实现，注销时取消请求并清空查询缓存；
-- 文档服务端状态迁移到 TanStack Query，命令型操作使用可取消、可防竞态的 action hook；
-- 前端错误保留 `code` 和 `traceId`，Node mock 统一使用 `/api/v1`，FastAPI 完善 CORS 与请求 ID 日志；
-- 资源 ID 收紧为 UUID，问答响应区分 `grounded_answer` 与 `not_found`；
-- session 持久化、组织租户和真实鉴权仍属于阶段 1；当前不包含数据库、搜索、流式问答或 Agent。
+- `@cairn/contracts` 统一现有登录、文档、问答、上传和错误响应契约；
+- Web 保留本地容错、请求取消、查询缓存和 UI 状态边界；
+- 工作台支持 360、768、1280 像素布局，以及日间、夜间和跟随系统偏好；
+- 导航壳可扩展到知识、项目、执行和治理模块，但当前只开放已有页面；
+- 真实鉴权、组织权限和数据库仍未实现，Web 继续连接 Node mock API。
 
 ## 核心能力
 
@@ -94,6 +91,8 @@ ai-knowledge-base/
 │   │   ├── styles/           # 全局样式
 │   │   └── tests/            # Node 契约测试与 React 组件测试
 │   └── worker/               # 后续异步任务 Worker 的预留边界
+├── packages/
+│   └── contracts/            # 共享运行时契约、Zod schema 与跨端 DTO
 ├── assets/brand/             # Cairn 品牌图片
 ├── scripts/                  # 跨 package 的任务编排与进程工具
 ├── package.json              # 根命令与 Node.js 工程约束
@@ -165,6 +164,6 @@ pnpm build
 pnpm verify
 ```
 
-`pnpm verify` 是完整的跨 package 门禁：它覆盖 Web 单测、类型检查、生产构建与真实浏览器验收，以及 API 测试、Ruff、Pyright 和发行包构建。浏览器部分覆盖路由保护、注销隔离、并发取消、文档状态、筛选、上传、提问和自动滚动；生产构建还会检查 Mock 场景控件没有进入产物。
+`pnpm verify` 是完整的跨 package 门禁：它覆盖共享契约测试与类型检查、Web 单测、类型检查、生产构建与真实浏览器验收，以及 API 测试、Ruff、Pyright 和发行包构建。浏览器部分覆盖 360/768/1280 像素布局、日间/夜间主题、路由保护、注销隔离、并发取消、文档状态、筛选、上传、提问和自动滚动；生产构建还会检查 Mock 场景控件没有进入产物。
 
-也可以使用 `pnpm test:web`、`pnpm test:api`、`pnpm typecheck:web`、`pnpm typecheck:api`、`pnpm build:web` 和 `pnpm build:api` 分别检查单个 package。
+也可以使用 `pnpm test:contracts`、`pnpm typecheck:contracts`、`pnpm test:web`、`pnpm test:api`、`pnpm typecheck:web`、`pnpm typecheck:api`、`pnpm build:web` 和 `pnpm build:api` 分别检查单个 package。
