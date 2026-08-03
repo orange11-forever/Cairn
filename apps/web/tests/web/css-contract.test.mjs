@@ -36,6 +36,8 @@ test('stylesheet keeps the layout hooks the components render', async () => {
     '.product-header',
     '.primary-nav',
     '.account-menu',
+    '.mascot-assistant',
+    '.header-utilities',
     '.workspace',
     '.workspace-header',
     '.documents-panel',
@@ -82,6 +84,11 @@ test('stylesheet defines semantic light and dark theme tokens', async () => {
     '--color-success-bg',
     '--color-empty-bg',
     '--color-danger-bg',
+    '--color-focus',
+    '--color-mineral',
+    '--color-jade',
+    '--color-amber',
+    '--color-coral',
   ]) {
     assert.match(css, new RegExp(`${token}:`), `missing theme token ${token}`);
   }
@@ -177,6 +184,7 @@ test('stylesheet keeps focus visible and avoids priority escape hatches', async 
 
   assert.match(css, /:focus-visible/);
   assert.match(css, /@media \(max-width: 1023px\)/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
   assert.doesNotMatch(css, /!important/);
   assert.doesNotMatch(css, /outline:\s*none/);
 });
