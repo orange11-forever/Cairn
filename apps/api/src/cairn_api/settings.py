@@ -13,6 +13,14 @@ class Settings(BaseSettings):
         populate_by_name=True,
     )
 
+    environment: Literal["development", "test", "production"] = Field(
+        default="development",
+        validation_alias="CAIRN_ENVIRONMENT",
+    )
+    database_url: str = Field(
+        default="postgresql+psycopg://cairn:cairn-local-only@127.0.0.1:5432/cairn",
+        validation_alias="DATABASE_URL",
+    )
     bind_host: str = Field(default="127.0.0.1", validation_alias="CAIRN_BIND_HOST")
     http_port: int = Field(default=8080, ge=1, le=65535, validation_alias="CAIRN_HTTP_PORT")
     app_url: AnyHttpUrl | None = Field(default=None, validation_alias="APP_URL")
@@ -24,6 +32,13 @@ class Settings(BaseSettings):
         default="INFO",
         validation_alias="LOG_LEVEL",
     )
+
+    @field_validator("database_url")
+    @classmethod
+    def require_postgresql_psycopg(cls, value: str) -> str:
+        if not value.startswith("postgresql+psycopg://"):
+            raise ValueError("DATABASE_URL must use the postgresql+psycopg driver")
+        return value
 
     @field_validator("cors_origins", mode="before")
     @classmethod

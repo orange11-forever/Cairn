@@ -1,11 +1,14 @@
 from collections.abc import Iterator
 from io import StringIO
+from unittest.mock import Mock
 
 import pytest
 from cairn_api.app import create_app
+from cairn_api.db.session import Database
 from cairn_api.logging import configure_app_logging
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import OperationalError
 
 
 @pytest.fixture
@@ -32,7 +35,63 @@ def test_health_and_api_version(client: TestClient) -> None:
 def test_openapi_contains_only_approved_paths(client: TestClient) -> None:
     response = client.get("/openapi.json")
     assert response.status_code == 200
-    assert set(response.json()["paths"]) == {"/health", "/api/v1"}
+    assert set(response.json()["paths"]) == {"/health", "/ready", "/api/v1"}
+
+
+def test_health_does_not_touch_database() -> None:
+    database = Mock(spec=Database)
+
+    with TestClient(create_app(database=database)) as client:
+        response = client.get("/health")
+
+    assert response.status_code == 200
+    database.check_ready.assert_not_called()
+
+
+def test_ready_reports_database_success() -> None:
+    database = Mock(spec=Database)
+
+    with TestClient(create_app(database=database)) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ready"}
+    database.check_ready.assert_called_once_with()
+
+
+def test_ready_reports_database_failure_with_trace_id() -> None:
+    database = Mock(spec=Database)
+    database.check_ready.side_effect = OperationalError("SELECT 1", {}, Exception("down"))
+
+    with TestClient(create_app(database=database), raise_server_exceptions=False) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 503
+    assert response.json()["code"] == "database_unavailable"
+    assert response.json()["message"] == "数据库暂时不可用"
+    assert response.json()["traceId"] == response.headers["x-request-id"]
+    assert "SELECT 1" not in response.text
+    assert "down" not in response.text
+
+
+def test_ready_does_not_normalize_programming_errors() -> None:
+    database = Mock(spec=Database)
+    database.check_ready.side_effect = RuntimeError("programming mistake")
+
+    with TestClient(create_app(database=database), raise_server_exceptions=False) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 500
+    assert response.json()["code"] == "internal_error"
+
+
+def test_app_lifespan_disposes_database() -> None:
+    database = Mock(spec=Database)
+
+    with TestClient(create_app(database=database)):
+        database.dispose.assert_not_called()
+
+    database.dispose.assert_called_once_with()
 
 
 def test_unknown_route_has_normalized_error_and_generated_request_id(

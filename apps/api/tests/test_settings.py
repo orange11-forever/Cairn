@@ -6,6 +6,10 @@ from pydantic import ValidationError
 def test_settings_defaults() -> None:
     settings = Settings(_env_file=None)  # pyright: ignore[reportCallIssue]
 
+    assert settings.environment == "development"
+    assert settings.database_url == (
+        "postgresql+psycopg://cairn:cairn-local-only@127.0.0.1:5432/cairn"
+    )
     assert settings.bind_host == "127.0.0.1"
     assert settings.http_port == 8080
     assert settings.app_url is None
@@ -43,3 +47,16 @@ def test_settings_rejects_invalid_app_url_and_origin() -> None:
 def test_settings_rejects_wildcard_subdomain_origin() -> None:
     with pytest.raises(ValidationError):
         Settings(cors_origins="https://*.example.com", _env_file=None)  # pyright: ignore[reportCallIssue]
+
+
+@pytest.mark.parametrize(
+    "database_url",
+    [
+        "sqlite:///local.db",
+        "postgresql://cairn:password@localhost/cairn",
+        "postgresql+asyncpg://cairn:password@localhost/cairn",
+    ],
+)
+def test_settings_require_postgresql_psycopg_driver(database_url: str) -> None:
+    with pytest.raises(ValidationError):
+        Settings(database_url=database_url, _env_file=None)  # pyright: ignore[reportCallIssue]

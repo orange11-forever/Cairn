@@ -1,13 +1,23 @@
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from typing import Literal
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel
+from sqlalchemy.exc import (
+    DisconnectionError,
+    InterfaceError,
+    OperationalError,
+    PendingRollbackError,
+)
+from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 
 from cairn_api import __version__
+from cairn_api.db.session import Database
 from cairn_api.errors import error_response
 from cairn_api.logging import configure_app_logging
 from cairn_api.middleware import RequestIdMiddleware, new_request_id
@@ -25,17 +35,39 @@ class ApiVersionResponse(BaseModel):
     service: Literal["cairn-api"] = "cairn-api"
 
 
+class ReadyResponse(BaseModel):
+    status: Literal["ready"] = "ready"
+
+
+DATABASE_UNAVAILABLE_ERRORS = (
+    DisconnectionError,
+    InterfaceError,
+    OperationalError,
+    PendingRollbackError,
+    SQLAlchemyTimeoutError,
+)
+
+
 def get_request_id(request: Request) -> str:
     request_id = getattr(request.state, "request_id", None)
     return request_id if isinstance(request_id, str) else new_request_id()
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, database: Database | None = None) -> FastAPI:
     current_settings = settings or Settings()
+    current_database = database or Database(current_settings.database_url)
     logger = configure_app_logging(current_settings.log_level)
 
-    application = FastAPI(title="Cairn API", version=__version__)
+    @asynccontextmanager
+    async def lifespan(_application: FastAPI) -> AsyncGenerator[None]:
+        try:
+            yield
+        finally:
+            current_database.dispose()
+
+    application = FastAPI(title="Cairn API", version=__version__, lifespan=lifespan)
     application.state.settings = current_settings
+    application.state.database = current_database
     if current_settings.cors_origins:
         application.add_middleware(
             CORSMiddleware,
@@ -95,6 +127,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @application.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:  # pyright: ignore[reportUnusedFunction]
         return HealthResponse(version=__version__)
+
+    @application.get("/ready", response_model=ReadyResponse)
+    def ready(request: Request) -> ReadyResponse | JSONResponse:  # pyright: ignore[reportUnusedFunction]
+        try:
+            current_database.check_ready()
+        except DATABASE_UNAVAILABLE_ERRORS:
+            return error_response(
+                status_code=503,
+                code="database_unavailable",
+                message="数据库暂时不可用",
+                trace_id=get_request_id(request),
+            )
+        return ReadyResponse()
 
     @application.get("/api/v1", response_model=ApiVersionResponse)
     async def api_version() -> ApiVersionResponse:  # pyright: ignore[reportUnusedFunction]
