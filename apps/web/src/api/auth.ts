@@ -1,43 +1,77 @@
-// 登录端点。
-//
-// 当前只做到"验证凭据、拿到当前用户"。**没有 token、没有持久化**：
-// 登录成功的结果只是一个内存里的 user 对象，刷新页面就没了。
-//
-// 真实鉴权需要统一决定 HttpOnly Cookie、CSRF 和 401 处理策略。
-// 这里不把临时 token 写进 localStorage，避免留下分散且不安全的读取路径。
+import { createCairnClient, type components } from "@cairn/sdk";
 
-import { LoginResponseSchema, type LoginRequest, type UserDto } from "@cairn/contracts";
+import { apiOrigins } from "./config.ts";
+import { ApiError } from "./errors.ts";
+import { parseApiErrorResponse } from "./parseApiErrorResponse.ts";
 
-import { request } from "./client.ts";
-import { parseOrThrow } from "../schemas/parse.ts";
+export type IdentityContext = components["schemas"]["IdentityContextResponse"];
+export type LoginInput = components["schemas"]["LoginRequest"];
 
-/**
- * 登录响应。
- *
- * 用 parseOrThrow（全有或全无）而不是宽松解析——这条判断在 schemas/users.ts
- * 的文件头已经论证过：role 字段没有安全的兜底值。降级成 viewer 会让管理员
- * 看不到入口，降级成 admin 更糟。所以坏数据就整个失败，让用户重新登录。
- */
-export type LoginInput = LoginRequest;
+function identityClient() {
+  return createCairnClient({ baseUrl: apiOrigins.identity });
+}
 
-/**
- * 登录。
- *
- * signal 是**必需参数**而不是可选的 options 字段。
- * 这是配合 useAbortableAction 的类型约定（见那个 Hook 里 fn 的签名）：
- * 强制每个端点都把取消信号接进来，就不会出现"UI 上取消了、请求还在飞"。
- * 写成可选的话，漏传不会有任何编译错误，而症状要到用户真去点取消才暴露。
- */
-export async function login({ email, password }: LoginInput, signal: AbortSignal): Promise<UserDto> {
-  const body: LoginRequest = { email: email.trim(), password };
-  const raw = await request("/api/v1/login", {
-    method: "POST",
-    // email 在这里 trim 而不是让调用方 trim：归一化属于边界层。
-    // 密码不 trim——空格是合法密码字符（见 lib/validation.ts 里同一条）。
-    body,
-    signal,
+function responseError(error: unknown, response: Response, context: string): ApiError {
+  const detail = parseApiErrorResponse(error, {
+    message: `服务器返回 ${response.status}`,
+    code: "http_error",
+    traceId: response.headers.get("X-Request-ID"),
   });
+  return new ApiError("http", detail.message, {
+    status: response.status,
+    code: detail.code,
+    traceId: detail.traceId,
+    context,
+  });
+}
 
-  const { user } = parseOrThrow(LoginResponseSchema, raw, "POST /api/v1/login");
-  return user;
+export async function login(input: LoginInput, signal: AbortSignal): Promise<IdentityContext> {
+  try {
+    const { data, error, response } = await identityClient().POST("/api/v1/login", {
+      body: { email: input.email.trim(), password: input.password },
+      signal,
+    });
+    if (data !== undefined) return data;
+    throw responseError(error, response, "POST /api/v1/login");
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new ApiError("aborted", "请求已被取消", { context: "POST /api/v1/login" });
+    }
+    throw new ApiError("network", "无法连接服务器，请检查网络", {
+      context: "POST /api/v1/login",
+      cause: error,
+    });
+  }
+}
+
+export async function restoreSession(signal: AbortSignal): Promise<IdentityContext> {
+  try {
+    const { data, error, response } = await identityClient().GET("/api/v1/session", { signal });
+    if (data !== undefined) return data;
+    throw responseError(error, response, "GET /api/v1/session");
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw new ApiError("network", "无法连接服务器，请检查网络", {
+      context: "GET /api/v1/session",
+      cause: error,
+    });
+  }
+}
+
+export async function logoutSession(csrfToken: string, signal: AbortSignal): Promise<void> {
+  try {
+    const { error, response } = await identityClient().POST("/api/v1/logout", {
+      headers: { "X-CSRF-Token": csrfToken },
+      signal,
+    });
+    if (response.ok) return;
+    throw responseError(error, response, "POST /api/v1/logout");
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw new ApiError("network", "无法连接服务器，请检查网络", {
+      context: "POST /api/v1/logout",
+      cause: error,
+    });
+  }
 }

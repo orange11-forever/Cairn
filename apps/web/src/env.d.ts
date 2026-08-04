@@ -26,13 +26,13 @@ interface ImportMetaEnv {
   readonly DEV: boolean;
 
   /**
-   * 后端 API 的基地址，例如 `https://kb.example.com`。
-   *
-   * 可选：缺省时 `client.ts` 退回 `http://localhost:8787`（本地 mock 后端）。
-   * 部署时必填——否则客户的浏览器会去连他们自己的 localhost，
-   * 而那里什么都没有。这个失败模式的症状是"页面打开了但所有请求都失败"。
-   */
-  readonly VITE_API_URL?: string;
+ * Identity API base URL, for example `https://identity.example.com`.
+ *
+ * Defaults to the local FastAPI identity service when omitted.
+ */
+  readonly VITE_IDENTITY_API_URL?: string;
+  /** Mock documents, uploads, and conversations API base URL. */
+  readonly VITE_MOCK_API_URL?: string;
 }
 
 interface ImportMeta {

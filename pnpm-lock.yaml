@@ -13,6 +13,9 @@ importers:
       '@cairn/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@cairn/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
       '@tanstack/react-query':
         specifier: 5.101.4
         version: 5.101.4(react@19.2.8)

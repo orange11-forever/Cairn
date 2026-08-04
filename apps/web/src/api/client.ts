@@ -6,6 +6,7 @@ import {
   parseApiErrorResponse,
   type ParsedApiErrorResponse,
 } from "./parseApiErrorResponse.ts";
+import { apiOrigins } from "./config.ts";
 
 /**
  * 后端地址。**从环境变量读，不写死。**
@@ -30,8 +31,6 @@ import {
  * 2. **改了它要重新构建**，不是重启就行。客户换域名需要重新 build。
  *    若部署需要运行时改配置，应由启动时注入的配置端点解决。
  */
-const BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8787";
-
 const DEFAULT_TIMEOUT_MS = 3000;
 
 export interface RequestOptions {
@@ -75,6 +74,7 @@ export async function request(
     method = "GET",
     body,
   }: RequestOptions = {},
+  baseUrl: string = apiOrigins.mock,
 ): Promise<unknown> {
   // fetch 没有原生超时。做法：自己开一个 controller，用 setTimeout 到点 abort。
   // 超时和用户取消因此走同一条路径，区别只在事后判断谁先 abort 的。
@@ -88,7 +88,7 @@ export async function request(
     else signal.addEventListener("abort", () => controller.abort(), { once: true });
   }
 
-  const url = new URL(path, BASE_URL);
+  const url = new URL(path, baseUrl);
   for (const [key, value] of Object.entries(query ?? {})) {
     url.searchParams.set(key, value);
   }

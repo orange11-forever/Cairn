@@ -1,21 +1,21 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import type { UserDto } from "@cairn/contracts";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useLayoutEffect, useRef } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { AppRoutes } from "../../src/app/AppRoutes.tsx";
+import type { IdentityContext } from "../../src/api/auth.ts";
+import { ApiError } from "../../src/api/errors.ts";
 import { createAppQueryClient } from "../../src/app/queryClient.ts";
-import { SessionProvider, useSession } from "../../src/session/SessionContext.tsx";
+import { SessionProvider, type SessionApi } from "../../src/session/SessionContext.tsx";
 import { ThemeProvider } from "../../src/theme/ThemeContext.tsx";
 
-const USER: UserDto = {
-  id: "00000000-0000-4000-8000-000000001001",
-  email: "demo@cairn.dev",
-  displayName: "演示用户",
-  role: "member",
+const IDENTITY: IdentityContext = {
+  user: { id: "00000000-0000-4000-8000-000000001001", email: "demo@cairn.dev", displayName: "演示用户" },
+  organization: { id: "00000000-0000-4000-8000-000000002001", slug: "cairn-demo", name: "Cairn Demo" },
+  membership: { id: "00000000-0000-4000-8000-000000003001", role: "owner" },
+  csrfToken: "csrf-test-token",
 };
 
 const jsonResponse = (body: unknown, status = 200) =>
@@ -24,31 +24,29 @@ const jsonResponse = (body: unknown, status = 200) =>
     headers: { "Content-Type": "application/json" },
   });
 
-function InitialSession({ user, children }: { user?: UserDto; children: React.ReactNode }) {
-  const { establishSession } = useSession();
-  const initialized = useRef(user === undefined);
-
-  useLayoutEffect(() => {
-    if (user !== undefined && !initialized.current) {
-      initialized.current = true;
-      establishSession(user);
-    }
-  }, [establishSession, user]);
-
-  return initialized.current ? children : null;
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => { resolve = next; });
+  return { promise, resolve };
 }
 
-function renderTestRoutes(path: string, options: { initialUser?: UserDto } = {}) {
+function fakeSessionApi(overrides: Partial<SessionApi> = {}): SessionApi {
+  return {
+    restore: async () => { throw new ApiError("http", "无会话", { status: 401, code: "session_invalid" }); },
+    logout: async () => undefined,
+    ...overrides,
+  };
+}
+
+function renderTestRoutes(path: string, options: { restoredIdentity?: IdentityContext; sessionApi?: SessionApi } = {}) {
   const queryClient = createAppQueryClient();
 
   return render(
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={[path]}>
-          <SessionProvider>
-            <InitialSession user={options.initialUser}>
-              <AppRoutes />
-            </InitialSession>
+          <SessionProvider sessionApi={options.sessionApi ?? fakeSessionApi()} restoredIdentity={options.restoredIdentity}>
+            <AppRoutes />
           </SessionProvider>
         </MemoryRouter>
       </QueryClientProvider>
@@ -57,7 +55,7 @@ function renderTestRoutes(path: string, options: { initialUser?: UserDto } = {})
 }
 
 beforeEach(() => {
-  vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ user: USER })));
+  vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(IDENTITY)));
   vi.stubGlobal(
     "matchMedia",
     vi.fn(() => ({
@@ -89,7 +87,7 @@ test("login reaches documents and NavLink reaches ask without a reload", async (
   const user = userEvent.setup();
   renderTestRoutes("/login");
 
-  await user.type(screen.getByLabelText("邮箱"), "demo@cairn.dev");
+  await user.type(await screen.findByLabelText("邮箱"), "demo@cairn.dev");
   await user.type(screen.getByLabelText("密码"), "cairn-demo-2026");
   await user.click(screen.getByRole("button", { name: "登录" }));
 
@@ -102,18 +100,42 @@ test("login reaches documents and NavLink reaches ask without a reload", async (
   );
 });
 
+test("protected routes wait for restoration instead of flashing login", async () => {
+  const restore = deferred<IdentityContext>();
+  renderTestRoutes("/documents", { sessionApi: fakeSessionApi({ restore: () => restore.promise }) });
+
+  expect(screen.getByText("正在恢复会话…")).toHaveAttribute("aria-busy", "true");
+  expect(screen.queryByRole("heading", { name: "登录 Cairn" })).toBeNull();
+  expect(screen.queryByRole("heading", { name: "知识文档" })).toBeNull();
+
+  restore.resolve(IDENTITY);
+  expect(await screen.findByRole("heading", { name: "知识文档" })).toBeInTheDocument();
+});
+
+test("logout failure keeps the authenticated session and cached identity", async () => {
+  const api = fakeSessionApi({ logout: async () => { throw new ApiError("network", "断网"); } });
+  const user = userEvent.setup();
+  renderTestRoutes("/documents", { sessionApi: api, restoredIdentity: IDENTITY });
+
+  await user.click(await screen.findByText("演示用户"));
+  await user.click(screen.getByRole("button", { name: "退出" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("断网");
+  expect(screen.getByRole("heading", { name: "知识文档" })).toBeInTheDocument();
+});
+
 test("authenticated login and unknown routes resolve to documents", async () => {
-  const first = renderTestRoutes("/login", { initialUser: USER });
+  const first = renderTestRoutes("/login", { restoredIdentity: IDENTITY });
   expect(await screen.findByRole("heading", { name: "知识文档" })).toBeInTheDocument();
   first.unmount();
 
-  renderTestRoutes("/not-a-route", { initialUser: USER });
+  renderTestRoutes("/not-a-route", { restoredIdentity: IDENTITY });
   expect(await screen.findByRole("heading", { name: "知识文档" })).toBeInTheDocument();
 });
 
 test("authenticated routes use one extensible application shell", async () => {
   const user = userEvent.setup();
-  renderTestRoutes("/documents", { initialUser: USER });
+  renderTestRoutes("/documents", { restoredIdentity: IDENTITY });
 
   expect(await screen.findByRole("banner")).toBeInTheDocument();
   const navigation = screen.getByRole("navigation", { name: "主导航" });
@@ -135,7 +157,7 @@ test("authenticated routes use one extensible application shell", async () => {
 
 test("account menu exposes identity and logout without duplicating session state", async () => {
   const user = userEvent.setup();
-  renderTestRoutes("/documents", { initialUser: USER });
+  renderTestRoutes("/documents", { restoredIdentity: IDENTITY });
 
   await user.click(await screen.findByText("演示用户"));
   expect(screen.getByText("demo@cairn.dev")).toBeInTheDocument();

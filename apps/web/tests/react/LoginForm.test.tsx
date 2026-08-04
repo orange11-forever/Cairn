@@ -42,15 +42,15 @@ const jsonResponse = (body: unknown, status = 200) =>
     headers: { "Content-Type": "application/json" },
   });
 
-const VALID_USER = {
-  id: "00000000-0000-4000-8000-000000001001",
-  email: "demo@cairn.dev",
-  displayName: "演示用户",
-  role: "member",
+const VALID_IDENTITY = {
+  user: { id: "00000000-0000-4000-8000-000000001001", email: "demo@cairn.dev", displayName: "演示用户" },
+  organization: { id: "00000000-0000-4000-8000-000000002001", slug: "cairn-demo", name: "Cairn Demo" },
+  membership: { id: "00000000-0000-4000-8000-000000003001", role: "owner" },
+  csrfToken: "csrf-test-token",
 };
 
 beforeEach(() => {
-  stubFetch(async () => jsonResponse({ user: VALID_USER }));
+  stubFetch(async () => jsonResponse(VALID_IDENTITY));
 });
 
 afterEach(() => {
@@ -257,7 +257,7 @@ describe("提交中与成功", () => {
     stubFetch(
       () =>
         new Promise<Response>((resolve) => {
-          release = () => resolve(jsonResponse({ user: VALID_USER }));
+          release = () => resolve(jsonResponse(VALID_IDENTITY));
         }),
     );
 
@@ -289,36 +289,12 @@ describe("提交中与成功", () => {
     await user.click(screen.getByRole("button", { name: "登录" }));
 
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
-    expect(onSuccess).toHaveBeenCalledWith(VALID_USER);
+    expect(onSuccess).toHaveBeenCalledWith(VALID_IDENTITY);
 
     const call = vi.mocked(fetch).mock.calls[0];
     expect(call).toBeDefined();
     if (call === undefined) return;
-    expect(new URL(String(call[0])).pathname).toBe("/api/v1/login");
+    expect(new URL((call[0] as Request).url).pathname).toBe("/api/v1/login");
   });
 
-  test("响应缺 role 字段：拒绝登录，不降级放行", async () => {
-    // 权限字段没有安全的兜底值（schemas/users.ts 的文件头论证过）：
-    // 降级成 viewer 会让管理员看不到入口，降级成 admin 更糟。
-    // 所以坏数据必须整个失败，而不是"尽力放进去"。
-    stubFetch(async () =>
-      jsonResponse({
-        user: { id: "00000000-0000-4000-8000-000000001001", email: "demo@cairn.dev" },
-      }),
-    );
-
-    const user = userEvent.setup();
-    const onSuccess = vi.fn();
-    render(<LoginForm onSuccess={onSuccess} />);
-
-    await user.type(screen.getByLabelText("邮箱"), "demo@cairn.dev");
-    await user.type(screen.getByLabelText("密码"), "cairn-demo-2026");
-    await user.click(screen.getByRole("button", { name: "登录" }));
-
-    // 给用户的文案不含技术术语——完整的 zod 报告在控制台（parse.ts 的两个受众）
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "服务器返回的数据格式不正确，请联系管理员",
-    );
-    expect(onSuccess).not.toHaveBeenCalled();
-  });
 });

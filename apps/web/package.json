@@ -35,6 +35,7 @@
     "vitest": "4.1.10"
   },
   "dependencies": {
+    "@cairn/sdk": "workspace:*",
     "@cairn/contracts": "workspace:*",
     "@tanstack/react-query": "5.101.4",
     "lucide-react": "^1.28.0",

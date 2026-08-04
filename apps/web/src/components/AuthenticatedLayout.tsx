@@ -2,9 +2,9 @@ import { useSession } from "../session/SessionContext.tsx";
 import { AppShell } from "./AppShell.tsx";
 
 export function AuthenticatedLayout() {
-  const { session, logout } = useSession();
+  const { session, logout, logoutError } = useSession();
 
   if (session === null) return null;
 
-  return <AppShell user={session.user} onLogout={logout} />;
+  return <AppShell identity={session.identity} onLogout={logout} logoutError={logoutError} />;
 }

@@ -1,4 +1,5 @@
-import type { UserDto } from "@cairn/contracts";
+import type { IdentityContext } from "../api/auth.ts";
+import type { ApiError } from "../api/errors.ts";
 import { Link, Outlet, useLocation } from "react-router-dom";
 
 import { AccountMenu } from "./AccountMenu.tsx";
@@ -6,7 +7,7 @@ import { MascotAssistant } from "./MascotAssistant.tsx";
 import { PrimaryNavigation } from "./PrimaryNavigation.tsx";
 import { ThemeControl } from "./ThemeControl.tsx";
 
-export function AppShell({ user, onLogout }: { user: UserDto; onLogout: () => Promise<void> }) {
+export function AppShell({ identity, onLogout, logoutError }: { identity: IdentityContext; onLogout: () => Promise<void>; logoutError: ApiError | null }) {
   const { pathname } = useLocation();
   const page = pathname === "/ask" ? "ask" : "documents";
 
@@ -26,7 +27,7 @@ export function AppShell({ user, onLogout }: { user: UserDto; onLogout: () => Pr
         <PrimaryNavigation />
         <div className="header-utilities">
           <MascotAssistant page={page} />
-          <AccountMenu user={user} onLogout={onLogout} appearance={<ThemeControl />} />
+          <AccountMenu identity={identity} onLogout={onLogout} logoutError={logoutError} appearance={<ThemeControl />} />
         </div>
       </header>
       <main className="workspace">

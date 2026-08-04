@@ -8,12 +8,13 @@ import { ApiError } from "../../src/api/errors.ts";
 import { createAppQueryClient, shouldRetry } from "../../src/app/queryClient.ts";
 import { SessionProvider, useSession } from "../../src/session/SessionContext.tsx";
 
-const USER = {
-  id: "00000000-0000-4000-8000-000000001001",
-  email: "demo@cairn.dev",
-  displayName: "演示用户",
-  role: "member" as const,
+const IDENTITY = {
+  user: { id: "00000000-0000-4000-8000-000000001001", email: "demo@cairn.dev", displayName: "演示用户" },
+  organization: { id: "00000000-0000-4000-8000-000000002001", slug: "cairn-demo", name: "Cairn Demo" },
+  membership: { id: "00000000-0000-4000-8000-000000003001", role: "owner" },
+  csrfToken: "csrf-test-token",
 };
+const USER = IDENTITY.user;
 
 const DOC = {
   id: "00000000-0000-4000-8000-000000000001",
@@ -48,7 +49,7 @@ test("logout aborts the session, clears queries, and replaces the URL", async ()
   });
 
   function Harness() {
-    const { session, establishSession, logout } = useSession();
+    const { session, logout } = useSession();
     const location = useLocation();
     const query = useQueryClient();
     if (session !== null && observedSignal.current === null) {
@@ -57,7 +58,6 @@ test("logout aborts the session, clears queries, and replaces the URL", async ()
     }
     return (
       <>
-        <button onClick={() => establishSession(USER)}>establish</button>
         <button onClick={() => void logout()}>logout</button>
         <output>{location.pathname}</output>
         <output>{query.getQueryData(["documents", USER.id, "success"]) === undefined ? "empty" : "filled"}</output>
@@ -69,14 +69,13 @@ test("logout aborts the session, clears queries, and replaces the URL", async ()
   render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={["/documents"]}>
-        <SessionProvider>
+        <SessionProvider restoredIdentity={IDENTITY} sessionApi={{ restore: async () => IDENTITY, logout: async () => undefined }}>
           <Harness />
         </SessionProvider>
       </MemoryRouter>
     </QueryClientProvider>,
   );
 
-  await user.click(screen.getByRole("button", { name: "establish" }));
   await user.click(screen.getByRole("button", { name: "logout" }));
   await waitFor(() => expect(screen.getByText("/login")).toBeInTheDocument());
 

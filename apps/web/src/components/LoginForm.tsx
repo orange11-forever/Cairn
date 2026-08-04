@@ -17,18 +17,17 @@
 // ---------------------------------------------------------------------------
 
 import { useState } from "react";
-import type { UserDto } from "@cairn/contracts";
 import { LogIn } from "lucide-react";
 
 import { FormField, fieldAria } from "./FormField.tsx";
 import { MascotFigure } from "./MascotFigure.tsx";
-import { login } from "../api/auth.ts";
+import { login, type IdentityContext } from "../api/auth.ts";
 import { useAbortableAction } from "../hooks/useAbortableAction.ts";
 import { PASSWORD_MIN_LENGTH, validateEmail, validatePassword } from "../lib/validation.ts";
 
 interface LoginFormProps {
   /** 登录成功后把用户交出去。这个组件不决定登录后干什么。 */
-  onSuccess: (user: UserDto) => void;
+  onSuccess: (identity: IdentityContext) => void;
 }
 
 interface FieldErrors {
@@ -114,12 +113,12 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
       return;
     }
 
-    const user = await action.run({ email, password });
+    const identity = await action.run({ email, password });
     // undefined 表示失败或被取消。错误已经在 action.state 里，UI 会自己显示，
     // 这里只需要什么都不做——尤其不能调 onSuccess。
-    if (user === undefined) return;
+    if (identity === undefined) return;
 
-    onSuccess(user);
+    onSuccess(identity);
   }
 
   return (
@@ -207,9 +206,11 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
           </form>
 
           {/* 演示账号是 mock 阶段的临时便利，接入真实鉴权时必须移除。 */}
-          <p className="login-demo-hint">
-            演示账号：<code>demo@cairn.dev</code> / <code>cairn-demo-2026</code>
-          </p>
+          {import.meta.env.DEV && (
+            <p className="login-demo-hint">
+              演示账号：<code>demo@cairn.dev</code> / <code>cairn-demo-2026</code>
+            </p>
+          )}
         </section>
       </div>
     </main>

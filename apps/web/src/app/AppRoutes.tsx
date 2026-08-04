@@ -1,5 +1,5 @@
 import { Navigate, Outlet, Route, Routes, useNavigate } from "react-router-dom";
-import type { UserDto } from "@cairn/contracts";
+import type { IdentityContext } from "../api/auth.ts";
 
 import { AuthenticatedLayout } from "../components/AuthenticatedLayout.tsx";
 import { LoginForm } from "../components/LoginForm.tsx";
@@ -8,13 +8,13 @@ import { DocumentsPage } from "../pages/DocumentsPage.tsx";
 import { useSession } from "../session/SessionContext.tsx";
 
 function LoginRoute() {
-  const { session, establishSession } = useSession();
+  const { status, establishSession } = useSession();
   const navigate = useNavigate();
 
-  if (session !== null) return <Navigate to="/documents" replace />;
+  if (status === "authenticated") return <Navigate to="/documents" replace />;
 
-  function handleSuccess(user: UserDto) {
-    establishSession(user);
+  function handleSuccess(identity: IdentityContext) {
+    establishSession(identity);
     navigate("/documents", { replace: true });
   }
 
@@ -22,18 +22,22 @@ function LoginRoute() {
 }
 
 function RequireSession() {
-  const { session } = useSession();
+  const { status } = useSession();
 
-  return session === null ? <Navigate to="/login" replace /> : <Outlet />;
+  return status === "anonymous" ? <Navigate to="/login" replace /> : <Outlet />;
 }
 
 function FallbackRoute() {
-  const { session } = useSession();
+  const { status } = useSession();
 
-  return <Navigate to={session === null ? "/login" : "/documents"} replace />;
+  return <Navigate to={status === "anonymous" ? "/login" : "/documents"} replace />;
 }
 
 export function AppRoutes() {
+  const { status } = useSession();
+  if (status === "restoring") {
+    return <main aria-busy="true">正在恢复会话…</main>;
+  }
   return (
     <Routes>
       <Route path="/login" element={<LoginRoute />} />
