@@ -204,5 +204,24 @@ test('stylesheet defines the approved tablet and mobile application-shell transi
   assert.match(mobile[1], /\.question-form[\s\S]*grid-template-columns:\s*1fr/);
 });
 
+test('mascot thumbnails stay square and circular at every compact size', async () => {
+  const css = await readFile(cssUrl, 'utf8');
+
+  assert.match(css, /\.mascot-art\s*>\s*img/);
+  assert.match(css, /border-radius:\s*50%/, 'thumbnail imagery must be circular');
+
+  const assistantImage = css.match(
+    /\.mascot-assistant-body \.mascot-figure\[data-variant=['"]half['"]\] \.mascot-art\s*>\s*img,\s*\.mascot-assistant-body \.mascot-figure\[data-variant=['"]half['"]\] \.mascot-image-fallback\s*\{([^}]*)\}/,
+  );
+  assert.ok(assistantImage, 'missing assistant thumbnail rule');
+  assert.match(assistantImage[1], /width:\s*92px/);
+  assert.match(assistantImage[1], /height:\s*92px/);
+
+  const mobile = css.match(/@media \(max-width:\s*599px\)\s*\{([\s\S]*)\}\s*$/);
+  assert.ok(mobile, 'missing mobile media query');
+  assert.match(mobile[1], /width:\s*82px/);
+  assert.match(mobile[1], /height:\s*82px/);
+});
+
 // 导航当前项、status region 的 role/aria-live、语义 landmark
 // 都搬到 verify-web.mjs 的结构关卡了（同上：结构进了组件，检查跟着进浏览器）。

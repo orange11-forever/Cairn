@@ -571,7 +571,7 @@ summary:focus-visible {
   gap: var(--space-2);
 }
 
-.login-brand-scene .mascot-figure[data-variant='full'] > img,
+.login-brand-scene .mascot-figure[data-variant='full'] .mascot-art > img,
 .login-brand-scene .mascot-figure[data-variant='full'] .mascot-image-fallback {
   width: min(260px, 78%);
   height: min(390px, 48vh);
@@ -837,7 +837,7 @@ summary:focus-visible {
   display: block;
 }
 
-.mascot-assistant-trigger .mascot-figure > img,
+.mascot-assistant-trigger .mascot-figure .mascot-art > img,
 .mascot-assistant-trigger .mascot-image-fallback {
   width: 42px;
   height: 42px;
@@ -899,10 +899,10 @@ summary:focus-visible {
   gap: var(--space-1);
 }
 
-.mascot-assistant-body .mascot-figure[data-variant='half'] > img,
+.mascot-assistant-body .mascot-figure[data-variant='half'] .mascot-art > img,
 .mascot-assistant-body .mascot-figure[data-variant='half'] .mascot-image-fallback {
   width: 92px;
-  height: 108px;
+  height: 92px;
 }
 
 .mascot-assistant-body .mascot-state {
@@ -915,14 +915,13 @@ summary:focus-visible {
   font-size: 0.875rem;
 }
 
-/* The supplied illustration has a light background, including in dark mode. */
 .mascot-figure {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
 }
 
-.mascot-figure > img,
+.mascot-figure .mascot-art > img,
 .mascot-image-fallback {
   display: block;
   width: 72px;
@@ -936,13 +935,21 @@ summary:focus-visible {
   object-position: center top;
 }
 
-.mascot-figure[data-variant='half'] > img,
+.mascot-figure:not([data-variant='full']) .mascot-art > img {
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  object-fit: contain;
+  object-position: center;
+}
+
+.mascot-figure[data-variant='half'] .mascot-art > img,
 .mascot-figure[data-variant='half'] .mascot-image-fallback {
   width: 128px;
   height: 128px;
 }
 
-.mascot-figure[data-variant='full'] > img,
+.mascot-figure[data-variant='full'] .mascot-art > img,
 .mascot-figure[data-variant='full'] .mascot-image-fallback {
   width: 176px;
   height: 224px;
@@ -954,7 +961,7 @@ summary:focus-visible {
   font-size: 0.875rem;
 }
 
-.mascot-figure[data-state='thinking'] > img {
+.mascot-figure[data-state='thinking'] .mascot-art > img {
   animation: mascot-thinking 1.6s ease-in-out infinite;
 }
 
@@ -999,7 +1006,7 @@ summary:focus-visible {
     transition-duration: 0.01ms;
   }
 
-  .mascot-figure[data-state='thinking'] > img {
+  .mascot-figure[data-state='thinking'] .mascot-art > img {
     animation: none;
   }
 }
@@ -1138,7 +1145,7 @@ summary:focus-visible {
   display: block;
 }
 
-.message-mascot > img,
+.message-mascot .mascot-art > img,
 .message-mascot .mascot-image-fallback {
   width: 44px;
   height: 44px;
@@ -1245,7 +1252,7 @@ summary:focus-visible {
     padding: var(--space-5);
   }
 
-  .login-brand-scene .mascot-figure[data-variant='full'] > img,
+  .login-brand-scene .mascot-figure[data-variant='full'] .mascot-art > img,
   .login-brand-scene .mascot-figure[data-variant='full'] .mascot-image-fallback {
     width: min(210px, 78%);
     height: min(315px, 44vh);
@@ -1286,12 +1293,15 @@ summary:focus-visible {
     gap: var(--space-1);
   }
 
-  .login-brand-scene .mascot-figure[data-variant='full'] > img,
+  .login-brand-scene .mascot-figure[data-variant='full'] .mascot-art > img,
   .login-brand-scene .mascot-figure[data-variant='full'] .mascot-image-fallback {
     width: 82px;
-    height: 88px;
-    object-fit: cover;
-    object-position: center top;
+    height: 82px;
+    padding: 0;
+    border-radius: 50%;
+    background: transparent;
+    object-fit: contain;
+    object-position: center;
   }
 
   .login-brand-scene .mascot-state {
