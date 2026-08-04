@@ -11,7 +11,7 @@
 </p>
 
 > [!IMPORTANT]
-> Cairn 当前处于阶段 1 基础建设。现阶段核心开发链路已包含 PostgreSQL 16、FastAPI Cookie 身份接口、React/Vite Web 和仍承载文档原型的 Node mock；知识摄取、完整权限与 AI Provider 仍在后续阶段建设。
+> Cairn 当前处于阶段 1 基础建设。现阶段核心开发链路已包含真实 PostgreSQL 16、FastAPI Cookie 身份接口、React/Vite Web 和仍承载文档原型的 Node mock；知识摄取、完整权限与 AI Provider 仍在后续阶段建设。
 
 ## 阶段 1 基础进度
 
@@ -67,12 +67,12 @@
 | Web 数据与图形 | React Router、TanStack Query、React Flow、ELK.js、Mermaid | Router/Query 当前已使用；其余规划 |
 | 桌面与移动 | Tauri、React Native、Expo | 规划 |
 | API | Python 3.12、FastAPI、Pydantic Settings、Uvicorn | 当前已使用 |
-| API 数据访问 | SQLAlchemy 2、Alembic | 规划 |
-| 数据与文件 | PostgreSQL、pgvector、Redis、S3/MinIO | 规划 |
+| API 数据访问 | SQLAlchemy 2、Alembic | 当前已使用 |
+| 数据与文件 | PostgreSQL、pgvector、Redis、S3/MinIO | PostgreSQL 16 当前已使用；其余规划 |
 | 工作流与 Agent | Temporal、LangGraph、AgentRunner | 规划 |
 | 模型接入 | LiteLLM Gateway 与 Cairn 模型策略层 | 规划 |
 | 实时与可观测 | Transactional Outbox、SSE、OpenTelemetry | 规划 |
-| 部署 | Local Web、Docker Compose、Kubernetes/Helm | 规划 |
+| 部署 | Local Web、Docker Compose、Kubernetes/Helm | Docker Compose 当前用于核心开发；正式部署规划 |
 | 测试与工具 | pnpm、Vitest、Testing Library、Playwright；uv、pytest、Ruff、Pyright | 当前已使用 |
 
 ## 项目结构
@@ -93,8 +93,10 @@ Carin
 │   │   └── tests/            # Node 契约测试与 React 组件测试
 │   └── worker/               # 后续异步任务 Worker 的预留边界
 ├── packages/
-│   └── contracts/            # 共享运行时契约、Zod schema 与跨端 DTO
+│   ├── contracts/            # 共享运行时契约（文档原型）
+│   └── sdk/                  # 从 FastAPI OpenAPI 生成的身份客户端
 ├── assets/brand/             # Cairn 品牌图片
+├── deploy/compose/           # PostgreSQL 核心开发基础设施
 ├── scripts/                  # 跨 package 的任务编排与进程工具
 ├── package.json              # 根命令与 Node.js 工程约束
 ├── pnpm-workspace.yaml       # pnpm workspace 定义
@@ -104,7 +106,7 @@ Carin
 
 ## 最终部署形式
 
-正式 Local Web、单服务器私有部署和 Kubernetes 私有部署将共享同一套 API、数据库迁移和应用镜像。当前阶段只有下方的 Vite + mock 原型，正式交付能力仍在建设中。
+正式 Local Web、单服务器私有部署和 Kubernetes 私有部署将共享同一套 API、数据库迁移和应用镜像。当前核心开发链路已有真实 API、PostgreSQL 和 Web，文档类操作暂由 Node mock 承载；正式部署能力仍在建设中。
 
 | 形式 | 默认入口 | 定位 |
 |---|---|---|
@@ -131,7 +133,7 @@ pnpm dev:core
 - Identity API：`http://127.0.0.1:8080`
 - Mock API：`http://localhost:8787`
 
-`pnpm dev:core` 会先执行迁移和幂等演示种子，再托管 API、Mock 与 Web 三个进程。停止该命令只终止应用进程，不删除 PostgreSQL 开发卷。`pnpm dev:web` 与 `pnpm mock:web` 仍可用于底层调试，但原来的双终端 mock-only 流程不再是核心开发路径。
+`pnpm dev:core` 会先执行迁移和幂等演示种子，再托管 API、Mock 与 Web 三个进程。演示身份只允许在开发或测试环境写入；生产环境会拒绝演示种子、示例 CSRF 密钥和不安全 Cookie。按 `Ctrl+C` 停止该命令只终止 API、Mock 与 Web，不删除 PostgreSQL 开发卷；再次启动会复用已有数据。`pnpm dev:web` 与 `pnpm mock:web` 仍可用于底层调试，但原来的双终端 mock-only 流程不再是核心开发路径。
 
 若本机 5432 已被其他 PostgreSQL 占用，可让 `CAIRN_POSTGRES_PORT` 与 `DATABASE_URL` 同时改用同一个空闲端口；不要只改其中一项。
 
@@ -155,12 +157,15 @@ pnpm dev:api
 
 API 现已提供 PostgreSQL readiness、登录、会话恢复、注销和当前组织接口。文档、上传和问答仍由 Node mock 提供。
 
+当前切片不包含 Bearer/OIDC、登录限流、完整 RBAC/ACL、项目、知识摄取、知识端点或 AI Provider。AI Provider 与外部 Agent 接入必须建立在组织、权限、审计、项目和知识基础完成之后，不能绕过这些边界提前扩展。
+
 ## 质量检查
 
 ```bash
 pnpm typecheck
 pnpm test
 pnpm build
+pnpm verify:core
 pnpm verify
 ```
 

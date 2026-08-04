@@ -4,7 +4,7 @@
 
 Web 的身份请求连接本 API；文档、上传和问答原型仍连接 `mocks/docs-server.mjs`。当前产品、架构和阶段路线以 [`docs/specs/2026-07-31-cairn-platform-reorientation-design.md`](../../docs/specs/2026-07-31-cairn-platform-reorientation-design.md) 为准。
 
-Local Web、Compose 与 Helm 必须使用同一 `/api/v1` 契约、数据库迁移和权限规则。Local Web 默认绑定 `127.0.0.1:8080`；它不是当前的 Vite + mock 原型，也不使用 SQLite 分叉。
+当前核心开发由 FastAPI、PostgreSQL、React/Vite Web 与文档 Node mock 共同组成。API 默认绑定 `127.0.0.1:8080`，身份数据不使用 SQLite 或内存仓储分叉。未来 Local Web、Compose 与 Helm 必须继续使用同一 `/api/v1` 契约、数据库迁移和权限规则。
 
 ## 当前工程命令
 
@@ -26,18 +26,32 @@ API 默认监听 `127.0.0.1:8080`，提供 `/health`、`/ready`、身份接口�
 
 Docker Desktop 必须保持运行。生产环境必须替换示例数据库密码和 CSRF 密钥，并启用安全 Cookie。
 
+## 当前能力边界
+
+- 已实现：组织、用户、成员关系、Argon2id 密码、Cookie 会话、CSRF、当前组织查询和追加式身份审计。
+- `Bearer/OIDC`：未实现。
+- 登录限流：未实现。
+- 完整 RBAC/ACL：未实现。
+- 项目与任务端点：未实现。
+- 知识摄取与知识端点：未实现，文档、上传和问答仍由 Node mock 提供。
+- AI Provider 与外部 Agent：未实现，必须等待组织、权限、审计、项目和知识基础完成。
+
+演示种子只允许在开发和测试环境运行；生产配置拒绝演示种子、示例 CSRF 密钥和不安全 Cookie。停止 `pnpm dev:core` 只停止 API、Mock 与 Web 进程，不删除 PostgreSQL 开发卷。
+
 ## 实施顺序
 
 | 阶段 | API 侧主要交付 |
 |---|---|
 | 0 | FastAPI 骨架、`/health`、`/api/v1`、统一错误、OpenAPI SDK、测试和 CI |
-| 1 | 组织、成员、Cookie/Bearer 双鉴权、RBAC、ACL、审计和 PostgreSQL 迁移 |
+| 1 | 已完成组织、成员、Cookie 身份、审计和 PostgreSQL 迁移；Bearer、RBAC、ACL 延后 |
 | 2 | 项目与任务 DAG、状态机、Outbox 和 SSE 查询模型 |
 | 3 | 通用资源、对象存储、摄取状态、权限感知搜索和引用 |
 | 4 | Agent、模型策略、运行、预算、审批与 AgentRunner 契约 |
 | 5-6 | 外部编程 Agent、代码智能、OIDC/SAML、配额、审计查询和部署治理 |
 
-## 数据模型不变量
+## 后续数据模型不变量
+
+以下内容是后续阶段必须遵守的设计约束，不代表对应业务表、端点或流程已经实现。
 
 ### 1. 组织是租户边界
 
@@ -121,7 +135,9 @@ chunk_embeddings:
 
 ## 鉴权与 API 契约
 
-### Cookie 与 Bearer 双模式
+### 目标：Cookie 与 Bearer 双模式
+
+当前只实现 Web 的 Cookie 路径。Bearer、Refresh token 轮换、设备会话和凭据冲突策略均未实现。
 
 | 客户端 | 凭据 | 存储 |
 |---|---|---|
@@ -147,7 +163,9 @@ Cookie 路径启用 CSRF 防护；Bearer 路径不依赖浏览器自动携带凭
 - 普通进度和日志使用 SSE，多人实时编辑等双向场景才使用 WebSocket；
 - 老版本客户端可能长期存在，破坏性契约变化必须通过新 API 版本演进。
 
-## 模型与 Provider
+## 后续模型与 Provider 设计
+
+本节是下游设计约束；当前 API 不读取 Provider 配置，也不发起模型调用。
 
 模型访问统一经过 LiteLLM Gateway 和 Cairn 策略层。Provider、模型、能力、上下文窗口、成本、数据边界和风险策略分开配置。
 
