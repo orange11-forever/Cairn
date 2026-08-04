@@ -25,6 +25,7 @@ const TASKS = Object.freeze({
   ],
   "typecheck:api": [UV, ["run", "--package", "cairn-api", "pyright"]],
   "build:api": [UV, ["build", "--package", "cairn-api"]],
+  "infra:up": [process.execPath, ["scripts/infra.mjs", "up"]],
 });
 
 export function runTask(taskName) {

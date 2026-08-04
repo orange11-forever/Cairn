@@ -11,6 +11,7 @@ const APPROVED_SCRIPTS = [
   "build:web",
   "dev:api",
   "dev:web",
+  "infra:up",
   "mock:web",
   "test",
   "test:api",
@@ -59,6 +60,12 @@ test("root commands are allowlisted and shell neutral", async () => {
 
 test("task runner rejects unknown tasks", async () => {
   const exitCode = await runNode(["scripts/run-task.mjs", "unknown:task"]);
+
+  assert.equal(exitCode, 2);
+});
+
+test("test-down rejects unguarded project names before Docker is called", async () => {
+  const exitCode = await runNode(["scripts/infra.mjs", "test-down", "--project", "cairn"]);
 
   assert.equal(exitCode, 2);
 });

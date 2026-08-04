@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16-bookworm
+    ports:
+      - "${CAIRN_POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB:-cairn}"
+      POSTGRES_USER: "${POSTGRES_USER:-cairn}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-cairn-local-only}"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - cairn_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  cairn_postgres_data:
