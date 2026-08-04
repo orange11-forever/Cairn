@@ -79,7 +79,7 @@
 以下目录树只列出公开维护的源码、测试与工程入口，不包含私有文档、依赖缓存和构建产物。
 
 ```text
-ai-knowledge-base/
+Carin
 ├── apps/
 │   ├── api/                  # FastAPI 工程基线
 │   │   ├── src/cairn_api/    # API 应用、配置、中间件与错误契约
