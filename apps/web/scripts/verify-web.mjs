@@ -38,11 +38,23 @@ function readPort(name, fallback) {
   return port;
 }
 
+function readOrigin(name) {
+  const raw = process.env[name];
+  if (raw === undefined) throw new Error(`${name} is required`);
+  const url = new URL(raw);
+  if (url.username || url.password || url.pathname !== "/" || url.search || url.hash) {
+    throw new Error(`${name} must be an origin without credentials, path, query, or fragment`);
+  }
+  return url.origin;
+}
+
 const WEB_PORT = readPort("CAIRN_VERIFY_WEB_PORT", 5500);
 const MOCK_PORT = readPort("CAIRN_VERIFY_MOCK_PORT", 8787);
 const WEB = `http://localhost:${WEB_PORT}`;
 const MOCK_ORIGIN = `http://localhost:${MOCK_PORT}`;
 const MOCK_HEALTH = `${MOCK_ORIGIN}/health`;
+const IDENTITY_ORIGIN = readOrigin("CAIRN_VERIFY_IDENTITY_ORIGIN");
+const IDENTITY_READY = `${IDENTITY_ORIGIN}/ready`;
 
 // Vite dev server。
 //
@@ -61,7 +73,11 @@ const mockOptions = {
 };
 const webOptions = {
   ...managedOptions,
-  env: { ...process.env, VITE_API_URL: MOCK_ORIGIN },
+  env: {
+    ...process.env,
+    VITE_IDENTITY_API_URL: IDENTITY_ORIGIN,
+    VITE_MOCK_API_URL: MOCK_ORIGIN,
+  },
 };
 
 let mock = null;
@@ -177,7 +193,7 @@ async function checkLoginPage() {
   await page.waitForSelector(".form-error", { timeout: 8000 });
 
   const serverError = await page.textContent(".form-error");
-  expect(serverError.includes("邮箱或密码不正确"), `401 文案不对："${serverError.trim()}"`);
+  expect(serverError.includes("邮箱或密码错误"), `401 通用文案不对："${serverError.trim()}"`);
   expect(!serverError.includes("可以再试一次"), "401 不该提示重试——密码错了重试一万次还是错");
 
   // 服务端错误不该把字段标记成无效：真正错的可能是邮箱，
@@ -214,9 +230,41 @@ async function login() {
 
 async function logout() {
   const menu = page.locator(".account-menu");
-  if (!(await menu.getAttribute("open"))) await menu.locator("summary").click();
+  if (!(await menu.evaluate((element) => element.open))) await menu.locator("summary").click();
   await menu.getByRole("button", { name: "退出" }).click();
   await page.waitForSelector(".login-card");
+}
+
+async function waitForAuthenticated() {
+  await page.waitForSelector("main.workspace", { timeout: 10000 });
+}
+
+async function checkOrganizationIdentity(context) {
+  const menu = page.locator(".account-menu");
+  if (!(await menu.evaluate((element) => element.open))) await menu.locator("summary").click();
+  const organization = (await menu.locator(".account-organization").textContent())?.trim();
+  expect(organization === "Cairn Demo", `${context} 应显示组织 Cairn Demo，实际 ${organization}`);
+}
+
+async function checkRealSessionLifecycle() {
+  console.log("\n=== 真实会话关卡 ===\n");
+
+  await checkOrganizationIdentity("登录后");
+  await page.reload({ waitUntil: "networkidle" });
+  await waitForAuthenticated();
+  expect(new URL(page.url()).pathname === "/documents", "刷新后应恢复到文档工作台");
+  await checkOrganizationIdentity("刷新恢复后");
+
+  await logout();
+  expect(new URL(page.url()).pathname === "/login", "注销后应进入登录页");
+
+  await page.goto(`${WEB}/documents`, { waitUntil: "networkidle" });
+  await page.waitForURL((url) => url.pathname === "/login");
+  expect(
+    new URL(page.url()).pathname === "/login",
+    "注销后直接访问文档页应在会话恢复完成后重定向登录",
+  );
+  await login();
 }
 
 async function checkStructure() {
@@ -642,7 +690,11 @@ try {
   ]);
   web = spawn(viteInvocation.command, viteInvocation.args, webOptions);
   await waitForChildSpawn(web);
-  await Promise.all([waitForServer(WEB), waitForServer(MOCK_HEALTH)]);
+  await Promise.all([
+    waitForServer(WEB),
+    waitForServer(MOCK_HEALTH),
+    waitForServer(IDENTITY_READY),
+  ]);
 
   browser = await chromium.launch();
   page = await browser.newPage();
@@ -671,6 +723,7 @@ try {
 
   await page.reload({ waitUntil: "networkidle" });
   await login();
+  await checkRealSessionLifecycle();
 
   // 必须在第一次截图之前查结构。
   // Playwright 的 fullPage 截图会临时往页面注入样式，跑完留下内联样式残留——
@@ -685,6 +738,7 @@ try {
     screenshotDir: SHOT_DIR,
     login,
     logout,
+    waitForAuthenticated,
   });
   expect(new URL(page.url()).pathname === "/documents", "响应式验收后应回到文档页");
   expect(

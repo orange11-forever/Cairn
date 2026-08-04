@@ -164,6 +164,8 @@ pnpm build
 pnpm verify
 ```
 
-`pnpm verify` 是完整的跨 package 门禁：它覆盖共享契约测试与类型检查、Web 单测、类型检查、生产构建与真实浏览器验收，以及 API 测试、Ruff、Pyright 和发行包构建。浏览器部分覆盖 360/768/1280 像素布局、日间/夜间主题、路由保护、注销隔离、并发取消、文档状态、筛选、上传、提问和自动滚动；生产构建还会检查 Mock 场景控件没有进入产物。
+`pnpm verify:core` 会创建独立 PostgreSQL project 和临时卷，执行迁移、真实身份集成测试、SDK 漂移检查、生产构建与 Chromium 登录闭环，并在成功、失败或信号中断后删除该验证 project。它不会接触开发数据库和卷。
+
+`pnpm verify` 是完整的跨 package 门禁：它覆盖共享契约、SDK、Web、API、Ruff、Pyright、发行包构建与最后的真实核心验证。浏览器部分覆盖错误密码、登录、刷新恢复、组织显示、注销、360/768/1280 像素布局、主题、路由保护、会话隔离、并发取消、文档状态、筛选、上传、提问和自动滚动；生产构建还会检查开发凭据和 Mock 场景控件没有进入产物。
 
 也可以使用 `pnpm test:contracts`、`pnpm typecheck:contracts`、`pnpm test:web`、`pnpm test:api`、`pnpm typecheck:web`、`pnpm typecheck:api`、`pnpm build:web` 和 `pnpm build:api` 分别检查单个 package。

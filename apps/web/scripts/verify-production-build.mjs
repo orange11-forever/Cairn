@@ -16,7 +16,13 @@ async function listFiles(directory) {
   return files;
 }
 
-const forbidden = ["模拟场景", "data-dev-only"];
+const forbidden = [
+  "模拟场景",
+  "data-dev-only",
+  "cairn-demo-2026",
+  "CAIRN_CSRF_SECRET",
+  "local-development-secret-change-before-deploying-32-bytes",
+];
 const offenders = [];
 for (const file of await listFiles(DIST_ROOT)) {
   const content = await readFile(file, "utf8");

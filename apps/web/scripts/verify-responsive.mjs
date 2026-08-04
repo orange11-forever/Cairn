@@ -8,7 +8,7 @@ const VIEWPORTS = [
 
 async function chooseTheme(page, label) {
   const menu = page.locator(".account-menu");
-  if (!(await menu.getAttribute("open"))) await menu.locator("summary").click();
+  if (!(await menu.evaluate((element) => element.open))) await menu.locator("summary").click();
   await menu.getByRole("radio", { name: label }).check();
   await menu.locator("summary").click();
 }
@@ -145,7 +145,14 @@ function expectLoginMascot(images, viewport, expect) {
   );
 }
 
-export async function checkResponsiveFoundation({ page, expect, screenshotDir, login, logout }) {
+export async function checkResponsiveFoundation({
+  page,
+  expect,
+  screenshotDir,
+  login,
+  logout,
+  waitForAuthenticated,
+}) {
   for (const viewport of VIEWPORTS) {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
 
@@ -304,11 +311,11 @@ export async function checkResponsiveFoundation({ page, expect, screenshotDir, l
 
   await chooseTheme(page, "日间");
   await page.reload({ waitUntil: "networkidle" });
+  await waitForAuthenticated();
   expect(
     (await page.locator("html").getAttribute("data-theme")) === "light",
     "手动日间主题应在刷新后保留",
   );
-  await login();
 
   await chooseTheme(page, "跟随系统");
   expect(

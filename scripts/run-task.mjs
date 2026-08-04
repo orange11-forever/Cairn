@@ -36,6 +36,7 @@ const TASKS = Object.freeze({
   ],
   "db:seed": [UV, ["run", "--package", "cairn-api", "python", "-m", "cairn_api.seed"]],
   "infra:up": [process.execPath, ["scripts/infra.mjs", "up"]],
+  "verify:core": [process.execPath, ["scripts/verify-core.mjs"]],
 });
 
 export function runTask(taskName) {
