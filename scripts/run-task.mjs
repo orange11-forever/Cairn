@@ -25,6 +25,10 @@ const TASKS = Object.freeze({
   ],
   "typecheck:api": [UV, ["run", "--package", "cairn-api", "pyright"]],
   "build:api": [UV, ["build", "--package", "cairn-api"]],
+  "db:migrate": [
+    UV,
+    ["run", "--package", "cairn-api", "alembic", "-c", "apps/api/alembic.ini", "upgrade", "head"],
+  ],
   "infra:up": [process.execPath, ["scripts/infra.mjs", "up"]],
 });
 

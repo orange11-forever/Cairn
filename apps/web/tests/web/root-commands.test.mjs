@@ -9,6 +9,7 @@ const APPROVED_SCRIPTS = [
   "build",
   "build:api",
   "build:web",
+  "db:migrate",
   "dev:api",
   "dev:web",
   "infra:up",
@@ -47,6 +48,7 @@ test("root commands are allowlisted and shell neutral", async () => {
   assert.equal(root.scripts["test:api"], "node scripts/run-task.mjs test:api");
   assert.equal(root.scripts["typecheck:api"], "node scripts/run-task.mjs typecheck:api");
   assert.equal(root.scripts["build:api"], "node scripts/run-task.mjs build:api");
+  assert.equal(root.scripts["db:migrate"], "node scripts/run-task.mjs db:migrate");
   assert.equal(
     root.scripts.verify,
     "node scripts/run-tasks.mjs test:contracts typecheck:contracts test:web typecheck:web verify:web test:api lint:api typecheck:api build:api",

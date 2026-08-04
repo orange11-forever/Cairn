@@ -12,6 +12,9 @@ members = ["apps/api"]
 
 [tool.pytest.ini_options]
 testpaths = ["apps/api/tests"]
+markers = [
+  "integration: requires an isolated PostgreSQL database",
+]
 
 [tool.ruff]
 line-length = 100

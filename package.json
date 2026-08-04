@@ -8,6 +8,7 @@
     "dev:web": "node scripts/run-task.mjs dev:web",
     "mock:web": "node scripts/run-task.mjs mock:web",
     "infra:up": "node scripts/run-task.mjs infra:up",
+    "db:migrate": "node scripts/run-task.mjs db:migrate",
     "dev:api": "node scripts/run-task.mjs dev:api",
     "test:web": "node scripts/run-task.mjs test:web",
     "test:contracts": "node scripts/run-task.mjs test:contracts",
