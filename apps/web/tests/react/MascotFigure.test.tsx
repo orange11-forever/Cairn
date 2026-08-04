@@ -16,6 +16,42 @@ describe("MascotFigure", () => {
     expect(screen.getByRole("status")).toHaveTextContent("思考中");
   });
 
+  test.each(["avatar", "half"] as const)("uses the thumbnail for the %s variant", (variant) => {
+    render(<MascotFigure label="看板娘" variant={variant} />);
+
+    expect(screen.getByRole("img", { name: "看板娘" })).toHaveAttribute(
+      "src",
+      "/assets/brand/mascot/cairn-mascot-avatar.png",
+    );
+  });
+
+  test("art-directs the full variant to the thumbnail on mobile", () => {
+    const { container } = render(<MascotFigure label="看板娘" variant="full" />);
+
+    expect(container.querySelector("source")).toHaveAttribute("media", "(max-width: 599px)");
+    expect(container.querySelector("source")).toHaveAttribute(
+      "srcset",
+      "/assets/brand/mascot/cairn-mascot-avatar.png",
+    );
+    expect(screen.getByRole("img", { name: "看板娘" })).toHaveAttribute(
+      "src",
+      "/assets/brand/mascot/cairn-mascot.png",
+    );
+  });
+
+  test("removes mobile art direction before showing the logo fallback", () => {
+    const { container } = render(<MascotFigure label="看板娘" variant="full" />);
+
+    expect(container.querySelector("source")).toBeInTheDocument();
+    fireEvent.error(screen.getByRole("img", { name: "看板娘" }));
+
+    expect(container.querySelector("source")).not.toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "看板娘" })).toHaveAttribute(
+      "src",
+      "/assets/brand/cairn-logo.png",
+    );
+  });
+
   test("falls back to the Cairn mark when the mascot asset fails", () => {
     render(<MascotFigure label="看板娘" />);
 

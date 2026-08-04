@@ -9,8 +9,11 @@ export interface MascotFigureProps {
   className?: string;
 }
 
-const MASCOT_SRC = "/assets/brand/mascot/cairn-mascot.png";
+const MASCOT_AVATAR_SRC = "/assets/brand/mascot/cairn-mascot-avatar.png";
+const MASCOT_FULL_SRC = "/assets/brand/mascot/cairn-mascot.png";
 const FALLBACK_SRC = "/assets/brand/cairn-logo.png";
+
+type ImageStage = "primary" | "logo" | "accessible";
 
 const STATE_LABEL: Record<MascotState, string> = {
   idle: "准备中",
@@ -25,16 +28,12 @@ export function MascotFigure({
   label = "Cairn 看板娘",
   className,
 }: MascotFigureProps) {
-  const [src, setSrc] = useState(MASCOT_SRC);
-  const [fallbackFailed, setFallbackFailed] = useState(false);
+  const [imageStage, setImageStage] = useState<ImageStage>("primary");
+  const primarySrc = variant === "full" ? MASCOT_FULL_SRC : MASCOT_AVATAR_SRC;
+  const src = imageStage === "primary" ? primarySrc : FALLBACK_SRC;
 
   const handleImageError = () => {
-    if (src === MASCOT_SRC) {
-      setSrc(FALLBACK_SRC);
-      return;
-    }
-
-    setFallbackFailed(true);
+    setImageStage((current) => (current === "primary" ? "logo" : "accessible"));
   };
 
   return (
@@ -43,16 +42,21 @@ export function MascotFigure({
       data-state={state}
       data-variant={variant}
     >
-      {fallbackFailed ? (
+      {imageStage === "accessible" ? (
         <span aria-label={label} className="mascot-image-fallback" role="img" />
       ) : (
-        <img
-          alt={label}
-          data-state={state}
-          data-variant={variant}
-          onError={handleImageError}
-          src={src}
-        />
+        <picture className="mascot-art">
+          {variant === "full" && imageStage === "primary" ? (
+            <source media="(max-width: 599px)" srcSet={MASCOT_AVATAR_SRC} />
+          ) : null}
+          <img
+            alt={label}
+            data-state={state}
+            data-variant={variant}
+            onError={handleImageError}
+            src={src}
+          />
+        </picture>
       )}
       <span className="mascot-state" role="status">
         {STATE_LABEL[state]}
