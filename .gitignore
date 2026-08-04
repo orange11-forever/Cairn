@@ -1,4 +1,5 @@
 node_modules/
+.worktrees/
 
 # Python workspace：uv 本地环境、缓存和构建产物均可重新生成
 .venv/
