@@ -15,6 +15,9 @@ def test_settings_defaults() -> None:
     assert settings.app_url is None
     assert settings.cors_origins == []
     assert settings.log_level == "INFO"
+    assert settings.session_cookie_name == "cairn_session"
+    assert settings.session_cookie_secure is False
+    assert settings.session_ttl_seconds == 604800
 
 
 @pytest.mark.parametrize("port", [0, 65536])
@@ -60,3 +63,38 @@ def test_settings_rejects_wildcard_subdomain_origin() -> None:
 def test_settings_require_postgresql_psycopg_driver(database_url: str) -> None:
     with pytest.raises(ValidationError):
         Settings(database_url=database_url, _env_file=None)  # pyright: ignore[reportCallIssue]
+
+
+@pytest.mark.parametrize(
+    "csrf_secret",
+    ["", "short", "local-development-secret-change-before-deploying-32-bytes"],
+)
+def test_production_rejects_missing_short_or_example_csrf_secrets(csrf_secret: str) -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            environment="production",
+            session_cookie_secure=True,
+            csrf_secret=csrf_secret,
+            _env_file=None,  # pyright: ignore[reportCallIssue]
+        )
+
+
+def test_production_requires_secure_session_cookie() -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            environment="production",
+            session_cookie_secure=False,
+            csrf_secret="production-only-csrf-secret-with-at-least-32-bytes",
+            _env_file=None,  # pyright: ignore[reportCallIssue]
+        )
+
+
+def test_production_accepts_secure_cookie_and_non_example_secret() -> None:
+    settings = Settings(
+        environment="production",
+        session_cookie_secure=True,
+        csrf_secret="production-only-csrf-secret-with-at-least-32-bytes",
+        _env_file=None,  # pyright: ignore[reportCallIssue]
+    )
+
+    assert settings.session_cookie_secure is True

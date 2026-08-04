@@ -29,6 +29,7 @@ const TASKS = Object.freeze({
     UV,
     ["run", "--package", "cairn-api", "alembic", "-c", "apps/api/alembic.ini", "upgrade", "head"],
   ],
+  "db:seed": [UV, ["run", "--package", "cairn-api", "python", "-m", "cairn_api.seed"]],
   "infra:up": [process.execPath, ["scripts/infra.mjs", "up"]],
 });
 

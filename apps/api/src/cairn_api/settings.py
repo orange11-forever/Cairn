@@ -1,6 +1,6 @@
 from typing import Annotated, Literal, cast
 
-from pydantic import AnyHttpUrl, Field, TypeAdapter, field_validator
+from pydantic import AnyHttpUrl, Field, TypeAdapter, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -32,6 +32,36 @@ class Settings(BaseSettings):
         default="INFO",
         validation_alias="LOG_LEVEL",
     )
+    session_cookie_name: str = Field(
+        default="cairn_session",
+        min_length=1,
+        validation_alias="CAIRN_SESSION_COOKIE_NAME",
+    )
+    session_cookie_secure: bool = Field(
+        default=False,
+        validation_alias="CAIRN_SESSION_COOKIE_SECURE",
+    )
+    session_ttl_seconds: int = Field(
+        default=604800,
+        gt=0,
+        validation_alias="CAIRN_SESSION_TTL_SECONDS",
+    )
+    csrf_secret: str = Field(
+        default="local-development-secret-change-before-deploying-32-bytes",
+        validation_alias="CAIRN_CSRF_SECRET",
+    )
+
+    @model_validator(mode="after")
+    def validate_production_session_security(self) -> "Settings":
+        if self.environment != "production":
+            return self
+        if not self.session_cookie_secure:
+            raise ValueError("production requires secure session cookies")
+        if len(self.csrf_secret.encode("utf-8")) < 32:
+            raise ValueError("production requires a CSRF secret of at least 32 bytes")
+        if self.csrf_secret == "local-development-secret-change-before-deploying-32-bytes":
+            raise ValueError("production cannot use the example CSRF secret")
+        return self
 
     @field_validator("database_url")
     @classmethod
