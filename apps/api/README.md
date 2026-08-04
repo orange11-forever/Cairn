@@ -1,8 +1,8 @@
 # apps/api: FastAPI 后端
 
-当前处于阶段 0。`apps/api` 是根 uv workspace 中可安装、可独立启动的 FastAPI package，现已提供配置、请求 ID、统一错误、健康检查、版本探针和 OpenAPI 骨架，并将在阶段 1-6 逐步承载企业基础、任务图、智能搜索、Agent 执行和治理能力。
+`apps/api` 是根 uv workspace 中可安装、可独立启动的 FastAPI package，现已提供 PostgreSQL 组织身份、Cookie 会话、审计、配置、请求 ID、统一错误、健康检查和 OpenAPI，并将在后续阶段承载项目、知识、Agent 执行和治理能力。
 
-现有 Web 原型仍连接 `mocks/docs-server.mjs`。当前产品、架构和阶段路线以 [`docs/specs/2026-07-31-cairn-platform-reorientation-design.md`](../../docs/specs/2026-07-31-cairn-platform-reorientation-design.md) 为准。
+Web 的身份请求连接本 API；文档、上传和问答原型仍连接 `mocks/docs-server.mjs`。当前产品、架构和阶段路线以 [`docs/specs/2026-07-31-cairn-platform-reorientation-design.md`](../../docs/specs/2026-07-31-cairn-platform-reorientation-design.md) 为准。
 
 Local Web、Compose 与 Helm 必须使用同一 `/api/v1` 契约、数据库迁移和权限规则。Local Web 默认绑定 `127.0.0.1:8080`；它不是当前的 Vite + mock 原型，也不使用 SQLite 分叉。
 
@@ -12,6 +12,9 @@ Local Web、Compose 与 Helm 必须使用同一 `/api/v1` 契约、数据库迁�
 
 ```bash
 uv sync --all-packages --all-groups
+pnpm infra:up
+pnpm db:migrate
+pnpm db:seed
 pnpm dev:api
 uv run --package cairn-api pytest
 uv run --package cairn-api ruff check apps/api/src apps/api/tests
@@ -19,7 +22,9 @@ uv run --package cairn-api pyright
 uv build --package cairn-api
 ```
 
-API 默认监听 `127.0.0.1:8080`，提供 `/health`、`/api/v1`、`/docs` 和 `/openapi.json`。当前 package 只是无外部服务依赖的 FastAPI 工程基线，不能称为正式 Local Web 或业务 API。
+API 默认监听 `127.0.0.1:8080`，提供 `/health`、`/ready`、身份接口、`/docs` 和 `/openapi.json`。日常完整开发流程应从仓库根目录运行 `pnpm infra:up` 和 `pnpm dev:core`；停止 `dev:core` 不会删除 PostgreSQL 开发卷。
+
+Docker Desktop 必须保持运行。生产环境必须替换示例数据库密码和 CSRF 密钥，并启用安全 Cookie。
 
 ## 实施顺序
 

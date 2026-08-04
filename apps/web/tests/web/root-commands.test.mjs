@@ -13,6 +13,7 @@ const APPROVED_SCRIPTS = [
   "db:migrate",
   "db:seed",
   "dev:api",
+  "dev:core",
   "dev:web",
   "generate:sdk",
   "infra:up",
@@ -51,6 +52,7 @@ test("root commands are allowlisted and shell neutral", async () => {
 
   assert.deepEqual(scriptNames, APPROVED_SCRIPTS);
   assert.equal(root.scripts["dev:api"], "node scripts/run-task.mjs dev:api");
+  assert.equal(root.scripts["dev:core"], "node scripts/run-task.mjs dev:core");
   assert.equal(root.scripts["test:api"], "node scripts/run-task.mjs test:api");
   assert.equal(root.scripts["typecheck:api"], "node scripts/run-task.mjs typecheck:api");
   assert.equal(root.scripts["build:api"], "node scripts/run-task.mjs build:api");

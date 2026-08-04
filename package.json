@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "dev:web": "node scripts/run-task.mjs dev:web",
+    "dev:core": "node scripts/run-task.mjs dev:core",
     "mock:web": "node scripts/run-task.mjs mock:web",
     "infra:up": "node scripts/run-task.mjs infra:up",
     "db:migrate": "node scripts/run-task.mjs db:migrate",

@@ -11,17 +11,18 @@
 </p>
 
 > [!IMPORTANT]
-> Cairn 当前处于阶段 1 基础建设。现阶段可运行内容包括 React/Vite 前端原型、共享运行时契约、Node mock API，以及可独立启动的 FastAPI 工程基线；真实数据层、真实鉴权和正式 Local Web 仍在后续阶段建设。
+> Cairn 当前处于阶段 1 基础建设。现阶段核心开发链路已包含 PostgreSQL 16、FastAPI Cookie 身份接口、React/Vite Web 和仍承载文档原型的 Node mock；知识摄取、完整权限与 AI Provider 仍在后续阶段建设。
 
 ## 阶段 1 基础进度
 
-共享 API 契约与响应式 Web 基础已经完成。
+共享 API 契约、响应式 Web 与真实身份基础已经完成。
 
 - `@cairn/contracts` 统一现有登录、文档、问答、上传和错误响应契约；
 - Web 保留本地容错、请求取消、查询缓存和 UI 状态边界；
 - 工作台支持 360、768、1280 像素布局，以及日间、夜间和跟随系统偏好；
 - 导航壳可扩展到知识、项目、执行和治理模块，但当前只开放已有页面；
-- 真实鉴权、组织权限和数据库仍未实现，Web 继续连接 Node mock API。
+- 组织、用户、成员、Cookie 会话和审计写入 PostgreSQL，Web 身份请求连接 FastAPI；
+- 文档、上传和问答仍连接 Node mock API，不代表知识系统已经完成。
 
 ## 核心能力
 
@@ -112,36 +113,35 @@ Carin
 | Kubernetes/Helm | 企业 Ingress 或网关 | 集群、高可用和外部基础设施接入 |
 | 隔离网络 | 内网地址 | Compose/Helm 配合私有镜像仓库、内网模型和离线安装包 |
 
-## 当前 Web 原型开发
+## 当前核心开发
 
-环境要求：Node.js 22+、pnpm 10+。
+环境要求：Node.js 22+、pnpm 10+、Python 3.12+、uv 和已启动的 Docker Desktop。
 
-安装依赖：
+首次安装并启动：
 
 ```bash
 pnpm install
+uv sync --all-packages --all-groups
+pnpm infra:up
+pnpm dev:core
 ```
 
-分别在两个终端启动 Web package 的 mock API 与开发服务器：
-
-```bash
-pnpm mock:web
-```
-
-```bash
-pnpm dev:web
-```
-
+- 登录：`http://localhost:5500`
 - Web：`http://localhost:5500`
+- Identity API：`http://127.0.0.1:8080`
 - Mock API：`http://localhost:8787`
 
-Web 原型仍只连接 Node mock API，不会调用下方的 FastAPI 基线。
+`pnpm dev:core` 会先执行迁移和幂等演示种子，再托管 API、Mock 与 Web 三个进程。停止该命令只终止应用进程，不删除 PostgreSQL 开发卷。`pnpm dev:web` 与 `pnpm mock:web` 仍可用于底层调试，但原来的双终端 mock-only 流程不再是核心开发路径。
+
+若本机 5432 已被其他 PostgreSQL 占用，可让 `CAIRN_POSTGRES_PORT` 与 `DATABASE_URL` 同时改用同一个空闲端口；不要只改其中一项。
+
+生产环境必须替换 `.env.example` 中的数据库密码和 `CAIRN_CSRF_SECRET` 示例值；生产配置会拒绝示例密钥和不安全 Cookie。
 
 ## 当前 API 基线
 
 环境要求：Python 3.12+、uv。
 
-安装依赖并启动独立 API：
+独立调试 API 时可运行：
 
 ```bash
 uv sync --all-packages --all-groups
@@ -153,7 +153,7 @@ pnpm dev:api
 - 版本探针：`http://127.0.0.1:8080/api/v1`
 - OpenAPI：`http://127.0.0.1:8080/docs`
 
-这个进程只提供 FastAPI 工程骨架和稳定探针，不包含数据库、鉴权或业务接口，也不是正式 Local Web。
+API 现已提供 PostgreSQL readiness、登录、会话恢复、注销和当前组织接口。文档、上传和问答仍由 Node mock 提供。
 
 ## 质量检查
 
