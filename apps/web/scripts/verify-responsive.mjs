@@ -64,13 +64,29 @@ async function readLayout(page) {
 async function readImageHealth(page) {
   return page.evaluate(() =>
     [...document.querySelectorAll(".login-wordmark, .product-brand img, .mascot-figure img")].map(
-      (image) => ({
-        alt: image.getAttribute("alt"),
-        src: image.getAttribute("src"),
-        complete: image.complete,
-        naturalWidth: image.naturalWidth,
-        naturalHeight: image.naturalHeight,
-      }),
+      (image) => {
+        let cornerAlpha = null;
+        if (image.complete && image.naturalWidth > 0 && image.naturalHeight > 0) {
+          const canvas = document.createElement("canvas");
+          canvas.width = 1;
+          canvas.height = 1;
+          const context = canvas.getContext("2d");
+          if (context !== null) {
+            context.drawImage(image, 0, 0, 1, 1, 0, 0, 1, 1);
+            cornerAlpha = context.getImageData(0, 0, 1, 1).data[3];
+          }
+        }
+
+        return {
+          alt: image.getAttribute("alt"),
+          src: image.getAttribute("src"),
+          currentSrc: image.currentSrc,
+          complete: image.complete,
+          naturalWidth: image.naturalWidth,
+          naturalHeight: image.naturalHeight,
+          cornerAlpha,
+        };
+      },
     ),
   );
 }
@@ -78,7 +94,7 @@ async function readImageHealth(page) {
 async function readAssistantContentLayout(page) {
   return page.evaluate(() => {
     const image = document.querySelector(
-      ".mascot-assistant-body .mascot-figure > img, .mascot-assistant-body .mascot-image-fallback",
+      ".mascot-assistant-body .mascot-art > img, .mascot-assistant-body .mascot-image-fallback",
     );
     const copy = document.querySelector(".mascot-assistant-body > p");
     const imageRect = image?.getBoundingClientRect();
@@ -98,6 +114,35 @@ function expectHealthyImages(images, expect, context) {
       `${context} 图片未加载：${image.src} (${image.naturalWidth}x${image.naturalHeight})`,
     );
   }
+}
+
+function expectThumbnailMascots(images, expect, context) {
+  const mascots = images.filter(
+    (image) => image.alt?.includes("看板娘") || image.alt?.includes("助手"),
+  );
+  expect(mascots.length > 0, `${context} 应渲染看板娘缩略图`);
+  for (const mascot of mascots) {
+    expect(
+      mascot.currentSrc.endsWith("/cairn-mascot-avatar.png"),
+      `${context} 应使用缩略图，实际为 ${mascot.currentSrc}`,
+    );
+    expect(
+      mascot.naturalWidth === 256 && mascot.naturalHeight === 256,
+      `${context} 缩略图尺寸错误：${mascot.naturalWidth}x${mascot.naturalHeight}`,
+    );
+    expect(mascot.cornerAlpha === 0, `${context} 缩略图圆角外必须透明`);
+  }
+}
+
+function expectLoginMascot(images, viewport, expect) {
+  const mascot = images.find((image) => image.alt === "Cairn 看板娘");
+  const expectedAsset = viewport.width < 600
+    ? "/cairn-mascot-avatar.png"
+    : "/cairn-mascot.png";
+  expect(
+    mascot?.currentSrc.endsWith(expectedAsset),
+    `${viewport.name} 登录页素材选择错误：${mascot?.currentSrc ?? "未渲染"}`,
+  );
 }
 
 export async function checkResponsiveFoundation({ page, expect, screenshotDir, login, logout }) {
@@ -131,7 +176,9 @@ export async function checkResponsiveFoundation({ page, expect, screenshotDir, l
         await page.getByRole("button", { name: "打开看板娘助手" }).isVisible(),
         `${viewport.name} 看板娘助手入口不可见`,
       );
-      expectHealthyImages(await readImageHealth(page), expect, `${viewport.name} 文档页`);
+      const documentImages = await readImageHealth(page);
+      expectHealthyImages(documentImages, expect, `${viewport.name} 文档页`);
+      expectThumbnailMascots(documentImages, expect, `${viewport.name} 文档页`);
 
       await page.screenshot({
         path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-documents.png`),
@@ -189,7 +236,9 @@ export async function checkResponsiveFoundation({ page, expect, screenshotDir, l
         ask.undersizedTargets.length === 0,
         `${viewport.name} 问答页存在小于 44px 的交互目标：${ask.undersizedTargets.join(" / ")}`,
       );
-      expectHealthyImages(await readImageHealth(page), expect, `${viewport.name} 问答页`);
+      const askImages = await readImageHealth(page);
+      expectHealthyImages(askImages, expect, `${viewport.name} 问答页`);
+      expectThumbnailMascots(askImages, expect, `${viewport.name} 问答页`);
 
       await page.screenshot({
         path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-ask-empty.png`),
@@ -221,7 +270,9 @@ export async function checkResponsiveFoundation({ page, expect, screenshotDir, l
       }
 
       await logout();
-      expectHealthyImages(await readImageHealth(page), expect, `${viewport.name} 登录页`);
+      const loginImages = await readImageHealth(page);
+      expectHealthyImages(loginImages, expect, `${viewport.name} 登录页`);
+      expectLoginMascot(loginImages, viewport, expect);
       await page.screenshot({
         path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-login.png`),
         fullPage: true,
