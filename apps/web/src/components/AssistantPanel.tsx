@@ -16,12 +16,14 @@
 // 而不用序号的原因——一旦有删除，prev.length 做 id 就会和历史某条撞 key。
 // ---------------------------------------------------------------------------
 
+import { RefreshCw } from "lucide-react";
 import { useState } from "react";
 
 import { MessageInput } from "./MessageInput.tsx";
 import { MessageList } from "./MessageList.tsx";
 import type { Message } from "./MessageList.tsx";
 import { WorkspaceHeader } from "./WorkspaceHeader.tsx";
+import { WorkspaceStatus } from "./WorkspaceStatus.tsx";
 import { askQuestion } from "../api/conversations.ts";
 import { useAbortableAction } from "../hooks/useAbortableAction.ts";
 import { createUserMessage, toViewMessage } from "../lib/messages.ts";
@@ -67,47 +69,56 @@ export function AssistantPanel({ parentSignal }: { parentSignal?: AbortSignal })
         description="回答只依据已经处理完成的知识文档。"
       />
 
-      <MessageInput
-        // void 前缀：ask 是 async，返回一个 Promise 而 onSubmit 声明返回 void。
-        // 不加 void 会有一个"返回值被忽略"的类型问题，加了它是在明确说
-        // "这个 Promise 不需要被等待"——因为错误已经由 useAbortableAction 收进 state 了。
-        onSubmit={(text) => void ask(text)}
-        pending={action.pending}
-        // 停止生成。这一下真的会终止请求——signal 一路传到了 fetch
-        //（useAbortableAction → askQuestion → request → fetch），
-        // 中间任何一环漏传 signal，UI 会显示"已停止"而请求还在飞。
-        // 这条链路由 verify-web.mjs 的取消帧实测。
-        onCancel={action.cancel}
-      />
-
-      {/*
-        请求级错误。位置在输入框和回答之间——它说的是"刚才那次提问失败了"，
-        挨着提问框才读得通。放在消息列表底部会看起来像一条助手消息。
-      */}
-      {action.state.phase === "error" && (
-        <p className="form-error" role="alert">
-          {action.state.error.message}
-          {/*
-            重试按钮只在 retryable 时出现。
-            contract 错误（响应格式不对）和 4xx 都不该给重试——
-            那是代码 bug 或请求本身有问题，重试一万次结果一样，
-            让用户重试是骗他（ApiError.retryable 的注释里论证过）。
-          */}
-          {action.state.error.retryable && lastQuestion !== null && (
-            <button type="button" className="retry-btn" onClick={() => void ask(lastQuestion)}>
-              重试
-            </button>
+      <div className="conversation-workspace">
+        <article aria-labelledby="answer-title">
+          <h2 id="answer-title">对话</h2>
+          {messages.length === 0 && !action.pending ? (
+            <div className="assistant-empty-state" role="status" aria-label="问答工作区">
+              <WorkspaceStatus
+                state="empty"
+                mascot={{ label: "Cairn 问答助手", variant: "half" }}
+                title="准备就绪"
+                description="选择一个常见问题，或直接输入你的问题。"
+                action={
+                  <div className="question-suggestions">
+                    <button type="button" onClick={() => void ask("值班故障如何升级？")}>
+                      值班故障如何升级？
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void ask("如何申请生产环境访问权限？")}
+                    >
+                      如何申请生产环境访问权限？
+                    </button>
+                  </div>
+                }
+              />
+            </div>
+          ) : (
+            <MessageList messages={messages} pending={action.pending} />
           )}
-        </p>
-      )}
+        </article>
 
-      <article aria-labelledby="answer-title">
-        <h2 id="answer-title">回答</h2>
-        {/* pending 传下去让列表显示"正在检索…"占位。
-            空着的话，用户提交后看到自己的提问下面什么都没有，
-            不知道是在等，还是已经答完了而答案是空的。 */}
-        <MessageList messages={messages} pending={action.pending} />
-      </article>
+        {action.state.phase === "error" && (
+          <p className="form-error conversation-error" role="alert">
+            {action.state.error.message}
+            {action.state.error.retryable && lastQuestion !== null && (
+              <button type="button" className="retry-btn" onClick={() => void ask(lastQuestion)}>
+                <RefreshCw aria-hidden="true" size={16} strokeWidth={1.8} />
+                重试
+              </button>
+            )}
+          </p>
+        )}
+
+        <div className="conversation-composer">
+          <MessageInput
+            onSubmit={(text) => void ask(text)}
+            pending={action.pending}
+            onCancel={action.cancel}
+          />
+        </div>
+      </div>
     </section>
   );
 }

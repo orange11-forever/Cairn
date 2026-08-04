@@ -9,7 +9,7 @@ interface DocumentListProps {
 
 export function DocumentList({ documents }: DocumentListProps) {
   return (
-    <ul id="document-list" className="document-list">
+    <ul id="document-list" className="document-list" aria-label="文档列表">
       {documents.map((doc) => (
         // key 用 doc.id，不用数组下标。
         //

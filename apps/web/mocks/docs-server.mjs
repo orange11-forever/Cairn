@@ -24,7 +24,11 @@ import {
   createUploadResponse,
 } from "./fixtures.mjs";
 
-const PORT = 8787;
+const portValue = process.env.CAIRN_MOCK_PORT ?? "8787";
+const PORT = Number(portValue);
+if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65_535) {
+  throw new Error(`CAIRN_MOCK_PORT must be an integer between 1 and 65535, received ${portValue}`);
+}
 
 // Day 9：上传的服务端约束。**故意和前端 lib/validation.ts 里的一样。**
 //

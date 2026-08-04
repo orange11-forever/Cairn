@@ -4,6 +4,7 @@
 //   value={draft} 说"你显示的必须是这个值"，onChange 说"用户想改时去改 state"。
 //   少了 onChange 输入框会变成只读——每次渲染 React 都把 value 重置回 state 的值。
 
+import { Send, Square } from "lucide-react";
 import { useState } from "react";
 
 import { FormField, fieldAria } from "./FormField.tsx";
@@ -92,6 +93,7 @@ export function MessageInput({ onSubmit, pending = false, onCancel }: MessageInp
           原则：能给出理由的时候给理由，给不出理由才禁用。
         */}
         <button type="submit" disabled={pending}>
+          <Send aria-hidden="true" size={16} strokeWidth={1.8} />
           {pending ? "正在回答…" : "发送问题"}
         </button>
 
@@ -102,6 +104,7 @@ export function MessageInput({ onSubmit, pending = false, onCancel }: MessageInp
         */}
         {pending && onCancel !== undefined && (
           <button type="button" className="cancel-btn" onClick={onCancel}>
+            <Square aria-hidden="true" size={15} strokeWidth={1.8} />
             停止生成
           </button>
         )}

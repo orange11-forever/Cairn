@@ -1,5 +1,5 @@
 import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 
@@ -92,4 +92,38 @@ test("cancel aborts the current query and returns to idle", async () => {
 
   await waitFor(() => expect(capturedSignal?.aborted).toBe(true));
   expect(await screen.findByText("点击「加载文档」开始")).toBeInTheDocument();
+});
+
+test("keeps the document list primary and upload in a secondary work area", () => {
+  renderDocuments(createAppQueryClient(), USER_A);
+
+  expect(screen.getByRole("region", { name: "知识文档" })).toHaveClass("documents-panel");
+  expect(screen.getByRole("list", { name: "文档列表" })).toBeInTheDocument();
+  expect(screen.getByRole("form", { name: "文档上传" })).toBeInTheDocument();
+  expect(screen.getByRole("complementary", { name: "工作区提示" })).toBeInTheDocument();
+});
+
+test("uses the mascot workspace status when no documents are available", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => jsonResponse([])));
+  const user = userEvent.setup();
+  renderDocuments(createAppQueryClient(), USER_A);
+
+  await user.click(screen.getByRole("button", { name: "加载文档" }));
+
+  const aside = screen.getByRole("complementary", { name: "工作区提示" });
+  expect(await within(aside).findByRole("heading", { name: "建立知识空间" })).toBeInTheDocument();
+  expect(within(aside).getByRole("img", { name: "Cairn 看板娘" })).toBeInTheDocument();
+});
+
+test("keeps recovery copy when an active status filter has no matches", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => jsonResponse([DOCUMENTS[0]])));
+  const user = userEvent.setup();
+  renderDocuments(createAppQueryClient(), USER_A);
+
+  await user.click(screen.getByRole("button", { name: "加载文档" }));
+  await user.click(await screen.findByRole("radio", { name: "处理中 0" }));
+
+  expect(screen.getByRole("status", { name: "筛选结果" })).toHaveTextContent(
+    "当前筛选下没有文档",
+  );
 });

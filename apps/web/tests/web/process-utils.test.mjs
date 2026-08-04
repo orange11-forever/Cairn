@@ -6,11 +6,27 @@ import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 
 import {
+  assertPortAvailable,
   settleCleanupTasks,
   stopProcessTree,
   waitForChildSpawn,
   waitForServer,
 } from "../../scripts/process-utils.mjs";
+
+test("assertPortAvailable rejects a port owned by another process", async () => {
+  const server = createServer((_request, response) => response.end("existing server"));
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.notEqual(address, null);
+  assert.equal(typeof address, "object");
+
+  try {
+    await assert.rejects(assertPortAvailable(address.port), /already in use/i);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
 
 test("waitForServer respects its deadline when a response hangs", async () => {
   const sockets = new Set();

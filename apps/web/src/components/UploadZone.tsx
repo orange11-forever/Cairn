@@ -18,6 +18,7 @@
 // onChange **不触发**（DOM 里的 value 没变），看起来像"选了没反应"。
 // ---------------------------------------------------------------------------
 
+import { FileUp, Trash2, X } from "lucide-react";
 import { useRef, useState } from "react";
 
 import { uploadDocuments, type UploadResponse } from "../api/uploads.ts";
@@ -97,7 +98,12 @@ export function UploadZone({ parentSignal }: { parentSignal?: AbortSignal }) {
   const fileIssues = issues.filter((issue) => issue.name !== "");
 
   return (
-    <form className="upload-zone" data-selected-count={selected.length} onSubmit={handleSubmit}>
+    <form
+      aria-label="文档上传"
+      className="upload-zone"
+      data-selected-count={selected.length}
+      onSubmit={handleSubmit}
+    >
       <label htmlFor="upload-input">上传文档</label>
 
       <input
@@ -186,6 +192,7 @@ export function UploadZone({ parentSignal }: { parentSignal?: AbortSignal }) {
 
       <div className="upload-actions">
         <button type="submit" disabled={action.pending || selected.length === 0}>
+          <FileUp aria-hidden="true" size={16} strokeWidth={1.8} />
           {action.pending ? "上传中…" : "开始上传"}
         </button>
 
@@ -198,12 +205,14 @@ export function UploadZone({ parentSignal }: { parentSignal?: AbortSignal }) {
         */}
         {selected.length > 0 && !action.pending && (
           <button type="button" className="cancel-btn" onClick={clearSelection}>
+            <Trash2 aria-hidden="true" size={16} strokeWidth={1.8} />
             清空选择
           </button>
         )}
 
         {action.pending && (
           <button type="button" className="cancel-btn" onClick={action.cancel}>
+            <X aria-hidden="true" size={16} strokeWidth={1.8} />
             取消上传
           </button>
         )}

@@ -18,8 +18,10 @@
 
 import { useState } from "react";
 import type { UserDto } from "@cairn/contracts";
+import { LogIn } from "lucide-react";
 
 import { FormField, fieldAria } from "./FormField.tsx";
+import { MascotFigure } from "./MascotFigure.tsx";
 import { login } from "../api/auth.ts";
 import { useAbortableAction } from "../hooks/useAbortableAction.ts";
 import { PASSWORD_MIN_LENGTH, validateEmail, validatePassword } from "../lib/validation.ts";
@@ -122,79 +124,94 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
 
   return (
     <main className="login-page">
-      <section className="login-card" aria-labelledby="login-title">
-        <h1 id="login-title">登录 Cairn</h1>
-        <p>用企业邮箱登录，查看属于你的知识文档。</p>
+      <div className="login-layout">
+        <section className="login-brand-scene" aria-label="Cairn 品牌场景">
+          <img
+            className="login-wordmark"
+            src="/assets/brand/cairn-wordmark.png"
+            alt="Cairn"
+            onError={(event) => {
+              event.currentTarget.hidden = true;
+            }}
+          />
+          <MascotFigure variant="full" state="idle" label="Cairn 看板娘" />
+        </section>
 
-        {/*
-          noValidate 关掉浏览器自带的表单校验。
-          理由：浏览器的原生提示（"请填写此字段"）不可定制、不同浏览器文案不同、
-          而且它会在我们自己的校验之前拦下提交，导致上面那套可读错误永远不显示。
-          自己校验就要自己负责到底，两套机制并存只会互相打断。
-        */}
-        <form className="login-form" onSubmit={handleSubmit} noValidate>
-          <FormField id="login-email" label="邮箱" error={fieldErrors.email}>
-            <input
-              id="login-email"
-              name="email"
-              // type="email" 保留：手机上它会调出带 @ 的键盘，这是真实的体验收益。
-              // 它自带的校验被 noValidate 关掉了，所以不会和我们的校验打架。
-              type="email"
-              autoComplete="email"
-              placeholder="demo@cairn.dev"
-              value={email}
-              onChange={(event) => handleChange("email", event.target.value)}
-              {...fieldAria("login-email", fieldErrors.email)}
-            />
-          </FormField>
-
-          <FormField
-            id="login-password"
-            label="密码"
-            error={fieldErrors.password}
-            hint={`至少 ${PASSWORD_MIN_LENGTH} 位`}
-          >
-            <input
-              id="login-password"
-              name="password"
-              type="password"
-              // autoComplete="current-password" 让密码管理器正确识别这是登录而非注册。
-              // 写错成 "new-password" 会让它提示用户"要不要生成一个新密码"——
-              // 在登录页上那是个令人困惑的提示。
-              autoComplete="current-password"
-              value={password}
-              onChange={(event) => handleChange("password", event.target.value)}
-              {...fieldAria("login-password", fieldErrors.password, true)}
-            />
-          </FormField>
+        <section className="login-card" aria-labelledby="login-title">
+          <h1 id="login-title">登录 Cairn</h1>
+          <p>用企业邮箱登录，查看属于你的知识文档。</p>
 
           {/*
-            表单级错误。位置在提交按钮**上方**——放下方的话，
-            在手机上它可能落在折叠线以下，用户点了提交只看到按钮闪一下，
-            不知道下面出现了一条红字。
+            noValidate 关掉浏览器自带的表单校验。
+            理由：浏览器的原生提示（"请填写此字段"）不可定制、不同浏览器文案不同、
+            而且它会在我们自己的校验之前拦下提交，导致上面那套可读错误永远不显示。
+            自己校验就要自己负责到底，两套机制并存只会互相打断。
           */}
-          {action.state.phase === "error" && (
-            <p className="form-error" role="alert">
-              {action.state.error.message}
-              {/* 401 是不可重试的（密码错了，重试一万次还是错），
-                  500/断网是可重试的。给用户看的引导因此不同。 */}
-              {action.state.error.retryable && "（可以再试一次）"}
-            </p>
-          )}
+          <form className="login-form" onSubmit={handleSubmit} noValidate>
+            <FormField id="login-email" label="邮箱" error={fieldErrors.email}>
+              <input
+                id="login-email"
+                name="email"
+                // type="email" 保留：手机上它会调出带 @ 的键盘，这是真实的体验收益。
+                // 它自带的校验被 noValidate 关掉了，所以不会和我们的校验打架。
+                type="email"
+                autoComplete="email"
+                placeholder="demo@cairn.dev"
+                value={email}
+                onChange={(event) => handleChange("email", event.target.value)}
+                {...fieldAria("login-email", fieldErrors.email)}
+              />
+            </FormField>
 
-          <button type="submit" className="login-submit" disabled={action.pending}>
-            {/* 文案跟着状态变，而不是只把按钮变灰。
-                只变灰的话，慢网络下用户看到一个灰按钮，不知道是在提交
-                还是表单坏了。一句"登录中…"消除这个歧义。 */}
-            {action.pending ? "登录中…" : "登录"}
-          </button>
-        </form>
+            <FormField
+              id="login-password"
+              label="密码"
+              error={fieldErrors.password}
+              hint={`至少 ${PASSWORD_MIN_LENGTH} 位`}
+            >
+              <input
+                id="login-password"
+                name="password"
+                type="password"
+                // autoComplete="current-password" 让密码管理器正确识别这是登录而非注册。
+                // 写错成 "new-password" 会让它提示用户"要不要生成一个新密码"——
+                // 在登录页上那是个令人困惑的提示。
+                autoComplete="current-password"
+                value={password}
+                onChange={(event) => handleChange("password", event.target.value)}
+                {...fieldAria("login-password", fieldErrors.password, true)}
+              />
+            </FormField>
 
-        {/* 演示账号是 mock 阶段的临时便利，接入真实鉴权时必须移除。 */}
-        <p className="login-demo-hint">
-          演示账号：<code>demo@cairn.dev</code> / <code>cairn-demo-2026</code>
-        </p>
-      </section>
+            {/*
+              表单级错误。位置在提交按钮**上方**——放下方的话，
+              在手机上它可能落在折叠线以下，用户点了提交只看到按钮闪一下，
+              不知道下面出现了一条红字。
+            */}
+            {action.state.phase === "error" && (
+              <p className="form-error" role="alert">
+                {action.state.error.message}
+                {/* 401 是不可重试的（密码错了，重试一万次还是错），
+                    500/断网是可重试的。给用户看的引导因此不同。 */}
+                {action.state.error.retryable && "（可以再试一次）"}
+              </p>
+            )}
+
+            <button type="submit" className="login-submit" disabled={action.pending}>
+              <LogIn aria-hidden="true" size={17} strokeWidth={1.8} />
+              {/* 文案跟着状态变，而不是只把按钮变灰。
+                  只变灰的话，慢网络下用户看到一个灰按钮，不知道是在提交
+                  还是表单坏了。一句"登录中…"消除这个歧义。 */}
+              {action.pending ? "登录中…" : "登录"}
+            </button>
+          </form>
+
+          {/* 演示账号是 mock 阶段的临时便利，接入真实鉴权时必须移除。 */}
+          <p className="login-demo-hint">
+            演示账号：<code>demo@cairn.dev</code> / <code>cairn-demo-2026</code>
+          </p>
+        </section>
+      </div>
     </main>
   );
 }

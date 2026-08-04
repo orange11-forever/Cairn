@@ -1,19 +1,33 @@
 import type { UserDto } from "@cairn/contracts";
-import { Link, Outlet } from "react-router-dom";
+import { Link, Outlet, useLocation } from "react-router-dom";
 
 import { AccountMenu } from "./AccountMenu.tsx";
+import { MascotAssistant } from "./MascotAssistant.tsx";
 import { PrimaryNavigation } from "./PrimaryNavigation.tsx";
 import { ThemeControl } from "./ThemeControl.tsx";
 
 export function AppShell({ user, onLogout }: { user: UserDto; onLogout: () => Promise<void> }) {
+  const { pathname } = useLocation();
+  const page = pathname === "/ask" ? "ask" : "documents";
+
   return (
     <div className="app-shell">
       <header className="product-header">
         <Link className="product-brand" to="/documents">
-          Cairn
+          <img
+            alt=""
+            src="/assets/brand/cairn-logo.png"
+            onError={(event) => {
+              event.currentTarget.hidden = true;
+            }}
+          />
+          <span>Cairn</span>
         </Link>
         <PrimaryNavigation />
-        <AccountMenu user={user} onLogout={onLogout} appearance={<ThemeControl />} />
+        <div className="header-utilities">
+          <MascotAssistant page={page} />
+          <AccountMenu user={user} onLogout={onLogout} appearance={<ThemeControl />} />
+        </div>
       </header>
       <main className="workspace">
         <Outlet />

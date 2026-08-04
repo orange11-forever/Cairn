@@ -82,6 +82,7 @@ test("unauthenticated document route redirects to login", async () => {
   renderTestRoutes("/documents");
 
   expect(await screen.findByRole("heading", { name: "登录 Cairn" })).toBeInTheDocument();
+  expect(screen.getByRole("img", { name: "Cairn 看板娘" })).toBeInTheDocument();
 });
 
 test("login reaches documents and NavLink reaches ask without a reload", async () => {
@@ -111,6 +112,7 @@ test("authenticated login and unknown routes resolve to documents", async () => 
 });
 
 test("authenticated routes use one extensible application shell", async () => {
+  const user = userEvent.setup();
   renderTestRoutes("/documents", { initialUser: USER });
 
   expect(await screen.findByRole("banner")).toBeInTheDocument();
@@ -123,6 +125,12 @@ test("authenticated routes use one extensible application shell", async () => {
   expect(within(navigation).queryByRole("link", { name: /项目|Agent|治理/ })).toBeNull();
   expect(screen.getByRole("heading", { level: 1, name: "知识文档" })).toBeInTheDocument();
   expect(screen.getByText("管理用于企业问答的内部资料。")).toBeInTheDocument();
+
+  const assistantTrigger = screen.getByRole("button", { name: "打开看板娘助手" });
+  expect(assistantTrigger).toHaveAttribute("aria-expanded", "false");
+  await user.click(assistantTrigger);
+  expect(screen.getByRole("dialog", { name: "看板娘助手" })).toHaveTextContent("知识文档");
+  expect(assistantTrigger).toHaveAttribute("aria-expanded", "true");
 });
 
 test("account menu exposes identity and logout without duplicating session state", async () => {

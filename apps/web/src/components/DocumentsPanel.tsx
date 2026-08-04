@@ -2,11 +2,14 @@
 
 import { useMemo, useState } from "react";
 import type { ResourceId } from "@cairn/contracts";
+import { RefreshCw, Square } from "lucide-react";
 
 import { DocumentList } from "./DocumentList.tsx";
 import { StatusBar } from "./StatusBar.tsx";
 import { UploadZone } from "./UploadZone.tsx";
 import { WorkspaceHeader } from "./WorkspaceHeader.tsx";
+import { WorkspaceStatus } from "./WorkspaceStatus.tsx";
+import type { WorkspaceStatusProps } from "./WorkspaceStatus.tsx";
 import { toApiError } from "../api/errors.ts";
 import { countByStatus, filterByStatus, statusLabel } from "../lib/documents.ts";
 import type { DocumentLoadState } from "../lib/statusText.ts";
@@ -22,6 +25,54 @@ const SCENARIOS = [
 
 /** 状态筛选的选项。"all" 是哨兵值，不是真实状态（见 lib/documents.ts）。 */
 type StatusFilter = DocumentStatus | "all";
+
+function getWorkspaceStatus(
+  loadState: DocumentLoadState,
+  onRetry: () => void,
+): Omit<WorkspaceStatusProps, "mascot"> {
+  switch (loadState.phase) {
+    case "loading":
+      return {
+        state: "loading",
+        title: "正在整理资料",
+        description: "文档状态同步完成后，我会提示你哪些资料可以用于问答。",
+      };
+    case "error":
+      return {
+        state: "error",
+        title: "暂时无法读取资料",
+        description:
+          loadState.error.kind === "contract"
+            ? "返回的数据暂时无法识别，请联系管理员检查资料服务。"
+            : "上传入口仍然可用，也可以重新加载现有文档。",
+        action:
+          loadState.error.kind === "contract" ? undefined : (
+            <button type="button" onClick={onRetry}>
+              <RefreshCw aria-hidden="true" size={16} strokeWidth={1.8} />
+              再次加载
+            </button>
+          ),
+      };
+    case "success":
+      return loadState.documents.length > 0
+        ? {
+            state: "success",
+            title: "资料已就绪",
+            description: "已加载的资料可以继续筛选；处理中的文档会在完成后进入问答。",
+          }
+        : {
+            state: "empty",
+            title: "建立知识空间",
+            description: "从下方上传第一份团队资料，我会陪你确认处理进度。",
+          };
+    case "idle":
+      return {
+        state: "empty",
+        title: "从资料清单开始",
+        description: "加载已有文档，或直接上传新的团队资料。",
+      };
+  }
+}
 
 export function DocumentsPanel({
   userId,
@@ -88,6 +139,8 @@ export function DocumentsPanel({
   // 其他角标全变成 0，用户就没法用角标判断该切到哪个筛选了。
   const counts = useMemo(() => countByStatus(documents), [documents]);
 
+  const workspaceStatus = getWorkspaceStatus(loadState, () => void query.refetch());
+
   return (
     <section className="documents-panel" aria-labelledby="documents-title">
       <WorkspaceHeader
@@ -96,9 +149,10 @@ export function DocumentsPanel({
         description="管理用于企业问答的内部资料。"
       />
 
-      <div className="documents-controls">
-        {import.meta.env.DEV && (
-          <>
+      {import.meta.env.DEV && (
+        <div className="documents-dev-toolbar" data-dev-only="true">
+          <span>开发预览</span>
+          <div>
             <label htmlFor="scenario">模拟场景</label>
             <select
               id="scenario"
@@ -111,80 +165,72 @@ export function DocumentsPanel({
                 </option>
               ))}
             </select>
-          </>
-        )}
+          </div>
+        </div>
+      )}
 
-        {/*
-          两个按钮的 disabled 都从 state.phase 算出来，不再手动赋值。
-          这就是声明式的差别：旧代码在订阅回调里写 `load.disabled = phase === "loading"`——
-          一个必须在每次状态变化时被正确执行的**指令**，漏掉一处就出现
-          "加载完了按钮还是灰的"。现在它是一个**描述**，phase 是什么，按钮就是什么，
-          没有"忘了更新"这种失败模式。
-        */}
-        <button
-          id="load-btn"
-          type="button"
-          disabled={isLoading}
-          onClick={() => void query.refetch()}
-        >
-          加载文档
-        </button>
-        <button
-          id="cancel-btn"
-          type="button"
-          disabled={!isLoading}
-          onClick={() => void query.cancel()}
-        >
-          取消
-        </button>
+      <div className="documents-workbench">
+        <div className="documents-primary">
+          <div className="documents-controls">
+            <button
+              id="load-btn"
+              type="button"
+              disabled={isLoading}
+              onClick={() => void query.refetch()}
+            >
+              <RefreshCw aria-hidden="true" size={16} strokeWidth={1.8} />
+              加载文档
+            </button>
+            <button
+              id="cancel-btn"
+              type="button"
+              disabled={!isLoading}
+              onClick={() => void query.cancel()}
+            >
+              <Square aria-hidden="true" size={15} strokeWidth={1.8} />
+              取消
+            </button>
+          </div>
+
+          <StatusBar state={loadState} />
+
+          {documents.length > 0 && (
+            <fieldset className="status-filter">
+              <legend>按状态筛选</legend>
+              {(["all", ...DOCUMENT_STATUSES] as const).map((value) => (
+                <label key={value} className="status-filter-option">
+                  <input
+                    type="radio"
+                    name="status-filter"
+                    value={value}
+                    checked={statusFilter === value}
+                    onChange={() => setStatusFilter(value)}
+                  />
+                  {value === "all"
+                    ? `全部 ${documents.length}`
+                    : `${statusLabel(value)} ${counts[value] ?? 0}`}
+                </label>
+              ))}
+            </fieldset>
+          )}
+
+          <DocumentList documents={visibleDocuments} />
+
+          {documents.length > 0 && visibleDocuments.length === 0 && (
+            <p className="document-list-empty" role="status" aria-label="筛选结果">
+              当前筛选下没有文档。切到「全部 {documents.length}」看所有。
+            </p>
+          )}
+        </div>
+
+        <aside className="documents-secondary" aria-label="工作区提示">
+          <WorkspaceStatus
+            {...workspaceStatus}
+            mascot={{ label: "Cairn 看板娘", variant: "half" }}
+          />
+          <UploadZone parentSignal={parentSignal} />
+        </aside>
       </div>
-
-      <StatusBar state={loadState} />
-
-      {/*
-        状态筛选器只在真的有文档时出现——
-        0 个文档时显示一排"已就绪 0 / 处理中 0"的按钮是在给用户提供
-        一个点了什么都不会变的控件。
-
-        用 radio 而不是 button 组：这是一组互斥选项，radiogroup 的语义
-        让读屏用户听到"3 之 1 项已选中"，知道总共有几个选择、自己在哪个。
-        一排 button 只能听到"按钮 已就绪"，看不出这是单选。
-        视觉上 CSS 会把它画成按钮样子——语义和外观是两件事。
-      */}
-      {documents.length > 0 && (
-        <fieldset className="status-filter">
-          <legend>按状态筛选</legend>
-          {(["all", ...DOCUMENT_STATUSES] as const).map((value) => (
-            <label key={value} className="status-filter-option">
-              <input
-                type="radio"
-                name="status-filter"
-                value={value}
-                checked={statusFilter === value}
-                onChange={() => setStatusFilter(value)}
-              />
-              {/* "all" 没有对应的 statusLabel（它不是真状态），单独给文案 */}
-              {value === "all" ? `全部 ${documents.length}` : `${statusLabel(value)} ${counts[value] ?? 0}`}
-            </label>
-          ))}
-        </fieldset>
-      )}
-
-      <DocumentList documents={visibleDocuments} />
-
-      {/*
-        筛选后为空的情况要单独说。
-        直接显示一个空列表会让用户以为文档丢了——而真相是他自己筛掉了所有。
-        这条和 lib/statusText.ts 里"空数据给引导而不是报错"是同一个判断：
-        沉默地少显示数据是最难被发现的一类问题。
-      */}
-      {documents.length > 0 && visibleDocuments.length === 0 && (
-        <p className="document-list-empty" role="status">
-          当前筛选下没有文档。切到「全部 {documents.length}」看所有。
-        </p>
-      )}
-
-      <UploadZone parentSignal={parentSignal} />
     </section>
   );
 }

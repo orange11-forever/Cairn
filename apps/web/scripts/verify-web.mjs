@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { spawnInvocation } from "../../../scripts/spawn-command.mjs";
 
 import {
+  assertPortAvailable,
   settleCleanupTasks,
   stopProcessTree,
   waitForChildSpawn,
@@ -28,8 +29,20 @@ const ROOT = join(WEB_ROOT, "../..");
 const SHOT_DIR = join(ROOT, "apps/web/screenshots");
 mkdirSync(SHOT_DIR, { recursive: true });
 
-const WEB = "http://localhost:5500";
-const MOCK_HEALTH = "http://localhost:8787/health";
+function readPort(name, fallback) {
+  const raw = process.env[name] ?? String(fallback);
+  const port = Number(raw);
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    throw new Error(`${name} must be an integer between 1 and 65535, received ${raw}`);
+  }
+  return port;
+}
+
+const WEB_PORT = readPort("CAIRN_VERIFY_WEB_PORT", 5500);
+const MOCK_PORT = readPort("CAIRN_VERIFY_MOCK_PORT", 8787);
+const WEB = `http://localhost:${WEB_PORT}`;
+const MOCK_ORIGIN = `http://localhost:${MOCK_PORT}`;
+const MOCK_HEALTH = `${MOCK_ORIGIN}/health`;
 
 // Vite dev server。
 //
@@ -41,6 +54,14 @@ const managedOptions = {
   stdio: "ignore",
   shell: false,
   detached: process.platform !== "win32",
+};
+const mockOptions = {
+  ...managedOptions,
+  env: { ...process.env, CAIRN_MOCK_PORT: String(MOCK_PORT) },
+};
+const webOptions = {
+  ...managedOptions,
+  env: { ...process.env, VITE_API_URL: MOCK_ORIGIN },
 };
 
 let mock = null;
@@ -608,16 +629,18 @@ function expect(cond, message) {
 }
 
 try {
-  mock = spawn(process.execPath, [join(WEB_ROOT, "mocks/docs-server.mjs")], managedOptions);
+  await Promise.all([assertPortAvailable(WEB_PORT), assertPortAvailable(MOCK_PORT)]);
+
+  mock = spawn(process.execPath, [join(WEB_ROOT, "mocks/docs-server.mjs")], mockOptions);
   await waitForChildSpawn(mock);
   const viteInvocation = spawnInvocation(pnpm, [
     "exec",
     "vite",
     "--port",
-    "5500",
+    String(WEB_PORT),
     "--strictPort",
   ]);
-  web = spawn(viteInvocation.command, viteInvocation.args, managedOptions);
+  web = spawn(viteInvocation.command, viteInvocation.args, webOptions);
   await waitForChildSpawn(web);
   await Promise.all([waitForServer(WEB), waitForServer(MOCK_HEALTH)]);
 

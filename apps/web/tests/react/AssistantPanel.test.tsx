@@ -57,7 +57,21 @@ afterEach(() => {
 describe("消息渲染", () => {
   test("没有消息时给引导，不是一片空白", async () => {
     render(<AssistantPanel />);
-    expect(screen.getByText("还没有提问。问一个问题试试。")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "AI 问答" })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "问答工作区" })).toHaveTextContent("准备就绪");
+    expect(screen.getByRole("textbox", { name: "你的问题" })).toBeEnabled();
+    expect(screen.getByRole("img", { name: "Cairn 问答助手" })).toBeInTheDocument();
+  });
+
+  test("建议问题复用正常提问流程", async () => {
+    const user = userEvent.setup();
+    render(<AssistantPanel />);
+
+    await user.click(screen.getByRole("button", { name: "值班故障如何升级？" }));
+
+    expect(await screen.findByText("值班故障如何升级？")).toBeInTheDocument();
+    expect(await screen.findByText(ANSWER.content)).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   test("成功后显示提问、回答和非链接引用标签", async () => {
@@ -240,7 +254,7 @@ describe("失败与回滚", () => {
     await waitFor(() => expect(screen.queryByText(QUESTION)).toBeNull());
 
     // 回到空列表状态，引导文案重新出现
-    expect(screen.getByText("还没有提问。问一个问题试试。")).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "问答工作区" })).toHaveTextContent("准备就绪");
   });
 
   test("失败后能重试，且不用重新打一遍问题", async () => {
