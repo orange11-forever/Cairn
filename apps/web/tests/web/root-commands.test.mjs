@@ -9,20 +9,24 @@ const APPROVED_SCRIPTS = [
   "build",
   "build:api",
   "build:web",
+  "check:sdk",
   "db:migrate",
   "db:seed",
   "dev:api",
   "dev:web",
+  "generate:sdk",
   "infra:up",
   "lint:api",
   "mock:web",
   "test",
   "test:api",
   "test:contracts",
+  "test:sdk",
   "test:web",
   "typecheck",
   "typecheck:api",
   "typecheck:contracts",
+  "typecheck:sdk",
   "typecheck:web",
   "verify",
   "verify:api",
@@ -53,9 +57,21 @@ test("root commands are allowlisted and shell neutral", async () => {
   assert.equal(root.scripts["lint:api"], "node scripts/run-task.mjs lint:api");
   assert.equal(root.scripts["db:migrate"], "node scripts/run-task.mjs db:migrate");
   assert.equal(root.scripts["db:seed"], "node scripts/run-task.mjs db:seed");
+  assert.equal(root.scripts["generate:sdk"], "node scripts/run-task.mjs generate:sdk");
+  assert.equal(root.scripts["check:sdk"], "node scripts/run-task.mjs check:sdk");
+  assert.equal(root.scripts["test:sdk"], "node scripts/run-task.mjs test:sdk");
+  assert.equal(root.scripts["typecheck:sdk"], "node scripts/run-task.mjs typecheck:sdk");
+  assert.equal(
+    root.scripts.test,
+    "node scripts/run-tasks.mjs test:contracts test:sdk test:web test:api",
+  );
+  assert.equal(
+    root.scripts.typecheck,
+    "node scripts/run-tasks.mjs typecheck:contracts typecheck:sdk typecheck:web typecheck:api",
+  );
   assert.equal(
     root.scripts.verify,
-    "node scripts/run-tasks.mjs test:contracts typecheck:contracts test:web typecheck:web verify:web test:api lint:api typecheck:api build:api",
+    "node scripts/run-tasks.mjs test:contracts typecheck:contracts test:sdk typecheck:sdk test:web typecheck:web verify:web test:api lint:api typecheck:api build:api",
   );
 
   for (const [name, command] of Object.entries(root.scripts)) {
