@@ -35,7 +35,15 @@ def test_health_and_api_version(client: TestClient) -> None:
 def test_openapi_contains_only_approved_paths(client: TestClient) -> None:
     response = client.get("/openapi.json")
     assert response.status_code == 200
-    assert set(response.json()["paths"]) == {"/health", "/ready", "/api/v1"}
+    assert set(response.json()["paths"]) == {
+        "/health",
+        "/ready",
+        "/api/v1",
+        "/api/v1/login",
+        "/api/v1/session",
+        "/api/v1/logout",
+        "/api/v1/organizations/{organization_id}",
+    }
 
 
 def test_health_does_not_touch_database() -> None:
@@ -181,6 +189,7 @@ def test_configured_cors_origin_handles_credentialed_preflight(
             headers={
                 "Origin": "http://localhost:5500",
                 "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "X-CSRF-Token",
             },
         )
 
@@ -192,6 +201,7 @@ def test_configured_cors_origin_handles_credentialed_preflight(
     assert "OPTIONS /health status=200" in captured.err
     assert response.headers["access-control-allow-origin"] == "http://localhost:5500"
     assert response.headers["access-control-allow-credentials"] == "true"
+    assert "X-CSRF-Token" in response.headers["access-control-allow-headers"]
 
 
 def test_unconfigured_origin_receives_no_cors_permission() -> None:

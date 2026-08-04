@@ -17,10 +17,13 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 
 from cairn_api import __version__
+from cairn_api.auth.router import clear_session_cookie
+from cairn_api.auth.router import router as auth_router
 from cairn_api.db.session import Database
-from cairn_api.errors import error_response
+from cairn_api.errors import ApiProblem, error_response
 from cairn_api.logging import configure_app_logging
 from cairn_api.middleware import RequestIdMiddleware, new_request_id
+from cairn_api.organizations.router import router as organizations_router
 from cairn_api.settings import Settings
 
 
@@ -74,9 +77,24 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
             allow_origins=current_settings.cors_origins,
             allow_credentials=True,
             allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-            allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+            allow_headers=["Authorization", "Content-Type", "X-CSRF-Token", "X-Request-ID"],
         )
     application.add_middleware(RequestIdMiddleware)
+
+    @application.exception_handler(ApiProblem)
+    async def api_problem_handler(  # pyright: ignore[reportUnusedFunction]
+        request: Request,
+        exc: ApiProblem,
+    ) -> JSONResponse:
+        response = error_response(
+            status_code=exc.status_code,
+            code=exc.code,
+            message=exc.message,
+            trace_id=get_request_id(request),
+        )
+        if exc.code == "session_invalid":
+            clear_session_cookie(response, current_settings)
+        return response
 
     @application.exception_handler(StarletteHTTPException)
     async def http_exception_handler(  # pyright: ignore[reportUnusedFunction]
@@ -144,6 +162,9 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
     @application.get("/api/v1", response_model=ApiVersionResponse)
     async def api_version() -> ApiVersionResponse:  # pyright: ignore[reportUnusedFunction]
         return ApiVersionResponse()
+
+    application.include_router(auth_router)
+    application.include_router(organizations_router)
 
     return application
 

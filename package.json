@@ -14,6 +14,7 @@
     "test:web": "node scripts/run-task.mjs test:web",
     "test:contracts": "node scripts/run-task.mjs test:contracts",
     "test:api": "node scripts/run-task.mjs test:api",
+    "lint:api": "node scripts/run-task.mjs lint:api",
     "typecheck:web": "node scripts/run-task.mjs typecheck:web",
     "typecheck:api": "node scripts/run-task.mjs typecheck:api",
     "build:web": "node scripts/run-task.mjs build:web",
