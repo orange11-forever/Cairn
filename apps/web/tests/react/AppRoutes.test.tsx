@@ -112,6 +112,31 @@ test("protected routes wait for restoration instead of flashing login", async ()
   expect(await screen.findByRole("heading", { name: "知识文档" })).toBeInTheDocument();
 });
 
+test("restore outages show a retry action and recover without a blank route", async () => {
+  let attempts = 0;
+  const user = userEvent.setup();
+  renderTestRoutes("/documents", {
+    sessionApi: fakeSessionApi({
+      restore: async () => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw new ApiError("http", "身份服务暂时不可用", {
+            status: 503,
+            code: "database_unavailable",
+          });
+        }
+        return IDENTITY;
+      },
+    }),
+  });
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("身份服务暂时不可用");
+  await user.click(screen.getByRole("button", { name: "重试" }));
+
+  expect(await screen.findByRole("heading", { name: "知识文档" })).toBeInTheDocument();
+  expect(attempts).toBe(2);
+});
+
 test("logout failure keeps the authenticated session and cached identity", async () => {
   const api = fakeSessionApi({ logout: async () => { throw new ApiError("network", "断网"); } });
   const user = userEvent.setup();

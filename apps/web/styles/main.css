@@ -533,6 +533,19 @@ summary:focus-visible {
   font-size: 0.875rem;
 }
 
+.session-status-page {
+  display: grid;
+  place-content: center;
+  min-height: 100dvh;
+  padding: var(--space-5);
+}
+
+.session-restore-error {
+  display: grid;
+  justify-items: start;
+  width: min(100%, 480px);
+}
+
 .login-page {
   display: grid;
   place-items: center;

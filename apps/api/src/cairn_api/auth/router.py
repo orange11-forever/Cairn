@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Header, Request, Response
 from sqlalchemy.orm import Session
 
 from cairn_api.auth.dependencies import get_audit_context, get_request_settings
@@ -13,6 +13,7 @@ from cairn_api.settings import Settings
 
 router = APIRouter(prefix="/api/v1", tags=["identity"])
 SessionDependency = Annotated[Session, Depends(get_db)]
+CsrfTokenHeader = Annotated[str | None, Header(alias="X-CSRF-Token")]
 
 
 def _require_origin(request: Request, settings: Settings) -> None:
@@ -76,12 +77,16 @@ def restore_session(request: Request, session: SessionDependency) -> IdentityCon
 
 
 @router.post("/logout", status_code=204)
-def logout(request: Request, session: SessionDependency) -> Response:
+def logout(
+    request: Request,
+    session: SessionDependency,
+    csrf_token: CsrfTokenHeader = None,
+) -> Response:
     settings = get_request_settings(request)
     _require_origin(request, settings)
     AuthService(session, settings).logout(
         session_token=request.cookies.get(settings.session_cookie_name),
-        csrf_token=request.headers.get("x-csrf-token"),
+        csrf_token=csrf_token,
         audit=get_audit_context(request),
     )
     response = Response(status_code=204)

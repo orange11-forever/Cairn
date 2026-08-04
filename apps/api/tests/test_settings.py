@@ -43,6 +43,8 @@ def test_settings_rejects_wildcard_cors_origin() -> None:
 def test_settings_rejects_invalid_app_url_and_origin() -> None:
     with pytest.raises(ValidationError):
         Settings(app_url="not-a-url", _env_file=None)  # pyright: ignore[reportCallIssue]
+    with pytest.raises(ValidationError, match="APP_URL"):
+        Settings(app_url="https://example.com/application", _env_file=None)  # pyright: ignore[reportCallIssue]
     with pytest.raises(ValidationError):
         Settings(cors_origins="https://example.com/path", _env_file=None)  # pyright: ignore[reportCallIssue]
 
@@ -73,6 +75,7 @@ def test_production_rejects_missing_short_or_example_csrf_secrets(csrf_secret: s
     with pytest.raises(ValidationError):
         Settings(
             environment="production",
+            app_url="https://cairn.example",
             session_cookie_secure=True,
             csrf_secret=csrf_secret,
             _env_file=None,  # pyright: ignore[reportCallIssue]
@@ -83,7 +86,18 @@ def test_production_requires_secure_session_cookie() -> None:
     with pytest.raises(ValidationError):
         Settings(
             environment="production",
+            app_url="https://cairn.example",
             session_cookie_secure=False,
+            csrf_secret="production-only-csrf-secret-with-at-least-32-bytes",
+            _env_file=None,  # pyright: ignore[reportCallIssue]
+        )
+
+
+def test_production_requires_app_url() -> None:
+    with pytest.raises(ValidationError, match="APP_URL"):
+        Settings(
+            environment="production",
+            session_cookie_secure=True,
             csrf_secret="production-only-csrf-secret-with-at-least-32-bytes",
             _env_file=None,  # pyright: ignore[reportCallIssue]
         )
@@ -92,6 +106,7 @@ def test_production_requires_secure_session_cookie() -> None:
 def test_production_accepts_secure_cookie_and_non_example_secret() -> None:
     settings = Settings(
         environment="production",
+        app_url="https://cairn.example",
         session_cookie_secure=True,
         csrf_secret="production-only-csrf-secret-with-at-least-32-bytes",
         _env_file=None,  # pyright: ignore[reportCallIssue]

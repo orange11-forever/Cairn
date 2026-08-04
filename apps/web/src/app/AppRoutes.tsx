@@ -34,9 +34,23 @@ function FallbackRoute() {
 }
 
 export function AppRoutes() {
-  const { status } = useSession();
+  const { status, restoreError, retryRestore } = useSession();
   if (status === "restoring") {
-    return <main aria-busy="true">正在恢复会话…</main>;
+    return <main className="session-status-page" aria-busy="true">正在恢复会话…</main>;
+  }
+  if (status === "restore-error") {
+    return (
+      <main className="session-status-page">
+        <div className="session-restore-error">
+          <p className="form-error" role="alert">
+            {restoreError?.message ?? "暂时无法恢复会话，请重试"}
+          </p>
+          <button type="button" className="retry-btn" onClick={retryRestore}>
+            重试
+          </button>
+        </div>
+      </main>
+    );
   }
   return (
     <Routes>

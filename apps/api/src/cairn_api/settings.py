@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     def validate_production_session_security(self) -> "Settings":
         if self.environment != "production":
             return self
+        if self.app_url is None:
+            raise ValueError("production requires APP_URL")
         if not self.session_cookie_secure:
             raise ValueError("production requires secure session cookies")
         if len(self.csrf_secret.encode("utf-8")) < 32:
@@ -62,6 +64,17 @@ class Settings(BaseSettings):
         if self.csrf_secret == "local-development-secret-change-before-deploying-32-bytes":
             raise ValueError("production cannot use the example CSRF secret")
         return self
+
+    @field_validator("app_url")
+    @classmethod
+    def require_app_origin(cls, value: AnyHttpUrl | None) -> AnyHttpUrl | None:
+        if value is None:
+            return None
+        if value.username is not None or value.password is not None:
+            raise ValueError("APP_URL cannot contain credentials")
+        if value.path not in (None, "", "/") or value.query is not None or value.fragment is not None:
+            raise ValueError("APP_URL must be an origin without path, query, or fragment")
+        return value
 
     @field_validator("database_url")
     @classmethod

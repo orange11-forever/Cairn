@@ -85,3 +85,55 @@ test("logout aborts the session, clears queries, and replaces the URL", async ()
   cancelQueries.mockRestore();
   clear.mockRestore();
 });
+
+test("restore outages expose a retry state instead of becoming anonymous", async () => {
+  const queryClient = createAppQueryClient();
+  let attempts = 0;
+
+  function Harness() {
+    const { status, session, restoreError, retryRestore } = useSession();
+    return (
+      <>
+        <output>{status}</output>
+        <output>{session?.user.email ?? "no-session"}</output>
+        <output>{restoreError?.message ?? "no-error"}</output>
+        <button onClick={retryRestore}>retry</button>
+      </>
+    );
+  }
+
+  const user = userEvent.setup();
+  render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <SessionProvider
+          sessionApi={{
+            restore: async () => {
+              attempts += 1;
+              if (attempts === 1) {
+                throw new ApiError("http", "服务暂时不可用", {
+                  status: 503,
+                  code: "database_unavailable",
+                });
+              }
+              return IDENTITY;
+            },
+            logout: async () => undefined,
+          }}
+        >
+          <Harness />
+        </SessionProvider>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+
+  expect(await screen.findByText("restore-error")).toBeInTheDocument();
+  expect(screen.getByText("no-session")).toBeInTheDocument();
+  expect(screen.getByText("服务暂时不可用")).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "retry" }));
+
+  expect(await screen.findByText("authenticated")).toBeInTheDocument();
+  expect(screen.getByText("demo@cairn.dev")).toBeInTheDocument();
+  expect(attempts).toBe(2);
+});

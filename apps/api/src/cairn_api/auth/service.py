@@ -180,9 +180,13 @@ class AuthService:
         if not session_token:
             raise _invalid_session()
         try:
+            session_digest = digest_token(session_token)
+            csrf_token = derive_csrf_token(session_token, self._csrf_secret)
+        except UnicodeEncodeError:
+            raise _invalid_session() from None
+        try:
             with self._session.begin():
-                record = get_session_record(self._session, digest_token(session_token))
-                csrf_token = derive_csrf_token(session_token, self._csrf_secret)
+                record = get_session_record(self._session, session_digest)
                 if not self._record_is_valid(record, csrf_token=csrf_token):
                     raise _invalid_session()
                 assert record is not None
@@ -215,9 +219,13 @@ class AuthService:
         if not session_token:
             return
         try:
+            session_digest = digest_token(session_token)
+            derived_csrf = derive_csrf_token(session_token, self._csrf_secret)
+        except UnicodeEncodeError:
+            return
+        try:
             with self._session.begin():
-                record = get_session_record(self._session, digest_token(session_token))
-                derived_csrf = derive_csrf_token(session_token, self._csrf_secret)
+                record = get_session_record(self._session, session_digest)
                 if not self._record_is_valid(record, csrf_token=derived_csrf):
                     return
                 assert record is not None

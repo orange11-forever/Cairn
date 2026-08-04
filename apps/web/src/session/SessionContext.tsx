@@ -20,13 +20,15 @@ export interface SessionApi {
   logout(csrfToken: string, signal: AbortSignal): Promise<void>;
 }
 
-export type SessionStatus = "restoring" | "anonymous" | "authenticated";
+export type SessionStatus = "restoring" | "restore-error" | "anonymous" | "authenticated";
 
 export interface SessionContextValue {
   status: SessionStatus;
   session: ActiveSession | null;
+  restoreError: ApiError | null;
   logoutError: ApiError | null;
   establishSession(identity: IdentityContext): void;
+  retryRestore(): void;
   logout(): Promise<void>;
 }
 
@@ -45,6 +47,7 @@ export function SessionProvider({
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const controllerRef = useRef<AbortController | null>(null);
+  const restoreControllerRef = useRef<AbortController | null>(null);
   const [status, setStatus] = useState<SessionStatus>(
     restoredIdentity === undefined ? "restoring" : "authenticated",
   );
@@ -54,6 +57,7 @@ export function SessionProvider({
     controllerRef.current = controller;
     return { identity: restoredIdentity, user: restoredIdentity.user, signal: controller.signal };
   });
+  const [restoreError, setRestoreError] = useState<ApiError | null>(null);
   const [logoutError, setLogoutError] = useState<ApiError | null>(null);
 
   const establishSession = useCallback((identity: IdentityContext): void => {
@@ -61,9 +65,38 @@ export function SessionProvider({
     const controller = new AbortController();
     controllerRef.current = controller;
     setSession({ identity, user: identity.user, signal: controller.signal });
+    setRestoreError(null);
     setLogoutError(null);
     setStatus("authenticated");
   }, []);
+
+  const retryRestore = useCallback((): void => {
+    restoreControllerRef.current?.abort();
+    const controller = new AbortController();
+    restoreControllerRef.current = controller;
+    setRestoreError(null);
+    setStatus("restoring");
+    void sessionApi
+      .restore(controller.signal)
+      .then(establishSession)
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        const apiError =
+          error instanceof ApiError
+            ? error
+            : new ApiError("network", "暂时无法恢复会话，请重试", { cause: error });
+        if (
+          apiError.kind === "http" &&
+          apiError.status === 401 &&
+          apiError.code === "session_invalid"
+        ) {
+          setStatus("anonymous");
+          return;
+        }
+        setRestoreError(apiError);
+        setStatus("restore-error");
+      });
+  }, [establishSession, sessionApi]);
 
   const logout = useCallback(async (): Promise<void> => {
     if (session === null) return;
@@ -89,21 +122,15 @@ export function SessionProvider({
 
   useEffect(() => {
     if (restoredIdentity !== undefined) return;
-    const bootstrap = new AbortController();
-    void sessionApi
-      .restore(bootstrap.signal)
-      .then(establishSession)
-      .catch(() => {
-        if (!bootstrap.signal.aborted) setStatus("anonymous");
-      });
-    return () => bootstrap.abort();
-  }, [establishSession, restoredIdentity, sessionApi]);
+    retryRestore();
+    return () => restoreControllerRef.current?.abort();
+  }, [restoredIdentity, retryRestore]);
 
   useEffect(() => () => controllerRef.current?.abort(), []);
 
   return (
     <SessionContext.Provider
-      value={{ status, session, logoutError, establishSession, logout }}
+      value={{ status, session, restoreError, logoutError, establishSession, retryRestore, logout }}
     >
       {children}
     </SessionContext.Provider>

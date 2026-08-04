@@ -46,6 +46,22 @@ def test_openapi_contains_only_approved_paths(client: TestClient) -> None:
     }
 
 
+def test_openapi_declares_logout_csrf_header() -> None:
+    operation = create_app().openapi()["paths"]["/api/v1/logout"]["post"]
+
+    assert operation["parameters"] == [
+        {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": False,
+            "schema": {
+                "anyOf": [{"type": "string"}, {"type": "null"}],
+                "title": "X-Csrf-Token",
+            },
+        }
+    ]
+
+
 def test_health_does_not_touch_database() -> None:
     database = Mock(spec=Database)
 

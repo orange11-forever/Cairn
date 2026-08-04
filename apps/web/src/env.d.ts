@@ -33,6 +33,8 @@ interface ImportMetaEnv {
   readonly VITE_IDENTITY_API_URL?: string;
   /** Mock documents, uploads, and conversations API base URL. */
   readonly VITE_MOCK_API_URL?: string;
+  /** Legacy alias retained while deployments migrate to VITE_MOCK_API_URL. */
+  readonly VITE_API_URL?: string;
 }
 
 interface ImportMeta {

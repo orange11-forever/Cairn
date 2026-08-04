@@ -271,6 +271,18 @@ def test_expired_or_revoked_session_is_invalid_and_clears_cookie(
 
 
 @pytest.mark.integration
+def test_non_ascii_session_cookie_is_invalid_and_clears_cookie(client: TestClient) -> None:
+    response = client.get(
+        "/api/v1/session",
+        headers=[(b"cookie", b"cairn_session=\xe9")],
+    )
+
+    assert response.status_code == 401
+    assert response.json()["code"] == "session_invalid"
+    assert "Max-Age=0" in response.headers["set-cookie"]
+
+
+@pytest.mark.integration
 @pytest.mark.parametrize("change", ["remove_membership", "disable_user"])
 def test_membership_removal_or_disabled_user_invalidates_session(
     client: TestClient,
