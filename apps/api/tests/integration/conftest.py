@@ -50,7 +50,11 @@ def migrated_connection(migrated_engine: Engine) -> Generator[Connection, None, 
 
 
 @pytest.fixture(scope="session")
-def database(test_database_url: str) -> Generator[Database, None, None]:
+def database(
+    test_database_url: str,
+    migrated_engine: Engine,
+) -> Generator[Database, None, None]:
+    del migrated_engine
     instance = Database(test_database_url)
     try:
         yield instance
@@ -71,7 +75,7 @@ def cleanup_identity_rows(
     with engine.begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE TABLE audit_logs, auth_sessions, memberships, users, "
-                "organizations CASCADE"
+                "TRUNCATE TABLE auth_rate_limits, audit_logs, auth_sessions, memberships, "
+                "users, organizations CASCADE"
             )
         )

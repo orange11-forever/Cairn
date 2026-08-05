@@ -16,6 +16,7 @@ pnpm infra:up
 pnpm db:migrate
 pnpm db:seed
 pnpm dev:api
+pnpm auth:cleanup
 uv run --package cairn-api pytest
 uv run --package cairn-api ruff check apps/api/src apps/api/tests
 uv run --package cairn-api pyright
@@ -24,19 +25,22 @@ uv build --package cairn-api
 
 API 默认监听 `127.0.0.1:8080`，提供 `/health`、`/ready`、身份接口、`/docs` 和 `/openapi.json`。日常完整开发流程应从仓库根目录运行 `pnpm infra:up` 和 `pnpm dev:core`；停止 `dev:core` 不会删除 PostgreSQL 开发卷。
 
-Docker Desktop 必须保持运行。生产环境必须替换示例数据库密码和 CSRF 密钥，并启用安全 Cookie。
+Docker Desktop 必须保持运行。生产环境必须使用 HTTPS `APP_URL`/`CORS_ORIGINS`、启用安全 Cookie，并分别提供至少 32 字节且不能复用的 `CAIRN_CSRF_SECRET` 与 `CAIRN_AUTH_RATE_LIMIT_SECRET`。将直接连接的可信反向代理网段以逗号分隔配置到 `CAIRN_TRUSTED_PROXY_CIDRS`；代理必须覆盖外部请求携带的 `Forwarded`/`X-Forwarded-*`，Uvicorn 不代替应用解析这些请求头。
 
 ## 当前能力边界
 
-- 已实现：组织、用户、成员关系、Argon2id 密码、Cookie 会话、CSRF、当前组织查询和追加式身份审计。
+- 已实现：组织、用户、成员关系、Argon2id 密码、Cookie 会话、CSRF、PostgreSQL 登录限流、当前组织查询和追加式身份审计。
 - `Bearer/OIDC`：未实现。
-- 登录限流：未实现。
 - 完整 RBAC/ACL：未实现。
 - 项目与任务端点：未实现。
 - 知识摄取与知识端点：未实现，文档、上传和问答仍由 Node mock 提供。
 - AI Provider 与外部 Agent：未实现，必须等待组织、权限、审计、项目和知识基础完成。
 
-演示种子只允许在开发和测试环境运行；生产配置拒绝演示种子、示例 CSRF 密钥和不安全 Cookie。停止 `pnpm dev:core` 只停止 API、Mock 与 Web 进程，不删除 PostgreSQL 开发卷。
+登录限流使用固定的 15 分钟窗口：规范化邮箱最多失败 5 次，来源 IP 最多失败 30 次，达到阈值后阻止 15 分钟。`auth_rate_limits` 只保存以 `CAIRN_AUTH_RATE_LIMIT_SECRET` 生成的 HMAC-SHA-256 摘要，不保存明文邮箱或 IP；限流数据库操作失败时登录会关闭并返回 `503 database_unavailable`。
+
+`pnpm auth:cleanup` 分批、幂等删除过期/已撤销会话和失效限流桶，保留有效会话、活动窗口和全部审计记录。演示种子只允许在开发和测试环境运行；生产配置拒绝演示种子、示例密钥、HTTP Origin 和不安全 Cookie。停止 `pnpm dev:core` 只停止 API、Mock 与 Web 进程，不删除 PostgreSQL 开发卷。
+
+根命令 `pnpm verify:core` 除迁移、PostgreSQL 集成测试、SDK 和 Web 验收外，还会用临时 localhost 证书启动 HTTPS 反向代理与生产配置 API，通过 Chromium 检查 CORS、Cookie、会话、CSRF 和审计来源 IP，并在所有退出路径清理证书、进程与隔离数据库资源。该阶段要求本机可用 OpenSSL 和 Playwright Chromium。
 
 ## 实施顺序
 

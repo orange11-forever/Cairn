@@ -18,6 +18,10 @@ def test_settings_defaults() -> None:
     assert settings.session_cookie_name == "cairn_session"
     assert settings.session_cookie_secure is False
     assert settings.session_ttl_seconds == 604800
+    assert settings.auth_rate_limit_secret == (
+        "local-development-auth-rate-limit-secret-change-before-deploying-32-bytes"
+    )
+    assert settings.trusted_proxy_cidrs == ()
 
 
 @pytest.mark.parametrize("port", [0, 65536])
@@ -109,7 +113,95 @@ def test_production_accepts_secure_cookie_and_non_example_secret() -> None:
         app_url="https://cairn.example",
         session_cookie_secure=True,
         csrf_secret="production-only-csrf-secret-with-at-least-32-bytes",
+        auth_rate_limit_secret="production-only-rate-limit-secret-with-at-least-32-bytes",
         _env_file=None,  # pyright: ignore[reportCallIssue]
     )
 
     assert settings.session_cookie_secure is True
+
+
+def test_production_rejects_reused_csrf_and_rate_limit_secret() -> None:
+    shared_secret = "production-shared-secret-with-at-least-32-bytes"
+    with pytest.raises(ValidationError, match="rate-limit secret"):
+        Settings(
+            environment="production",
+            app_url="https://cairn.example",
+            cors_origins="https://cairn.example",
+            session_cookie_secure=True,
+            csrf_secret=shared_secret,
+            auth_rate_limit_secret=shared_secret,
+            _env_file=None,  # pyright: ignore[reportCallIssue]
+        )
+
+
+@pytest.mark.parametrize("app_url", ["http://cairn.example", "http://localhost:8080"])
+def test_production_rejects_http_app_url(app_url: str) -> None:
+    with pytest.raises(ValidationError, match="HTTPS"):
+        Settings(
+            environment="production",
+            app_url=app_url,
+            session_cookie_secure=True,
+            csrf_secret="production-only-csrf-secret-with-at-least-32-bytes",
+            auth_rate_limit_secret="production-only-rate-limit-secret-with-at-least-32-bytes",
+            _env_file=None,  # pyright: ignore[reportCallIssue]
+        )
+
+
+def test_production_rejects_http_cors_origin() -> None:
+    with pytest.raises(ValidationError, match="HTTPS"):
+        Settings(
+            environment="production",
+            app_url="https://cairn.example",
+            cors_origins="http://frontend.example",
+            session_cookie_secure=True,
+            csrf_secret="production-only-csrf-secret-with-at-least-32-bytes",
+            auth_rate_limit_secret="production-only-rate-limit-secret-with-at-least-32-bytes",
+            _env_file=None,  # pyright: ignore[reportCallIssue]
+        )
+
+
+@pytest.mark.parametrize("secret", ["", "short", "local-development-auth-rate-limit-secret-change-before-deploying-32-bytes"])
+def test_production_rejects_missing_short_or_example_rate_limit_secret(secret: str) -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            environment="production",
+            app_url="https://cairn.example",
+            session_cookie_secure=True,
+            csrf_secret="production-only-csrf-secret-with-at-least-32-bytes",
+            auth_rate_limit_secret=secret,
+            _env_file=None,  # pyright: ignore[reportCallIssue]
+        )
+
+
+def test_settings_rejects_invalid_trusted_proxy_cidrs() -> None:
+    with pytest.raises(ValidationError, match="CIDR"):
+        Settings(trusted_proxy_cidrs="10.0.0.0/not-cidr", _env_file=None)  # pyright: ignore[reportCallIssue]
+
+
+def test_settings_parses_comma_separated_trusted_proxy_cidrs_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CAIRN_TRUSTED_PROXY_CIDRS", "10.0.0.0/8, 2001:db8::/32")
+
+    settings = Settings(_env_file=None)  # pyright: ignore[reportCallIssue]
+
+    assert [str(network) for network in settings.trusted_proxy_cidrs] == [
+        "10.0.0.0/8",
+        "2001:db8::/32",
+    ]
+
+
+def test_production_accepts_https_values_and_normalizes_origins() -> None:
+    settings = Settings(
+        environment="production",
+        app_url="https://cairn.example/",
+        cors_origins="https://frontend.example/",
+        session_cookie_secure=True,
+        csrf_secret="production-only-csrf-secret-with-at-least-32-bytes",
+        auth_rate_limit_secret="production-only-rate-limit-secret-with-at-least-32-bytes",
+        trusted_proxy_cidrs="10.0.0.0/8, 2001:db8::/32",
+        _env_file=None,  # pyright: ignore[reportCallIssue]
+    )
+    assert str(settings.app_url) == "https://cairn.example/"
+    assert settings.cors_origins == ["https://frontend.example"]
+    assert [str(network) for network in settings.trusted_proxy_cidrs] == ["10.0.0.0/8", "2001:db8::/32"]

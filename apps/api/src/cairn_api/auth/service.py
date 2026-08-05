@@ -1,4 +1,5 @@
 import hmac
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -7,6 +8,8 @@ from sqlalchemy.orm import Session
 
 from cairn_api.audit.repository import add_audit_log
 from cairn_api.auth.models import AuthSession, User
+from cairn_api.auth.rate_limit import digest_key, retry_after_seconds
+from cairn_api.auth.rate_limit_repository import BucketKey, RateLimitRepository, utcnow
 from cairn_api.auth.repository import (
     MembershipRecord,
     SessionRecord,
@@ -27,10 +30,6 @@ from cairn_api.auth.security import (
 from cairn_api.errors import ApiProblem
 from cairn_api.organizations.schemas import MembershipResponse, OrganizationResponse
 from cairn_api.settings import Settings
-
-
-class _InvalidCredentials(Exception):
-    pass
 
 
 @dataclass(frozen=True)
@@ -59,6 +58,15 @@ def _invalid_credentials() -> ApiProblem:
         status_code=401,
         code="invalid_credentials",
         message="邮箱或密码错误",
+    )
+
+
+def _login_rate_limited(retry_after: int) -> ApiProblem:
+    return ApiProblem(
+        status_code=429,
+        code="login_rate_limited",
+        message="登录尝试过于频繁，请稍后再试",
+        headers={"Retry-After": str(retry_after)},
     )
 
 
@@ -91,6 +99,60 @@ def _identity(
     )
 
 
+def _record_login_failure(
+    session: Session,
+    *,
+    email_key: BucketKey,
+    ip_key: BucketKey,
+    audit: RequestAuditContext,
+    now: datetime,
+) -> ApiProblem:
+    email_state = RateLimitRepository.record_failure(session, email_key, now=now)
+    ip_state = RateLimitRepository.record_failure(session, ip_key, now=now)
+    states = ((email_key, email_state), (ip_key, ip_state))
+    deadlines = [
+        state.blocked_until
+        for _, state in states
+        if state.blocked_until is not None and state.blocked_until > now
+    ]
+    if deadlines:
+        retry_after = retry_after_seconds(deadlines, now)
+        add_audit_log(
+            session,
+            org_id=None,
+            actor_type="anonymous",
+            actor_id=None,
+            action="auth.login_rate_limited",
+            resource_type="session",
+            resource_id=None,
+            trace_id=audit.trace_id,
+            ip=audit.ip,
+            user_agent=audit.user_agent,
+            details={
+                "bucketTypes": [
+                    key.bucket_type
+                    for key, state in states
+                    if state.blocked_until is not None and state.blocked_until > now
+                ],
+                "retryAfterSeconds": retry_after,
+            },
+        )
+        return _login_rate_limited(retry_after)
+    add_audit_log(
+        session,
+        org_id=None,
+        actor_type="anonymous",
+        actor_id=None,
+        action="auth.login_failed",
+        resource_type="session",
+        resource_id=None,
+        trace_id=audit.trace_id,
+        ip=audit.ip,
+        user_agent=audit.user_agent,
+    )
+    return _invalid_credentials()
+
+
 class AuthService:
     def __init__(self, session: Session, settings: Settings) -> None:
         self._session = session
@@ -103,71 +165,126 @@ class AuthService:
         email: str,
         password: str,
         audit: RequestAuditContext,
+        client_ip: str,
+        now: Callable[[], datetime] = utcnow,
     ) -> LoginResult:
+        current_time = now()
+        normalized_email = normalize_email(email)
+        email_key = BucketKey(
+            "email",
+            digest_key("email", normalized_email, self._settings.auth_rate_limit_secret),
+        )
+        ip_key = BucketKey(
+            "ip",
+            digest_key("ip", client_ip, self._settings.auth_rate_limit_secret),
+        )
+        outcome: ApiProblem | None = None
+        login_result: LoginResult | None = None
         try:
             with self._session.begin():
-                user = get_user_by_normalized_email(self._session, normalize_email(email))
-                password_digest = user.password_hash if user is not None else DUMMY_PASSWORD_HASH
-                password_valid = verify_password(password, password_digest)
-                if user is None or not password_valid or not user.is_active:
-                    raise _InvalidCredentials
-                memberships = get_memberships_for_user(self._session, user)
-                if not memberships:
-                    raise _InvalidCredentials
-                if len(memberships) > 1:
-                    raise ApiProblem(
-                        status_code=409,
-                        code="organization_selection_required",
-                        message="需要选择组织",
-                    )
-                membership = memberships[0]
-                material = issue_session_material(self._csrf_secret)
-                auth_session = AuthSession(
-                    org_id=membership.organization.id,
-                    user_id=user.id,
-                    token_digest=material.session_digest,
-                    csrf_digest=material.csrf_digest,
-                    expires_at=datetime.now(UTC)
-                    + timedelta(seconds=self._settings.session_ttl_seconds),
-                )
-                self._session.add(auth_session)
-                self._session.flush()
-                add_audit_log(
+                buckets = RateLimitRepository.lock_buckets(
                     self._session,
-                    org_id=membership.organization.id,
-                    actor_type="user",
-                    actor_id=user.id,
-                    action="auth.login_succeeded",
-                    resource_type="session",
-                    resource_id=auth_session.id,
-                    trace_id=audit.trace_id,
-                    ip=audit.ip,
-                    user_agent=audit.user_agent,
+                    [email_key, ip_key],
+                    now=current_time,
                 )
-                identity = _identity(
-                    membership,
-                    user=user,
-                    csrf_token=material.csrf_token,
+                active_deadlines = RateLimitRepository.active_block_deadlines(
+                    buckets,
+                    now=current_time,
                 )
-            return LoginResult(identity=identity, session_token=material.session_token)
-        except _InvalidCredentials:
-            try:
-                with self._session.begin():
+                if active_deadlines:
+                    retry_after = retry_after_seconds(active_deadlines, current_time)
                     add_audit_log(
                         self._session,
                         org_id=None,
                         actor_type="anonymous",
                         actor_id=None,
-                        action="auth.login_failed",
+                        action="auth.login_rate_limited",
                         resource_type="session",
                         resource_id=None,
                         trace_id=audit.trace_id,
                         ip=audit.ip,
                         user_agent=audit.user_agent,
+                        details={
+                            "bucketTypes": sorted(
+                                key.bucket_type
+                                for key, state in buckets.items()
+                                if state.blocked_until is not None
+                                and state.blocked_until > current_time
+                            ),
+                            "retryAfterSeconds": retry_after,
+                        },
                     )
-            except SQLAlchemyError as exc:
-                raise _database_unavailable() from exc
-            raise _invalid_credentials() from None
+                    outcome = _login_rate_limited(retry_after)
+                else:
+                    user = get_user_by_normalized_email(self._session, normalized_email)
+                    password_digest = user.password_hash if user is not None else DUMMY_PASSWORD_HASH
+                    password_valid = verify_password(password, password_digest)
+                    if user is None or not password_valid or not user.is_active:
+                        outcome = _record_login_failure(
+                            self._session,
+                            email_key=email_key,
+                            ip_key=ip_key,
+                            audit=audit,
+                            now=current_time,
+                        )
+                    else:
+                        memberships = get_memberships_for_user(self._session, user)
+                        if not memberships:
+                            outcome = _record_login_failure(
+                                self._session,
+                                email_key=email_key,
+                                ip_key=ip_key,
+                                audit=audit,
+                                now=current_time,
+                            )
+                        elif len(memberships) > 1:
+                            raise ApiProblem(
+                                status_code=409,
+                                code="organization_selection_required",
+                                message="需要选择组织",
+                            )
+                        else:
+                            membership = memberships[0]
+                            material = issue_session_material(self._csrf_secret)
+                            RateLimitRepository.clear_email_bucket(
+                                self._session,
+                                email_key.key_digest,
+                            )
+                            auth_session = AuthSession(
+                                org_id=membership.organization.id,
+                                user_id=user.id,
+                                token_digest=material.session_digest,
+                                csrf_digest=material.csrf_digest,
+                                expires_at=current_time
+                                + timedelta(seconds=self._settings.session_ttl_seconds),
+                            )
+                            self._session.add(auth_session)
+                            self._session.flush()
+                            add_audit_log(
+                                self._session,
+                                org_id=membership.organization.id,
+                                actor_type="user",
+                                actor_id=user.id,
+                                action="auth.login_succeeded",
+                                resource_type="session",
+                                resource_id=auth_session.id,
+                                trace_id=audit.trace_id,
+                                ip=audit.ip,
+                                user_agent=audit.user_agent,
+                            )
+                            login_result = LoginResult(
+                                identity=_identity(
+                                    membership,
+                                    user=user,
+                                    csrf_token=material.csrf_token,
+                                ),
+                                session_token=material.session_token,
+                            )
+            if outcome is not None:
+                raise outcome
+            if login_result is None:
+                raise RuntimeError("login completed without a result")
+            return login_result
         except SQLAlchemyError as exc:
             raise _database_unavailable() from exc
 

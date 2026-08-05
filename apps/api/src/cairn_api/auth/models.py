@@ -3,12 +3,15 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKeyConstraint,
     Index,
+    Integer,
     LargeBinary,
     String,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -64,4 +67,38 @@ class AuthSession(Base):
     last_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
+    )
+
+
+class AuthRateLimit(Base):
+    __tablename__ = "auth_rate_limits"
+    __table_args__ = (
+        CheckConstraint("bucket_type IN ('email', 'ip')", name="bucket_type"),
+        CheckConstraint("octet_length(key_digest) = 32", name="key_digest_length"),
+        CheckConstraint("failure_count > 0", name="positive_count"),
+        CheckConstraint(
+            "blocked_until IS NULL OR blocked_until >= window_started_at",
+            name="block_after_window",
+        ),
+        Index(
+            "ix_auth_rate_limits_window_started_at_unblocked",
+            "window_started_at",
+            postgresql_where=text("blocked_until IS NULL"),
+        ),
+        Index(
+            "ix_auth_rate_limits_blocked_until",
+            "blocked_until",
+            postgresql_where=text("blocked_until IS NOT NULL"),
+        ),
+    )
+
+    bucket_type: Mapped[str] = mapped_column(String(5), primary_key=True)
+    key_digest: Mapped[bytes] = mapped_column(LargeBinary(32), primary_key=True)
+    failure_count: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    window_started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+    blocked_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )

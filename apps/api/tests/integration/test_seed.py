@@ -83,8 +83,10 @@ def test_demo_seed_rejects_production(
     settings = Settings(
         environment="production",
         database_url=test_database_url,
+        app_url="https://app.example.com",
         session_cookie_secure=True,
         csrf_secret="production-only-csrf-secret-with-at-least-32-bytes",
+        auth_rate_limit_secret="production-only-auth-rate-limit-secret-with-at-least-32-bytes",
         _env_file=None,  # pyright: ignore[reportCallIssue]
     )
 

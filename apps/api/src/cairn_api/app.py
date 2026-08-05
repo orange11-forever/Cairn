@@ -91,6 +91,7 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
             code=exc.code,
             message=exc.message,
             trace_id=get_request_id(request),
+            headers=exc.headers,
         )
         if exc.code == "session_invalid":
             clear_session_cookie(response, current_settings)

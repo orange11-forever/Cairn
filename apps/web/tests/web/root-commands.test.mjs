@@ -6,6 +6,7 @@ import { join } from "node:path";
 
 const REPOSITORY_ROOT = join(import.meta.dirname, "../../../..");
 const APPROVED_SCRIPTS = [
+  "auth:cleanup",
   "build",
   "build:api",
   "build:web",
@@ -60,6 +61,7 @@ test("root commands are allowlisted and shell neutral", async () => {
   assert.equal(root.scripts["lint:api"], "node scripts/run-task.mjs lint:api");
   assert.equal(root.scripts["db:migrate"], "node scripts/run-task.mjs db:migrate");
   assert.equal(root.scripts["db:seed"], "node scripts/run-task.mjs db:seed");
+  assert.equal(root.scripts["auth:cleanup"], "node scripts/run-task.mjs auth:cleanup");
   assert.equal(root.scripts["generate:sdk"], "node scripts/run-task.mjs generate:sdk");
   assert.equal(root.scripts["check:sdk"], "node scripts/run-task.mjs check:sdk");
   assert.equal(root.scripts["test:sdk"], "node scripts/run-task.mjs test:sdk");

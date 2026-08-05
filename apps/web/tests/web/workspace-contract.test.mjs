@@ -38,6 +38,6 @@ test("Web tooling belongs to apps/web", async () => {
   const readme = await readFile(join(REPOSITORY_ROOT, "README.md"), "utf8");
   assert.match(readme, /contracts\/\s+# 共享运行时契约/);
   assert.match(readme, /共享 API 契约、响应式 Web 与真实身份基础已经完成/);
-  assert.match(readme, /组织、用户、成员、Cookie 会话和审计写入 PostgreSQL/);
+  assert.match(readme, /组织、用户、成员、Cookie 会话、登录限流状态和审计写入 PostgreSQL/);
   assert.match(readme, /文档、上传和问答仍连接 Node mock API/);
 });
