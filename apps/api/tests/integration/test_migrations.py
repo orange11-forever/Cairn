@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 from cairn_api.audit.models import AuditLog
-from cairn_api.auth.models import AuthSession, User
+from cairn_api.auth.models import AuthRateLimit, AuthSession, User
 from cairn_api.organizations.models import Organization
 from sqlalchemy import Connection, Engine, delete, insert, inspect, select, update
 from sqlalchemy.exc import DBAPIError, IntegrityError
@@ -28,6 +28,39 @@ def test_identity_migration_creates_expected_tables(migrated_engine: Engine) -> 
         "is_active",
         "created_at",
     }
+
+
+@pytest.mark.integration
+def test_auth_rate_limit_table_has_digest_only_buckets(migrated_engine: Engine) -> None:
+    inspector = inspect(migrated_engine)
+    columns = {column["name"] for column in inspector.get_columns(AuthRateLimit.__tablename__)}
+    assert columns >= {"bucket_type", "key_digest", "count", "window_started_at", "blocked_until"}
+    assert "email" not in columns
+    assert "ip" not in columns
+
+    primary_key = inspector.get_pk_constraint(AuthRateLimit.__tablename__)
+    assert primary_key["constrained_columns"] == ["bucket_type", "key_digest"]
+
+    checks = {item["name"] for item in inspector.get_check_constraints(AuthRateLimit.__tablename__)}
+    assert checks >= {
+        "ck_auth_rate_limits_bucket_type",
+        "ck_auth_rate_limits_key_digest_length",
+        "ck_auth_rate_limits_positive_count",
+        "ck_auth_rate_limits_block_after_window",
+    }
+
+    indexes = inspector.get_indexes(AuthRateLimit.__tablename__)
+    assert {item["name"] for item in indexes} >= {
+        "ix_auth_rate_limits_window_started_at_unblocked",
+        "ix_auth_rate_limits_blocked_until",
+    }
+    assert all(item.get("dialect_options", {}).get("postgresql_using", "btree") == "btree" for item in indexes)
+    predicates = {
+        item["name"]: str(item.get("dialect_options", {}).get("postgresql_where", ""))
+        for item in indexes
+    }
+    assert "blocked_until IS NULL" in predicates["ix_auth_rate_limits_window_started_at_unblocked"]
+    assert "blocked_until IS NOT NULL" in predicates["ix_auth_rate_limits_blocked_until"]
 
 
 @pytest.mark.integration

@@ -1,7 +1,10 @@
+from ipaddress import IPv4Network, IPv6Network
 from typing import Annotated, Literal, cast
 
 from pydantic import AnyHttpUrl, Field, TypeAdapter, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+from cairn_api.client_ip import parse_trusted_proxy_cidrs
 
 
 class Settings(BaseSettings):
@@ -50,6 +53,14 @@ class Settings(BaseSettings):
         default="local-development-secret-change-before-deploying-32-bytes",
         validation_alias="CAIRN_CSRF_SECRET",
     )
+    auth_rate_limit_secret: str = Field(
+        default="local-development-auth-rate-limit-secret-change-before-deploying-32-bytes",
+        validation_alias="CAIRN_AUTH_RATE_LIMIT_SECRET",
+    )
+    trusted_proxy_cidrs: tuple[IPv4Network | IPv6Network, ...] = Field(
+        default=(),
+        validation_alias="CAIRN_TRUSTED_PROXY_CIDRS",
+    )
 
     @model_validator(mode="after")
     def validate_production_session_security(self) -> "Settings":
@@ -63,6 +74,17 @@ class Settings(BaseSettings):
             raise ValueError("production requires a CSRF secret of at least 32 bytes")
         if self.csrf_secret == "local-development-secret-change-before-deploying-32-bytes":
             raise ValueError("production cannot use the example CSRF secret")
+        if self.app_url.scheme != "https":
+            raise ValueError("production requires HTTPS APP_URL")
+        if any(not origin.lower().startswith("https://") for origin in self.cors_origins):
+            raise ValueError("production requires HTTPS CORS origins")
+        if len(self.auth_rate_limit_secret.encode("utf-8")) < 32:
+            raise ValueError("production requires an auth rate-limit secret of at least 32 bytes")
+        if self.auth_rate_limit_secret in {
+            "local-development-auth-rate-limit-secret-change-before-deploying-32-bytes",
+            "local-development-secret-change-before-deploying-32-bytes",
+        }:
+            raise ValueError("production cannot use the example auth rate-limit secret")
         return self
 
     @field_validator("app_url")
@@ -111,3 +133,28 @@ class Settings(BaseSettings):
                 raise ValueError("CORS_ORIGINS entries must be origins without path, query, or fragment")
             normalized_origins.append(str(parsed).rstrip("/"))
         return normalized_origins
+
+    @field_validator("trusted_proxy_cidrs", mode="before")
+    @classmethod
+    def parse_trusted_proxy_networks(
+        cls, value: object
+    ) -> tuple[IPv4Network | IPv6Network, ...]:
+        if value is None or value == "":
+            return ()
+        if isinstance(value, str):
+            raw: str | list[str] = value
+        elif isinstance(value, list):
+            raw = cast(list[str], value)
+        elif isinstance(value, tuple) and all(
+            isinstance(item, (IPv4Network, IPv6Network))
+            for item in cast(tuple[object, ...], value)
+        ):
+            return cast(tuple[IPv4Network | IPv6Network, ...], value)
+        elif isinstance(value, tuple):
+            raw = list(cast(tuple[str, ...], value))
+        else:
+            raise ValueError("CAIRN_TRUSTED_PROXY_CIDRS must be a comma-separated string or string list")
+        try:
+            return parse_trusted_proxy_cidrs(raw)
+        except ValueError as exc:
+            raise ValueError(f"invalid trusted proxy CIDR: {exc}") from exc
