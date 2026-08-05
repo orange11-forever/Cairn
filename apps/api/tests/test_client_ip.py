@@ -29,3 +29,16 @@ def test_ipv6_cidrs_are_supported() -> None:
 
 def test_missing_direct_peer_returns_unknown() -> None:
     assert resolve_client_ip(None, "203.0.113.2", ()) == "unknown"
+
+
+def test_invalid_direct_peer_returns_unknown() -> None:
+    trusted = parse_trusted_proxy_cidrs("10.0.0.0/8")
+    assert resolve_client_ip("not-an-ip", "203.0.113.2", trusted) == "unknown"
+
+
+def test_all_trusted_forwarded_chain_falls_back_to_direct_peer() -> None:
+    trusted = parse_trusted_proxy_cidrs("10.0.0.0/8")
+    assert (
+        resolve_client_ip("10.0.0.1", "10.0.0.2,10.0.0.3", trusted)
+        == "10.0.0.1"
+    )

@@ -53,7 +53,7 @@ def resolve_client_ip(
     try:
         canonical_peer = _canonical(direct_peer)
     except ValueError:
-        return direct_peer.strip()
+        return "unknown"
     if not forwarded_for or not forwarded_for.strip() or not _is_trusted(canonical_peer, trusted_proxy_cidrs):
         return canonical_peer
 
@@ -68,4 +68,4 @@ def resolve_client_ip(
     for candidate in reversed(hops):
         if not _is_trusted(candidate, trusted_proxy_cidrs):
             return candidate
-    return hops[0]
+    return canonical_peer
