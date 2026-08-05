@@ -8,7 +8,6 @@ from typing import cast
 
 from sqlalchemy import and_, case, or_, select, tuple_
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from cairn_api.auth.models import AuthRateLimit
@@ -114,17 +113,23 @@ class RateLimitRepository:
                 "window_started_at": next_window,
                 "blocked_until": next_block,
             },
+        ).returning(
+            table.c.bucket_type,
+            table.c.key_digest,
+            table.c.failure_count,
+            table.c.window_started_at,
+            table.c.blocked_until,
         )
-        session.execute(statement)
-        row = session.scalar(
-            select(AuthRateLimit).where(
-                AuthRateLimit.bucket_type == key.bucket_type,
-                AuthRateLimit.key_digest == key.key_digest,
-            )
+        bucket_type, key_digest, failure_count, window_started_at, blocked_until = (
+            session.execute(statement).one()
         )
-        if row is None:
-            raise SQLAlchemyError("rate-limit bucket upsert returned no row")
-        return _state(row)
+        return BucketState(
+            bucket_type=cast(BucketType, bucket_type),
+            key_digest=key_digest,
+            failure_count=failure_count,
+            window_started_at=window_started_at,
+            blocked_until=blocked_until,
+        )
 
     @staticmethod
     def clear_email_bucket(session: Session, key_digest: bytes) -> None:

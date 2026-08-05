@@ -31,7 +31,13 @@ def test_rate_limit_model_uses_failure_count_contract_name() -> None:
 
 def test_record_failure_uses_postgresql_upsert() -> None:
     session = MagicMock()
-    session.execute.return_value = None
+    session.execute.return_value.one.return_value = (
+        "email",
+        b"e" * 32,
+        1,
+        datetime(2026, 8, 5, tzinfo=UTC),
+        None,
+    )
     key = BucketKey("email", b"e" * 32)
 
     RateLimitRepository.record_failure(session, key, now=datetime(2026, 8, 5, tzinfo=UTC))
@@ -39,4 +45,6 @@ def test_record_failure_uses_postgresql_upsert() -> None:
     statement = session.execute.call_args.args[0]
     sql = str(statement.compile(dialect=postgresql.dialect()))
     assert "ON CONFLICT" in sql
+    assert "RETURNING" in sql
+    assert "failure_count" in sql
     assert "auth_rate_limits" in sql
