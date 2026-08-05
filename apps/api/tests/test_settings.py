@@ -178,6 +178,19 @@ def test_settings_rejects_invalid_trusted_proxy_cidrs() -> None:
         Settings(trusted_proxy_cidrs="10.0.0.0/not-cidr", _env_file=None)  # pyright: ignore[reportCallIssue]
 
 
+def test_settings_parses_comma_separated_trusted_proxy_cidrs_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CAIRN_TRUSTED_PROXY_CIDRS", "10.0.0.0/8, 2001:db8::/32")
+
+    settings = Settings(_env_file=None)  # pyright: ignore[reportCallIssue]
+
+    assert [str(network) for network in settings.trusted_proxy_cidrs] == [
+        "10.0.0.0/8",
+        "2001:db8::/32",
+    ]
+
+
 def test_production_accepts_https_values_and_normalizes_origins() -> None:
     settings = Settings(
         environment="production",

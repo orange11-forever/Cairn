@@ -22,7 +22,9 @@ const TASKS = Object.freeze({
   "typecheck:web": [PNPM, ["--filter", "cairn-web", "typecheck"]],
   "build:web": [PNPM, ["--filter", "cairn-web", "build"]],
   "verify:web": [PNPM, ["--filter", "cairn-web", "verify"]],
+  "verify:auth-proxy": [process.execPath, ["scripts/verify-auth-proxy.mjs"]],
   "dev:api": [UV, ["run", "--package", "cairn-api", "cairn-api"]],
+  "auth:cleanup": [UV, ["run", "--package", "cairn-api", "cairn-api", "auth-cleanup"]],
   "test:api": [UV, ["run", "--package", "cairn-api", "pytest", "apps/api/tests", "-q"]],
   "lint:api": [
     UV,

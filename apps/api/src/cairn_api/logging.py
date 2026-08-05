@@ -22,5 +22,6 @@ def configure_app_logging(level: str, stream: TextIO | None = None) -> logging.L
     )
     logger.addHandler(handler)
     logger.setLevel(level)
+    logger.disabled = False
     logger.propagate = False
     return logger

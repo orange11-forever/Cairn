@@ -49,11 +49,26 @@ export function resolveVerificationConfig(
   const apiPort = readPort(environment, "CAIRN_VERIFY_API_PORT", 58080);
   const webPort = readPort(environment, "CAIRN_VERIFY_WEB_PORT", 55500);
   const mockPort = readPort(environment, "CAIRN_VERIFY_MOCK_PORT", 58787);
+  const proxyPort = readPort(environment, "CAIRN_VERIFY_PROXY_PORT", 58443);
   const databaseUrl =
     `postgresql+psycopg://cairn:cairn-local-only@127.0.0.1:${databasePort}/cairn_test`;
   const apiOrigin = `http://localhost:${apiPort}`;
   const webOrigin = `http://localhost:${webPort}`;
   const mockOrigin = `http://localhost:${mockPort}`;
+  const productionProxyOrigin = `https://localhost:${proxyPort}`;
+  const productionApiOrigin = `https://localhost:${apiPort}`;
+  const productionWebOrigin = `https://localhost:${webPort}`;
+  const productionEnvironment = {
+    ...environment,
+    APP_URL: productionWebOrigin,
+    CAIRN_AUTH_RATE_LIMIT_SECRET: "proxy-verification-rate-limit-secret-at-least-32-bytes",
+    CAIRN_CSRF_SECRET: "proxy-verification-csrf-secret-at-least-32-bytes",
+    CAIRN_ENVIRONMENT: "production",
+    CAIRN_SESSION_COOKIE_SECURE: "true",
+    CAIRN_TRUSTED_PROXY_CIDRS: "127.0.0.0/8,::1/128",
+    CORS_ORIGINS: productionWebOrigin,
+    VITE_IDENTITY_API_URL: productionProxyOrigin,
+  };
 
   return {
     projectName,
@@ -61,10 +76,15 @@ export function resolveVerificationConfig(
     apiPort,
     webPort,
     mockPort,
+    proxyPort,
     databaseUrl,
     apiOrigin,
     webOrigin,
     mockOrigin,
+    productionProxyOrigin,
+    productionApiOrigin,
+    productionWebOrigin,
+    productionEnvironment,
     environment: {
       ...environment,
       APP_URL: webOrigin,
@@ -77,6 +97,7 @@ export function resolveVerificationConfig(
       CAIRN_VERIFY_API_PORT: String(apiPort),
       CAIRN_VERIFY_IDENTITY_ORIGIN: apiOrigin,
       CAIRN_VERIFY_MOCK_PORT: String(mockPort),
+      CAIRN_VERIFY_PROXY_PORT: String(proxyPort),
       CAIRN_VERIFY_POSTGRES_PORT: String(databasePort),
       CAIRN_VERIFY_WEB_PORT: String(webPort),
       CORS_ORIGINS: webOrigin,
@@ -158,6 +179,8 @@ function createStageRunner(config, processManager) {
   return async (stage) => {
     if (stage === "migrate") return nodeTask("db:migrate");
     if (stage === "integration") {
+      const integrationEnvironment = { ...config.environment };
+      delete integrationEnvironment.CORS_ORIGINS;
       return processManager.run(
         UV,
         [
@@ -170,7 +193,7 @@ function createStageRunner(config, processManager) {
           "-m",
           "integration",
         ],
-        { env: config.environment },
+        { env: integrationEnvironment },
       );
     }
     if (stage === "seed") return nodeTask("db:seed");
@@ -191,9 +214,15 @@ function createStageRunner(config, processManager) {
       );
     }
     if (stage === "browser") {
-      return processManager.run(
+      const browserCode = await processManager.run(
         process.execPath,
         ["apps/web/scripts/verify-web.mjs"],
+        { env: config.environment },
+      );
+      if (browserCode !== 0) return browserCode;
+      return processManager.run(
+        process.execPath,
+        ["scripts/verify-auth-proxy.mjs"],
         { env: config.environment },
       );
     }

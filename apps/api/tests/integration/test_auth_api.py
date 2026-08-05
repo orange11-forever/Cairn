@@ -11,6 +11,7 @@ from cairn_api.auth.models import AuthRateLimit, AuthSession, User
 from cairn_api.auth.rate_limit import digest_key
 from cairn_api.auth.security import DUMMY_PASSWORD_HASH, digest_token
 from cairn_api.auth.service import AuthService, RequestAuditContext
+from cairn_api.client_ip import parse_trusted_proxy_cidrs
 from cairn_api.db.session import Database
 from cairn_api.errors import ApiProblem
 from cairn_api.organizations.models import Membership, Organization
@@ -63,6 +64,67 @@ def login(client: TestClient, *, password: str = DEMO_PASSWORD) -> Response:
         headers={"Origin": APP_ORIGIN, "X-Request-ID": "req-login"},
         json={"email": DEMO_EMAIL, "password": password},
     )
+
+
+@pytest.mark.integration
+def test_trusted_loopback_proxy_chain_records_external_client_ip(
+    database: Database,
+    migrated_engine: Engine,
+    api_settings: Settings,
+) -> None:
+    del migrated_engine
+    seed_demo_identity(api_settings, database)
+    settings = api_settings.model_copy(
+        update={"trusted_proxy_cidrs": parse_trusted_proxy_cidrs("127.0.0.0/8,::1/128")}
+    )
+    with TestClient(
+        create_app(settings, database),
+        client=("127.0.0.1", 50000),
+    ) as proxy_client:
+        response = proxy_client.post(
+            "/api/v1/login",
+            headers={
+                "Origin": APP_ORIGIN,
+                "X-Forwarded-For": "203.0.113.42, 127.0.0.2",
+            },
+            json={"email": DEMO_EMAIL, "password": DEMO_PASSWORD},
+        )
+
+    assert response.status_code == 200
+    with database.session_factory() as session:
+        audit_ip = session.scalar(
+            select(AuditLog.ip)
+            .where(AuditLog.action == "auth.login_succeeded")
+            .order_by(AuditLog.created_at.desc())
+        )
+    assert audit_ip == "203.0.113.42"
+
+
+@pytest.mark.integration
+def test_untrusted_direct_peer_cannot_spoof_forwarded_client_ip(
+    database: Database,
+    migrated_engine: Engine,
+    api_settings: Settings,
+) -> None:
+    del migrated_engine
+    seed_demo_identity(api_settings, database)
+    settings = api_settings.model_copy(
+        update={"trusted_proxy_cidrs": parse_trusted_proxy_cidrs("127.0.0.0/8")}
+    )
+    with TestClient(
+        create_app(settings, database),
+        client=("198.51.100.9", 50000),
+    ) as direct_client:
+        response = direct_client.post(
+            "/api/v1/login",
+            headers={"Origin": APP_ORIGIN, "X-Forwarded-For": "203.0.113.99"},
+            json={"email": DEMO_EMAIL, "password": DEMO_PASSWORD},
+        )
+
+    assert response.status_code == 200
+    with database.session_factory() as session:
+        audit_ip = session.scalar(select(AuditLog.ip).where(AuditLog.action == "auth.login_succeeded"))
+    assert audit_ip == "198.51.100.9"
 
 
 @pytest.mark.integration

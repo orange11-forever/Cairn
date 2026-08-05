@@ -1,5 +1,8 @@
+import logging
+import sys
 from collections.abc import Iterator
 from io import StringIO
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -9,6 +12,30 @@ from cairn_api.logging import configure_app_logging
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
+
+
+def test_uvicorn_leaves_proxy_headers_for_the_application_to_validate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from cairn_api import __main__
+
+    run = Mock()
+    monkeypatch.setattr("cairn_api.__main__.uvicorn.run", run)
+    monkeypatch.setattr(
+        __main__,
+        "Settings",
+        lambda: SimpleNamespace(bind_host="127.0.0.1", http_port=8080, log_level="INFO"),
+    )
+    monkeypatch.setattr(sys, "argv", ["cairn-api"])
+
+    assert __main__.main() == 0
+    run.assert_called_once_with(
+        "cairn_api.app:app",
+        host="127.0.0.1",
+        port=8080,
+        log_level="info",
+        proxy_headers=False,
+    )
 
 
 @pytest.fixture
@@ -268,6 +295,19 @@ def test_cairn_logger_formats_request_id() -> None:
 
     assert "request_id=req-log-123" in stream.getvalue()
     logger.handlers.clear()
+
+
+def test_configure_app_logging_reenables_disabled_logger() -> None:
+    logger = logging.getLogger("cairn_api")
+    logger.disabled = True
+    stream = StringIO()
+    try:
+        configured = configure_app_logging("INFO", stream=stream)
+        configured.error("probe", extra={"request_id": "req-reenabled-123"})
+        assert "request_id=req-reenabled-123" in stream.getvalue()
+    finally:
+        logger.handlers.clear()
+        logger.disabled = False
 
 
 def test_request_completion_log_contains_response_request_id(

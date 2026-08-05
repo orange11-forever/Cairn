@@ -21,7 +21,7 @@
 - Web 保留本地容错、请求取消、查询缓存和 UI 状态边界；
 - 工作台支持 360、768、1280 像素布局，以及日间、夜间和跟随系统偏好；
 - 导航壳可扩展到知识、项目、执行和治理模块，但当前只开放已有页面；
-- 组织、用户、成员、Cookie 会话和审计写入 PostgreSQL，Web 身份请求连接 FastAPI；
+- 组织、用户、成员、Cookie 会话、登录限流状态和审计写入 PostgreSQL，Web 身份请求连接 FastAPI；
 - 文档、上传和问答仍连接 Node mock API，不代表知识系统已经完成。
 
 ## 核心能力
@@ -137,7 +137,7 @@ pnpm dev:core
 
 若本机 5432 已被其他 PostgreSQL 占用，可让 `CAIRN_POSTGRES_PORT` 与 `DATABASE_URL` 同时改用同一个空闲端口；不要只改其中一项。
 
-生产环境必须替换 `.env.example` 中的数据库密码和 `CAIRN_CSRF_SECRET` 示例值；生产配置会拒绝示例密钥和不安全 Cookie。
+生产环境必须使用 HTTPS `APP_URL`/`CORS_ORIGINS`、安全 Cookie，并分别配置至少 32 字节且不能复用的 `CAIRN_CSRF_SECRET` 与 `CAIRN_AUTH_RATE_LIMIT_SECRET`。生产配置会拒绝示例密钥、HTTP Origin 和不安全 Cookie。只有直接连接且受信任的反向代理才能写入转发链；将其网段以逗号分隔配置到 `CAIRN_TRUSTED_PROXY_CIDRS`，并确保代理覆盖客户端提交的 `Forwarded`/`X-Forwarded-*` 请求头。
 
 ## 当前 API 基线
 
@@ -155,9 +155,17 @@ pnpm dev:api
 - 版本探针：`http://127.0.0.1:8080/api/v1`
 - OpenAPI：`http://127.0.0.1:8080/docs`
 
-API 现已提供 PostgreSQL readiness、登录、会话恢复、注销和当前组织接口。文档、上传和问答仍由 Node mock 提供。
+API 现已提供 PostgreSQL readiness、登录、会话恢复、注销和当前组织接口。登录失败限制由 PostgreSQL 持久化：同一规范化邮箱在 15 分钟窗口内最多失败 5 次，同一来源 IP 最多失败 30 次，达到阈值后阻止 15 分钟；表中仅保存使用 `CAIRN_AUTH_RATE_LIMIT_SECRET` 生成的 HMAC 摘要，不保存明文邮箱或 IP。文档、上传和问答仍由 Node mock 提供。
 
-当前切片不包含 Bearer/OIDC、登录限流、完整 RBAC/ACL、项目、知识摄取、知识端点或 AI Provider。AI Provider 与外部 Agent 接入必须建立在组织、权限、审计、项目和知识基础完成之后，不能绕过这些边界提前扩展。
+当前切片不包含 Bearer/OIDC、完整 RBAC/ACL、项目、知识摄取、知识端点或 AI Provider。AI Provider 与外部 Agent 接入必须建立在组织、权限、审计、项目和知识基础完成之后，不能绕过这些边界提前扩展。
+
+可按需清理过期或已撤销的认证状态：
+
+```bash
+pnpm auth:cleanup
+```
+
+该命令分批、幂等删除过期/已撤销会话与失效限流桶，保留有效会话、活动限流窗口和全部审计记录；数据库错误会返回非零退出码。
 
 ## 质量检查
 
@@ -169,7 +177,7 @@ pnpm verify:core
 pnpm verify
 ```
 
-`pnpm verify:core` 会创建独立 PostgreSQL project 和临时卷，执行迁移、真实身份集成测试、SDK 漂移检查、生产构建与 Chromium 登录闭环，并在成功、失败或信号中断后删除该验证 project。它不会接触开发数据库和卷。
+`pnpm verify:core` 会创建独立 PostgreSQL project 和临时卷，执行迁移、真实身份集成测试、SDK 漂移检查、生产构建与 Chromium 登录闭环。最后一段验收会用 OpenSSL 生成仅供本次运行使用的 localhost 证书，在 HTTPS 反向代理后启动生产配置 API，并验证 CORS、Secure/HttpOnly/SameSite Cookie、会话恢复、CSRF 注销和可信来源 IP。临时证书、进程及 Compose project 会在成功、失败或信号中断后清理；该命令不会接触开发数据库和卷。
 
 `pnpm verify` 是完整的跨 package 门禁：它覆盖共享契约、SDK、Web、API、Ruff、Pyright、发行包构建与最后的真实核心验证。浏览器部分覆盖错误密码、登录、刷新恢复、组织显示、注销、360/768/1280 像素布局、主题、路由保护、会话隔离、并发取消、文档状态、筛选、上传、提问和自动滚动；生产构建还会检查开发凭据和 Mock 场景控件没有进入产物。
 

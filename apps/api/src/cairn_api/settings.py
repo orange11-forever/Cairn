@@ -57,7 +57,7 @@ class Settings(BaseSettings):
         default="local-development-auth-rate-limit-secret-change-before-deploying-32-bytes",
         validation_alias="CAIRN_AUTH_RATE_LIMIT_SECRET",
     )
-    trusted_proxy_cidrs: tuple[IPv4Network | IPv6Network, ...] = Field(
+    trusted_proxy_cidrs: Annotated[tuple[IPv4Network | IPv6Network, ...], NoDecode] = Field(
         default=(),
         validation_alias="CAIRN_TRUSTED_PROXY_CIDRS",
     )
