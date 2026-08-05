@@ -8,7 +8,7 @@ from cairn_api.auth.dependencies import get_audit_context, get_request_settings
 from cairn_api.auth.schemas import IdentityContextResponse, LoginRequest
 from cairn_api.auth.service import AuthService
 from cairn_api.db.session import get_db
-from cairn_api.errors import ApiProblem
+from cairn_api.errors import ApiProblem, ErrorBody
 from cairn_api.settings import Settings
 
 router = APIRouter(prefix="/api/v1", tags=["identity"])
@@ -49,7 +49,11 @@ def clear_session_cookie(response: Response, settings: Settings) -> None:
     )
 
 
-@router.post("/login", response_model=IdentityContextResponse)
+@router.post(
+    "/login",
+    response_model=IdentityContextResponse,
+    responses={429: {"description": "登录尝试过于频繁", "model": ErrorBody}},
+)
 def login(
     payload: LoginRequest,
     request: Request,
@@ -58,10 +62,12 @@ def login(
 ) -> IdentityContextResponse:
     settings = get_request_settings(request)
     _require_origin(request, settings)
+    audit = get_audit_context(request)
     result = AuthService(session, settings).login(
         email=str(payload.email),
         password=payload.password,
-        audit=get_audit_context(request),
+        audit=audit,
+        client_ip=audit.ip or "unknown",
     )
     set_session_cookie(response, settings, result.session_token)
     return result.identity

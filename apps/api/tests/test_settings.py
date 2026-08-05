@@ -120,6 +120,20 @@ def test_production_accepts_secure_cookie_and_non_example_secret() -> None:
     assert settings.session_cookie_secure is True
 
 
+def test_production_rejects_reused_csrf_and_rate_limit_secret() -> None:
+    shared_secret = "production-shared-secret-with-at-least-32-bytes"
+    with pytest.raises(ValidationError, match="rate-limit secret"):
+        Settings(
+            environment="production",
+            app_url="https://cairn.example",
+            cors_origins="https://cairn.example",
+            session_cookie_secure=True,
+            csrf_secret=shared_secret,
+            auth_rate_limit_secret=shared_secret,
+            _env_file=None,  # pyright: ignore[reportCallIssue]
+        )
+
+
 @pytest.mark.parametrize("app_url", ["http://cairn.example", "http://localhost:8080"])
 def test_production_rejects_http_app_url(app_url: str) -> None:
     with pytest.raises(ValidationError, match="HTTPS"):

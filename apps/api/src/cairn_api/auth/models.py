@@ -75,7 +75,7 @@ class AuthRateLimit(Base):
     __table_args__ = (
         CheckConstraint("bucket_type IN ('email', 'ip')", name="bucket_type"),
         CheckConstraint("octet_length(key_digest) = 32", name="key_digest_length"),
-        CheckConstraint("count > 0", name="positive_count"),
+        CheckConstraint("failure_count > 0", name="positive_count"),
         CheckConstraint(
             "blocked_until IS NULL OR blocked_until >= window_started_at",
             name="block_after_window",
@@ -94,7 +94,7 @@ class AuthRateLimit(Base):
 
     bucket_type: Mapped[str] = mapped_column(String(5), primary_key=True)
     key_digest: Mapped[bytes] = mapped_column(LargeBinary(32), primary_key=True)
-    count: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    failure_count: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     window_started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

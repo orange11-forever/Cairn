@@ -16,7 +16,7 @@ def upgrade() -> None:
         "auth_rate_limits",
         sa.Column("bucket_type", sa.String(length=5), nullable=False),
         sa.Column("key_digest", sa.LargeBinary(length=32), nullable=False),
-        sa.Column("count", sa.Integer(), server_default=sa.text("1"), nullable=False),
+        sa.Column("failure_count", sa.Integer(), server_default=sa.text("1"), nullable=False),
         sa.Column(
             "window_started_at",
             sa.DateTime(timezone=True),
@@ -33,7 +33,7 @@ def upgrade() -> None:
             name="key_digest_length",
         ),
         sa.CheckConstraint(
-            "count > 0",
+            "failure_count > 0",
             name="positive_count",
         ),
         sa.CheckConstraint(

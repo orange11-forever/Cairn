@@ -34,7 +34,13 @@ def test_identity_migration_creates_expected_tables(migrated_engine: Engine) -> 
 def test_auth_rate_limit_table_has_digest_only_buckets(migrated_engine: Engine) -> None:
     inspector = inspect(migrated_engine)
     columns = {column["name"] for column in inspector.get_columns(AuthRateLimit.__tablename__)}
-    assert columns >= {"bucket_type", "key_digest", "count", "window_started_at", "blocked_until"}
+    assert columns >= {
+        "bucket_type",
+        "key_digest",
+        "failure_count",
+        "window_started_at",
+        "blocked_until",
+    }
     assert "email" not in columns
     assert "ip" not in columns
 

@@ -1,13 +1,18 @@
 from collections.abc import Generator
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
+from threading import Barrier
 from uuid import UUID, uuid4
 
 import pytest
 from cairn_api.app import create_app
 from cairn_api.audit.models import AuditLog
-from cairn_api.auth.models import AuthSession, User
+from cairn_api.auth.models import AuthRateLimit, AuthSession, User
+from cairn_api.auth.rate_limit import digest_key
 from cairn_api.auth.security import DUMMY_PASSWORD_HASH, digest_token
+from cairn_api.auth.service import AuthService, RequestAuditContext
 from cairn_api.db.session import Database
+from cairn_api.errors import ApiProblem
 from cairn_api.organizations.models import Membership, Organization
 from cairn_api.seed import seed_demo_identity
 from cairn_api.settings import Settings
@@ -28,6 +33,7 @@ def api_settings(test_database_url: str) -> Settings:
         app_url=APP_ORIGIN,
         cors_origins=[APP_ORIGIN],
         csrf_secret="test-only-csrf-secret-with-at-least-32-bytes",
+        auth_rate_limit_secret="test-only-auth-rate-limit-secret-with-at-least-32-bytes",
         _env_file=None,  # pyright: ignore[reportCallIssue]
     )
 
@@ -174,6 +180,114 @@ def test_wrong_password_returns_invalid_credentials(client: TestClient) -> None:
     response = login(client, password="wrong-password")
     assert response.status_code == 401
     assert response.json()["code"] == "invalid_credentials"
+
+
+@pytest.mark.integration
+def test_fifth_failure_for_normalized_email_is_rate_limited(
+    client: TestClient,
+) -> None:
+    for _ in range(4):
+        response = login(client, password="wrong-password")
+        assert response.status_code == 401
+
+    limited = login(client, password="wrong-password")
+
+    assert limited.status_code == 429
+    assert limited.json()["code"] == "login_rate_limited"
+    assert int(limited.headers["retry-after"]) >= 1
+    assert "set-cookie" not in limited.headers
+
+
+@pytest.mark.integration
+def test_thirtieth_failure_from_same_ip_is_rate_limited(client: TestClient) -> None:
+    for index in range(29):
+        response = client.post(
+            "/api/v1/login",
+            headers={"Origin": APP_ORIGIN},
+            json={"email": f"unknown-{index}@example.com", "password": "wrong"},
+        )
+        assert response.status_code == 401
+
+    limited = client.post(
+        "/api/v1/login",
+        headers={"Origin": APP_ORIGIN},
+        json={"email": "unknown-29@example.com", "password": "wrong"},
+    )
+    assert limited.status_code == 429
+    assert limited.json()["code"] == "login_rate_limited"
+
+
+@pytest.mark.integration
+def test_success_clears_email_bucket_but_keeps_ip_history(
+    client: TestClient,
+    database: Database,
+) -> None:
+    for _ in range(4):
+        assert login(client, password="wrong-password").status_code == 401
+
+    assert login(client).status_code == 200
+    with database.session_factory() as session:
+        buckets = session.scalars(select(AuthRateLimit)).all()
+
+    assert all(bucket.bucket_type == "ip" for bucket in buckets)
+    assert buckets and buckets[0].failure_count == 4
+
+
+@pytest.mark.integration
+def test_rate_limit_table_never_contains_plaintext_email_or_ip(
+    client: TestClient,
+    database: Database,
+) -> None:
+    assert login(client, password="wrong-password").status_code == 401
+    with database.session_factory() as session:
+        rows = session.execute(select(AuthRateLimit.bucket_type, AuthRateLimit.key_digest)).all()
+
+    assert rows
+    assert all(isinstance(row.key_digest, bytes) and len(row.key_digest) == 32 for row in rows)
+    assert DEMO_EMAIL.encode() not in b"".join(row.key_digest for row in rows)
+    assert b"127.0.0.1" not in b"".join(row.key_digest for row in rows)
+
+
+@pytest.mark.integration
+def test_concurrent_failures_stop_at_email_threshold_without_deadlock(
+    database: Database,
+    api_settings: Settings,
+) -> None:
+    seed_demo_identity(api_settings, database)
+    barrier = Barrier(6)
+
+    def attempt(index: int) -> int:
+        with database.session_factory() as session:
+            barrier.wait(timeout=5)
+            try:
+                AuthService(session, api_settings).login(
+                    email=DEMO_EMAIL,
+                    password="wrong-password",
+                    audit=RequestAuditContext(
+                        trace_id=f"req-concurrent-{index}",
+                        ip="198.51.100.7",
+                        user_agent="integration-test",
+                    ),
+                    client_ip="198.51.100.7",
+                )
+            except ApiProblem as exc:
+                return exc.status_code
+            raise AssertionError("wrong password must not create a session")
+
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        statuses = list(executor.map(attempt, range(6), timeout=20))
+
+    assert statuses.count(401) == 4
+    assert statuses.count(429) == 2
+    email_digest = digest_key(
+        "email",
+        DEMO_EMAIL,
+        api_settings.auth_rate_limit_secret,
+    )
+    with database.session_factory() as session:
+        bucket = session.get(AuthRateLimit, ("email", email_digest))
+    assert bucket is not None
+    assert bucket.failure_count == 5
 
 
 @pytest.mark.integration

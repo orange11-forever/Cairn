@@ -18,6 +18,29 @@ export const componentSchemas = {
     "title": "ApiVersionResponse",
     "type": "object"
   },
+  "ErrorBody": {
+    "properties": {
+      "code": {
+        "title": "Code",
+        "type": "string"
+      },
+      "message": {
+        "title": "Message",
+        "type": "string"
+      },
+      "traceId": {
+        "title": "Traceid",
+        "type": "string"
+      }
+    },
+    "required": [
+      "message",
+      "code",
+      "traceId"
+    ],
+    "title": "ErrorBody",
+    "type": "object"
+  },
   "HTTPValidationError": {
     "properties": {
       "detail": {

@@ -85,6 +85,8 @@ class Settings(BaseSettings):
             "local-development-secret-change-before-deploying-32-bytes",
         }:
             raise ValueError("production cannot use the example auth rate-limit secret")
+        if self.auth_rate_limit_secret == self.csrf_secret:
+            raise ValueError("production auth rate-limit secret must differ from the CSRF secret")
         return self
 
     @field_validator("app_url")

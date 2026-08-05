@@ -155,6 +155,37 @@ def test_method_not_allowed_is_normalized(client: TestClient) -> None:
     assert response.json()["traceId"] == response.headers["x-request-id"]
 
 
+def test_login_openapi_declares_rate_limit_error() -> None:
+    schema = create_app().openapi()
+    responses = schema["paths"]["/api/v1/login"]["post"]["responses"]
+    assert "429" in responses
+    assert responses["429"]["content"]["application/json"]["schema"]["$ref"].endswith(
+        "/ErrorBody"
+    )
+
+
+def test_error_response_only_forwards_server_retry_after_header() -> None:
+    from cairn_api.errors import ApiProblem
+
+    app = create_app()
+
+    @app.get("/_test/rate-limit", include_in_schema=False)
+    def _rate_limit_probe() -> None:  # pyright: ignore[reportUnusedFunction]
+        raise ApiProblem(
+            status_code=429,
+            code="login_rate_limited",
+            message="too many",
+            headers={"Retry-After": "12", "X-User-Header": "ignored"},
+        )
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/_test/rate-limit")
+
+    assert response.status_code == 429
+    assert response.headers["retry-after"] == "12"
+    assert "x-user-header" not in response.headers
+
+
 def test_request_validation_error_is_normalized() -> None:
     app = create_app()
 
