@@ -35,7 +35,7 @@ describe("MascotFigure", () => {
     );
     expect(screen.getByRole("img", { name: "看板娘" })).toHaveAttribute(
       "src",
-      "/assets/brand/mascot/cairn-mascot.png",
+      "/assets/brand/mascot/cairn-mascot-transparent.png",
     );
   });
 

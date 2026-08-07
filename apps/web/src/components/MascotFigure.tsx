@@ -10,7 +10,7 @@ export interface MascotFigureProps {
 }
 
 const MASCOT_AVATAR_SRC = "/assets/brand/mascot/cairn-mascot-avatar.png";
-const MASCOT_FULL_SRC = "/assets/brand/mascot/cairn-mascot.png";
+const MASCOT_FULL_SRC = "/assets/brand/mascot/cairn-mascot-transparent.png";
 const FALLBACK_SRC = "/assets/brand/cairn-logo.png";
 
 type ImageStage = "primary" | "logo" | "accessible";
