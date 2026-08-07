@@ -174,8 +174,8 @@ async function readLoginBrandScene(page) {
       mascotHeight: mascotRect?.height ?? null,
       mascotBorderWidth:
         mascot === null ? null : getComputedStyle(mascot).borderTopWidth,
-      mascotShadow:
-        mascot === null ? null : getComputedStyle(mascot).boxShadow,
+      mascotFilter:
+        mascot === null ? null : getComputedStyle(mascot).filter,
       mascotTransform:
         mascot === null ? null : getComputedStyle(mascot).transform,
       mascotZIndex:
@@ -240,7 +240,7 @@ function expectLoginMascot(images, viewport, expect) {
   const mascot = images.find((image) => image.alt === "Cairn 看板娘");
   const expectedAsset = viewport.width < 600
     ? "/cairn-mascot-avatar.png"
-    : "/cairn-mascot.png";
+    : "/cairn-mascot-transparent.png";
   expect(
     mascot?.currentSrc.endsWith(expectedAsset),
     `${viewport.name} 登录页素材选择错误：${mascot?.currentSrc ?? "未渲染"}`,
@@ -445,9 +445,9 @@ export async function checkResponsiveFoundation({
           Number.isFinite(brandScene.mascotHeight) &&
           brandScene.mascotHeight > 0 &&
           brandScene.mascotBorderWidth === "0px" &&
-          typeof brandScene.mascotShadow === "string" &&
-          brandScene.mascotShadow !== "none",
-        `${viewport.name} 看板娘必须去掉控件式边框并保留场景投影`,
+          typeof brandScene.mascotFilter === "string" &&
+          brandScene.mascotFilter.includes("drop-shadow"),
+        `${viewport.name} 看板娘必须去掉控件式边框并保留轮廓投影`,
       );
       expect(
         brandScene.stateVisible &&
@@ -496,7 +496,11 @@ export async function checkResponsiveFoundation({
         expect(
           typeof brandScene.mascotTransform === "string" &&
             brandScene.mascotTransform === "none",
-          `mobile 透明头像不应继承桌面相框旋转，实际为 ${brandScene.mascotTransform}`,
+          `mobile 透明头像不应继承桌面旋转，实际为 ${brandScene.mascotTransform}`,
+        );
+        expect(
+          brandScene.mascotFilter === "none",
+          `mobile 透明头像不应继承桌面轮廓滤镜，实际为 ${brandScene.mascotFilter}`,
         );
         expect(
           Number.isFinite(brandScene.wordmarkChipHeight) &&
@@ -506,8 +510,8 @@ export async function checkResponsiveFoundation({
       } else {
         expect(
           typeof brandScene.mascotTransform === "string" &&
-            brandScene.mascotTransform !== "none",
-          `${viewport.name} 桌面全身图必须通过静态旋转形成明确相框语言`,
+            brandScene.mascotTransform === "none",
+          `${viewport.name} 桌面透明全身图不应保留相框旋转，实际为 ${brandScene.mascotTransform}`,
         );
       }
       await page.screenshot({
