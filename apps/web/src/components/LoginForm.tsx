@@ -51,6 +51,15 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
   // 换句话说：**错误的消失可以是即时的，错误的出现不行。**
   const [submitted, setSubmitted] = useState(false);
 
+  // wordmark 图片是否加载失败。
+  //
+  // 不用 event.currentTarget.hidden = true 直接改 DOM：
+  // 图片外面包了一层白色胶囊（因为素材自带不透明白底，做成胶囊才不会
+  // 在深色渐变上露出一个白矩形）。只隐藏 <img> 会留下一个空的白色圆块，
+  // 那比不显示 logo 更糟。用 state 控制整个胶囊的渲染，
+  // "图片没了胶囊也没了" 这件事由 React 保证，而不是靠记得同时改两个地方。
+  const [wordmarkFailed, setWordmarkFailed] = useState(false);
+
   const action = useAbortableAction(login);
 
   /**
@@ -125,14 +134,20 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
     <main className="login-page">
       <div className="login-layout">
         <section className="login-brand-scene" aria-label="Cairn 品牌场景">
-          <img
-            className="login-wordmark"
-            src="/assets/brand/cairn-wordmark.png"
-            alt="Cairn"
-            onError={(event) => {
-              event.currentTarget.hidden = true;
-            }}
-          />
+          {!wordmarkFailed && (
+            <span className="login-wordmark-chip">
+              {/* className 必须留在 <img> 上：scripts/verify-responsive.mjs
+                  用 .login-wordmark 抓图片做加载健康检查。 */}
+              <img
+                className="login-wordmark"
+                src="/assets/brand/cairn-wordmark.png"
+                alt="Cairn"
+                onError={() => {
+                  setWordmarkFailed(true);
+                }}
+              />
+            </span>
+          )}
           <MascotFigure variant="full" state="idle" label="Cairn 看板娘" />
         </section>
 

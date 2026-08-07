@@ -618,16 +618,32 @@ summary:focus-visible {
 }
 
 /* 内容浮在装饰之上。position: relative 是 z-index 生效的前提。 */
-.login-brand-scene .login-wordmark,
+.login-brand-scene .login-wordmark-chip,
 .login-brand-scene .mascot-figure {
   position: relative;
   z-index: 1;
 }
 
+/* wordmark 白色胶囊。
+   cairn-wordmark.png 背景是不透明白，直接放深色渐变上会露出白色矩形。
+   做成圆角胶囊后，那个白底从缺陷变成刻意的设计元素。
+   （不能用 filter: brightness(0) invert(1) 反色：那会把整张图连背景
+   一起变成纯白块。） */
+.login-wordmark-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 94%);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 18%);
+}
+
 .login-wordmark {
   display: block;
-  width: min(210px, 58%);
-  height: auto;
+  width: auto;
+  /* 高度定尺、宽度自适应：胶囊要贴合图片，用宽度百分比会让胶囊在
+     不同断点下高度乱跳。 */
+  height: 24px;
   object-fit: contain;
 }
 
