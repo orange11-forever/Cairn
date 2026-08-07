@@ -585,6 +585,45 @@ summary:focus-visible {
   color: #ffffff;
 }
 
+/* 两个三角形呼应 Cairn logo 的叠石造型。
+   用 border 画法而不是 clip-path：border 三角在所有目标浏览器里行为一致，
+   且不需要额外图片资源。
+   z-index: 0 配合品牌区的 isolation: isolate，保证装饰始终在内容之下。 */
+.login-brand-scene::before,
+.login-brand-scene::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+/* 右上角浅白三角 */
+.login-brand-scene::before {
+  top: -60px;
+  right: -60px;
+  border-right: 140px solid transparent;
+  border-bottom: 200px solid rgb(255 255 255 / 8%);
+  border-left: 140px solid transparent;
+}
+
+/* 左下角 jade 绿三角。这是整页唯一的第二色点缀。 */
+.login-brand-scene::after {
+  bottom: -40px;
+  left: -50px;
+  border-right: 100px solid transparent;
+  border-bottom: 150px solid rgb(38 114 91 / 35%);
+  border-left: 100px solid transparent;
+}
+
+/* 内容浮在装饰之上。position: relative 是 z-index 生效的前提。 */
+.login-brand-scene .login-wordmark,
+.login-brand-scene .mascot-figure {
+  position: relative;
+  z-index: 1;
+}
+
 .login-wordmark {
   display: block;
   width: min(210px, 58%);

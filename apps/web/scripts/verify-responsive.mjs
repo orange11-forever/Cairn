@@ -106,6 +106,10 @@ async function readLoginBrandScene(page) {
       // 这里断言颜色值而不是算对比度：渐变背景取不到"文字底下那一点的实际颜色"，
       // 断言一个已经算过的确定值比在运行时近似计算更可靠。
       stateColor: state === null ? null : getComputedStyle(state).color,
+      // 三角装饰用 ::before / ::after 的 border 画法。
+      // borderBottomWidth 非 0 说明三角形真的画出来了。
+      decorTopWidth: getComputedStyle(scene, "::before").borderBottomWidth,
+      decorBottomWidth: getComputedStyle(scene, "::after").borderBottomWidth,
     };
   });
 }
@@ -312,6 +316,11 @@ export async function checkResponsiveFoundation({
       expect(
         brandScene.stateColor === "rgb(255, 255, 255)",
         `${viewport.name} 品牌区状态文字必须为纯白以满足 4.5:1 对比度，实际为 ${brandScene.stateColor}`,
+      );
+      expect(
+        Number.parseFloat(brandScene.decorTopWidth) > 0 &&
+          Number.parseFloat(brandScene.decorBottomWidth) > 0,
+        `${viewport.name} 品牌区应有两个三角装饰，实际 ::before=${brandScene.decorTopWidth} ::after=${brandScene.decorBottomWidth}`,
       );
       await page.screenshot({
         path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-login.png`),
