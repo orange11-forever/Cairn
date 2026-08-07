@@ -1368,6 +1368,23 @@ summary:focus-visible {
     width: min(210px, 78%);
     height: min(315px, 44vh);
   }
+
+  /* 三角装饰按比例缩小，否则在窄栏里会占掉大半个品牌区。 */
+  .login-brand-scene::before {
+    top: -45px;
+    right: -45px;
+    border-right-width: 105px;
+    border-bottom-width: 150px;
+    border-left-width: 105px;
+  }
+
+  .login-brand-scene::after {
+    bottom: -30px;
+    left: -38px;
+    border-right-width: 75px;
+    border-bottom-width: 112px;
+    border-left-width: 75px;
+  }
 }
 
 @media (max-width: 599px) {
@@ -1395,28 +1412,57 @@ summary:focus-visible {
     padding: var(--space-3) var(--space-4);
   }
 
-  .login-wordmark {
+  .login-wordmark-chip {
+    align-self: center;
     justify-self: start;
-    width: 116px;
+    padding: var(--space-1) var(--space-2);
+  }
+
+  .login-wordmark {
+    height: 16px;
   }
 
   .login-brand-scene .mascot-figure {
     gap: var(--space-1);
   }
 
+  /* 移动端这个断点由 MascotFigure 的 <source media> 切到
+     cairn-mascot-avatar.png。那张是真透明的圆形裁切图，
+     所以这里去掉背景块和边框是成立的。桌面端素材无 alpha 通道，
+     仍然按相框处理。 */
   .login-brand-scene .mascot-figure[data-variant='full'] .mascot-art > img,
   .login-brand-scene .mascot-figure[data-variant='full'] .mascot-image-fallback {
     width: 82px;
     height: 82px;
     padding: 0;
+    border: 0;
     border-radius: 50%;
     background: transparent;
+    box-shadow: 0 4px 10px rgb(0 0 0 / 35%);
+    transform: none;
     object-fit: contain;
     object-position: center;
   }
 
   .login-brand-scene .mascot-state {
     font-size: 0.6875rem;
+  }
+
+  /* 手机端品牌区收缩成 116px 高的横条，桌面尺寸的三角会糊满整块。 */
+  .login-brand-scene::before {
+    top: -30px;
+    right: -30px;
+    border-right-width: 70px;
+    border-bottom-width: 100px;
+    border-left-width: 70px;
+  }
+
+  .login-brand-scene::after {
+    bottom: -20px;
+    left: -25px;
+    border-right-width: 50px;
+    border-bottom-width: 75px;
+    border-left-width: 50px;
   }
 
   .account-label-full,
