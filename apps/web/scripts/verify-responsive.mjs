@@ -91,14 +91,61 @@ async function readImageHealth(page) {
   );
 }
 
+async function waitForLoginBrandScenePaint(page) {
+  await page.waitForFunction(
+    () => {
+      const images = [
+        document.querySelector(".login-wordmark"),
+        document.querySelector(
+          ".login-brand-scene .mascot-figure[data-variant='full'] .mascot-art > img",
+        ),
+      ];
+      return images.every(
+        (image) => image instanceof HTMLImageElement &&
+          image.complete &&
+          image.naturalWidth > 0 &&
+          image.naturalHeight > 0,
+      );
+    },
+    undefined,
+    { timeout: 5_000 },
+  );
+  await page.evaluate(async () => {
+    const images = [
+      document.querySelector(".login-wordmark"),
+      document.querySelector(
+        ".login-brand-scene .mascot-figure[data-variant='full'] .mascot-art > img",
+      ),
+    ];
+    if (!images.every((image) => image instanceof HTMLImageElement)) {
+      throw new Error("登录品牌图片在绘制前离开了 DOM");
+    }
+    await Promise.all(images.map((image) => image.decode()));
+    await new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    });
+  });
+}
+
 async function readLoginBrandScene(page) {
   return page.evaluate(() => {
     const scene = document.querySelector(".login-brand-scene");
     const state = document.querySelector(".login-brand-scene .mascot-state");
     if (scene === null) return null;
+    const chip = document.querySelector(".login-wordmark-chip");
+    const mascot = document.querySelector(
+      ".login-brand-scene .mascot-figure[data-variant='full'] .mascot-art > img, " +
+        ".login-brand-scene .mascot-figure[data-variant='full'] .mascot-image-fallback",
+    );
+    const card = document.querySelector(".login-card");
+    const mascotFigure = mascot?.closest(".mascot-figure");
     const sceneStyle = getComputedStyle(scene);
+    const chipRect = chip?.getBoundingClientRect();
+    const mascotRect = mascot?.getBoundingClientRect();
+    const stateRect = state?.getBoundingClientRect();
     return {
       backgroundImage: sceneStyle.backgroundImage,
+      overflow: sceneStyle.overflow,
       position: sceneStyle.position,
       // 状态文字压在深色渐变上，必须是纯白。
       // 设计阶段实测：#ffffff 在渐变最亮处 #3a6fb0 上是 5.15:1（AA 要求 4.5:1）；
@@ -110,6 +157,38 @@ async function readLoginBrandScene(page) {
       // borderBottomWidth 非 0 说明三角形真的画出来了。
       decorTopWidth: getComputedStyle(scene, "::before").borderBottomWidth,
       decorBottomWidth: getComputedStyle(scene, "::after").borderBottomWidth,
+      decorTopZIndex: getComputedStyle(scene, "::before").zIndex,
+      decorBottomZIndex: getComputedStyle(scene, "::after").zIndex,
+      wordmarkChipPresent: chip !== null,
+      wordmarkChipVisible: chip?.checkVisibility() ?? false,
+      wordmarkChipBackground:
+        chip === null ? null : getComputedStyle(chip).backgroundColor,
+      wordmarkChipRadius:
+        chip === null ? null : getComputedStyle(chip).borderRadius,
+      wordmarkChipWidth: chipRect?.width ?? null,
+      wordmarkChipHeight: chipRect?.height ?? null,
+      wordmarkChipZIndex:
+        chip === null ? null : getComputedStyle(chip).zIndex,
+      mascotVisible: mascot?.checkVisibility() ?? false,
+      mascotWidth: mascotRect?.width ?? null,
+      mascotHeight: mascotRect?.height ?? null,
+      mascotBorderWidth:
+        mascot === null ? null : getComputedStyle(mascot).borderTopWidth,
+      mascotShadow:
+        mascot === null ? null : getComputedStyle(mascot).boxShadow,
+      mascotTransform:
+        mascot === null ? null : getComputedStyle(mascot).transform,
+      mascotZIndex:
+        mascotFigure === null || mascotFigure === undefined
+          ? null
+          : getComputedStyle(mascotFigure).zIndex,
+      stateVisible: state?.checkVisibility() ?? false,
+      stateWidth: stateRect?.width ?? null,
+      stateHeight: stateRect?.height ?? null,
+      cardHairlineHeight:
+        card === null ? null : getComputedStyle(card, "::before").height,
+      cardHairlineBackground:
+        card === null ? null : getComputedStyle(card, "::before").backgroundImage,
     };
   });
 }
@@ -300,13 +379,23 @@ export async function checkResponsiveFoundation({
       }
 
       await logout();
+      await waitForLoginBrandScenePaint(page);
       const loginImages = await readImageHealth(page);
       expectHealthyImages(loginImages, expect, `${viewport.name} 登录页`);
       expectLoginMascot(loginImages, viewport, expect);
       const brandScene = await readLoginBrandScene(page);
-      expect(brandScene !== null, `${viewport.name} 登录页缺少品牌场景`);
+      if (brandScene === null) {
+        expect(false, `${viewport.name} 登录页缺少品牌场景`);
+        await page.screenshot({
+          path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-login.png`),
+          fullPage: true,
+        });
+        await login();
+        continue;
+      }
       expect(
-        brandScene.backgroundImage.includes("gradient"),
+        typeof brandScene.backgroundImage === "string" &&
+          brandScene.backgroundImage.includes("gradient"),
         `${viewport.name} 品牌区应使用渐变背景，实际为 ${brandScene.backgroundImage}`,
       );
       expect(
@@ -318,10 +407,109 @@ export async function checkResponsiveFoundation({
         `${viewport.name} 品牌区状态文字必须为纯白以满足 4.5:1 对比度，实际为 ${brandScene.stateColor}`,
       );
       expect(
-        Number.parseFloat(brandScene.decorTopWidth) > 0 &&
+        typeof brandScene.decorTopWidth === "string" &&
+          typeof brandScene.decorBottomWidth === "string" &&
+          Number.parseFloat(brandScene.decorTopWidth) > 0 &&
           Number.parseFloat(brandScene.decorBottomWidth) > 0,
         `${viewport.name} 品牌区应有两个三角装饰，实际 ::before=${brandScene.decorTopWidth} ::after=${brandScene.decorBottomWidth}`,
       );
+      const approvedGradientStops = [
+        "rgb(58, 111, 176)",
+        "rgb(31, 75, 134)",
+        "rgb(23, 51, 92)",
+      ];
+      expect(
+        typeof brandScene.backgroundImage === "string" &&
+          approvedGradientStops.every((stop) => brandScene.backgroundImage.includes(stop)),
+        `${viewport.name} 品牌区渐变不是已审阅的三段配色，实际为 ${brandScene.backgroundImage}`,
+      );
+      expect(
+        brandScene.wordmarkChipPresent &&
+          brandScene.wordmarkChipVisible &&
+          typeof brandScene.wordmarkChipBackground === "string" &&
+          brandScene.wordmarkChipBackground !== "rgba(0, 0, 0, 0)" &&
+          typeof brandScene.wordmarkChipRadius === "string" &&
+          Number.parseFloat(brandScene.wordmarkChipRadius) > 0,
+        `${viewport.name} wordmark 必须由有背景和圆角的胶囊承载`,
+      );
+      expect(
+        Number.isFinite(brandScene.wordmarkChipWidth) &&
+          Number.isFinite(brandScene.wordmarkChipHeight) &&
+          brandScene.wordmarkChipWidth > brandScene.wordmarkChipHeight,
+        `${viewport.name} wordmark 胶囊不应被网格拉伸，实际为 ${brandScene.wordmarkChipWidth}x${brandScene.wordmarkChipHeight}`,
+      );
+      expect(
+        brandScene.mascotVisible &&
+          Number.isFinite(brandScene.mascotWidth) &&
+          brandScene.mascotWidth > 0 &&
+          Number.isFinite(brandScene.mascotHeight) &&
+          brandScene.mascotHeight > 0 &&
+          brandScene.mascotBorderWidth === "0px" &&
+          typeof brandScene.mascotShadow === "string" &&
+          brandScene.mascotShadow !== "none",
+        `${viewport.name} 看板娘必须去掉控件式边框并保留场景投影`,
+      );
+      expect(
+        brandScene.stateVisible &&
+          Number.isFinite(brandScene.stateWidth) &&
+          brandScene.stateWidth > 0 &&
+          Number.isFinite(brandScene.stateHeight) &&
+          brandScene.stateHeight > 0,
+        `${viewport.name} 看板娘状态文字必须可见且占据实际布局空间`,
+      );
+      expect(
+        brandScene.cardHairlineHeight === "4px" &&
+          typeof brandScene.cardHairlineBackground === "string" &&
+          brandScene.cardHairlineBackground.includes("gradient"),
+        `${viewport.name} 登录卡片必须保留 4px 主题渐变细线`,
+      );
+      const expectedHairlineStops = themeValue === "dark"
+        ? ["rgb(133, 179, 238)", "rgb(120, 201, 167)"]
+        : ["rgb(40, 91, 159)", "rgb(38, 114, 91)"];
+      expect(
+        typeof brandScene.cardHairlineBackground === "string" &&
+          expectedHairlineStops.every((stop) =>
+            brandScene.cardHairlineBackground.includes(stop)),
+        `${viewport.name} ${themeValue} 登录卡片细线没有使用对应主题色，实际为 ${brandScene.cardHairlineBackground}`,
+      );
+      expect(
+        brandScene.overflow === "hidden" &&
+          brandScene.decorTopZIndex === "0" &&
+          brandScene.decorBottomZIndex === "0" &&
+          brandScene.wordmarkChipZIndex === "1" &&
+          brandScene.mascotZIndex === "1",
+        `${viewport.name} 品牌内容必须位于裁切后的三角装饰之上`,
+      );
+
+      const expectedDecor = viewport.width < 600
+        ? { top: "100px", bottom: "75px" }
+        : viewport.width < 1024
+          ? { top: "150px", bottom: "112px" }
+          : { top: "200px", bottom: "150px" };
+      expect(
+        brandScene.decorTopWidth === expectedDecor.top &&
+          brandScene.decorBottomWidth === expectedDecor.bottom,
+        `${viewport.name} 三角装饰尺寸错误，实际为 ${brandScene.decorTopWidth}/${brandScene.decorBottomWidth}`,
+      );
+
+      if (viewport.width < 600) {
+        expect(
+          typeof brandScene.mascotTransform === "string" &&
+            brandScene.mascotTransform === "none",
+          `mobile 透明头像不应继承桌面相框旋转，实际为 ${brandScene.mascotTransform}`,
+        );
+        expect(
+          Number.isFinite(brandScene.wordmarkChipHeight) &&
+            brandScene.wordmarkChipHeight <= 40,
+          `mobile wordmark 胶囊不应被网格拉伸，实际高度为 ${brandScene.wordmarkChipHeight}px`,
+        );
+      } else {
+        expect(
+          typeof brandScene.mascotTransform === "string" &&
+            brandScene.mascotTransform !== "none",
+          `${viewport.name} 桌面全身图必须通过静态旋转形成明确相框语言`,
+        );
+      }
       await page.screenshot({
         path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-login.png`),
         fullPage: true,
