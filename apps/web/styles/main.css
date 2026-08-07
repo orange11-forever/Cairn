@@ -562,19 +562,88 @@ summary:focus-visible {
 }
 
 .login-brand-scene {
+  position: relative;
+  /* isolation 建立独立层叠上下文，让三角装饰的 z-index 只在品牌区内部生效，
+     不会和页面其他部分（例如移动端 position: fixed 的底部导航，z-index: 30）互相干扰。 */
+  isolation: isolate;
   display: grid;
   align-content: center;
   justify-items: center;
   gap: var(--space-5);
   min-width: 0;
   padding: var(--space-6);
-  background: var(--color-surface-subtle);
+  overflow: hidden;
+  /* 藏青蓝渐变，深浅主题共用。
+     深色主题下不另做一套：这个渐变本身已经足够暗，和 --color-canvas (#111416)
+     相邻不突兀；而为浅色主题单独做更亮的版本会让品牌区变成整页最刺眼的区域。 */
+  background: linear-gradient(140deg, #3a6fb0 0%, #1f4b86 55%, #17335c 100%);
+}
+
+/* 状态文字（"准备中"）压在深色渐变上。
+   --color-muted (#596675) 在渐变最亮处只有 1.14:1，纯白是 5.15:1。 */
+.login-brand-scene .mascot-state {
+  color: #ffffff;
+}
+
+/* 两个三角形呼应 Cairn logo 的叠石造型。
+   用 border 画法而不是 clip-path：border 三角在所有目标浏览器里行为一致，
+   且不需要额外图片资源。
+   z-index: 0 配合品牌区的 isolation: isolate，保证装饰始终在内容之下。 */
+.login-brand-scene::before,
+.login-brand-scene::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+/* 右上角浅白三角 */
+.login-brand-scene::before {
+  top: -60px;
+  right: -60px;
+  border-right: 140px solid transparent;
+  border-bottom: 200px solid rgb(255 255 255 / 8%);
+  border-left: 140px solid transparent;
+}
+
+/* 左下角 jade 绿三角。这是整页唯一的第二色点缀。 */
+.login-brand-scene::after {
+  bottom: -40px;
+  left: -50px;
+  border-right: 100px solid transparent;
+  border-bottom: 150px solid rgb(38 114 91 / 35%);
+  border-left: 100px solid transparent;
+}
+
+/* 内容浮在装饰之上。position: relative 是 z-index 生效的前提。 */
+.login-brand-scene .login-wordmark-chip,
+.login-brand-scene .mascot-figure {
+  position: relative;
+  z-index: 1;
+}
+
+/* wordmark 白色胶囊。
+   cairn-wordmark.png 背景是不透明白，直接放深色渐变上会露出白色矩形。
+   做成圆角胶囊后，那个白底从缺陷变成刻意的设计元素。
+   （不能用 filter: brightness(0) invert(1) 反色：那会把整张图连背景
+   一起变成纯白块。） */
+.login-wordmark-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 94%);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 18%);
 }
 
 .login-wordmark {
   display: block;
-  width: min(210px, 58%);
-  height: auto;
+  width: auto;
+  /* 高度定尺、宽度自适应：胶囊要贴合图片，用宽度百分比会让胶囊在
+     不同断点下高度乱跳。 */
+  height: 24px;
   object-fit: contain;
 }
 
@@ -584,13 +653,23 @@ summary:focus-visible {
   gap: var(--space-2);
 }
 
+/* 透明全身素材直接叠在品牌渐变上，投影跟随 Alpha 轮廓而不是生成矩形阴影。 */
 .login-brand-scene .mascot-figure[data-variant='full'] .mascot-art > img,
 .login-brand-scene .mascot-figure[data-variant='full'] .mascot-image-fallback {
   width: min(260px, 78%);
   height: min(390px, 48vh);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  filter: drop-shadow(0 14px 18px rgb(6 18 36 / 34%));
+  transform: none;
+  object-fit: contain;
+  object-position: center;
 }
 
 .login-card {
+  position: relative;
   display: grid;
   align-content: center;
   width: 100%;
@@ -598,6 +677,20 @@ summary:focus-visible {
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   background: var(--color-surface);
+  overflow: hidden;
+}
+
+/* 顶部渐变细线，呼应左侧品牌区的蓝到绿配色。
+   作用是让两栏看起来属于同一个设计，而不是拼在一起的两个页面。
+   卡片其余部分（纯白底、边框、表单控件、纯色按钮）一律不动。 */
+.login-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--color-mineral), var(--color-jade));
 }
 
 .login-card h1 {
@@ -1270,6 +1363,23 @@ summary:focus-visible {
     width: min(210px, 78%);
     height: min(315px, 44vh);
   }
+
+  /* 三角装饰按比例缩小，否则在窄栏里会占掉大半个品牌区。 */
+  .login-brand-scene::before {
+    top: -45px;
+    right: -45px;
+    border-right-width: 105px;
+    border-bottom-width: 150px;
+    border-left-width: 105px;
+  }
+
+  .login-brand-scene::after {
+    bottom: -30px;
+    left: -38px;
+    border-right-width: 75px;
+    border-bottom-width: 112px;
+    border-left-width: 75px;
+  }
 }
 
 @media (max-width: 599px) {
@@ -1297,28 +1407,56 @@ summary:focus-visible {
     padding: var(--space-3) var(--space-4);
   }
 
-  .login-wordmark {
+  .login-wordmark-chip {
+    align-self: center;
     justify-self: start;
-    width: 116px;
+    padding: var(--space-1) var(--space-2);
+  }
+
+  .login-wordmark {
+    height: 16px;
   }
 
   .login-brand-scene .mascot-figure {
     gap: var(--space-1);
   }
 
+  /* 移动端由 MascotFigure 的 <source media> 切到透明圆形头像。
+     保持紧凑头像的圆形裁切，并显式清掉桌面端的轮廓滤镜。 */
   .login-brand-scene .mascot-figure[data-variant='full'] .mascot-art > img,
   .login-brand-scene .mascot-figure[data-variant='full'] .mascot-image-fallback {
     width: 82px;
     height: 82px;
     padding: 0;
+    border: 0;
     border-radius: 50%;
     background: transparent;
+    box-shadow: 0 4px 10px rgb(0 0 0 / 35%);
+    filter: none;
+    transform: none;
     object-fit: contain;
     object-position: center;
   }
 
   .login-brand-scene .mascot-state {
     font-size: 0.6875rem;
+  }
+
+  /* 手机端品牌区收缩成 116px 高的横条，桌面尺寸的三角会糊满整块。 */
+  .login-brand-scene::before {
+    top: -30px;
+    right: -30px;
+    border-right-width: 70px;
+    border-bottom-width: 100px;
+    border-left-width: 70px;
+  }
+
+  .login-brand-scene::after {
+    bottom: -20px;
+    left: -25px;
+    border-right-width: 50px;
+    border-bottom-width: 75px;
+    border-left-width: 50px;
   }
 
   .account-label-full,

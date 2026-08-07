@@ -223,5 +223,20 @@ test('mascot thumbnails stay square and circular at every compact size', async (
   assert.match(mobile[1], /height:\s*82px/);
 });
 
+test('login full mascot uses transparent artwork instead of a photo frame', async () => {
+  const css = await readFile(cssUrl, 'utf8');
+  const rule = css.match(
+    /\.login-brand-scene \.mascot-figure\[data-variant=['"]full['"]\] \.mascot-art\s*>\s*img,\s*\.login-brand-scene \.mascot-figure\[data-variant=['"]full['"]\] \.mascot-image-fallback\s*\{([^}]*)\}/,
+  );
+
+  assert.ok(rule, 'missing login full mascot rule');
+  assert.match(rule[1], /padding:\s*0/);
+  assert.match(rule[1], /border:\s*0/);
+  assert.match(rule[1], /background:\s*transparent/);
+  assert.match(rule[1], /filter:\s*drop-shadow\(/);
+  assert.match(rule[1], /transform:\s*none/);
+  assert.doesNotMatch(rule[1], /box-shadow:/);
+});
+
 // 导航当前项、status region 的 role/aria-live、语义 landmark
 // 都搬到 verify-web.mjs 的结构关卡了（同上：结构进了组件，检查跟着进浏览器）。

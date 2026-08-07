@@ -17,7 +17,7 @@
 // ---------------------------------------------------------------------------
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { LoginForm } from "../../src/components/LoginForm.tsx";
@@ -70,6 +70,21 @@ test("显示 Cairn 品牌场景且不改变登录表单契约", () => {
   expect(screen.getByRole("heading", { name: "登录 Cairn" })).toBeInTheDocument();
   expect(screen.getByLabelText("邮箱")).toHaveAttribute("id", "login-email");
   expect(screen.getByLabelText("密码")).toHaveAttribute("id", "login-password");
+});
+
+test("wordmark 加载失败时整个元素从 DOM 移除，不留白色空块", () => {
+  render(<LoginForm onSuccess={vi.fn()} />);
+
+  const wordmark = screen.getByRole("img", { name: "Cairn" });
+  fireEvent.error(wordmark);
+
+  // 关键是用 querySelector 而不是 queryByRole。
+  //
+  // queryByRole 走无障碍树，对 hidden 元素本来就返回 null，旧实现
+  //（event.currentTarget.hidden = true）也能让它通过，那样这条测试什么都没守住。
+  // querySelector 查的是真实 DOM：只有图片和胶囊一起移除才会返回 null。
+  expect(document.querySelector(".login-wordmark")).toBeNull();
+  expect(document.querySelector(".login-wordmark-chip")).toBeNull();
 });
 
 describe("字段校验", () => {
