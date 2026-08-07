@@ -653,24 +653,19 @@ summary:focus-visible {
   gap: var(--space-2);
 }
 
-/* 看板娘相框化。
-   cairn-mascot.png 是 RGB 无 alpha 通道，米白底画在图里，CSS 去不掉背景。
-   所以不做"抠图融入"，改为把那个白底当作相纸、外面加相框语言：
-   收小圆角 + 留出相纸边距 + 投影 + 轻微旋转。
-   效果是"一张装裱好挂在场景里的照片"，而不是"一张截图贴在背景上"。 */
+/* 透明全身素材直接叠在品牌渐变上，投影跟随 Alpha 轮廓而不是生成矩形阴影。 */
 .login-brand-scene .mascot-figure[data-variant='full'] .mascot-art > img,
 .login-brand-scene .mascot-figure[data-variant='full'] .mascot-image-fallback {
   width: min(260px, 78%);
   height: min(390px, 48vh);
-  padding: var(--space-2);
-  /* 去掉全局的 1px 实线边框，改用极淡的白色外描边。
-     在深色渐变上，实线边框看着像"控件"，外描边看着像"相纸边缘"。 */
+  padding: 0;
   border: 0;
-  border-radius: 4px;
-  box-shadow:
-    0 14px 30px rgb(0 0 0 / 45%),
-    0 0 0 1px rgb(255 255 255 / 12%);
-  transform: rotate(-2deg);
+  border-radius: 0;
+  background: transparent;
+  filter: drop-shadow(0 14px 18px rgb(6 18 36 / 34%));
+  transform: none;
+  object-fit: contain;
+  object-position: center;
 }
 
 .login-card {
@@ -1426,10 +1421,8 @@ summary:focus-visible {
     gap: var(--space-1);
   }
 
-  /* 移动端这个断点由 MascotFigure 的 <source media> 切到
-     cairn-mascot-avatar.png。那张是真透明的圆形裁切图，
-     所以这里去掉背景块和边框是成立的。桌面端素材无 alpha 通道，
-     仍然按相框处理。 */
+  /* 移动端由 MascotFigure 的 <source media> 切到透明圆形头像。
+     保持紧凑头像的圆形裁切，并显式清掉桌面端的轮廓滤镜。 */
   .login-brand-scene .mascot-figure[data-variant='full'] .mascot-art > img,
   .login-brand-scene .mascot-figure[data-variant='full'] .mascot-image-fallback {
     width: 82px;
@@ -1439,6 +1432,7 @@ summary:focus-visible {
     border-radius: 50%;
     background: transparent;
     box-shadow: 0 4px 10px rgb(0 0 0 / 35%);
+    filter: none;
     transform: none;
     object-fit: contain;
     object-position: center;
