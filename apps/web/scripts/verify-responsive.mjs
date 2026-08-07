@@ -444,10 +444,8 @@ export async function checkResponsiveFoundation({
           brandScene.mascotWidth > 0 &&
           Number.isFinite(brandScene.mascotHeight) &&
           brandScene.mascotHeight > 0 &&
-          brandScene.mascotBorderWidth === "0px" &&
-          typeof brandScene.mascotFilter === "string" &&
-          brandScene.mascotFilter.includes("drop-shadow"),
-        `${viewport.name} 看板娘必须去掉控件式边框并保留轮廓投影`,
+          brandScene.mascotBorderWidth === "0px",
+        `${viewport.name} 看板娘必须去掉控件式边框并保持可见`,
       );
       expect(
         brandScene.stateVisible &&
@@ -508,6 +506,11 @@ export async function checkResponsiveFoundation({
           `mobile wordmark 胶囊不应被网格拉伸，实际高度为 ${brandScene.wordmarkChipHeight}px`,
         );
       } else {
+        expect(
+          typeof brandScene.mascotFilter === "string" &&
+            brandScene.mascotFilter.includes("drop-shadow"),
+          `${viewport.name} 桌面透明全身图应保留轮廓投影，实际为 ${brandScene.mascotFilter}`,
+        );
         expect(
           typeof brandScene.mascotTransform === "string" &&
             brandScene.mascotTransform === "none",
