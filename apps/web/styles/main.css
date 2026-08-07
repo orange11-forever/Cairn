@@ -674,6 +674,7 @@ summary:focus-visible {
 }
 
 .login-card {
+  position: relative;
   display: grid;
   align-content: center;
   width: 100%;
@@ -681,6 +682,20 @@ summary:focus-visible {
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   background: var(--color-surface);
+  overflow: hidden;
+}
+
+/* 顶部渐变细线，呼应左侧品牌区的蓝到绿配色。
+   作用是让两栏看起来属于同一个设计，而不是拼在一起的两个页面。
+   卡片其余部分（纯白底、边框、表单控件、纯色按钮）一律不动。 */
+.login-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--color-mineral), var(--color-jade));
 }
 
 .login-card h1 {
