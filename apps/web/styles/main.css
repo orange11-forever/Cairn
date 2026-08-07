@@ -637,10 +637,24 @@ summary:focus-visible {
   gap: var(--space-2);
 }
 
+/* 看板娘相框化。
+   cairn-mascot.png 是 RGB 无 alpha 通道，米白底画在图里，CSS 去不掉背景。
+   所以不做"抠图融入"，改为把那个白底当作相纸、外面加相框语言：
+   收小圆角 + 留出相纸边距 + 投影 + 轻微旋转。
+   效果是"一张装裱好挂在场景里的照片"，而不是"一张截图贴在背景上"。 */
 .login-brand-scene .mascot-figure[data-variant='full'] .mascot-art > img,
 .login-brand-scene .mascot-figure[data-variant='full'] .mascot-image-fallback {
   width: min(260px, 78%);
   height: min(390px, 48vh);
+  padding: var(--space-2);
+  /* 去掉全局的 1px 实线边框，改用极淡的白色外描边。
+     在深色渐变上，实线边框看着像"控件"，外描边看着像"相纸边缘"。 */
+  border: 0;
+  border-radius: 4px;
+  box-shadow:
+    0 14px 30px rgb(0 0 0 / 45%),
+    0 0 0 1px rgb(255 255 255 / 12%);
+  transform: rotate(-2deg);
 }
 
 .login-card {
