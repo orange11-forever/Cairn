@@ -91,6 +91,25 @@ async function readImageHealth(page) {
   );
 }
 
+async function readLoginBrandScene(page) {
+  return page.evaluate(() => {
+    const scene = document.querySelector(".login-brand-scene");
+    const state = document.querySelector(".login-brand-scene .mascot-state");
+    if (scene === null) return null;
+    const sceneStyle = getComputedStyle(scene);
+    return {
+      backgroundImage: sceneStyle.backgroundImage,
+      position: sceneStyle.position,
+      // 状态文字压在深色渐变上，必须是纯白。
+      // 设计阶段实测：#ffffff 在渐变最亮处 #3a6fb0 上是 5.15:1（AA 要求 4.5:1）；
+      // 原来的 --color-muted #596675 只有 1.14:1，等于看不见。
+      // 这里断言颜色值而不是算对比度：渐变背景取不到"文字底下那一点的实际颜色"，
+      // 断言一个已经算过的确定值比在运行时近似计算更可靠。
+      stateColor: state === null ? null : getComputedStyle(state).color,
+    };
+  });
+}
+
 async function readAssistantContentLayout(page) {
   return page.evaluate(() => {
     const image = document.querySelector(
@@ -280,6 +299,20 @@ export async function checkResponsiveFoundation({
       const loginImages = await readImageHealth(page);
       expectHealthyImages(loginImages, expect, `${viewport.name} 登录页`);
       expectLoginMascot(loginImages, viewport, expect);
+      const brandScene = await readLoginBrandScene(page);
+      expect(brandScene !== null, `${viewport.name} 登录页缺少品牌场景`);
+      expect(
+        brandScene.backgroundImage.includes("gradient"),
+        `${viewport.name} 品牌区应使用渐变背景，实际为 ${brandScene.backgroundImage}`,
+      );
+      expect(
+        brandScene.position === "relative",
+        `${viewport.name} 品牌区需要 position: relative 作为装饰元素的定位基准`,
+      );
+      expect(
+        brandScene.stateColor === "rgb(255, 255, 255)",
+        `${viewport.name} 品牌区状态文字必须为纯白以满足 4.5:1 对比度，实际为 ${brandScene.stateColor}`,
+      );
       await page.screenshot({
         path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-login.png`),
         fullPage: true,

@@ -562,13 +562,27 @@ summary:focus-visible {
 }
 
 .login-brand-scene {
+  position: relative;
+  /* isolation 建立独立层叠上下文，让三角装饰的 z-index 只在品牌区内部生效，
+     不会和页面其他部分（例如移动端 position: fixed 的底部导航，z-index: 30）互相干扰。 */
+  isolation: isolate;
   display: grid;
   align-content: center;
   justify-items: center;
   gap: var(--space-5);
   min-width: 0;
   padding: var(--space-6);
-  background: var(--color-surface-subtle);
+  overflow: hidden;
+  /* 藏青蓝渐变，深浅主题共用。
+     深色主题下不另做一套：这个渐变本身已经足够暗，和 --color-canvas (#111416)
+     相邻不突兀；而为浅色主题单独做更亮的版本会让品牌区变成整页最刺眼的区域。 */
+  background: linear-gradient(140deg, #3a6fb0 0%, #1f4b86 55%, #17335c 100%);
+}
+
+/* 状态文字（"准备中"）压在深色渐变上。
+   --color-muted (#596675) 在渐变最亮处只有 1.14:1，纯白是 5.15:1。 */
+.login-brand-scene .mascot-state {
+  color: #ffffff;
 }
 
 .login-wordmark {
