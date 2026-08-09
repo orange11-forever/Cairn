@@ -74,7 +74,6 @@ test("public architecture documentation is reachable and status-explicit", async
 
   assert.match(rootReadme, /\[公开架构说明\]\(docs\/architecture\.md\)/);
   assert.match(apiReadme, /\[公开架构说明\]\(\.\.\/\.\.\/docs\/architecture\.md\)/);
-  assert.doesNotMatch(apiReadme, /docs\/specs\//);
 
   for (const heading of [
     "## 当前已交付",
@@ -93,6 +92,19 @@ test("public architecture documentation is reachable and status-explicit", async
     "阶段 3：知识摄取与检索",
   ]) {
     assert.ok(architecture.includes(statement), `missing architecture invariant: ${statement}`);
+  }
+});
+
+test("tracked Markdown does not link private documentation", async () => {
+  const { stdout } = await runGit(["ls-files", "-z", "--", "*.md"]);
+  const markdownPaths = stdout.split("\0").filter(Boolean);
+
+  for (const path of markdownPaths) {
+    const markdown = await readRepositoryFile(path);
+    assert.ok(
+      !/docs\/(?:specs|superpowers)\//.test(markdown),
+      `${path} must not link private documentation`,
+    );
   }
 });
 
@@ -119,19 +131,58 @@ test("repository text and binary policies are cross-platform stable", async () =
 });
 
 test("personal agent files and detailed plans remain private", async () => {
-  for (const path of [
-    ".codex/config.toml",
-    "AGENTS.md",
-    "docs/superpowers/specs/private.md",
-  ]) {
-    const { stdout } = await runGit([
-      "check-ignore",
-      "--verbose",
-      "--no-index",
-      "--",
-      path,
-    ]);
-    assert.match(stdout, new RegExp(`${path.replaceAll(".", "\\.")}\\n$`));
+  const privatePathFamilies = [
+    {
+      privatePath: ".codex/",
+      representativePath: ".codex/repository-governance-private.md",
+    },
+    {
+      privatePath: "AGENTS.md",
+      representativePath: "AGENTS.md",
+    },
+    {
+      privatePath: ".superpowers/",
+      representativePath: ".superpowers/repository-governance-private.md",
+    },
+    {
+      privatePath: "docs/specs/",
+      representativePath: "docs/specs/repository-governance-private.md",
+    },
+    {
+      privatePath: "docs/archive/",
+      representativePath: "docs/archive/repository-governance-private.md",
+    },
+    {
+      privatePath: "docs/superpowers/",
+      representativePath: "docs/superpowers/repository-governance-private.md",
+    },
+    {
+      privatePath: ".remember/",
+      representativePath: ".remember/repository-governance-private.md",
+    },
+  ];
+  const { stdout: trackedOutput } = await runGit(["ls-files", "-z"]);
+  const trackedPaths = trackedOutput.split("\0").filter(Boolean);
+
+  for (const { privatePath, representativePath } of privatePathFamilies) {
+    const { stdout } = await runGit(
+      ["check-ignore", "--verbose", "--no-index", "--", representativePath],
+    ).catch((error) => {
+      assert.fail(`${representativePath} must resolve to an ignore rule: ${error.message}`);
+    });
+    assert.ok(
+      stdout.endsWith(`\t${representativePath}\n`),
+      `${representativePath} must resolve to an ignore rule`,
+    );
+
+    const trackedPrivatePaths = trackedPaths.filter((path) =>
+      privatePath.endsWith("/") ? path.startsWith(privatePath) : path === privatePath,
+    );
+    assert.deepEqual(
+      trackedPrivatePaths,
+      [],
+      `${privatePath} must not contain tracked files: ${trackedPrivatePaths.join(", ")}`,
+    );
   }
 });
 
