@@ -100,6 +100,10 @@
 | 部署 | Local Web、Docker Compose、Kubernetes/Helm | Docker Compose 当前用于核心开发；正式部署规划 |
 | 测试与工具 | pnpm、Vitest、Testing Library、Playwright；uv、pytest、Ruff、Pyright | 当前已使用 |
 
+## 架构
+
+当前实现、目标组件、安全不变量与阶段路线见 [公开架构说明](docs/architecture.md)。文档中的“当前已交付”和“规划”状态是功能边界，不应互相替代。
+
 ## 项目结构
 
 以下目录树只列出公开维护的源码、测试与工程入口，不包含私有文档、依赖缓存和构建产物。

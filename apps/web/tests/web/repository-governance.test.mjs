@@ -53,3 +53,34 @@ test("root README links the repository license", async () => {
   const readme = await readRepositoryFile("README.md");
   assert.match(readme, /\[ISC License\]\(LICENSE\)/);
 });
+
+test("public architecture documentation is reachable and status-explicit", async () => {
+  const [architecture, rootReadme, apiReadme] = await Promise.all([
+    readRepositoryFile("docs/architecture.md"),
+    readRepositoryFile("README.md"),
+    readRepositoryFile("apps/api/README.md"),
+  ]);
+
+  assert.match(rootReadme, /\[公开架构说明\]\(docs\/architecture\.md\)/);
+  assert.match(apiReadme, /\[公开架构说明\]\(\.\.\/\.\.\/docs\/architecture\.md\)/);
+  assert.doesNotMatch(apiReadme, /docs\/specs\//);
+
+  for (const heading of [
+    "## 当前已交付",
+    "## 目标架构",
+    "## 安全与数据不变量",
+    "## 阶段路线",
+  ]) {
+    assert.ok(architecture.includes(heading), `missing architecture heading: ${heading}`);
+  }
+
+  for (const statement of [
+    "PostgreSQL 是业务事实来源",
+    "Redis 不是真实数据来源",
+    "业务写入、审计记录与 Outbox 事件在同一事务提交",
+    "阶段 2.5A：RBAC/ACL",
+    "阶段 3：知识摄取与检索",
+  ]) {
+    assert.ok(architecture.includes(statement), `missing architecture invariant: ${statement}`);
+  }
+});
