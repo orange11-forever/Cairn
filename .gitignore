@@ -16,6 +16,8 @@ apps/web/dist/
 apps/web/screenshots/
 
 # 本地工具和私有设计文档
+.codex/
+AGENTS.md
 .superpowers/
 docs/specs/
 docs/archive/

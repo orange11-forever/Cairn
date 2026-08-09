@@ -1,9 +1,19 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
+import { promisify } from "node:util";
 
 const REPOSITORY_ROOT = join(import.meta.dirname, "../../../..");
+const execFileAsync = promisify(execFile);
+
+async function runGit(args) {
+  return execFileAsync("git", args, {
+    cwd: REPOSITORY_ROOT,
+    encoding: "utf8",
+  });
+}
 
 const EXPECTED_ISC_LICENSE = `ISC License
 
@@ -82,5 +92,44 @@ test("public architecture documentation is reachable and status-explicit", async
     "阶段 3：知识摄取与检索",
   ]) {
     assert.ok(architecture.includes(statement), `missing architecture invariant: ${statement}`);
+  }
+});
+
+test("repository text and binary policies are cross-platform stable", async () => {
+  const attributes = await readRepositoryFile(".gitattributes");
+  assert.equal(
+    attributes,
+    `* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+`,
+  );
+
+  const mascotPath = "apps/web/public/assets/brand/mascot/cairn-mascot.png";
+  const { stdout } = await runGit(["ls-files", "-s", "--", mascotPath]);
+  assert.match(stdout, /^100644 [0-9a-f]+ 0\tapps\/web\/public\/assets\/brand\/mascot\/cairn-mascot\.png\n$/);
+});
+
+test("personal agent files and detailed plans remain private", async () => {
+  for (const path of [
+    ".codex/config.toml",
+    "AGENTS.md",
+    "docs/superpowers/specs/private.md",
+  ]) {
+    const { stdout } = await runGit([
+      "check-ignore",
+      "--verbose",
+      "--no-index",
+      "--",
+      path,
+    ]);
+    assert.match(stdout, new RegExp(`${path.replaceAll(".", "\\.")}\\n$`));
   }
 });
