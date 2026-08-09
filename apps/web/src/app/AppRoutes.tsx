@@ -5,6 +5,7 @@ import { AuthenticatedLayout } from "../components/AuthenticatedLayout.tsx";
 import { LoginForm } from "../components/LoginForm.tsx";
 import { AskPage } from "../pages/AskPage.tsx";
 import { DocumentsPage } from "../pages/DocumentsPage.tsx";
+import { ProjectsPage } from "../pages/ProjectsPage.tsx";
 import { useSession } from "../session/SessionContext.tsx";
 
 function LoginRoute() {
@@ -58,6 +59,7 @@ export function AppRoutes() {
       <Route element={<RequireSession />}>
         <Route element={<AuthenticatedLayout />}>
           <Route path="/documents" element={<DocumentsPage />} />
+          <Route path="/projects" element={<ProjectsPage />} />
           <Route path="/ask" element={<AskPage />} />
         </Route>
       </Route>

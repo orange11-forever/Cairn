@@ -70,7 +70,84 @@ def test_openapi_contains_only_approved_paths(client: TestClient) -> None:
         "/api/v1/session",
         "/api/v1/logout",
         "/api/v1/organizations/{organization_id}",
+        "/api/v1/projects",
+        "/api/v1/projects/{project_id}",
+        "/api/v1/projects/{project_id}/events",
+        "/api/v1/projects/{project_id}/tasks",
+        "/api/v1/tasks/{task_id}/status",
+        "/api/v1/tasks/{task_id}/dependencies",
     }
+
+
+def test_openapi_project_requests_forbid_identity_fields_and_bound_values() -> None:
+    schema = create_app().openapi()
+    components = schema["components"]["schemas"]
+    request_names = {
+        "ProjectCreateRequest",
+        "TaskCreateRequest",
+        "TaskStatusUpdateRequest",
+        "TaskDependencyCreateRequest",
+    }
+    forbidden = {"org_id", "orgId", "created_by", "createdBy", "actor", "actorId"}
+
+    for name in request_names:
+        request_schema = components[name]
+        assert request_schema["additionalProperties"] is False
+        assert forbidden.isdisjoint(request_schema.get("properties", {}))
+
+    assert components["ProjectCreateRequest"]["properties"]["name"]["maxLength"] == 160
+    assert components["TaskCreateRequest"]["properties"]["title"]["maxLength"] == 240
+    assert components["TaskCreateRequest"]["properties"]["priority"]["$ref"].endswith(
+        "/TaskPriority"
+    )
+    assert components["TaskStatusUpdateRequest"]["properties"]["status"]["$ref"].endswith(
+        "/TaskStatus"
+    )
+    dependency_property = components["TaskDependencyCreateRequest"]["properties"][
+        "predecessorTaskId"
+    ]
+    assert "predecessor" in dependency_property["description"]
+    assert "successor" in dependency_property["description"]
+
+    mutation_operations = [
+        schema["paths"]["/api/v1/projects"]["post"],
+        schema["paths"]["/api/v1/projects/{project_id}/tasks"]["post"],
+        schema["paths"]["/api/v1/tasks/{task_id}/status"]["patch"],
+        schema["paths"]["/api/v1/tasks/{task_id}/dependencies"]["post"],
+    ]
+    for operation in mutation_operations:
+        csrf_parameter = next(
+            parameter
+            for parameter in operation["parameters"]
+            if parameter["name"] == "X-CSRF-Token"
+        )
+        assert csrf_parameter["required"] is True
+        assert operation["responses"]["403"]["content"]["application/json"]["schema"][
+            "$ref"
+        ].endswith("/ErrorBody")
+
+
+def test_openapi_project_events_declares_bounded_sse_read_contract() -> None:
+    # Break caught: generated clients lose the event route, opaque resume parameter,
+    # SSE media type, or pre-stream database error envelope.
+    operation = create_app().openapi()["paths"][
+        "/api/v1/projects/{project_id}/events"
+    ]["get"]
+    parameters = {parameter["name"]: parameter for parameter in operation["parameters"]}
+
+    assert set(parameters) == {"project_id", "after"}
+    assert parameters["after"]["required"] is False
+    assert parameters["after"]["schema"]["anyOf"][0] == {
+        "type": "string",
+        "maxLength": 2048,
+    }
+    assert operation["responses"]["200"] == {
+        "description": "有界项目事件批次",
+        "content": {"text/event-stream": {}},
+    }
+    assert operation["responses"]["503"]["content"]["application/json"]["schema"][
+        "$ref"
+    ].endswith("/ErrorBody")
 
 
 def test_openapi_declares_logout_csrf_header() -> None:

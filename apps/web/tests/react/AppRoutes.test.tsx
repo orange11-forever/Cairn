@@ -83,6 +83,12 @@ test("unauthenticated document route redirects to login", async () => {
   expect(screen.getByRole("img", { name: "Cairn 看板娘" })).toBeInTheDocument();
 });
 
+test("unauthenticated project route redirects to login", async () => {
+  renderTestRoutes("/projects");
+
+  expect(await screen.findByRole("heading", { name: "登录 Cairn" })).toBeInTheDocument();
+});
+
 test("login reaches documents and NavLink reaches ask without a reload", async () => {
   const user = userEvent.setup();
   renderTestRoutes("/login");
@@ -164,12 +170,13 @@ test("authenticated routes use one extensible application shell", async () => {
 
   expect(await screen.findByRole("banner")).toBeInTheDocument();
   const navigation = screen.getByRole("navigation", { name: "主导航" });
-  expect(within(navigation).getAllByRole("link")).toHaveLength(2);
+  expect(within(navigation).getAllByRole("link")).toHaveLength(3);
   expect(within(navigation).getByRole("link", { name: "知识文档" })).toHaveAttribute(
     "aria-current",
     "page",
   );
-  expect(within(navigation).queryByRole("link", { name: /项目|Agent|治理/ })).toBeNull();
+  expect(within(navigation).getByRole("link", { name: "项目任务" })).toBeInTheDocument();
+  expect(within(navigation).queryByRole("link", { name: /Agent|治理/ })).toBeNull();
   expect(screen.getByRole("heading", { level: 1, name: "知识文档" })).toBeInTheDocument();
   expect(screen.getByText("管理用于企业问答的内部资料。")).toBeInTheDocument();
 
@@ -178,6 +185,24 @@ test("authenticated routes use one extensible application shell", async () => {
   await user.click(assistantTrigger);
   expect(screen.getByRole("dialog", { name: "看板娘助手" })).toHaveTextContent("知识文档");
   expect(assistantTrigger).toHaveAttribute("aria-expanded", "true");
+});
+
+test("the project route stays in the shared shell with project navigation and assistant copy", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => jsonResponse({ items: [], nextCursor: null })),
+  );
+  const user = userEvent.setup();
+
+  renderTestRoutes("/projects", { restoredIdentity: IDENTITY });
+
+  expect(await screen.findByRole("heading", { level: 1, name: "项目任务" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "项目任务" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await user.click(screen.getByRole("button", { name: "打开看板娘助手" }));
+  expect(screen.getByRole("dialog", { name: "看板娘助手" })).toHaveTextContent("项目任务助手");
 });
 
 test("account menu exposes identity and logout without duplicating session state", async () => {

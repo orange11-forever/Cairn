@@ -1,6 +1,6 @@
 # apps/api: FastAPI 后端
 
-`apps/api` 是根 uv workspace 中可安装、可独立启动的 FastAPI package，现已提供 PostgreSQL 组织身份、Cookie 会话、审计、配置、请求 ID、统一错误、健康检查和 OpenAPI，并将在后续阶段承载项目、知识、Agent 执行和治理能力。
+`apps/api` 是根 uv workspace 中可安装、可独立启动的 FastAPI package，现已提供 PostgreSQL 组织身份、Cookie 会话、项目任务、审计、事务性 Outbox、有界 SSE、配置、请求 ID、统一错误、健康检查和 OpenAPI；知识、Agent 执行和治理能力仍在后续阶段。
 
 Web 的身份请求连接本 API；文档、上传和问答原型仍连接 `mocks/docs-server.mjs`。当前产品、架构和阶段路线以 [`docs/specs/2026-07-31-cairn-platform-reorientation-design.md`](../../docs/specs/2026-07-31-cairn-platform-reorientation-design.md) 为准。
 
@@ -29,10 +29,9 @@ Docker Desktop 必须保持运行。生产环境必须使用 HTTPS `APP_URL`/`CO
 
 ## 当前能力边界
 
-- 已实现：组织、用户、成员关系、Argon2id 密码、Cookie 会话、CSRF、PostgreSQL 登录限流、当前组织查询和追加式身份审计。
+- 已实现：组织、用户、成员关系、Argon2id 密码、Cookie 会话、CSRF、PostgreSQL 登录限流、当前组织查询、项目、任务、任务依赖、状态机、追加式审计、事务性 Outbox 和有界 SSE 查询。
 - `Bearer/OIDC`：未实现。
 - 完整 RBAC/ACL：未实现。
-- 项目与任务端点：未实现。
 - 知识摄取与知识端点：未实现，文档、上传和问答仍由 Node mock 提供。
 - AI Provider 与外部 Agent：未实现，必须等待组织、权限、审计、项目和知识基础完成。
 
@@ -42,13 +41,75 @@ Docker Desktop 必须保持运行。生产环境必须使用 HTTPS `APP_URL`/`CO
 
 根命令 `pnpm verify:core` 除迁移、PostgreSQL 集成测试、SDK 和 Web 验收外，还会用临时 localhost 证书启动 HTTPS 反向代理与生产配置 API，通过 Chromium 检查 CORS、Cookie、会话、CSRF 和审计来源 IP，并在所有退出路径清理证书、进程与隔离数据库资源。该阶段要求本机可用 OpenSSL 和 Playwright Chromium。
 
+## 阶段 2 项目任务契约
+
+项目与任务端点只信任认证依赖提供的 `CurrentIdentity`，以其中的组织作为租户权威。创建请求明确禁止客户端提交可信 `org_id`、创建者或 actor 字段。项目详情与任务读写对缺失或跨租户资源返回 `404 not_found`；events 查询不先加载项目，而是按身份组织与 `Project` aggregate 过滤，所以使用下述非泄露空流语义：
+
+- `events` 查询不存在的项目 ID：返回 `200` 空 `text/event-stream`，不泄露项目是否存在；
+- `events` 查询跨租户项目 ID：返回 `200` 空 `text/event-stream`，同样不泄露项目是否存在。
+
+### 端点
+
+| 方法与路径 | 语义 |
+|---|---|
+| `POST /api/v1/projects` | 创建项目 |
+| `GET /api/v1/projects` | 分页列出当前组织的项目 |
+| `GET /api/v1/projects/{project_id}` | 读取当前组织中的项目 |
+| `POST /api/v1/projects/{project_id}/tasks` | 在项目中创建任务 |
+| `GET /api/v1/projects/{project_id}/tasks` | 分页列出项目任务 |
+| `PATCH /api/v1/tasks/{task_id}/status` | 通过服务端状态机转换任务状态 |
+| `POST /api/v1/tasks/{task_id}/dependencies` | 添加指向路由任务的前置依赖 |
+| `GET /api/v1/projects/{project_id}/events` | 读取有界项目 SSE 事件批次 |
+
+Cookie 会话下的 `POST`/`PATCH` 命令要求合法 Origin 和会话绑定的 `X-CSRF-Token`。已接受的项目创建、任务创建、状态转换或依赖创建会把业务变化、追加式审计行与 Outbox 事件放在同一数据库事务中提交。
+
+### 任务状态机
+
+任务状态的完整集合为 `backlog`、`todo`、`in_progress`、`blocked`、`done` 和 `cancelled`。新任务从 `backlog` 开始；服务端只接受以下有向转换：
+
+- `backlog → todo`
+- `todo → in_progress`
+- `in_progress → blocked`
+- `in_progress → done`
+- `in_progress → cancelled`
+- `blocked → in_progress`
+
+`done` 与 `cancelled` 是终态，没有出边。重复提交当前状态、跳级或任何未列出的边都返回 `409 invalid_state_transition`；状态规则只由服务端执行，客户端展示不能扩展它。
+
+### 任务依赖
+
+`POST /api/v1/tasks/{task_id}/dependencies` 把 JSON 中的 `predecessorTaskId` 作为前置任务，把路径中的 `task_id` 作为后继任务，边方向严格为 predecessor → successor。
+
+服务层逐项拒绝以下依赖输入：
+
+- predecessor 或 successor 任务缺失：`404 not_found`；
+- predecessor 或 successor 跨租户：`404 not_found`，不暴露其他租户的任务；
+- predecessor 与 successor 跨项目：`422 invalid_dependency`；
+- predecessor 与 successor 自依赖：`422 invalid_dependency`；
+- predecessor → successor 重复边：`409 dependency_exists`；
+- 新边会闭合反向可达路径形成环：`409 dependency_cycle`。
+
+依赖创建锁定所属项目；Outbox 中的 `Project` 是聚合根，任务创建、任务状态变化和依赖添加事件都使用项目 ID 作为 `aggregate_id`。
+
+### 游标分页与 SSE
+
+项目列表和项目任务列表采用稳定、不透明的 `(created_at, id)` 游标分页。查询参数 `limit` 范围为 1–100、默认 50；有下一页时响应提供 `nextCursor`，客户端应原样作为下一次请求的 `cursor`，不能解析或构造它。无效游标返回 `422 invalid_cursor`。
+
+`GET /api/v1/projects/{project_id}/events?after=...` 不验证项目是否存在，而是按 `(occurred_at, id)` 升序读取当前组织、当前 `Project` 聚合的 Outbox 事件。响应为 `text/event-stream`；SSE 批次一次最多 100 个 frame，发送完即结束。`id` 是不透明续读游标，可在下一次请求的 `after` 中使用。这不是长连接订阅，数据库错误会在开始响应前返回 `503 database_unavailable`，其他租户的事件不会进入结果；不存在或跨租户的项目 ID 都得到相同的空 `200 text/event-stream`，而不是 `404`。
+
+### 显式延后
+
+- 完整阶段/里程碑编辑 UI、React Flow/ELK 图编辑、拖拽 Kanban 和时间线可视化延后。
+- Outbox worker 发布、长连接重连 SSE、Redis fan-out、评论、通知和任务执行延后。
+- Bearer/OIDC、现有成员边界以外的 RBAC/ACL、知识摄取/搜索、Agent 执行和模型 Provider 延后。
+
 ## 实施顺序
 
 | 阶段 | API 侧主要交付 |
 |---|---|
 | 0 | FastAPI 骨架、`/health`、`/api/v1`、统一错误、OpenAPI SDK、测试和 CI |
 | 1 | 已完成组织、成员、Cookie 身份、审计和 PostgreSQL 迁移；Bearer、RBAC、ACL 延后 |
-| 2 | 项目与任务 DAG、状态机、Outbox 和 SSE 查询模型 |
+| 2 | 已完成项目与任务 DAG、状态机、Outbox 和有界 SSE 查询模型 |
 | 3 | 通用资源、对象存储、摄取状态、权限感知搜索和引用 |
 | 4 | Agent、模型策略、运行、预算、审批与 AgentRunner 契约 |
 | 5-6 | 外部编程 Agent、代码智能、OIDC/SAML、配额、审计查询和部署治理 |

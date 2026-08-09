@@ -1,13 +1,20 @@
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
-
 from cairn_api.audit.models import AuditLog
 from cairn_api.auth.models import AuthSession, User
 from cairn_api.db.base import Base
 from cairn_api.organizations.models import Membership, Organization
+from cairn_api.projects.models import (
+    Milestone,
+    OutboxEvent,
+    Project,
+    ProjectStage,
+    Task,
+    TaskDependency,
+)
 from cairn_api.settings import Settings
+from sqlalchemy import engine_from_config, pool
 
 config = context.config
 if config.config_file_name is not None:
@@ -17,7 +24,19 @@ if not config.get_main_option("sqlalchemy.url"):
     config.set_main_option("sqlalchemy.url", Settings().database_url.replace("%", "%%"))
 
 target_metadata = Base.metadata
-_MAPPED_TYPES = (AuditLog, AuthSession, Membership, Organization, User)
+_MAPPED_TYPES = (
+    AuditLog,
+    AuthSession,
+    Membership,
+    Milestone,
+    Organization,
+    OutboxEvent,
+    Project,
+    ProjectStage,
+    Task,
+    TaskDependency,
+    User,
+)
 
 
 def run_migrations_offline() -> None:

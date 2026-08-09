@@ -75,7 +75,8 @@ def cleanup_identity_rows(
     with engine.begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE TABLE auth_rate_limits, audit_logs, auth_sessions, memberships, "
-                "users, organizations CASCADE"
+                "TRUNCATE TABLE outbox_events, task_dependencies, tasks, milestones, "
+                "project_stages, projects, auth_rate_limits, audit_logs, auth_sessions, "
+                "memberships, users, organizations CASCADE"
             )
         )

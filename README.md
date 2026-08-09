@@ -11,18 +11,43 @@
 </p>
 
 > [!IMPORTANT]
-> Cairn 当前处于阶段 1 基础建设。现阶段核心开发链路已包含真实 PostgreSQL 16、FastAPI Cookie 身份接口、React/Vite Web 和仍承载文档原型的 Node mock；知识摄取、完整权限与 AI Provider 仍在后续阶段建设。
+> Cairn 已完成阶段 2 的项目任务基础。当前核心开发链路包含真实 PostgreSQL 16、FastAPI Cookie 身份与项目任务 API、React/Vite Web 项目视图，以及仍承载文档原型的 Node mock；知识摄取、完整权限与 AI Provider 仍在后续阶段建设。
 
-## 阶段 1 基础进度
+## 阶段 2 已完成边界
 
-共享 API 契约、响应式 Web 与真实身份基础已经完成。
+共享 API 契约、响应式 Web 与真实身份基础已经完成。阶段 2 在此基础上已交付项目、任务、依赖、状态机、事务性 Outbox 和有界 SSE 查询基础。
 
 - `@cairn/contracts` 统一现有登录、文档、问答、上传和错误响应契约；
 - Web 保留本地容错、请求取消、查询缓存和 UI 状态边界；
 - 工作台支持 360、768、1280 像素布局，以及日间、夜间和跟随系统偏好；
-- 导航壳可扩展到知识、项目、执行和治理模块，但当前只开放已有页面；
+- 已登录用户可在 Web 项目视图中查看游标分页的项目和任务，并通过服务端状态机更新任务状态；
 - 组织、用户、成员、Cookie 会话、登录限流状态和审计写入 PostgreSQL，Web 身份请求连接 FastAPI；
+- 项目、任务、依赖、审计行和 Outbox 事件写入 PostgreSQL；每次已接受的命令在同一事务中提交业务变更、审计记录和事件；
 - 文档、上传和问答仍连接 Node mock API，不代表知识系统已经完成。
+
+## 项目与任务 API
+
+所有端点都从受保护会话解析 `CurrentIdentity`。其中的组织是租户权威；客户端请求体不接受可信 `org_id`、创建者或 actor 字段。项目详情与任务读写对缺失或跨租户资源返回 `404 not_found`，隐藏普通资源的存在性。事件查询采用单独的非泄露语义：
+
+- `events` 查询不存在的项目 ID：返回 `200` 空 `text/event-stream`，不泄露项目是否存在；
+- `events` 查询跨租户项目 ID：返回 `200` 空 `text/event-stream`，同样不泄露项目是否存在。
+
+| 操作 | 端点 | 已交付语义 |
+|---|---|---|
+| 创建、分页列出项目 | `POST /api/v1/projects`、`GET /api/v1/projects` | 创建项目；使用稳定不透明游标读取当前组织项目 |
+| 读取项目 | `GET /api/v1/projects/{project_id}` | 仅返回当前组织中的项目 |
+| 创建、分页列出任务 | `POST /api/v1/projects/{project_id}/tasks`、`GET /api/v1/projects/{project_id}/tasks` | 创建任务；在项目内使用稳定不透明游标分页 |
+| 转换任务状态 | `PATCH /api/v1/tasks/{task_id}/status` | 由服务端状态机校验转换，不接受任意状态跳转 |
+| 添加任务依赖 | `POST /api/v1/tasks/{task_id}/dependencies` | 请求体中的前置任务指向路由中的后继任务，形成 predecessor → successor |
+| 查询项目事件 | `GET /api/v1/projects/{project_id}/events` | 按当前组织和项目 aggregate 过滤，返回一次最多 100 条、随后结束的 SSE 批次；不存在或跨租户 ID 均为空 `200` |
+
+`Project` 是阶段 2 的聚合根：任务创建、状态变化和依赖边都以所属项目作为 Outbox aggregate，项目事件查询也按组织与项目共同隔离。项目与任务列表的 `limit` 为 1–100，默认 50；响应通过 `nextCursor` 续页。
+
+显式延后：
+
+- 完整阶段/里程碑编辑 UI、React Flow/ELK 图编辑、拖拽 Kanban 和时间线可视化延后；
+- Outbox worker 发布、长连接重连 SSE、Redis fan-out、评论、通知和任务执行延后；
+- Bearer/OIDC、现有成员边界以外的 RBAC/ACL、知识摄取/搜索、Agent 执行和模型 Provider 延后。
 
 ## 核心能力
 
@@ -71,7 +96,7 @@
 | 数据与文件 | PostgreSQL、pgvector、Redis、S3/MinIO | PostgreSQL 16 当前已使用；其余规划 |
 | 工作流与 Agent | Temporal、LangGraph、AgentRunner | 规划 |
 | 模型接入 | LiteLLM Gateway 与 Cairn 模型策略层 | 规划 |
-| 实时与可观测 | Transactional Outbox、SSE、OpenTelemetry | 规划 |
+| 实时与可观测 | Transactional Outbox、SSE、OpenTelemetry | Outbox 与有界 SSE 查询当前已使用；OpenTelemetry 规划 |
 | 部署 | Local Web、Docker Compose、Kubernetes/Helm | Docker Compose 当前用于核心开发；正式部署规划 |
 | 测试与工具 | pnpm、Vitest、Testing Library、Playwright；uv、pytest、Ruff、Pyright | 当前已使用 |
 
@@ -91,10 +116,10 @@ Carin
 │   │   ├── src/              # 页面、组件、查询、会话与数据契约
 │   │   ├── styles/           # 全局样式
 │   │   └── tests/            # Node 契约测试与 React 组件测试
-│   └── worker/               # 后续异步任务 Worker 的预留边界
+│   └── worker/               # 后续 Outbox/异步任务 Worker 的预留边界
 ├── packages/
 │   ├── contracts/            # 共享运行时契约（文档原型）
-│   └── sdk/                  # 从 FastAPI OpenAPI 生成的身份客户端
+│   └── sdk/                  # 从 FastAPI OpenAPI 生成的身份与项目任务客户端
 ├── assets/brand/             # Cairn 品牌图片
 ├── deploy/compose/           # PostgreSQL 核心开发基础设施
 ├── scripts/                  # 跨 package 的任务编排与进程工具
@@ -155,9 +180,9 @@ pnpm dev:api
 - 版本探针：`http://127.0.0.1:8080/api/v1`
 - OpenAPI：`http://127.0.0.1:8080/docs`
 
-API 现已提供 PostgreSQL readiness、登录、会话恢复、注销和当前组织接口。登录失败限制由 PostgreSQL 持久化：同一规范化邮箱在 15 分钟窗口内最多失败 5 次，同一来源 IP 最多失败 30 次，达到阈值后阻止 15 分钟；表中仅保存使用 `CAIRN_AUTH_RATE_LIMIT_SECRET` 生成的 HMAC 摘要，不保存明文邮箱或 IP。文档、上传和问答仍由 Node mock 提供。
+API 现已提供 PostgreSQL readiness、登录、会话恢复、注销、当前组织以及项目任务接口。登录失败限制由 PostgreSQL 持久化：同一规范化邮箱在 15 分钟窗口内最多失败 5 次，同一来源 IP 最多失败 30 次，达到阈值后阻止 15 分钟；表中仅保存使用 `CAIRN_AUTH_RATE_LIMIT_SECRET` 生成的 HMAC 摘要，不保存明文邮箱或 IP。文档、上传和问答仍由 Node mock 提供。
 
-当前切片不包含 Bearer/OIDC、完整 RBAC/ACL、项目、知识摄取、知识端点或 AI Provider。AI Provider 与外部 Agent 接入必须建立在组织、权限、审计、项目和知识基础完成之后，不能绕过这些边界提前扩展。
+当前切片不包含 Bearer/OIDC、完整 RBAC/ACL、知识摄取、知识端点、任务执行或 AI Provider。AI Provider 与外部 Agent 接入必须建立在组织、权限、审计、项目和知识基础完成之后，不能绕过这些边界提前扩展。
 
 可按需清理过期或已撤销的认证状态：
 

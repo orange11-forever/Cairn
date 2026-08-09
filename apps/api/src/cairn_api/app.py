@@ -5,13 +5,6 @@ from typing import Literal
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel
-from sqlalchemy.exc import (
-    DisconnectionError,
-    InterfaceError,
-    OperationalError,
-    PendingRollbackError,
-)
-from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
@@ -19,11 +12,13 @@ from starlette.responses import JSONResponse
 from cairn_api import __version__
 from cairn_api.auth.router import clear_session_cookie
 from cairn_api.auth.router import router as auth_router
+from cairn_api.db.errors import DATABASE_UNAVAILABLE_ERRORS
 from cairn_api.db.session import Database
 from cairn_api.errors import ApiProblem, error_response
 from cairn_api.logging import configure_app_logging
 from cairn_api.middleware import RequestIdMiddleware, new_request_id
 from cairn_api.organizations.router import router as organizations_router
+from cairn_api.projects.router import router as projects_router
 from cairn_api.settings import Settings
 
 
@@ -40,15 +35,6 @@ class ApiVersionResponse(BaseModel):
 
 class ReadyResponse(BaseModel):
     status: Literal["ready"] = "ready"
-
-
-DATABASE_UNAVAILABLE_ERRORS = (
-    DisconnectionError,
-    InterfaceError,
-    OperationalError,
-    PendingRollbackError,
-    SQLAlchemyTimeoutError,
-)
 
 
 def get_request_id(request: Request) -> str:
@@ -125,6 +111,23 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
             trace_id=get_request_id(request),
         )
 
+    async def database_unavailable_exception_handler(
+        request: Request,
+        _exc: Exception,
+    ) -> JSONResponse:
+        return error_response(
+            status_code=503,
+            code="database_unavailable",
+            message="数据库暂时不可用",
+            trace_id=get_request_id(request),
+        )
+
+    for exception_type in DATABASE_UNAVAILABLE_ERRORS:
+        application.add_exception_handler(
+            exception_type,
+            database_unavailable_exception_handler,
+        )
+
     @application.exception_handler(Exception)
     async def unhandled_exception_handler(  # pyright: ignore[reportUnusedFunction]
         request: Request,
@@ -166,6 +169,7 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
 
     application.include_router(auth_router)
     application.include_router(organizations_router)
+    application.include_router(projects_router)
 
     return application
 

@@ -9,7 +9,7 @@ import { ThemeControl } from "./ThemeControl.tsx";
 
 export function AppShell({ identity, onLogout, logoutError }: { identity: IdentityContext; onLogout: () => Promise<void>; logoutError: ApiError | null }) {
   const { pathname } = useLocation();
-  const page = pathname === "/ask" ? "ask" : "documents";
+  const page = pathname === "/ask" ? "ask" : pathname === "/projects" ? "projects" : "documents";
 
   return (
     <div className="app-shell">
