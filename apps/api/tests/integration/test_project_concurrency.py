@@ -19,8 +19,8 @@ from cairn_api.errors import ApiProblem
 from cairn_api.organizations.models import Membership, Organization
 from cairn_api.organizations.schemas import MembershipResponse, OrganizationResponse
 from cairn_api.projects import repository
-from cairn_api.projects.models import OutboxEvent, Task
-from cairn_api.projects.schemas import TaskResponse
+from cairn_api.projects.models import OutboxEvent, Project, Task, TaskDependency
+from cairn_api.projects.schemas import DependencyResponse, TaskResponse
 from cairn_api.projects.service import ProjectService
 from sqlalchemy import Engine, func, select, text
 from sqlalchemy.orm import Session
@@ -324,3 +324,171 @@ def test_competing_task_transitions_serialize_with_single_side_effect(
     assert "req-race-transition-cancelled" not in {audit.trace_id for audit in audits}
     committed_events = [event for event in events if event.payload.get("status") == "done"]
     assert len(committed_events) == 1
+
+
+@pytest.mark.integration
+def test_concurrent_dependency_additions_cannot_close_cycle(
+    database: Database,
+    migrated_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    identity = _seed_identity(database)
+    project_id, task_ids = _create_project_with_tasks(
+        database,
+        identity,
+        "Task A",
+        "Task B",
+        "Task C",
+        "Task D",
+    )
+    task_a, task_b, task_c, task_d = task_ids
+
+    with database.session_factory() as session:
+        service = ProjectService(session)
+        service.add_dependency(
+            identity=identity,
+            predecessor_task_id=task_b,
+            successor_task_id=task_c,
+            audit=_audit("req-race-dependency-b-c"),
+        )
+        service.add_dependency(
+            identity=identity,
+            predecessor_task_id=task_d,
+            successor_task_id=task_a,
+            audit=_audit("req-race-dependency-d-a"),
+        )
+
+    with database.session_factory() as session:
+        baseline_audits = session.scalar(
+            select(func.count()).select_from(AuditLog).where(
+                AuditLog.org_id == identity.organization.id,
+                AuditLog.action == "task.dependency_added",
+            )
+        )
+        baseline_events = session.scalar(
+            select(func.count()).select_from(OutboxEvent).where(
+                OutboxEvent.event_type == "task.dependency_added",
+                OutboxEvent.aggregate_id == project_id,
+            )
+        )
+    assert isinstance(baseline_audits, int)
+    assert isinstance(baseline_events, int)
+
+    gate = _LockGate()
+    real_get_project = repository.get_project
+
+    def gated_get_project(
+        session: Session,
+        *,
+        org_id: UUID,
+        project_id: UUID,
+        for_update: bool = False,
+    ) -> Project | None:
+        if not for_update or project_id != target_project_id:
+            return real_get_project(
+                session,
+                org_id=org_id,
+                project_id=project_id,
+                for_update=for_update,
+            )
+        role = gate.before_locked_read(session)
+        project = real_get_project(
+            session,
+            org_id=org_id,
+            project_id=project_id,
+            for_update=for_update,
+        )
+        gate.after_locked_read(role)
+        return project
+
+    target_project_id = project_id
+    monkeypatch.setattr(repository, "get_project", gated_get_project)
+
+    def add_dependency(
+        role: WorkerRole,
+        predecessor_task_id: UUID,
+        successor_task_id: UUID,
+        trace_id: str,
+    ) -> DependencyResponse | ApiProblem:
+        with database.session_factory() as session:
+            gate.register(session, role)
+            try:
+                return ProjectService(session).add_dependency(
+                    identity=identity,
+                    predecessor_task_id=predecessor_task_id,
+                    successor_task_id=successor_task_id,
+                    audit=_audit(trace_id),
+                )
+            except ApiProblem as problem:
+                return problem
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        holder = executor.submit(
+            add_dependency,
+            "holder",
+            task_a,
+            task_b,
+            "req-race-dependency-a-b",
+        )
+        assert gate.holder_locked.wait(WAIT_SECONDS)
+        waiter = executor.submit(
+            add_dependency,
+            "waiter",
+            task_c,
+            task_d,
+            "req-race-dependency-c-d",
+        )
+        assert gate.waiter_entered.wait(WAIT_SECONDS)
+        try:
+            _assert_waiting_on_lock(migrated_engine, gate)
+        finally:
+            gate.release_holder.set()
+        holder_result = holder.result(timeout=FUTURE_SECONDS)
+        waiter_result = waiter.result(timeout=FUTURE_SECONDS)
+
+    assert isinstance(holder_result, DependencyResponse)
+    assert holder_result.predecessor_task_id == task_a
+    assert holder_result.successor_task_id == task_b
+    assert isinstance(waiter_result, ApiProblem)
+    assert waiter_result.status_code == 409
+    assert waiter_result.code == "dependency_cycle"
+
+    with database.session_factory() as session:
+        edges = set(
+            session.execute(
+                select(
+                    TaskDependency.predecessor_task_id,
+                    TaskDependency.successor_task_id,
+                ).where(TaskDependency.project_id == project_id)
+            ).tuples()
+        )
+        audits = session.scalars(
+            select(AuditLog).where(
+                AuditLog.org_id == identity.organization.id,
+                AuditLog.action == "task.dependency_added",
+            )
+        ).all()
+        events = session.scalars(
+            select(OutboxEvent).where(
+                OutboxEvent.event_type == "task.dependency_added",
+                OutboxEvent.aggregate_id == project_id,
+            )
+        ).all()
+
+    assert edges == {(task_b, task_c), (task_d, task_a), (task_a, task_b)}
+    assert len(audits) == baseline_audits + 1
+    assert len(events) == baseline_events + 1
+    committed_audits = [
+        audit for audit in audits if audit.trace_id == "req-race-dependency-a-b"
+    ]
+    assert len(committed_audits) == 1
+    assert committed_audits[0].resource_id == holder_result.id
+    assert "req-race-dependency-c-d" not in {audit.trace_id for audit in audits}
+    committed_events = [
+        event
+        for event in events
+        if event.payload.get("dependencyId") == str(holder_result.id)
+    ]
+    assert len(committed_events) == 1
+    assert committed_events[0].payload["predecessorTaskId"] == str(task_a)
+    assert committed_events[0].payload["successorTaskId"] == str(task_b)
