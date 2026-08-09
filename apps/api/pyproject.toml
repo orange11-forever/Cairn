@@ -1,6 +1,7 @@
 [project]
 name = "cairn-api"
 version = "0.1.0"
+license = "ISC"
 description = "Cairn FastAPI service"
 requires-python = ">=3.12"
 dependencies = [

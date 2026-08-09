@@ -207,3 +207,7 @@ pnpm verify
 `pnpm verify` 是完整的跨 package 门禁：它覆盖共享契约、SDK、Web、API、Ruff、Pyright、发行包构建与最后的真实核心验证。浏览器部分覆盖错误密码、登录、刷新恢复、组织显示、注销、360/768/1280 像素布局、主题、路由保护、会话隔离、并发取消、文档状态、筛选、上传、提问和自动滚动；生产构建还会检查开发凭据和 Mock 场景控件没有进入产物。
 
 也可以使用 `pnpm test:contracts`、`pnpm typecheck:contracts`、`pnpm test:web`、`pnpm test:api`、`pnpm typecheck:web`、`pnpm typecheck:api`、`pnpm build:web` 和 `pnpm build:api` 分别检查单个 package。
+
+## 开源许可证
+
+Cairn 采用 [ISC License](LICENSE) 开源。
