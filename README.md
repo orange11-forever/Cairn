@@ -100,6 +100,10 @@
 | 部署 | Local Web、Docker Compose、Kubernetes/Helm | Docker Compose 当前用于核心开发；正式部署规划 |
 | 测试与工具 | pnpm、Vitest、Testing Library、Playwright；uv、pytest、Ruff、Pyright | 当前已使用 |
 
+## 架构
+
+当前实现、目标组件、安全不变量与阶段路线见 [公开架构说明](docs/architecture.md)。文档中的“当前已交付”和“规划”状态是功能边界，不应互相替代。
+
 ## 项目结构
 
 以下目录树只列出公开维护的源码、测试与工程入口，不包含私有文档、依赖缓存和构建产物。
@@ -207,3 +211,7 @@ pnpm verify
 `pnpm verify` 是完整的跨 package 门禁：它覆盖共享契约、SDK、Web、API、Ruff、Pyright、发行包构建与最后的真实核心验证。浏览器部分覆盖错误密码、登录、刷新恢复、组织显示、注销、360/768/1280 像素布局、主题、路由保护、会话隔离、并发取消、文档状态、筛选、上传、提问和自动滚动；生产构建还会检查开发凭据和 Mock 场景控件没有进入产物。
 
 也可以使用 `pnpm test:contracts`、`pnpm typecheck:contracts`、`pnpm test:web`、`pnpm test:api`、`pnpm typecheck:web`、`pnpm typecheck:api`、`pnpm build:web` 和 `pnpm build:api` 分别检查单个 package。
+
+## 开源许可证
+
+Cairn 采用 [ISC License](LICENSE) 开源。

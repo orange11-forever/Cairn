@@ -2,7 +2,7 @@
 
 `apps/api` 是根 uv workspace 中可安装、可独立启动的 FastAPI package，现已提供 PostgreSQL 组织身份、Cookie 会话、项目任务、审计、事务性 Outbox、有界 SSE、配置、请求 ID、统一错误、健康检查和 OpenAPI；知识、Agent 执行和治理能力仍在后续阶段。
 
-Web 的身份请求连接本 API；文档、上传和问答原型仍连接 `mocks/docs-server.mjs`。当前产品、架构和阶段路线以 [`docs/specs/2026-07-31-cairn-platform-reorientation-design.md`](../../docs/specs/2026-07-31-cairn-platform-reorientation-design.md) 为准。
+Web 的身份请求连接本 API；文档、上传和问答原型仍连接 `mocks/docs-server.mjs`。当前产品、架构和阶段路线以 [公开架构说明](../../docs/architecture.md) 为准。
 
 当前核心开发由 FastAPI、PostgreSQL、React/Vite Web 与文档 Node mock 共同组成。API 默认绑定 `127.0.0.1:8080`，身份数据不使用 SQLite 或内存仓储分叉。未来 Local Web、Compose 与 Helm 必须继续使用同一 `/api/v1` 契约、数据库迁移和权限规则。
 
