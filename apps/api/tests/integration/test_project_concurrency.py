@@ -22,12 +22,14 @@ from cairn_api.projects import repository
 from cairn_api.projects.models import OutboxEvent, Project, Task, TaskDependency
 from cairn_api.projects.schemas import DependencyResponse, TaskResponse
 from cairn_api.projects.service import ProjectService
-from sqlalchemy import Engine, func, select, text
-from sqlalchemy.orm import Session
+from sqlalchemy import Connection, Engine, event, func, select, text
+from sqlalchemy.orm import Session, SessionTransaction
 
 WAIT_SECONDS = 5.0
 FUTURE_SECONDS = 10.0
 POLL_SECONDS = 0.01
+LOCK_TIMEOUT_MILLISECONDS = 6_000
+STATEMENT_TIMEOUT_MILLISECONDS = 8_000
 WorkerRole = Literal["holder", "waiter"]
 
 
@@ -37,6 +39,54 @@ def _audit(trace_id: str) -> RequestAuditContext:
         ip="198.51.100.7",
         user_agent="project-race-integration-test",
     )
+
+
+def _set_race_transaction_deadlines(connection: Connection) -> None:
+    connection.execute(
+        text(
+            """
+            SELECT set_config('lock_timeout', :lock_timeout, true),
+                   set_config('statement_timeout', :statement_timeout, true)
+            """
+        ),
+        {
+            "lock_timeout": f"{LOCK_TIMEOUT_MILLISECONDS}ms",
+            "statement_timeout": f"{STATEMENT_TIMEOUT_MILLISECONDS}ms",
+        },
+    ).one()
+
+
+def _set_race_session_deadlines(
+    _session: Session,
+    _transaction: SessionTransaction,
+    connection: Connection,
+) -> None:
+    _set_race_transaction_deadlines(connection)
+
+
+def _install_race_session_deadlines(session: Session) -> None:
+    event.listen(session, "after_begin", _set_race_session_deadlines)
+
+
+@pytest.mark.integration
+def test_race_transaction_deadlines_are_active(database: Database) -> None:
+    with database.session_factory() as session:
+        _install_race_session_deadlines(session)
+        lock_timeout_ms, statement_timeout_ms = session.execute(
+            text(
+                """
+                SELECT EXTRACT(
+                           EPOCH FROM current_setting('lock_timeout')::interval
+                       ) * 1000,
+                       EXTRACT(
+                           EPOCH FROM current_setting('statement_timeout')::interval
+                       ) * 1000
+                """
+            )
+        ).one()
+
+    assert int(lock_timeout_ms) == LOCK_TIMEOUT_MILLISECONDS
+    assert int(statement_timeout_ms) == STATEMENT_TIMEOUT_MILLISECONDS
 
 
 @dataclass
@@ -93,6 +143,7 @@ def _assert_waiting_on_lock(engine: Engine, gate: _LockGate) -> None:
         """
     )
     with engine.connect() as connection:
+        _set_race_transaction_deadlines(connection)
         while monotonic() < deadline:
             row = (
                 connection.execute(
@@ -264,6 +315,7 @@ def test_competing_task_transitions_serialize_with_single_side_effect(
         trace_id: str,
     ) -> TaskResponse | ApiProblem:
         with database.session_factory() as session:
+            _install_race_session_deadlines(session)
             gate.register(session, role)
             try:
                 return ProjectService(session).transition_task(
@@ -276,21 +328,22 @@ def test_competing_task_transitions_serialize_with_single_side_effect(
                 return problem
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        holder = executor.submit(transition, "holder", "done", "req-race-transition-done")
-        assert gate.holder_locked.wait(WAIT_SECONDS)
-        waiter = executor.submit(
-            transition,
-            "waiter",
-            "cancelled",
-            "req-race-transition-cancelled",
-        )
-        assert gate.waiter_entered.wait(WAIT_SECONDS)
         try:
+            holder = executor.submit(transition, "holder", "done", "req-race-transition-done")
+            assert gate.holder_locked.wait(WAIT_SECONDS)
+            waiter = executor.submit(
+                transition,
+                "waiter",
+                "cancelled",
+                "req-race-transition-cancelled",
+            )
+            assert gate.waiter_entered.wait(WAIT_SECONDS)
             _assert_waiting_on_lock(migrated_engine, gate)
+            gate.release_holder.set()
+            holder_result = holder.result(timeout=FUTURE_SECONDS)
+            waiter_result = waiter.result(timeout=FUTURE_SECONDS)
         finally:
             gate.release_holder.set()
-        holder_result = holder.result(timeout=FUTURE_SECONDS)
-        waiter_result = waiter.result(timeout=FUTURE_SECONDS)
 
     assert isinstance(holder_result, TaskResponse)
     assert holder_result.status == "done"
@@ -411,6 +464,7 @@ def test_concurrent_dependency_additions_cannot_close_cycle(
         trace_id: str,
     ) -> DependencyResponse | ApiProblem:
         with database.session_factory() as session:
+            _install_race_session_deadlines(session)
             gate.register(session, role)
             try:
                 return ProjectService(session).add_dependency(
@@ -423,28 +477,29 @@ def test_concurrent_dependency_additions_cannot_close_cycle(
                 return problem
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        holder = executor.submit(
-            add_dependency,
-            "holder",
-            task_a,
-            task_b,
-            "req-race-dependency-a-b",
-        )
-        assert gate.holder_locked.wait(WAIT_SECONDS)
-        waiter = executor.submit(
-            add_dependency,
-            "waiter",
-            task_c,
-            task_d,
-            "req-race-dependency-c-d",
-        )
-        assert gate.waiter_entered.wait(WAIT_SECONDS)
         try:
+            holder = executor.submit(
+                add_dependency,
+                "holder",
+                task_a,
+                task_b,
+                "req-race-dependency-a-b",
+            )
+            assert gate.holder_locked.wait(WAIT_SECONDS)
+            waiter = executor.submit(
+                add_dependency,
+                "waiter",
+                task_c,
+                task_d,
+                "req-race-dependency-c-d",
+            )
+            assert gate.waiter_entered.wait(WAIT_SECONDS)
             _assert_waiting_on_lock(migrated_engine, gate)
+            gate.release_holder.set()
+            holder_result = holder.result(timeout=FUTURE_SECONDS)
+            waiter_result = waiter.result(timeout=FUTURE_SECONDS)
         finally:
             gate.release_holder.set()
-        holder_result = holder.result(timeout=FUTURE_SECONDS)
-        waiter_result = waiter.result(timeout=FUTURE_SECONDS)
 
     assert isinstance(holder_result, DependencyResponse)
     assert holder_result.predecessor_task_id == task_a
