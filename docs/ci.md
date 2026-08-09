@@ -68,7 +68,13 @@ GitHub-hosted 临时 runner 被整体销毁，因此不会污染后续运行。
 - workflow YAML 可被解析；
 - 本地 `pnpm verify` 在新增 workflow 后仍完整通过；
 - 推送后 GitHub Actions 能在 `main` 上完成一次绿色运行；
-- 后续可在仓库设置中将该 job 设为 `main` 的 required status check，此设置不由 workflow 文件修改。
+- `main` 使用 `CI / Full verification` 作为 required status check。
+
+## 主分支治理
+
+本个人项目采用零审批 Pull Request：功能分支完成本地验证后推送，创建面向 `main` 的 PR，不要求 approving review，但必须等待 `CI / Full verification` 成功。通过后使用 squash merge，并删除已合并的远端功能分支。
+
+仓库规则禁止直接推送 `main`，禁止强制推送和删除 `main`，不得配置持久 bypass。仓库所有者也遵循同一条 CI 门禁；临时排障不能通过关闭 TLS 校验、强推或绕过 required check 完成。
 
 ## 官方依据
 

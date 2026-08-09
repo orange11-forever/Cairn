@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
+import { load } from "js-yaml";
 
 const REPOSITORY_ROOT = join(import.meta.dirname, "../../../..");
 const execFileAsync = promisify(execFile);
@@ -131,5 +132,22 @@ test("personal agent files and detailed plans remain private", async () => {
       path,
     ]);
     assert.match(stdout, new RegExp(`${path.replaceAll(".", "\\.")}\\n$`));
+  }
+});
+
+test("repository governance names the exact required CI check", async () => {
+  const workflow = load(await readRepositoryFile(".github/workflows/ci.yml"));
+  assert.equal(`${workflow.name} / ${workflow.jobs.verify.name}`, "CI / Full verification");
+
+  const ciDocs = await readRepositoryFile("docs/ci.md");
+  for (const policy of [
+    "`CI / Full verification`",
+    "零审批 Pull Request",
+    "禁止直接推送 `main`",
+    "禁止强制推送和删除 `main`",
+    "不得配置持久 bypass",
+    "squash merge",
+  ]) {
+    assert.ok(ciDocs.includes(policy), `missing CI governance policy: ${policy}`);
   }
 });
