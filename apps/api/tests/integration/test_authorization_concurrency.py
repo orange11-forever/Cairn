@@ -110,9 +110,11 @@ def test_bounded_cleanup_preserves_primary_exception_and_joins_worker() -> None:
         allow_cooperative_exit.set()
         raise RuntimeError("backend termination failed")
 
-    executor = ThreadPoolExecutor(max_workers=1)
-    future = executor.submit(wait_for_cancellation)
+    executor: ThreadPoolExecutor | None = None
+    future: Future[None] | None = None
     try:
+        executor = ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(wait_for_cancellation)
         assert worker_started.wait(1.0)
         with pytest.raises(ValueError) as exc_info:
             try:
@@ -130,7 +132,8 @@ def test_bounded_cleanup_preserves_primary_exception_and_joins_worker() -> None:
     finally:
         cooperative_cancel.set()
         allow_cooperative_exit.set()
-        executor.shutdown(wait=True, cancel_futures=True)
+        if executor is not None:
+            executor.shutdown(wait=True, cancel_futures=True)
 
     assert cooperative_cancel.is_set()
     assert cooperative_cancel_observed.is_set()
@@ -141,6 +144,7 @@ def test_bounded_cleanup_preserves_primary_exception_and_joins_worker() -> None:
         "force cancellation failed: backend termination failed"
     ]
     assert worker_finished.is_set()
+    assert future is not None
     assert future.done()
     assert all(not worker.is_alive() for worker in worker_threads)
 
@@ -161,19 +165,67 @@ def test_cleanup_startup_timeout_releases_signals_and_joins_worker() -> None:
         cooperative_cancel.wait()
         allow_cooperative_exit.wait()
 
-    executor = ThreadPoolExecutor(max_workers=1)
-    future = executor.submit(delayed_worker)
-    with pytest.raises(AssertionError, match="worker did not start"):
-        try:
+    executor: ThreadPoolExecutor | None = None
+    future: Future[None] | None = None
+    try:
+        executor = ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(delayed_worker)
+        with pytest.raises(AssertionError, match="worker did not start"):
             assert worker_started.wait(0.0), "worker did not start"
-        finally:
-            cooperative_cancel.set()
-            allow_cooperative_exit.set()
-            allow_worker_start.set()
+    finally:
+        cooperative_cancel.set()
+        allow_cooperative_exit.set()
+        allow_worker_start.set()
+        if executor is not None:
             executor.shutdown(wait=True, cancel_futures=True)
 
     assert cooperative_cancel.is_set()
     assert allow_cooperative_exit.is_set()
+    assert future is not None
+    assert future.done()
+    assert all(not worker.is_alive() for worker in worker_threads)
+
+
+@pytest.mark.integration
+def test_cleanup_submit_failure_releases_signals_and_joins_existing_worker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Break caught: submit failure must enter cleanup for an existing worker."""
+    cooperative_cancel = Event()
+    allow_cooperative_exit = Event()
+    worker_threads: list[Thread] = []
+    cleanup_entered = Event()
+    executor: ThreadPoolExecutor | None = None
+    future: Future[None] | None = None
+
+    def wait_for_cancellation() -> None:
+        worker_threads.append(current_thread())
+        cooperative_cancel.wait()
+        allow_cooperative_exit.wait()
+
+    def fail_submit(*_args: object, **_kwargs: object) -> Future[None]:
+        raise CharacteristicWorkerFailure("second submit failed")
+
+    try:
+        executor = ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(wait_for_cancellation)
+        monkeypatch.setattr(executor, "submit", fail_submit)
+        with pytest.raises(
+            CharacteristicWorkerFailure,
+            match="^second submit failed$",
+        ):
+            executor.submit(wait_for_cancellation)
+    finally:
+        cleanup_entered.set()
+        cooperative_cancel.set()
+        allow_cooperative_exit.set()
+        if executor is not None:
+            executor.shutdown(wait=True, cancel_futures=True)
+
+    assert cleanup_entered.is_set()
+    assert cooperative_cancel.is_set()
+    assert allow_cooperative_exit.is_set()
+    assert future is not None
     assert future.done()
     assert all(not worker.is_alive() for worker in worker_threads)
 
