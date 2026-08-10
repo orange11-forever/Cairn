@@ -58,6 +58,7 @@ export function ProjectsPage() {
   return (
     <ProjectsWorkspace
       csrfToken={session.identity.csrfToken}
+      membershipRole={session.identity.membership.role}
       organizationId={session.identity.organization.id}
       signal={session.signal}
     />
@@ -66,10 +67,12 @@ export function ProjectsPage() {
 
 function ProjectsWorkspace({
   csrfToken,
+  membershipRole,
   organizationId,
   signal,
 }: {
   csrfToken: string;
+  membershipRole: string;
   organizationId: string;
   signal: AbortSignal;
 }) {
@@ -180,6 +183,7 @@ function ProjectsWorkspace({
         <TaskWorkspace
           key={selectedProject.id}
           csrfToken={csrfToken}
+          membershipRole={membershipRole}
           organizationId={organizationId}
           project={selectedProject}
           signal={signal}
@@ -213,11 +217,13 @@ function PageHeading() {
 
 function TaskWorkspace({
   csrfToken,
+  membershipRole,
   organizationId,
   project,
   signal,
 }: {
   csrfToken: string;
+  membershipRole: string;
   organizationId: string;
   project: Project;
   signal: AbortSignal;
@@ -297,6 +303,7 @@ function TaskWorkspace({
             <TaskRow
               key={task.id}
               task={task}
+              canTransition={membershipRole !== "viewer"}
               actionsDisabled={transition.isPending || hasTaskRefetchError}
               pending={transition.isPending}
               pendingTaskId={transition.variables?.taskId ?? null}
@@ -384,12 +391,14 @@ function RefreshError({
 
 function TaskRow({
   task,
+  canTransition,
   actionsDisabled,
   pending,
   pendingTaskId,
   onTransition,
 }: {
   task: Task;
+  canTransition: boolean;
   actionsDisabled: boolean;
   pending: boolean;
   pendingTaskId: string | null;
@@ -421,7 +430,9 @@ function TaskRow({
           <p>{task.acceptanceCriteria ?? "未填写"}</p>
         </div>
       </div>
-      {TASK_TRANSITIONS[task.status].length > 0 ? (
+      {!canTransition ? (
+        <p className="task-terminal-state">只读权限</p>
+      ) : TASK_TRANSITIONS[task.status].length > 0 ? (
         <div className="task-actions" aria-label="状态操作">
           {TASK_TRANSITIONS[task.status].map((action) => (
             <button

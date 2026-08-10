@@ -134,7 +134,20 @@ export async function transitionTaskStatus({
       if (matchesComponentSchema("TaskResponse", data)) return data;
       throw contractError(context);
     }
-    throw responseError(error, response, context);
+    const apiError = responseError(error, response, context);
+    if (apiError.status === 404 && apiError.code === "not_found") {
+      throw new ApiError(
+        "http",
+        "项目不存在或你已失去编辑权限，请刷新项目列表",
+        {
+          status: apiError.status,
+          code: apiError.code,
+          traceId: apiError.traceId,
+          context: apiError.context,
+        },
+      );
+    }
+    throw apiError;
   } catch (error) {
     throw requestError(error, context, signal);
   }
