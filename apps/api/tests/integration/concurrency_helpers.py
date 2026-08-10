@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from _thread import LockType
-from collections.abc import Sequence
+from collections.abc import Callable, Generator, Sequence
+from concurrent.futures import Future, ThreadPoolExecutor, wait
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from threading import Event, Lock
 from time import monotonic, sleep
@@ -45,6 +47,102 @@ def install_race_session_deadlines(session: Session) -> None:
     event.listen(session, "after_begin", set_race_session_deadlines)
 
 
+def _raise_completed_worker_exception[T](futures: Sequence[Future[T]]) -> None:
+    for future in futures:
+        if future.done() and not future.cancelled():
+            future.result()
+
+
+@contextmanager
+def _prefer_completed_worker_exception[T](
+    futures: Sequence[Future[T]],
+) -> Generator[None, None, None]:
+    try:
+        yield
+    finally:
+        _raise_completed_worker_exception(futures)
+
+
+def _assert_workers_still_running[T](
+    futures: Sequence[Future[T]],
+    *,
+    awaited_condition: str,
+) -> None:
+    _raise_completed_worker_exception(futures)
+    if any(future.done() for future in futures):
+        raise AssertionError(
+            f"worker completed before {awaited_condition} was observed"
+        )
+
+
+def wait_for_race_event[T](
+    signal: Event,
+    futures: Sequence[Future[T]],
+    *,
+    awaited_condition: str,
+    timeout: float = WAIT_SECONDS,
+) -> None:
+    with _prefer_completed_worker_exception(futures):
+        deadline = monotonic() + timeout
+        while not signal.is_set():
+            _assert_workers_still_running(
+                futures,
+                awaited_condition=awaited_condition,
+            )
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                raise AssertionError(
+                    f"{awaited_condition} was not observed "
+                    "before the coordination deadline"
+                )
+            wait(futures, timeout=min(POLL_SECONDS, remaining))
+
+
+def shutdown_race_executor[T](
+    executor: ThreadPoolExecutor,
+    futures: Sequence[Future[T]],
+    *,
+    cancel_signal: Event,
+    force_cancel: Callable[[], None],
+    primary_exception: BaseException | None,
+    timeout: float = FUTURE_SECONDS,
+    force_timeout: float = FUTURE_SECONDS,
+) -> None:
+    cancel_signal.set()
+    for future in futures:
+        future.cancel()
+    _, unfinished = wait(futures, timeout=timeout)
+    force_cancel_error: BaseException | None = None
+    if unfinished:
+        try:
+            force_cancel()
+        except BaseException as error:  # noqa: BLE001 - cleanup must preserve primary
+            force_cancel_error = error
+            if primary_exception is not None:
+                primary_exception.add_note(f"force cancellation failed: {error}")
+        _, unfinished = wait(unfinished, timeout=force_timeout)
+    if unfinished:
+        message = (
+            "race workers did not finish before the cleanup deadline: "
+            f"unfinished={len(unfinished)}"
+        )
+        if primary_exception is not None:
+            primary_exception.add_note(message)
+        executor.shutdown(wait=False, cancel_futures=True)
+        if primary_exception is not None:
+            raise primary_exception
+        _raise_completed_worker_exception(futures)
+        if force_cancel_error is not None:
+            raise force_cancel_error
+        raise AssertionError(message)
+
+    executor.shutdown(wait=True, cancel_futures=True)
+    if primary_exception is None:
+        _raise_completed_worker_exception(futures)
+        if force_cancel_error is not None:
+            raise force_cancel_error
+
+
 @dataclass
 class LockGate:
     roles: dict[int, WorkerRole] = field(default_factory=dict[int, WorkerRole])
@@ -82,45 +180,80 @@ class LockGate:
         with self.guard:
             return self.backend_pids[role]
 
+    def pids(self) -> tuple[int, ...]:
+        with self.guard:
+            return tuple(self.backend_pids.values())
 
-def assert_waiting_on_lock(engine: Engine, gate: LockGate) -> None:
-    waiter_pid = gate.pid("waiter")
-    holder_pid = gate.pid("holder")
-    deadline = monotonic() + WAIT_SECONDS
-    last_activity: dict[str, object] | None = None
-    statement = text(
-        """
-        SELECT pg_blocking_pids(pid) AS blocking_pids,
-               state,
-               wait_event_type,
-               wait_event
-        FROM pg_stat_activity
-        WHERE pid = :waiter_pid
-        """
-    )
+
+def terminate_race_backends(engine: Engine, gate: LockGate) -> None:
+    backend_pids = gate.pids()
+    if not backend_pids:
+        return
     with engine.connect() as connection:
         set_race_transaction_deadlines(connection)
-        while monotonic() < deadline:
-            row = (
-                connection.execute(
-                    statement,
-                    {"waiter_pid": waiter_pid},
+        for backend_pid in backend_pids:
+            connection.scalar(
+                text("SELECT pg_terminate_backend(:backend_pid)"),
+                {"backend_pid": backend_pid},
+            )
+
+
+def assert_waiting_on_lock[T](
+    engine: Engine,
+    gate: LockGate,
+    futures: Sequence[Future[T]] = (),
+) -> None:
+    with _prefer_completed_worker_exception(futures):
+        _assert_workers_still_running(
+            futures,
+            awaited_condition="the PostgreSQL blocking edge",
+        )
+        waiter_pid = gate.pid("waiter")
+        holder_pid = gate.pid("holder")
+        deadline = monotonic() + WAIT_SECONDS
+        last_activity: dict[str, object] | None = None
+        statement = text(
+            """
+            SELECT pg_blocking_pids(pid) AS blocking_pids,
+                   state,
+                   wait_event_type,
+                   wait_event
+            FROM pg_stat_activity
+            WHERE pid = :waiter_pid
+            """
+        )
+        with engine.connect() as connection:
+            set_race_transaction_deadlines(connection)
+            while monotonic() < deadline:
+                _assert_workers_still_running(
+                    futures,
+                    awaited_condition="the PostgreSQL blocking edge",
                 )
-                .mappings()
-                .one_or_none()
-            )
-            last_activity = dict(row) if row is not None else None
-            blockers = cast(
-                Sequence[int],
-                () if row is None or row["blocking_pids"] is None else row["blocking_pids"],
-            )
-            if holder_pid in blockers:
-                return
-            sleep(POLL_SECONDS)
-    raise AssertionError(
-        "waiter backend did not block on holder backend: "
-        f"holder_pid={holder_pid}, waiter_pid={waiter_pid}, activity={last_activity}"
-    )
+                row = (
+                    connection.execute(
+                        statement,
+                        {"waiter_pid": waiter_pid},
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+                last_activity = dict(row) if row is not None else None
+                blockers = cast(
+                    Sequence[int],
+                    (
+                        ()
+                        if row is None or row["blocking_pids"] is None
+                        else row["blocking_pids"]
+                    ),
+                )
+                if holder_pid in blockers:
+                    return
+                sleep(POLL_SECONDS)
+        raise AssertionError(
+            "waiter backend did not block on holder backend: "
+            f"holder_pid={holder_pid}, waiter_pid={waiter_pid}, "
+            f"activity={last_activity}"
+        )
 
 
 __all__ = [
@@ -134,4 +267,7 @@ __all__ = [
     "install_race_session_deadlines",
     "set_race_session_deadlines",
     "set_race_transaction_deadlines",
+    "shutdown_race_executor",
+    "terminate_race_backends",
+    "wait_for_race_event",
 ]

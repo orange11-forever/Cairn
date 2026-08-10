@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
+import sys
+from concurrent.futures import Future, ThreadPoolExecutor
+from threading import Event, Thread, current_thread
 from uuid import UUID, uuid4
 
 import pytest
@@ -25,11 +27,13 @@ from sqlalchemy.orm import Session
 from .authorization_helpers import SeededActor, seed_actor
 from .concurrency_helpers import (
     FUTURE_SECONDS,
-    WAIT_SECONDS,
     LockGate,
     WorkerRole,
     assert_waiting_on_lock,
     install_race_session_deadlines,
+    shutdown_race_executor,
+    terminate_race_backends,
+    wait_for_race_event,
 )
 
 
@@ -56,6 +60,116 @@ def _audit(trace_id: str) -> RequestAuditContext:
         ip="198.51.100.27",
         user_agent="authorization-concurrency-test",
     )
+
+
+class CharacteristicWorkerFailure(RuntimeError):
+    pass
+
+
+@pytest.mark.integration
+def test_gate_wait_directly_surfaces_completed_worker_failure() -> None:
+    """Break caught: cleanup must not be what reveals a pre-gate worker failure."""
+    failed_future: Future[None] = Future()
+    failed_future.set_exception(
+        CharacteristicWorkerFailure("direct pre-gate worker failure")
+    )
+
+    with pytest.raises(
+        CharacteristicWorkerFailure,
+        match="^direct pre-gate worker failure$",
+    ):
+        wait_for_race_event(
+            Event(),
+            [failed_future],
+            awaited_condition="the direct test gate",
+        )
+
+
+@pytest.mark.integration
+def test_bounded_cleanup_preserves_primary_exception_and_joins_worker() -> None:
+    """Break caught: cleanup timeout must not override or leak a race worker."""
+    cooperative_cancel = Event()
+    cooperative_cancel_observed = Event()
+    allow_cooperative_exit = Event()
+    worker_started = Event()
+    worker_finished = Event()
+    force_cancel_called = Event()
+    worker_threads: list[Thread] = []
+    primary_exception = ValueError("observer failed")
+
+    def wait_for_cancellation() -> None:
+        worker_threads.append(current_thread())
+        worker_started.set()
+        cooperative_cancel.wait()
+        cooperative_cancel_observed.set()
+        allow_cooperative_exit.wait()
+        worker_finished.set()
+
+    def force_worker_cancellation() -> None:
+        force_cancel_called.set()
+        allow_cooperative_exit.set()
+        raise RuntimeError("backend termination failed")
+
+    executor = ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(wait_for_cancellation)
+    assert worker_started.wait(1.0)
+    try:
+        with pytest.raises(ValueError) as exc_info:
+            try:
+                raise primary_exception
+            finally:
+                shutdown_race_executor(
+                    executor,
+                    [future],
+                    cancel_signal=cooperative_cancel,
+                    force_cancel=force_worker_cancellation,
+                    primary_exception=sys.exception(),
+                    timeout=0.0,
+                    force_timeout=1.0,
+                )
+    finally:
+        allow_cooperative_exit.set()
+        executor.shutdown(wait=True, cancel_futures=True)
+
+    assert cooperative_cancel.is_set()
+    assert cooperative_cancel_observed.is_set()
+    assert force_cancel_called.is_set()
+    assert exc_info.value is primary_exception
+    assert str(exc_info.value) == "observer failed"
+    assert primary_exception.__notes__ == [
+        "force cancellation failed: backend termination failed"
+    ]
+    assert worker_finished.is_set()
+    assert future.done()
+    assert all(not worker.is_alive() for worker in worker_threads)
+
+
+@pytest.mark.integration
+def test_owner_race_harness_surfaces_worker_failure_before_holder_gate(
+    database: Database,
+    migrated_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Break caught: a pre-gate worker failure must not become a gate timeout."""
+
+    def fail_before_holder_gate(*_args: object, **_kwargs: object) -> object:
+        raise CharacteristicWorkerFailure("worker failed before holder gate")
+
+    monkeypatch.setattr(
+        OrganizationService,
+        "update_membership_role",
+        fail_before_holder_gate,
+    )
+
+    with pytest.raises(
+        CharacteristicWorkerFailure,
+        match="^worker failed before holder gate$",
+    ):
+        test_concurrent_owner_demotions_preserve_one_owner(
+            database,
+            migrated_engine,
+            monkeypatch,
+        )
 
 
 @pytest.mark.integration
@@ -109,30 +223,47 @@ def test_concurrent_owner_demotions_preserve_one_owner(
             except ApiProblem as problem:
                 return problem
 
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        try:
-            holder = executor.submit(
-                demote,
-                "holder",
-                other_owner.membership_id,
-                "req-concurrent-owner-other",
-            )
-            assert gate.holder_locked.wait(WAIT_SECONDS)
-            waiter = executor.submit(
-                demote,
-                "waiter",
-                actor.membership_id,
-                "req-concurrent-owner-actor",
-            )
-            assert gate.waiter_entered.wait(WAIT_SECONDS)
-            assert_waiting_on_lock(migrated_engine, gate)
-            gate.release_holder.set()
-            results = [
-                holder.result(timeout=FUTURE_SECONDS),
-                waiter.result(timeout=FUTURE_SECONDS),
-            ]
-        finally:
-            gate.release_holder.set()
+    executor = ThreadPoolExecutor(max_workers=2)
+    futures: list[Future[object | ApiProblem]] = []
+    try:
+        holder = executor.submit(
+            demote,
+            "holder",
+            other_owner.membership_id,
+            "req-concurrent-owner-other",
+        )
+        futures.append(holder)
+        wait_for_race_event(
+            gate.holder_locked,
+            futures,
+            awaited_condition="the holder organization lock",
+        )
+        waiter = executor.submit(
+            demote,
+            "waiter",
+            actor.membership_id,
+            "req-concurrent-owner-actor",
+        )
+        futures.append(waiter)
+        wait_for_race_event(
+            gate.waiter_entered,
+            futures,
+            awaited_condition="the waiter organization lock attempt",
+        )
+        assert_waiting_on_lock(migrated_engine, gate, futures)
+        gate.release_holder.set()
+        results = [
+            holder.result(timeout=FUTURE_SECONDS),
+            waiter.result(timeout=FUTURE_SECONDS),
+        ]
+    finally:
+        shutdown_race_executor(
+            executor,
+            futures,
+            cancel_signal=gate.release_holder,
+            force_cancel=lambda: terminate_race_backends(migrated_engine, gate),
+            primary_exception=sys.exception(),
+        )
 
     assert sorted(
         result.code if isinstance(result, ApiProblem) else "success"
@@ -229,30 +360,47 @@ def test_competing_acl_puts_leave_one_active_grant_and_complete_history(
                 audit=_audit(trace_id),
             )
 
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        try:
-            holder = executor.submit(
-                set_acl,
-                "holder",
-                ProjectPermission.READ,
-                "req-concurrent-acl-read",
-            )
-            assert gate.holder_locked.wait(WAIT_SECONDS)
-            waiter = executor.submit(
-                set_acl,
-                "waiter",
-                ProjectPermission.WRITE,
-                "req-concurrent-acl-write",
-            )
-            assert gate.waiter_entered.wait(WAIT_SECONDS)
-            assert_waiting_on_lock(migrated_engine, gate)
-            gate.release_holder.set()
-            results = [
-                holder.result(timeout=FUTURE_SECONDS),
-                waiter.result(timeout=FUTURE_SECONDS),
-            ]
-        finally:
-            gate.release_holder.set()
+    executor = ThreadPoolExecutor(max_workers=2)
+    futures: list[Future[AclEntryResponse]] = []
+    try:
+        holder = executor.submit(
+            set_acl,
+            "holder",
+            ProjectPermission.READ,
+            "req-concurrent-acl-read",
+        )
+        futures.append(holder)
+        wait_for_race_event(
+            gate.holder_locked,
+            futures,
+            awaited_condition="the holder project lock",
+        )
+        waiter = executor.submit(
+            set_acl,
+            "waiter",
+            ProjectPermission.WRITE,
+            "req-concurrent-acl-write",
+        )
+        futures.append(waiter)
+        wait_for_race_event(
+            gate.waiter_entered,
+            futures,
+            awaited_condition="the waiter project lock attempt",
+        )
+        assert_waiting_on_lock(migrated_engine, gate, futures)
+        gate.release_holder.set()
+        results = [
+            holder.result(timeout=FUTURE_SECONDS),
+            waiter.result(timeout=FUTURE_SECONDS),
+        ]
+    finally:
+        shutdown_race_executor(
+            executor,
+            futures,
+            cancel_signal=gate.release_holder,
+            force_cancel=lambda: terminate_race_backends(migrated_engine, gate),
+            primary_exception=sys.exception(),
+        )
 
     assert all(isinstance(result, AclEntryResponse) for result in results)
     with database.session_factory() as session:
