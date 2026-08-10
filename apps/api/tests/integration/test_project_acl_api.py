@@ -1,16 +1,37 @@
+from __future__ import annotations
+
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
+from threading import Event, Lock
+from time import monotonic, sleep
+from typing import Literal, cast
 from uuid import UUID, uuid4
 
 import pytest
 from cairn_api.audit.models import AuditLog
+from cairn_api.auth.schemas import IdentityContextResponse, UserResponse
+from cairn_api.auth.service import RequestAuditContext
+from cairn_api.authorization import repository
 from cairn_api.authorization.models import ResourceAclEntry
-from cairn_api.authorization.types import MembershipRole
+from cairn_api.authorization.policy import AuthorizationPolicy
+from cairn_api.authorization.schemas import AclEntryResponse
+from cairn_api.authorization.service import ProjectAclService
+from cairn_api.authorization.types import ActorType, MembershipRole, ProjectPermission
 from cairn_api.db.session import Database
+from cairn_api.errors import ApiProblem
+from cairn_api.organizations.schemas import MembershipResponse, OrganizationResponse
 from cairn_api.projects.models import OutboxEvent, Project
 from cairn_api.settings import Settings
-from sqlalchemy import func, select
+from sqlalchemy import event, func, select, text
+from sqlalchemy.engine import Connection, Engine
+from sqlalchemy.orm import Session, SessionTransaction
 
-from .authorization_helpers import APP_ORIGIN, authenticated_client, seed_actor
+from .authorization_helpers import APP_ORIGIN, SeededActor, authenticated_client, seed_actor
+
+WAIT_SECONDS = 5.0
+FUTURE_SECONDS = 10.0
+POLL_SECONDS = 0.01
+WorkerRole = Literal["holder", "waiter"]
 
 
 @pytest.fixture()
@@ -46,6 +67,207 @@ def _acl_change_counts(database: Database) -> tuple[int, int]:
             .where(OutboxEvent.event_type.like("project.acl_%"))
         )
     return int(audits or 0), int(events or 0)
+
+
+def _identity(actor: SeededActor) -> IdentityContextResponse:
+    return IdentityContextResponse(
+        user=UserResponse(
+            id=actor.user_id,
+            email=actor.email,
+            display_name=f"Test {actor.role.value}",
+        ),
+        organization=OrganizationResponse(
+            id=actor.organization_id,
+            slug=f"actor-{actor.organization_id}",
+            name="Authorization test organization",
+        ),
+        membership=MembershipResponse(id=actor.membership_id, role=actor.role),
+        csrf_token="not-used-by-service-test",
+    )
+
+
+def _audit(trace_id: str) -> RequestAuditContext:
+    return RequestAuditContext(
+        trace_id=trace_id,
+        ip="198.51.100.26",
+        user_agent="acl-race-test",
+    )
+
+
+def _assert_waiter_blocked_on_holder(
+    engine: Engine,
+    *,
+    holder_pid: int,
+    waiter_pid: int,
+) -> None:
+    deadline = monotonic() + WAIT_SECONDS
+    with engine.connect() as connection:
+        while monotonic() < deadline:
+            blockers = cast(
+                list[int],
+                connection.scalar(
+                    text("SELECT pg_blocking_pids(:waiter_pid)"),
+                    {"waiter_pid": waiter_pid},
+                ),
+            )
+            if holder_pid in blockers:
+                return
+            sleep(POLL_SECONDS)
+    raise AssertionError(
+        "waiter did not block on the holder's tenant-scoped project lock: "
+        f"holder_pid={holder_pid}, waiter_pid={waiter_pid}"
+    )
+
+
+@pytest.mark.integration
+def test_revoked_manager_waiting_on_project_lock_cannot_restore_own_manage_acl(
+    database: Database,
+    migrated_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Break caught: a stale pre-lock ACL predicate permits self-regrant after revocation."""
+    owner = seed_actor(database, MembershipRole.OWNER)
+    member = seed_actor(database, MembershipRole.MEMBER, owner.organization_id)
+    owner_identity = _identity(owner)
+    member_identity = _identity(member)
+    project_id = _private_project(database, owner.organization_id, name="ACL lock race")
+    with database.session_factory.begin() as session:
+        session.add(
+            ResourceAclEntry(
+                org_id=owner.organization_id,
+                resource_type="project",
+                resource_id=project_id,
+                principal_type="user",
+                principal_id=str(member.user_id),
+                permission="manage",
+                granted_by_type="system",
+            )
+        )
+
+    holder_revoked = Event()
+    waiter_transaction_started = Event()
+    release_holder = Event()
+    pids: dict[WorkerRole, int] = {}
+    pid_guard = Lock()
+    real_revoke_entry = repository.revoke_entry
+
+    def gated_revoke_entry(
+        session: Session,
+        *,
+        entry: ResourceAclEntry,
+        actor_type: ActorType,
+        actor_id: UUID | None,
+    ) -> None:
+        real_revoke_entry(
+            session,
+            entry=entry,
+            actor_type=actor_type,
+            actor_id=actor_id,
+        )
+        if entry.principal_type == "user" and entry.principal_id == str(member.user_id):
+            holder_revoked.set()
+            if not release_holder.wait(WAIT_SECONDS):
+                raise AssertionError("owner revocation holder was not released")
+
+    monkeypatch.setattr(repository, "revoke_entry", gated_revoke_entry)
+
+    def install_pid_capture(session: Session, role: WorkerRole) -> None:
+        def capture_pid(
+            _session: Session,
+            _transaction: SessionTransaction,
+            connection: Connection,
+        ) -> None:
+            pid = connection.scalar(text("SELECT pg_backend_pid()"))
+            assert isinstance(pid, int)
+            connection.execute(
+                text(
+                    "SELECT set_config('lock_timeout', '6000ms', true), "
+                    "set_config('statement_timeout', '8000ms', true)"
+                )
+            ).one()
+            with pid_guard:
+                pids[role] = pid
+            if role == "waiter":
+                waiter_transaction_started.set()
+
+        event.listen(session, "after_begin", capture_pid)
+
+    def revoke_member_manage() -> None:
+        with database.session_factory() as session:
+            install_pid_capture(session, "holder")
+            ProjectAclService(session).revoke_acl(
+                identity=owner_identity,
+                project_id=project_id,
+                principal_type="user",
+                principal_id=str(member.user_id),
+                audit=_audit("req-acl-race-revoked"),
+            )
+
+    def restore_own_manage() -> AclEntryResponse | ApiProblem:
+        with database.session_factory() as session:
+            install_pid_capture(session, "waiter")
+            try:
+                return ProjectAclService(
+                    session,
+                    policy=AuthorizationPolicy(session),
+                ).set_acl(
+                    identity=member_identity,
+                    project_id=project_id,
+                    principal_type="user",
+                    principal_id=str(member.user_id),
+                    permission=ProjectPermission.MANAGE,
+                    audit=_audit("req-acl-race-self-regrant"),
+                )
+            except ApiProblem as problem:
+                return problem
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        try:
+            holder = executor.submit(revoke_member_manage)
+            assert holder_revoked.wait(WAIT_SECONDS)
+            waiter = executor.submit(restore_own_manage)
+            assert waiter_transaction_started.wait(WAIT_SECONDS)
+            with pid_guard:
+                holder_pid = pids["holder"]
+                waiter_pid = pids["waiter"]
+            _assert_waiter_blocked_on_holder(
+                migrated_engine,
+                holder_pid=holder_pid,
+                waiter_pid=waiter_pid,
+            )
+            release_holder.set()
+            holder_result = holder.result(timeout=FUTURE_SECONDS)
+            waiter_result = waiter.result(timeout=FUTURE_SECONDS)
+        finally:
+            release_holder.set()
+
+    assert holder_result is None
+    assert isinstance(waiter_result, ApiProblem)
+    assert (waiter_result.status_code, waiter_result.code, waiter_result.message) == (
+        404,
+        "not_found",
+        "资源不存在",
+    )
+    with database.session_factory() as session:
+        history = session.scalars(
+            select(ResourceAclEntry).where(
+                ResourceAclEntry.resource_id == project_id,
+                ResourceAclEntry.principal_type == "user",
+                ResourceAclEntry.principal_id == str(member.user_id),
+            )
+        ).all()
+        audits = session.scalars(
+            select(AuditLog).where(AuditLog.resource_id == project_id)
+        ).all()
+        events = session.scalars(
+            select(OutboxEvent).where(OutboxEvent.aggregate_id == project_id)
+        ).all()
+
+    assert len(history) == 1
+    assert history[0].revoked_at is not None
+    assert [audit.trace_id for audit in audits] == ["req-acl-race-revoked"]
+    assert [audit.action for audit in audits] == ["project.acl_revoked"]
+    assert [event.event_type for event in events] == ["project.acl_revoked"]
 
 
 @pytest.mark.integration

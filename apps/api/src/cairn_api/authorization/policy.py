@@ -109,6 +109,17 @@ class AuthorizationPolicy:
         *,
         for_update: bool = False,
     ) -> Project | None:
+        if for_update:
+            locked_project_id = self._session.scalar(
+                select(Project.id)
+                .where(
+                    Project.org_id == identity.organization.id,
+                    Project.id == project_id,
+                )
+                .with_for_update()
+            )
+            if locked_project_id is None:
+                return None
         statement = select(Project).where(
             Project.org_id == identity.organization.id,
             Project.id == project_id,
@@ -118,8 +129,6 @@ class AuthorizationPolicy:
                 cast(ColumnElement[UUID], Project.id),
             ),
         )
-        if for_update:
-            statement = statement.with_for_update()
         return self._session.scalar(statement)
 
     def require_project(
