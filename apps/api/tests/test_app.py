@@ -70,6 +70,8 @@ def test_openapi_contains_only_approved_paths(client: TestClient) -> None:
         "/api/v1/session",
         "/api/v1/logout",
         "/api/v1/organizations/{organization_id}",
+        "/api/v1/organizations/{organization_id}/memberships",
+        "/api/v1/organizations/{organization_id}/memberships/{membership_id}",
         "/api/v1/projects",
         "/api/v1/projects/{project_id}",
         "/api/v1/projects/{project_id}/acl",
@@ -173,6 +175,28 @@ def test_openapi_declares_project_acl_write_contracts() -> None:
     request_schema = schema["components"]["schemas"]["AclGrantRequest"]
     assert request_schema["additionalProperties"] is False
     assert set(request_schema["properties"]) == {"permission"}
+
+
+def test_openapi_declares_membership_list_and_role_patch_contracts() -> None:
+    schema = create_app().openapi()
+    collection = schema["paths"][
+        "/api/v1/organizations/{organization_id}/memberships"
+    ]
+    item = schema["paths"][
+        "/api/v1/organizations/{organization_id}/memberships/{membership_id}"
+    ]
+
+    assert set(collection) == {"get"}
+    assert set(item) == {"patch"}
+    csrf_parameter = next(
+        parameter
+        for parameter in item["patch"]["parameters"]
+        if parameter["name"] == "X-CSRF-Token"
+    )
+    assert csrf_parameter["required"] is True
+    request_schema = schema["components"]["schemas"]["MembershipRoleUpdateRequest"]
+    assert request_schema["additionalProperties"] is False
+    assert set(request_schema["properties"]) == {"role"}
 
 
 def test_openapi_declares_logout_csrf_header() -> None:
