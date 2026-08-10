@@ -12,6 +12,8 @@ from cairn_api.auth.dependencies import (
 )
 from cairn_api.auth.security import verify_csrf_token
 from cairn_api.auth.service import RequestAuditContext
+from cairn_api.authorization.policy import AuthorizationPolicy
+from cairn_api.authorization.types import ProjectPermission
 from cairn_api.db.session import get_db
 from cairn_api.errors import ApiProblem, ErrorBody
 from cairn_api.pagination import load_cursor_page
@@ -164,6 +166,19 @@ def get_project_events(
     session: SessionDependency,
     after: EventCursor = None,
 ) -> StreamingResponse:
+    if (
+        AuthorizationPolicy(session).find_project(
+            identity,
+            project_id,
+            ProjectPermission.READ,
+        )
+        is None
+    ):
+        return StreamingResponse(
+            iter(()),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache"},
+        )
     frames = materialize_project_event_frames(
         session,
         org_id=identity.organization.id,

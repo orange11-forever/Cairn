@@ -7,13 +7,16 @@ import pytest
 from cairn_api.audit.models import AuditLog
 from cairn_api.auth.schemas import IdentityContextResponse, UserResponse
 from cairn_api.auth.service import RequestAuditContext
-from cairn_api.authorization.types import MembershipRole
+from cairn_api.authorization.models import ResourceAclEntry
+from cairn_api.authorization.policy import AuthorizationPolicy
+from cairn_api.authorization.types import MembershipRole, ProjectPermission
 from cairn_api.errors import ApiProblem
 from cairn_api.organizations.schemas import MembershipResponse, OrganizationResponse
 from cairn_api.pagination import InvalidCursorError
 from cairn_api.projects import repository
 from cairn_api.projects.models import OutboxEvent, Project, Task, TaskDependency
 from cairn_api.projects.service import ALLOWED_TASK_TRANSITIONS, ProjectService
+from sqlalchemy import true
 from sqlalchemy.orm import Session
 
 NOW = datetime(2026, 8, 8, 9, 0, tzinfo=UTC)
@@ -121,6 +124,14 @@ def test_create_project_uses_identity_tenant_and_records_transactional_side_effe
     assert events[0].aggregate_type == "project"
     assert events[0].aggregate_id == project.id
     assert events[0].payload == {"projectId": str(project.id)}
+    acl_entries = _added(session, ResourceAclEntry)
+    assert {
+        (entry.principal_type, entry.principal_id, entry.permission)
+        for entry in acl_entries
+    } == {
+        ("org", str(org_id), "read"),
+        ("user", str(identity.user.id), "manage"),
+    }
 
 
 def test_project_reads_use_each_identity_tenant_and_hide_cross_tenant_resources(
@@ -132,23 +143,34 @@ def test_project_reads_use_each_identity_tenant_and_hide_cross_tenant_resources(
     project_one = _project(org_one)
     seen: list[tuple[str, UUID, object]] = []
 
+    policy = MagicMock(spec=AuthorizationPolicy)
+    policy.project_filter.return_value = true()
+
     def list_projects(
-        db: Session, *, org_id: UUID, cursor: str | None, limit: int
+        db: Session, *, org_id: UUID, access_filter: object, cursor: str | None, limit: int
     ) -> tuple[list[Project], str | None]:
         assert db is session
+        assert access_filter is policy.project_filter.return_value
         seen.append(("list", org_id, (cursor, limit)))
         return ([project_one], "next-project-page") if org_id == org_one else ([], None)
 
-    def get_project(
-        db: Session, *, org_id: UUID, project_id: UUID, for_update: bool = False
-    ) -> Project | None:
-        assert db is session
-        seen.append(("get", org_id, (project_id, for_update)))
-        return project_one if org_id == org_one and project_id == project_one.id else None
+    def require_project(
+        identity: IdentityContextResponse,
+        project_id: UUID,
+        required: ProjectPermission,
+        *,
+        for_update: bool = False,
+    ) -> Project:
+        seen.append(("get", identity.organization.id, (project_id, for_update)))
+        assert required is ProjectPermission.READ
+        if identity.organization.id != org_one or project_id != project_one.id:
+            raise ApiProblem(status_code=404, code="not_found", message="资源不存在")
+        return project_one
+
+    policy.require_project.side_effect = require_project
 
     monkeypatch.setattr(repository, "list_projects", list_projects)
-    monkeypatch.setattr(repository, "get_project", get_project)
-    service = ProjectService(session)
+    service = ProjectService(session, policy=policy)
 
     page = service.list_projects(identity=_identity(org_one), cursor=None, limit=20)
     assert [item.id for item in page.items] == [project_one.id]
@@ -171,13 +193,20 @@ def test_create_task_uses_identity_tenant_and_preserves_acceptance_criteria(
     task = _task(org_id, project.id)
     calls: list[tuple[str, UUID]] = []
 
-    def get_project(
-        db: Session, *, org_id: UUID, project_id: UUID, for_update: bool = False
-    ) -> Project | None:
-        assert db is session
+    policy = MagicMock(spec=AuthorizationPolicy)
+
+    def require_project(
+        actor: IdentityContextResponse,
+        project_id: UUID,
+        required: ProjectPermission,
+        *,
+        for_update: bool = False,
+    ) -> Project:
+        assert actor is identity
         assert project_id == project.id
-        assert for_update is False
-        calls.append(("project", org_id))
+        assert required is ProjectPermission.WRITE
+        assert for_update is True
+        calls.append(("project", actor.organization.id))
         return project
 
     def create_task(db: Session, *, org_id: UUID, **values: object) -> Task:
@@ -187,10 +216,10 @@ def test_create_task_uses_identity_tenant_and_preserves_acceptance_criteria(
         calls.append(("create", org_id))
         return task
 
-    monkeypatch.setattr(repository, "get_project", get_project)
+    policy.require_project.side_effect = require_project
     monkeypatch.setattr(repository, "create_task", create_task)
 
-    result = ProjectService(session).create_task(
+    result = ProjectService(session, policy=policy).create_task(
         identity=identity,
         project_id=project.id,
         title="Task Alpha",
@@ -224,11 +253,14 @@ def test_create_task_rejects_missing_project_without_writes(
     org_id = uuid4()
     project_id = uuid4()
     create_task = MagicMock()
-    monkeypatch.setattr(repository, "get_project", MagicMock(return_value=None))
     monkeypatch.setattr(repository, "create_task", create_task)
+    policy = MagicMock(spec=AuthorizationPolicy)
+    policy.require_project.side_effect = ApiProblem(
+        status_code=404, code="not_found", message="资源不存在"
+    )
 
     with pytest.raises(ApiProblem) as raised:
-        ProjectService(session).create_task(
+        ProjectService(session, policy=policy).create_task(
             identity=_identity(org_id),
             project_id=project_id,
             title="Missing project task",
@@ -373,10 +405,17 @@ def test_add_dependency_accepts_same_project_acyclic_edge_and_records_side_effec
     created_values: dict[str, UUID] = {}
 
     def get_task(
-        db: Session, *, org_id: UUID, task_id: UUID, for_update: bool = False
+        db: Session,
+        *,
+        org_id: UUID,
+        task_id: UUID,
+        project_id: UUID | None = None,
+        for_update: bool = False,
     ) -> Task | None:
         assert db is session
         assert for_update is True
+        if project_id is not None:
+            assert project_id == project.id
         seen.append(("task", org_id, task_id, None))
         return predecessor if task_id == predecessor.id else successor
 
@@ -387,13 +426,22 @@ def test_add_dependency_accepts_same_project_acyclic_edge_and_records_side_effec
         seen.append(("duplicate", org_id, predecessor_task_id, successor_task_id))
         return None
 
-    def get_project(
-        db: Session, *, org_id: UUID, project_id: UUID, for_update: bool = False
-    ) -> Project | None:
-        assert db is session
+    policy = MagicMock(spec=AuthorizationPolicy)
+
+    def require_project(
+        identity: IdentityContextResponse,
+        project_id: UUID,
+        required: ProjectPermission,
+        *,
+        for_update: bool = False,
+    ) -> Project:
+        assert identity.organization.id == org_id
+        assert required is ProjectPermission.WRITE
         assert for_update is True
         seen.append(("project", org_id, project_id, None))
         return project
+
+    policy.require_project.side_effect = require_project
 
     def dependency_path_exists(
         db: Session, *, org_id: UUID, start_task_id: UUID, target_task_id: UUID
@@ -416,12 +464,11 @@ def test_add_dependency_accepts_same_project_acyclic_edge_and_records_side_effec
         return dependency
 
     monkeypatch.setattr(repository, "get_task", get_task)
-    monkeypatch.setattr(repository, "get_project", get_project)
     monkeypatch.setattr(repository, "get_dependency", get_dependency)
     monkeypatch.setattr(repository, "dependency_path_exists", dependency_path_exists)
     monkeypatch.setattr(repository, "create_dependency", create_dependency)
 
-    result = ProjectService(session).add_dependency(
+    result = ProjectService(session, policy=policy).add_dependency(
         identity=_identity(org_id),
         predecessor_task_id=predecessor.id,
         successor_task_id=successor.id,
@@ -474,12 +521,19 @@ def test_add_dependency_rejects_invalid_edges_before_writes(
     successor_id = predecessor.id if scenario == "self" else successor.id
 
     def get_task(
-        db: Session, *, org_id: UUID, task_id: UUID, for_update: bool = False
+        db: Session,
+        *,
+        org_id: UUID,
+        task_id: UUID,
+        project_id: UUID | None = None,
+        for_update: bool = False,
     ) -> Task | None:
         assert db is session
         assert org_id == identity.organization.id
         assert for_update is True
         if scenario == "cross_organization" and task_id == successor_id:
+            return None
+        if project_id is not None and predecessor.project_id != project_id:
             return None
         return predecessor if task_id == predecessor.id else successor
 
@@ -522,12 +576,23 @@ def test_list_project_tasks_is_tenant_scoped_paginated_and_requires_project(
     task = _task(org_id, project.id)
     seen: list[tuple[str, UUID, object]] = []
 
-    def get_project(
-        db: Session, *, org_id: UUID, project_id: UUID, for_update: bool = False
-    ) -> Project | None:
-        assert db is session
-        seen.append(("project", org_id, project_id))
-        return project if org_id == project.org_id and project_id == project.id else None
+    policy = MagicMock(spec=AuthorizationPolicy)
+
+    def require_project(
+        identity: IdentityContextResponse,
+        project_id: UUID,
+        required: ProjectPermission,
+        *,
+        for_update: bool = False,
+    ) -> Project:
+        seen.append(("project", identity.organization.id, project_id))
+        assert required is ProjectPermission.READ
+        assert for_update is False
+        if identity.organization.id != project.org_id or project_id != project.id:
+            raise ApiProblem(status_code=404, code="not_found", message="资源不存在")
+        return project
+
+    policy.require_project.side_effect = require_project
 
     def list_project_tasks(
         db: Session,
@@ -541,9 +606,8 @@ def test_list_project_tasks_is_tenant_scoped_paginated_and_requires_project(
         seen.append(("tasks", org_id, (project_id, cursor, limit)))
         return [task], "next-task-page"
 
-    monkeypatch.setattr(repository, "get_project", get_project)
     monkeypatch.setattr(repository, "list_project_tasks", list_project_tasks)
-    service = ProjectService(session)
+    service = ProjectService(session, policy=policy)
 
     page = service.list_project_tasks(
         identity=_identity(org_id), project_id=project.id, cursor="cursor", limit=5
@@ -571,7 +635,7 @@ def test_project_repository_uses_stable_tenant_cursor_pagination() -> None:
     session.scalars.return_value.all.side_effect = [[first, second, third], [third]]
 
     items, next_cursor = repository.list_projects(
-        session, org_id=org_id, cursor=None, limit=2
+        session, org_id=org_id, access_filter=true(), cursor=None, limit=2
     )
     assert [item.id for item in items] == [first.id, second.id]
     assert next_cursor is not None
@@ -580,7 +644,7 @@ def test_project_repository_uses_stable_tenant_cursor_pagination() -> None:
     assert "ORDER BY projects.created_at, projects.id" in first_statement
 
     remaining, final_cursor = repository.list_projects(
-        session, org_id=org_id, cursor=next_cursor, limit=2
+        session, org_id=org_id, access_filter=true(), cursor=next_cursor, limit=2
     )
     assert [item.id for item in remaining] == [third.id]
     assert final_cursor is None
@@ -600,6 +664,7 @@ def test_project_repository_reports_malformed_cursor_with_dedicated_error() -> N
         repository.list_projects(
             session,
             org_id=uuid4(),
+            access_filter=true(),
             cursor="not-a-cursor",
             limit=20,
         )

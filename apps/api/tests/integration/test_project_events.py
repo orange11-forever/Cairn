@@ -8,9 +8,10 @@ from uuid import UUID, uuid4
 import pytest
 from cairn_api.app import create_app
 from cairn_api.auth.dependencies import get_current_identity
+from cairn_api.authorization.types import MembershipRole
 from cairn_api.db.session import Database, get_db
 from cairn_api.organizations.models import Organization
-from cairn_api.projects.models import OutboxEvent
+from cairn_api.projects.models import OutboxEvent, Project
 from cairn_api.seed import seed_demo_identity
 from cairn_api.settings import Settings
 from fastapi import FastAPI
@@ -18,6 +19,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
+
+from .authorization_helpers import authenticated_client, seed_actor
 
 APP_ORIGIN = "http://localhost:5500"
 DEMO_EMAIL = "demo@cairn.dev"
@@ -245,7 +248,8 @@ def test_project_event_database_failure_is_traced_before_streaming_starts(
     identity = SimpleNamespace(
         organization=SimpleNamespace(
             id=UUID(identity_response.json()["organization"]["id"]),
-        )
+        ),
+        membership=SimpleNamespace(role=MembershipRole.OWNER),
     )
     app = client.app
     assert isinstance(app, FastAPI)
@@ -268,3 +272,44 @@ def test_project_event_database_failure_is_traced_before_streaming_starts(
         "traceId": "req-project-events-down",
     }
     assert "SELECT secret" not in response.text
+
+
+@pytest.mark.integration
+def test_concealed_project_event_stream_is_empty_before_malformed_cursor_is_decoded(
+    database: Database,
+    api_settings: Settings,
+) -> None:
+    """Break caught: SSE leaks existence or cursor errors before project authorization."""
+    member = seed_actor(database, MembershipRole.MEMBER)
+    private_project_id = uuid4()
+    other_org_id = uuid4()
+    other_project_id = uuid4()
+    with database.session_factory.begin() as session:
+        session.add(
+            Project(
+                id=private_project_id,
+                org_id=member.organization_id,
+                name="Private events",
+            )
+        )
+        session.add(Organization(id=other_org_id, slug=f"events-{other_org_id}", name="Other"))
+        session.add(Project(id=other_project_id, org_id=other_org_id, name="Other events"))
+        session.add(
+            OutboxEvent(
+                org_id=member.organization_id,
+                event_type="private.event",
+                aggregate_type="project",
+                aggregate_id=private_project_id,
+                payload={"secret": True},
+            )
+        )
+
+    with authenticated_client(api_settings, database, member) as actor_client:
+        for project_id in (private_project_id, other_project_id, uuid4()):
+            response = actor_client.get(
+                f"/api/v1/projects/{project_id}/events",
+                params={"after": "malformed-cursor"},
+            )
+            assert response.status_code == 200
+            assert response.headers["content-type"].startswith("text/event-stream")
+            assert response.text == ""

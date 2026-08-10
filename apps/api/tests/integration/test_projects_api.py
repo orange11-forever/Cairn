@@ -444,3 +444,26 @@ def test_dependency_creation_rejects_cycles_with_exact_traced_error_envelope(
         "traceId": "req-dependency-cycle",
     }
     assert cycle.headers["x-request-id"] == "req-dependency-cycle"
+
+
+@pytest.mark.integration
+def test_dependency_predecessor_is_constrained_to_the_authorized_successor_project(
+    client: TestClient,
+) -> None:
+    """Break caught: predecessor lookup reveals missing or cross-project task existence."""
+    owning_project = _create_project(client, "Dependency owner")
+    other_project = _create_project(client, "Dependency other")
+    successor = _create_task(client, str(owning_project["id"]), "Successor")
+    other_predecessor = _create_task(
+        client,
+        str(other_project["id"]),
+        "Other predecessor",
+    )
+
+    for predecessor_id in (other_predecessor["id"], str(uuid4())):
+        response = client.post(
+            f"/api/v1/tasks/{successor['id']}/dependencies",
+            json={"predecessorTaskId": predecessor_id},
+        )
+        assert response.status_code == 422
+        assert response.json()["code"] == "invalid_dependency"

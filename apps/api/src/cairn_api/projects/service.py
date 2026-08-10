@@ -1,15 +1,26 @@
 from datetime import datetime
 from types import MappingProxyType
+from typing import cast
 from uuid import UUID
 
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from cairn_api.audit.repository import add_audit_log
 from cairn_api.auth.schemas import IdentityContextResponse
 from cairn_api.auth.service import RequestAuditContext
+from cairn_api.authorization import repository as acl_repository
+from cairn_api.authorization.policy import AuthorizationPolicy
+from cairn_api.authorization.types import (
+    ActorType,
+    PrincipalRef,
+    PrincipalType,
+    ProjectPermission,
+    ResourceType,
+)
 from cairn_api.errors import ApiProblem
 from cairn_api.projects import repository
-from cairn_api.projects.models import OutboxEvent
+from cairn_api.projects.models import OutboxEvent, Project
 from cairn_api.projects.schemas import (
     DependencyResponse,
     ProjectPage,
@@ -72,8 +83,13 @@ def _validate_limit(limit: int) -> None:
 
 
 class ProjectService:
-    def __init__(self, session: Session) -> None:
+    def __init__(
+        self,
+        session: Session,
+        policy: AuthorizationPolicy | None = None,
+    ) -> None:
         self._session = session
+        self._policy = policy or AuthorizationPolicy(session)
 
     def create_project(
         self,
@@ -83,6 +99,7 @@ class ProjectService:
         description: str | None,
         audit: RequestAuditContext,
     ) -> ProjectResponse:
+        self._policy.require_project_creation(identity)
         org_id = identity.organization.id
         with self._session.begin():
             project = repository.create_project(
@@ -90,6 +107,26 @@ class ProjectService:
                 org_id=org_id,
                 name=name,
                 description=description,
+            )
+            acl_repository.create_entry(
+                self._session,
+                org_id=org_id,
+                resource_type=ResourceType.PROJECT,
+                resource_id=project.id,
+                principal=PrincipalRef(PrincipalType.ORG, str(org_id)),
+                permission=ProjectPermission.READ,
+                actor_type=ActorType.USER,
+                actor_id=identity.user.id,
+            )
+            acl_repository.create_entry(
+                self._session,
+                org_id=org_id,
+                resource_type=ResourceType.PROJECT,
+                resource_id=project.id,
+                principal=PrincipalRef(PrincipalType.USER, str(identity.user.id)),
+                permission=ProjectPermission.MANAGE,
+                actor_type=ActorType.USER,
+                actor_id=identity.user.id,
             )
             self._audit(
                 identity=identity,
@@ -117,6 +154,11 @@ class ProjectService:
         projects, next_cursor = repository.list_projects(
             self._session,
             org_id=identity.organization.id,
+            access_filter=self._policy.project_filter(
+                identity,
+                ProjectPermission.READ,
+                cast(ColumnElement[UUID], Project.id),
+            ),
             cursor=cursor,
             limit=limit,
         )
@@ -131,13 +173,11 @@ class ProjectService:
         identity: IdentityContextResponse,
         project_id: UUID,
     ) -> ProjectResponse:
-        project = repository.get_project(
-            self._session,
-            org_id=identity.organization.id,
-            project_id=project_id,
+        project = self._policy.require_project(
+            identity,
+            project_id,
+            ProjectPermission.READ,
         )
-        if project is None:
-            raise _not_found()
         return ProjectResponse.model_validate(project)
 
     def create_task(
@@ -155,13 +195,12 @@ class ProjectService:
     ) -> TaskResponse:
         org_id = identity.organization.id
         with self._session.begin():
-            project = repository.get_project(
-                self._session,
-                org_id=org_id,
-                project_id=project_id,
+            self._policy.require_project(
+                identity,
+                project_id,
+                ProjectPermission.WRITE,
+                for_update=True,
             )
-            if project is None:
-                raise _not_found()
             if stage_id is not None:
                 stage = repository.get_stage(self._session, org_id=org_id, stage_id=stage_id)
                 if stage is None:
@@ -218,13 +257,11 @@ class ProjectService:
     ) -> TaskPage:
         _validate_limit(limit)
         org_id = identity.organization.id
-        project = repository.get_project(
-            self._session,
-            org_id=org_id,
-            project_id=project_id,
+        self._policy.require_project(
+            identity,
+            project_id,
+            ProjectPermission.READ,
         )
-        if project is None:
-            raise _not_found()
         tasks, next_cursor = repository.list_project_tasks(
             self._session,
             org_id=org_id,
@@ -255,6 +292,12 @@ class ProjectService:
             )
             if task is None:
                 raise _not_found()
+            self._policy.require_project(
+                identity,
+                task.project_id,
+                ProjectPermission.WRITE,
+                for_update=True,
+            )
             if requested_status not in ALLOWED_TASK_TRANSITIONS.get(
                 task.status,
                 frozenset(),
@@ -300,29 +343,29 @@ class ProjectService:
             raise _invalid_dependency()
         org_id = identity.organization.id
         with self._session.begin():
-            tasks = {
-                task_id: repository.get_task(
-                    self._session,
-                    org_id=org_id,
-                    task_id=task_id,
-                    for_update=True,
-                )
-                for task_id in sorted((predecessor_task_id, successor_task_id), key=str)
-            }
-            predecessor = tasks[predecessor_task_id]
-            successor = tasks[successor_task_id]
-            if predecessor is None or successor is None:
-                raise _not_found()
-            if predecessor.project_id != successor.project_id:
-                raise _invalid_dependency()
-            owning_project = repository.get_project(
+            successor = repository.get_task(
                 self._session,
                 org_id=org_id,
-                project_id=predecessor.project_id,
+                task_id=successor_task_id,
                 for_update=True,
             )
-            if owning_project is None:
+            if successor is None:
                 raise _not_found()
+            self._policy.require_project(
+                identity,
+                successor.project_id,
+                ProjectPermission.WRITE,
+                for_update=True,
+            )
+            predecessor = repository.get_task(
+                self._session,
+                org_id=org_id,
+                task_id=predecessor_task_id,
+                project_id=successor.project_id,
+                for_update=True,
+            )
+            if predecessor is None:
+                raise _invalid_dependency()
             existing = repository.get_dependency(
                 self._session,
                 org_id=org_id,
@@ -341,7 +384,7 @@ class ProjectService:
             dependency = repository.create_dependency(
                 self._session,
                 org_id=org_id,
-                project_id=predecessor.project_id,
+                project_id=successor.project_id,
                 predecessor_task_id=predecessor_task_id,
                 successor_task_id=successor_task_id,
             )
@@ -355,7 +398,7 @@ class ProjectService:
             self._outbox(
                 org_id=org_id,
                 event_type="task.dependency_added",
-                project_id=predecessor.project_id,
+                project_id=successor.project_id,
                 payload={
                     "projectId": str(predecessor.project_id),
                     "dependencyId": str(dependency.id),

@@ -3,6 +3,7 @@ from uuid import UUID
 
 from sqlalchemy import exists, select, update
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from cairn_api.pagination import InvalidCursorError, page_by_timestamp
 from cairn_api.projects.models import Project, ProjectStage, Task, TaskDependency
@@ -38,12 +39,13 @@ def list_projects(
     session: Session,
     *,
     org_id: UUID,
+    access_filter: ColumnElement[bool],
     cursor: str | None,
     limit: int,
 ) -> tuple[list[Project], str | None]:
     return page_by_timestamp(
         session,
-        select(Project).where(Project.org_id == org_id),
+        select(Project).where(Project.org_id == org_id, access_filter),
         timestamp_column=Project.created_at,
         id_column=Project.id,
         cursor=cursor,
@@ -97,9 +99,12 @@ def get_task(
     *,
     org_id: UUID,
     task_id: UUID,
+    project_id: UUID | None = None,
     for_update: bool = False,
 ) -> Task | None:
     statement = select(Task).where(Task.org_id == org_id, Task.id == task_id)
+    if project_id is not None:
+        statement = statement.where(Task.project_id == project_id)
     if for_update:
         statement = statement.with_for_update()
     return session.scalar(statement)
