@@ -72,6 +72,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{organization_id}/memberships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Memberships */
+        get: operations["list_memberships_api_v1_organizations__organization_id__memberships_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{organization_id}/memberships/{membership_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Membership Role */
+        patch: operations["update_membership_role_api_v1_organizations__organization_id__memberships__membership_id__patch"];
+        trace?: never;
+    };
     "/api/v1/projects": {
         parameters: {
             query?: never;
@@ -102,6 +136,41 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/acl": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Project Acl */
+        get: operations["list_project_acl_api_v1_projects__project_id__acl_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/acl/{principal_type}/{principal_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Project Acl */
+        put: operations["set_project_acl_api_v1_projects__project_id__acl__principal_type___principal_id__put"];
+        post?: never;
+        /** Revoke Project Acl */
+        delete: operations["revoke_project_acl_api_v1_projects__project_id__acl__principal_type___principal_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -231,6 +300,48 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AclEntryResponse */
+        AclEntryResponse: {
+            /**
+             * Grantedat
+             * Format: date-time
+             */
+            grantedAt: string;
+            /** Grantedbyid */
+            grantedById: string | null;
+            grantedByType: components["schemas"]["ActorType"];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            permission: components["schemas"]["ProjectPermission"];
+            /** Principalid */
+            principalId: string;
+            principalType: components["schemas"]["PrincipalType"];
+            /**
+             * Resourceid
+             * Format: uuid
+             */
+            resourceId: string;
+            resourceType: components["schemas"]["ResourceType"];
+        };
+        /** AclGrantRequest */
+        AclGrantRequest: {
+            permission: components["schemas"]["ProjectPermission"];
+        };
+        /** AclPage */
+        AclPage: {
+            /** Items */
+            items: components["schemas"]["AclEntryResponse"][];
+            /** Nextcursor */
+            nextCursor: string | null;
+        };
+        /**
+         * ActorType
+         * @enum {string}
+         */
+        ActorType: "user" | "system";
         /** ApiVersionResponse */
         ApiVersionResponse: {
             /**
@@ -318,6 +429,39 @@ export interface components {
             /** Password */
             password: string;
         };
+        /** MembershipDetailResponse */
+        MembershipDetailResponse: {
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Displayname */
+            displayName: string;
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            role: components["schemas"]["MembershipRole"];
+            /**
+             * Userid
+             * Format: uuid
+             */
+            userId: string;
+        };
+        /** MembershipPage */
+        MembershipPage: {
+            /** Items */
+            items: components["schemas"]["MembershipDetailResponse"][];
+            /** Nextcursor */
+            nextCursor: string | null;
+        };
         /** MembershipResponse */
         MembershipResponse: {
             /**
@@ -325,8 +469,16 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Role */
-            role: string;
+            role: components["schemas"]["MembershipRole"];
+        };
+        /**
+         * MembershipRole
+         * @enum {string}
+         */
+        MembershipRole: "owner" | "admin" | "member" | "viewer";
+        /** MembershipRoleUpdateRequest */
+        MembershipRoleUpdateRequest: {
+            role: components["schemas"]["MembershipRole"];
         };
         /** OrganizationResponse */
         OrganizationResponse: {
@@ -340,6 +492,11 @@ export interface components {
             /** Slug */
             slug: string;
         };
+        /**
+         * PrincipalType
+         * @enum {string}
+         */
+        PrincipalType: "org" | "role" | "user" | "group";
         /** ProjectCreateRequest */
         ProjectCreateRequest: {
             /** Description */
@@ -354,6 +511,11 @@ export interface components {
             /** Nextcursor */
             nextCursor: string | null;
         };
+        /**
+         * ProjectPermission
+         * @enum {string}
+         */
+        ProjectPermission: "read" | "write" | "manage";
         /** ProjectResponse */
         ProjectResponse: {
             /**
@@ -385,6 +547,11 @@ export interface components {
              */
             status: "ready";
         };
+        /**
+         * ResourceType
+         * @enum {string}
+         */
+        ResourceType: "project";
         /** TaskCreateRequest */
         TaskCreateRequest: {
             /** Acceptancecriteria */
@@ -621,6 +788,160 @@ export interface operations {
             };
         };
     };
+    list_memberships_api_v1_organizations__organization_id__memberships_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MembershipPage"];
+                };
+            };
+            /** @description 会话无效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 没有执行该操作的权限 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 组织不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求参数无效 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 数据库暂时不可用 */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_membership_role_api_v1_organizations__organization_id__memberships__membership_id__patch: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Session-bound CSRF token returned by login or session restore. */
+                "X-CSRF-Token": string;
+            };
+            path: {
+                organization_id: string;
+                membership_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MembershipRoleUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MembershipDetailResponse"];
+                };
+            };
+            /** @description 会话无效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 没有执行该操作的权限 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 成员或组织不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 组织必须保留至少一名所有者 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求参数无效 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 数据库暂时不可用 */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_projects_api_v1_projects_get: {
         parameters: {
             query?: {
@@ -756,6 +1077,213 @@ export interface operations {
             };
             /** @description 会话无效 */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求参数无效 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 数据库暂时不可用 */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_project_acl_api_v1_projects__project_id__acl_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AclPage"];
+                };
+            };
+            /** @description 会话无效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求参数无效 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 数据库暂时不可用 */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_project_acl_api_v1_projects__project_id__acl__principal_type___principal_id__put: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Session-bound CSRF token returned by login or session restore. */
+                "X-CSRF-Token": string;
+            };
+            path: {
+                project_id: string;
+                principal_type: string;
+                principal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AclGrantRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AclEntryResponse"];
+                };
+            };
+            /** @description 会话无效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求来源或 CSRF 令牌无效 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求参数无效 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 数据库暂时不可用 */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    revoke_project_acl_api_v1_projects__project_id__acl__principal_type___principal_id__delete: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Session-bound CSRF token returned by login or session restore. */
+                "X-CSRF-Token": string;
+            };
+            path: {
+                project_id: string;
+                principal_type: string;
+                principal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 会话无效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求来源或 CSRF 令牌无效 */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

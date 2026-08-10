@@ -175,6 +175,25 @@ def test_openapi_declares_project_acl_write_contracts() -> None:
     request_schema = schema["components"]["schemas"]["AclGrantRequest"]
     assert request_schema["additionalProperties"] is False
     assert set(request_schema["properties"]) == {"permission"}
+    permission_ref = request_schema["properties"]["permission"]["$ref"]
+    permission_schema = schema["components"]["schemas"][permission_ref.rsplit("/", 1)[-1]]
+    assert permission_schema["enum"] == ["read", "write", "manage"]
+
+    for operation in (path["put"], path["delete"]):
+        parameters = {parameter["name"]: parameter for parameter in operation["parameters"]}
+        assert parameters["project_id"]["schema"]["format"] == "uuid"
+        assert parameters["principal_type"]["schema"] == {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16,
+            "title": "Principal Type",
+        }
+        assert parameters["principal_id"]["schema"] == {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "title": "Principal Id",
+        }
 
 
 def test_openapi_declares_membership_list_and_role_patch_contracts() -> None:
@@ -197,6 +216,15 @@ def test_openapi_declares_membership_list_and_role_patch_contracts() -> None:
     request_schema = schema["components"]["schemas"]["MembershipRoleUpdateRequest"]
     assert request_schema["additionalProperties"] is False
     assert set(request_schema["properties"]) == {"role"}
+    role_ref = request_schema["properties"]["role"]["$ref"]
+    role_schema = schema["components"]["schemas"][role_ref.rsplit("/", 1)[-1]]
+    assert role_schema["enum"] == ["owner", "admin", "member", "viewer"]
+
+    parameters = {
+        parameter["name"]: parameter for parameter in item["patch"]["parameters"]
+    }
+    assert parameters["organization_id"]["schema"]["format"] == "uuid"
+    assert parameters["membership_id"]["schema"]["format"] == "uuid"
 
 
 def test_openapi_declares_logout_csrf_header() -> None:

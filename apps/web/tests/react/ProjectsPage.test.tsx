@@ -359,7 +359,10 @@ test("an unknown membership role fails closed without mutation controls", async 
 
   renderProjects(undefined, {
     ...IDENTITY,
-    membership: { ...IDENTITY.membership, role: "future_role" },
+    membership: {
+      ...IDENTITY.membership,
+      role: "future_role" as IdentityContext["membership"]["role"],
+    },
   });
 
   const task = await screen.findByRole("article", { name: "核对迁移清单" });

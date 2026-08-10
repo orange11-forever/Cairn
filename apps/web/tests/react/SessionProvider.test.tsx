@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, expect, test, vi } from "vitest";
 
+import type { IdentityContext } from "../../src/api/auth.ts";
 import { ApiError } from "../../src/api/errors.ts";
 import { createAppQueryClient, shouldRetry } from "../../src/app/queryClient.ts";
 import { SessionProvider, useSession } from "../../src/session/SessionContext.tsx";
@@ -13,7 +14,7 @@ const IDENTITY = {
   organization: { id: "00000000-0000-4000-8000-000000002001", slug: "cairn-demo", name: "Cairn Demo" },
   membership: { id: "00000000-0000-4000-8000-000000003001", role: "owner" },
   csrfToken: "csrf-test-token",
-};
+} satisfies IdentityContext;
 const USER = IDENTITY.user;
 
 const DOC = {

@@ -88,11 +88,12 @@ test("public architecture documentation is reachable and status-explicit", async
     "PostgreSQL 是业务事实来源",
     "Redis 不是真实数据来源",
     "业务写入、审计记录与 Outbox 事件在同一事务提交",
-    "阶段 2.5A：RBAC/ACL",
-    "阶段 3：知识摄取与检索",
+    "阶段 2.5A：RBAC/ACL（已交付）",
+    "阶段 3：知识摄取与检索（下一阶段）",
   ]) {
     assert.ok(architecture.includes(statement), `missing architecture invariant: ${statement}`);
   }
+  assert.doesNotMatch(architecture, /完整 RBAC\/ACL[^。\n]*尚未实现/);
 });
 
 test("tracked Markdown does not link private documentation", async () => {
