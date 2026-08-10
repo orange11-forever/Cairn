@@ -1,6 +1,6 @@
 import base64
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, tzinfo
 from uuid import UUID
 
 import pytest
@@ -11,6 +11,17 @@ from cairn_api.pagination import (
     encode_cursor,
     load_cursor_page,
 )
+
+
+class _MissingUtcOffset(tzinfo):
+    def utcoffset(self, value: datetime | None) -> None:
+        del value
+
+    def dst(self, value: datetime | None) -> None:
+        del value
+
+    def tzname(self, value: datetime | None) -> None:
+        del value
 
 
 def test_shared_cursor_round_trips_aware_timestamp_and_uuid() -> None:
@@ -49,6 +60,17 @@ def test_shared_cursor_rejects_naive_timestamps_at_encoding_boundary() -> None:
     with pytest.raises(ValueError, match="timezone"):
         encode_cursor(
             datetime(2026, 8, 10, 9, 30),  # noqa: DTZ001 - intentionally naive input
+            UUID("00000000-0000-4000-8000-000000000123"),
+        )
+
+
+def test_shared_cursor_rejects_tzinfo_without_utc_offset() -> None:
+    # Break caught: a nominal tzinfo emits a cursor that decodes as a naive timestamp.
+    timestamp = datetime(2026, 8, 10, 9, 30, tzinfo=_MissingUtcOffset())
+
+    with pytest.raises(ValueError, match="timezone"):
+        encode_cursor(
+            timestamp,
             UUID("00000000-0000-4000-8000-000000000123"),
         )
 

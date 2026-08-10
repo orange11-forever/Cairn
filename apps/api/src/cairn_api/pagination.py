@@ -16,7 +16,7 @@ class InvalidCursorError(ValueError):
 
 
 def encode_cursor(timestamp: datetime, item_id: UUID) -> str:
-    if timestamp.tzinfo is None:
+    if timestamp.utcoffset() is None:
         raise ValueError("cursor timestamp must include a timezone")
     raw = json.dumps(
         {"createdAt": timestamp.isoformat(), "id": str(item_id)},
