@@ -170,6 +170,25 @@ test("documentation distinguishes resource hiding from non-disclosing event read
   assert.doesNotMatch(apiReadme, /跨租户读取或写入返回统一的 `404 not_found`/);
 });
 
+test("API documentation authorizes event reads before querying the Outbox", async () => {
+  // Break caught: documentation bypasses the delivered project ACL policy or omits
+  // one of the three concealed inputs that short-circuit before Outbox retrieval.
+  const readme = await readFile(new URL("apps/api/README.md", repositoryRoot), "utf8");
+
+  assert.match(
+    readme,
+    /events[^。\n]*先[^。\n]*(?:ACL|授权)[^。\n]*`read`[^。\n]*授权通过[^。\n]*才[^。\n]*Outbox/i,
+  );
+  assert.match(
+    readme,
+    /events[^。\n]*不存在[^。\n]*跨组织[^。\n]*同组织[^。\n]*无 `read` 权限[^。\n]*`200`[^。\n]*空[^。\n]*`text\/event-stream`/i,
+  );
+  assert.doesNotMatch(
+    readme,
+    /events[^。\n]*(?:不先加载项目|不验证项目是否存在)/i,
+  );
+});
+
 test("API documentation specifies cursor pagination and bounded tenant-filtered SSE", async () => {
   // Break caught: clients parse opaque cursors, exceed bounds, or treat a finite event
   // query as a reconnecting subscription.

@@ -44,10 +44,9 @@ Docker Desktop 必须保持运行。生产环境必须使用 HTTPS `APP_URL`/`CO
 
 ## 阶段 2 项目任务契约
 
-项目与任务端点只信任认证依赖提供的 `CurrentIdentity`，以其中的组织作为租户权威。创建请求明确禁止客户端提交可信 `org_id`、创建者或 actor 字段。项目详情与任务读写对缺失或跨租户资源返回 `404 not_found`；events 查询不先加载项目，而是按身份组织与 `Project` aggregate 过滤，所以使用下述非泄露空流语义：
+项目与任务端点只信任认证依赖提供的 `CurrentIdentity`，以其中的组织作为租户权威。创建请求明确禁止客户端提交可信 `org_id`、创建者或 actor 字段。项目详情与任务读写对缺失或跨租户资源返回 `404 not_found`；events 查询则先按当前组织、成员角色与项目 ACL 校验 `read`，授权通过才按组织与 `Project` aggregate 查询 Outbox，所以使用下述非泄露空流语义：
 
-- `events` 查询不存在的项目 ID：返回 `200` 空 `text/event-stream`，不泄露项目是否存在；
-- `events` 查询跨租户项目 ID：返回 `200` 空 `text/event-stream`，同样不泄露项目是否存在。
+- `events` 查询不存在、跨组织（跨租户）或同组织但无 `read` 权限的项目 ID：均返回 `200` 空 `text/event-stream`，不查询 Outbox，也不泄露项目是否存在或调用者缺少权限。
 
 ### 端点
 
@@ -60,7 +59,7 @@ Docker Desktop 必须保持运行。生产环境必须使用 HTTPS `APP_URL`/`CO
 | `GET /api/v1/projects/{project_id}/tasks` | 分页列出项目任务 |
 | `PATCH /api/v1/tasks/{task_id}/status` | 通过服务端状态机转换任务状态 |
 | `POST /api/v1/tasks/{task_id}/dependencies` | 添加指向路由任务的前置依赖 |
-| `GET /api/v1/projects/{project_id}/events` | 读取有界项目 SSE 事件批次 |
+| `GET /api/v1/projects/{project_id}/events` | 先执行项目 `read` 授权；通过后读取有界 Outbox SSE 批次，否则返回空 `200` stream |
 | `GET /api/v1/organizations/{organization_id}/memberships` | 分页列出当前组织成员；仅 `owner`、`admin` |
 | `PATCH /api/v1/organizations/{organization_id}/memberships/{membership_id}` | 按角色矩阵更新成员角色 |
 | `GET /api/v1/projects/{project_id}/acl` | 分页列出项目当前有效 ACL；需要 `manage` |
@@ -118,7 +117,7 @@ Cookie 会话下的 `POST`/`PATCH`/`PUT`/`DELETE` 命令要求合法 Origin 和�
 
 项目列表和项目任务列表采用稳定、不透明的 `(created_at, id)` 游标分页。查询参数 `limit` 范围为 1–100、默认 50；有下一页时响应提供 `nextCursor`，客户端应原样作为下一次请求的 `cursor`，不能解析或构造它。无效游标返回 `422 invalid_cursor`。
 
-`GET /api/v1/projects/{project_id}/events?after=...` 不验证项目是否存在，而是按 `(occurred_at, id)` 升序读取当前组织、当前 `Project` 聚合的 Outbox 事件。响应为 `text/event-stream`；SSE 批次一次最多 100 个 frame，发送完即结束。`id` 是不透明续读游标，可在下一次请求的 `after` 中使用。这不是长连接订阅，数据库错误会在开始响应前返回 `503 database_unavailable`，其他租户的事件不会进入结果；不存在或跨租户的项目 ID 都得到相同的空 `200 text/event-stream`，而不是 `404`。
+`GET /api/v1/projects/{project_id}/events?after=...` 先在当前组织中结合成员角色与项目 ACL 校验 `read`。不存在、跨组织或同组织但无读取权限的项目都会在查询 Outbox 前得到相同的空 `200 text/event-stream`，而不是 `404`；只有授权通过后，服务端才按 `(occurred_at, id)` 升序读取当前组织、当前 `Project` 聚合的 Outbox 事件。响应为 `text/event-stream`；SSE 批次一次最多 100 个 frame，发送完即结束。`id` 是不透明续读游标，可在下一次请求的 `after` 中使用。这不是长连接订阅，数据库错误会在开始响应前返回 `503 database_unavailable`，其他租户的事件不会进入结果。
 
 ### 显式延后
 
