@@ -9,7 +9,9 @@ from cairn_api.auth.schemas import IdentityContextResponse, UserResponse
 from cairn_api.auth.service import RequestAuditContext
 from cairn_api.authorization.types import MembershipRole
 from cairn_api.errors import ApiProblem
+from cairn_api.organizations import service as organization_service
 from cairn_api.organizations.models import Membership, Organization
+from cairn_api.organizations.repository import MembershipWithUser
 from cairn_api.organizations.schemas import MembershipResponse, OrganizationResponse
 from cairn_api.organizations.service import OrganizationService
 from cairn_api.projects.models import OutboxEvent
@@ -53,6 +55,7 @@ def _configured_service(
     organization: Organization | None = None,
     actor: Membership | None = None,
     target: Membership | None = None,
+    target_display_name: str | None = "Target user",
 ) -> tuple[OrganizationService, MagicMock, Membership]:
     session = MagicMock(spec=Session)
     current_organization = organization or Organization(
@@ -79,7 +82,7 @@ def _configured_service(
         id=current_target.user_id,
         email="target@example.com",
         normalized_email="target@example.com",
-        display_name="Target user",
+        display_name=target_display_name,
         password_hash="not-used",
         created_at=NOW,
     )
@@ -258,6 +261,92 @@ def test_effective_change_records_exact_audit_and_organization_event() -> None:
     assert events[0].aggregate_id == org_id
     assert events[0].payload == expected_details
     session.begin.assert_called_once_with()
+
+
+def test_list_memberships_uses_email_when_display_name_is_null() -> None:
+    session = MagicMock(spec=Session)
+    membership = Membership(
+        id=target_id,
+        org_id=org_id,
+        user_id=UUID("00000000-0000-4000-8000-000000000605"),
+        role=MembershipRole.VIEWER.value,
+        created_at=NOW,
+    )
+    user = User(
+        id=membership.user_id,
+        email="unnamed@example.com",
+        normalized_email="unnamed@example.com",
+        display_name=None,
+        password_hash="not-used",
+        created_at=NOW,
+    )
+    session.execute.return_value.all.return_value = [(membership, user)]
+
+    page = OrganizationService(session).list_memberships(
+        identity=identity_for("owner"),
+        organization_id=org_id,
+        cursor=None,
+        limit=50,
+    )
+
+    assert len(page.items) == 1
+    assert page.items[0].display_name == "unnamed@example.com"
+
+
+def test_effective_patch_uses_email_when_display_name_is_null() -> None:
+    service, _session, _target = _configured_service(
+        "owner",
+        "viewer",
+        target_display_name=None,
+    )
+
+    result = service.update_membership_role(
+        identity=identity_for("owner"),
+        organization_id=org_id,
+        membership_id=target_id,
+        requested_role=MembershipRole.MEMBER,
+        audit=AUDIT,
+    )
+
+    assert result.display_name == "target@example.com"
+    assert result.role is MembershipRole.MEMBER
+
+
+def test_effective_patch_constructs_response_before_transaction_exit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, session, _target = _configured_service("owner", "viewer")
+    transaction_open = False
+    response_constructed_while_open: list[bool] = []
+    real_membership_response = (
+        organization_service._membership_response  # pyright: ignore[reportPrivateUsage]
+    )
+
+    def enter_transaction() -> None:
+        nonlocal transaction_open
+        transaction_open = True
+
+    def exit_transaction(*_args: object) -> None:
+        nonlocal transaction_open
+        transaction_open = False
+
+    def observe_response(record: MembershipWithUser):
+        response_constructed_while_open.append(transaction_open)
+        return real_membership_response(record)
+
+    session.begin.return_value.__enter__.side_effect = enter_transaction
+    session.begin.return_value.__exit__.side_effect = exit_transaction
+    monkeypatch.setattr(organization_service, "_membership_response", observe_response)
+
+    service.update_membership_role(
+        identity=identity_for("owner"),
+        organization_id=org_id,
+        membership_id=target_id,
+        requested_role=MembershipRole.MEMBER,
+        audit=AUDIT,
+    )
+
+    assert response_constructed_while_open == [True]
 
 
 @pytest.mark.parametrize("limit", [0, 101])

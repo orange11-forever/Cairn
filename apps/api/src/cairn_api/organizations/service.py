@@ -1,4 +1,3 @@
-from typing import cast
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -38,7 +37,11 @@ def _membership_response(record: MembershipWithUser) -> MembershipDetailResponse
         id=membership.id,
         user_id=membership.user_id,
         email=record.user.email,
-        display_name=cast(str, record.user.display_name),
+        display_name=(
+            record.user.display_name
+            if record.user.display_name is not None
+            else record.user.email
+        ),
         role=MembershipRole(membership.role),
         created_at=membership.created_at,
     )
@@ -137,7 +140,7 @@ class OrganizationService:
                 old_role=current_role,
                 new_role=requested_role,
             )
-        return _membership_response(target)
+            return _membership_response(target)
 
     def _record_role_change(
         self,

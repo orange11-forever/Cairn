@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from cairn_api.audit.models import AuditLog
+from cairn_api.auth.models import User
 from cairn_api.authorization.types import MembershipRole
 from cairn_api.db.session import Database
 from cairn_api.organizations.models import Membership
@@ -373,6 +374,39 @@ def test_authorized_noop_patch_preserves_audit_and_outbox_counts(
     assert response.status_code == 200
     assert response.json()["role"] == "viewer"
     assert _role_change_counts(database) == counts_before == (0, 0)
+
+
+@pytest.mark.integration
+def test_null_display_name_uses_email_for_list_and_effective_patch(
+    database: Database,
+    api_settings: Settings,
+) -> None:
+    owner = seed_actor(database, MembershipRole.OWNER)
+    target = seed_actor(database, MembershipRole.VIEWER, owner.organization_id)
+    with database.session_factory.begin() as session:
+        target_user = session.get(User, target.user_id)
+        assert target_user is not None
+        target_user.display_name = None
+    collection_path = f"/api/v1/organizations/{owner.organization_id}/memberships"
+    item_path = f"{collection_path}/{target.membership_id}"
+
+    with authenticated_client(api_settings, database, owner) as client:
+        listed = client.get(collection_path)
+        changed = client.patch(item_path, json={"role": "member"})
+
+    assert listed.status_code == 200
+    listed_target = next(
+        item for item in listed.json()["items"] if item["id"] == str(target.membership_id)
+    )
+    assert listed_target["displayName"] == target.email
+    assert changed.status_code == 200
+    assert changed.json()["displayName"] == target.email
+    assert changed.json()["role"] == "member"
+    assert _role_change_counts(database) == (1, 1)
+    with database.session_factory() as session:
+        persisted = session.get(Membership, target.membership_id)
+        assert persisted is not None
+        assert persisted.role == "member"
 
 
 @pytest.mark.integration
