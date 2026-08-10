@@ -18,10 +18,15 @@ from cairn_api.db.session import Database
 from cairn_api.errors import ApiProblem
 from cairn_api.organizations import repository as organization_repository
 from cairn_api.organizations.models import Membership, Organization
-from cairn_api.organizations.schemas import MembershipResponse, OrganizationResponse
+from cairn_api.organizations.schemas import (
+    MembershipDetailResponse,
+    MembershipResponse,
+    OrganizationResponse,
+)
 from cairn_api.organizations.service import OrganizationService
 from cairn_api.projects import repository as project_repository
 from cairn_api.projects.models import OutboxEvent, Project, Task
+from cairn_api.projects.schemas import TaskResponse
 from cairn_api.projects.service import ProjectService
 from sqlalchemy import Engine, func, select
 from sqlalchemy.orm import Session
@@ -278,11 +283,22 @@ def test_concurrent_owner_demotions_preserve_one_owner(
         org_id: UUID,
         *,
         for_update: bool = False,
+        for_no_key_update: bool = False,
     ) -> Organization | None:
-        if not for_update or org_id != actor.organization_id:
-            return real_get_organization(session, org_id, for_update=for_update)
+        if not (for_update or for_no_key_update) or org_id != actor.organization_id:
+            return real_get_organization(
+                session,
+                org_id,
+                for_update=for_update,
+                for_no_key_update=for_no_key_update,
+            )
         role = gate.before_locked_read(session)
-        organization = real_get_organization(session, org_id, for_update=for_update)
+        organization = real_get_organization(
+            session,
+            org_id,
+            for_update=for_update,
+            for_no_key_update=for_no_key_update,
+        )
         gate.after_locked_read(role)
         return organization
 
@@ -524,6 +540,188 @@ def test_project_mutation_rechecks_role_after_waiting_for_project_lock(
                 OutboxEvent.event_type == "task.created",
             )
         ) == 0
+
+
+@pytest.mark.integration
+def test_project_mutation_flush_does_not_deadlock_role_update(
+    database: Database,
+    migrated_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Break caught: Organization FK flush must not reverse the role lock order."""
+    owner = seed_actor(database, MembershipRole.OWNER)
+    admin = seed_actor(database, MembershipRole.ADMIN, owner.organization_id)
+    project_id = uuid4()
+    with database.session_factory.begin() as session:
+        session.add(
+            Project(
+                id=project_id,
+                org_id=owner.organization_id,
+                name="Role update lock compatibility",
+            )
+        )
+
+    gate = LockGate()
+    mutation_membership_locked = Event()
+    allow_mutation_flush = Event()
+    role_organization_locked = Event()
+    real_get_organization = organization_repository.get_organization
+
+    class PausedAfterMembershipPolicy(AuthorizationPolicy):
+        def __init__(self, session: Session) -> None:
+            super().__init__(session)
+            self._gate_session = session
+
+        def find_project(
+            self,
+            identity: IdentityContextResponse,
+            project_id: UUID,
+            required: ProjectPermission,
+            *,
+            for_update: bool = False,
+        ) -> Project | None:
+            if not for_update:
+                return super().find_project(
+                    identity,
+                    project_id,
+                    required,
+                    for_update=for_update,
+                )
+            role = gate.before_locked_read(self._gate_session)
+            project = super().find_project(
+                identity,
+                project_id,
+                required,
+                for_update=for_update,
+            )
+            if role == "holder":
+                mutation_membership_locked.set()
+                if not allow_mutation_flush.wait(FUTURE_SECONDS):
+                    raise AssertionError(
+                        "project mutation was not released to flush before the deadline"
+                    )
+            return project
+
+    def gated_get_organization(
+        session: Session,
+        org_id: UUID,
+        *,
+        for_update: bool = False,
+        for_no_key_update: bool = False,
+    ) -> Organization | None:
+        role = (
+            gate.before_locked_read(session)
+            if for_update or for_no_key_update
+            else None
+        )
+        organization = real_get_organization(
+            session,
+            org_id,
+            for_update=for_update,
+            for_no_key_update=for_no_key_update,
+        )
+        if role == "waiter":
+            role_organization_locked.set()
+        return organization
+
+    monkeypatch.setattr(
+        organization_repository,
+        "get_organization",
+        gated_get_organization,
+    )
+
+    def create_task_before_demotion() -> object:
+        with database.session_factory() as session:
+            install_race_session_deadlines(session)
+            gate.register(session, "holder")
+            return ProjectService(
+                session,
+                policy=PausedAfterMembershipPolicy(session),
+            ).create_task(
+                identity=_identity(admin),
+                project_id=project_id,
+                title="Commits before demotion",
+                stage_id=None,
+                parent_task_id=None,
+                priority="medium",
+                due_at=None,
+                acceptance_criteria=None,
+                audit=_audit("req-compatible-project-mutation"),
+            )
+
+    def demote_after_mutation_lock() -> object:
+        with database.session_factory() as session:
+            install_race_session_deadlines(session)
+            gate.register(session, "waiter")
+            return OrganizationService(session).update_membership_role(
+                identity=_identity(owner),
+                organization_id=owner.organization_id,
+                membership_id=admin.membership_id,
+                requested_role=MembershipRole.VIEWER,
+                audit=_audit("req-compatible-role-update"),
+            )
+
+    executor = ThreadPoolExecutor(max_workers=2)
+    futures: list[Future[object]] = []
+    try:
+        mutation = executor.submit(create_task_before_demotion)
+        futures.append(mutation)
+        wait_for_race_event(
+            mutation_membership_locked,
+            futures,
+            awaited_condition="the project and membership locks",
+        )
+        role_update = executor.submit(demote_after_mutation_lock)
+        futures.append(role_update)
+        wait_for_race_event(
+            role_organization_locked,
+            futures,
+            awaited_condition="the role-update organization lock",
+        )
+        assert_waiting_on_lock(migrated_engine, gate, futures)
+        allow_mutation_flush.set()
+        mutation_result = mutation.result(timeout=FUTURE_SECONDS)
+        role_result = role_update.result(timeout=FUTURE_SECONDS)
+    finally:
+        shutdown_race_executor(
+            executor,
+            futures,
+            cancel_signal=allow_mutation_flush,
+            force_cancel=lambda: terminate_race_backends(migrated_engine, gate),
+            primary_exception=sys.exception(),
+        )
+
+    assert isinstance(mutation_result, TaskResponse)
+    assert isinstance(role_result, MembershipDetailResponse)
+    assert role_result.role is MembershipRole.VIEWER
+    with database.session_factory() as session:
+        assert session.scalar(
+            select(func.count()).select_from(Task).where(Task.project_id == project_id)
+        ) == 1
+        assert session.scalar(
+            select(func.count()).select_from(AuditLog).where(
+                AuditLog.action == "task.created",
+                AuditLog.resource_id == mutation_result.id,
+            )
+        ) == 1
+        assert session.scalar(
+            select(func.count()).select_from(OutboxEvent).where(
+                OutboxEvent.event_type == "task.created",
+                OutboxEvent.aggregate_id == project_id,
+            )
+        ) == 1
+        assert session.scalar(
+            select(func.count()).select_from(AuditLog).where(
+                AuditLog.action == "membership.role_changed",
+                AuditLog.resource_id == admin.membership_id,
+            )
+        ) == 1
+        assert session.scalar(
+            select(func.count()).select_from(OutboxEvent).where(
+                OutboxEvent.event_type == "membership.role_changed",
+                OutboxEvent.aggregate_id == owner.organization_id,
+            )
+        ) == 1
 
 
 @pytest.mark.integration

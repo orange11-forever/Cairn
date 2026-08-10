@@ -93,7 +93,7 @@ class OrganizationService:
             organization = repository.get_organization(
                 self._session,
                 organization_id,
-                for_update=True,
+                for_no_key_update=True,
             )
             if organization is None:
                 raise _not_found()

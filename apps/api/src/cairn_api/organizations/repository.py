@@ -21,9 +21,14 @@ def get_organization(
     org_id: UUID,
     *,
     for_update: bool = False,
+    for_no_key_update: bool = False,
 ) -> Organization | None:
+    if for_update and for_no_key_update:
+        raise ValueError("organization lock modes are mutually exclusive")
     statement = select(Organization).where(Organization.id == org_id)
-    if for_update:
+    if for_no_key_update:
+        statement = statement.with_for_update(of=Organization, key_share=True)
+    elif for_update:
         statement = statement.with_for_update(of=Organization)
     return session.scalar(statement)
 
