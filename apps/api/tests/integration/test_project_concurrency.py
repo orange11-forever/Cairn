@@ -14,7 +14,8 @@ from cairn_api.audit.models import AuditLog
 from cairn_api.auth.models import User
 from cairn_api.auth.schemas import IdentityContextResponse, UserResponse
 from cairn_api.auth.service import RequestAuditContext
-from cairn_api.authorization.types import MembershipRole
+from cairn_api.authorization.policy import AuthorizationPolicy
+from cairn_api.authorization.types import MembershipRole, ProjectPermission
 from cairn_api.db.session import Database
 from cairn_api.errors import ApiProblem
 from cairn_api.organizations.models import Membership, Organization
@@ -387,7 +388,6 @@ def test_competing_task_transitions_serialize_with_single_side_effect(
 def test_concurrent_dependency_additions_cannot_close_cycle(
     database: Database,
     migrated_engine: Engine,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     identity = _seed_identity(database)
     project_id, task_ids = _create_project_with_tasks(
@@ -432,34 +432,37 @@ def test_concurrent_dependency_additions_cannot_close_cycle(
     assert isinstance(baseline_events, int)
 
     gate = _LockGate()
-    real_get_project = repository.get_project
+    target_project_id = project_id
 
-    def gated_get_project(
-        session: Session,
-        *,
-        org_id: UUID,
-        project_id: UUID,
-        for_update: bool = False,
-    ) -> Project | None:
-        if not for_update or project_id != target_project_id:
-            return real_get_project(
-                session,
-                org_id=org_id,
-                project_id=project_id,
+    class GatedAuthorizationPolicy(AuthorizationPolicy):
+        def __init__(self, session: Session) -> None:
+            super().__init__(session)
+            self._gate_session = session
+
+        def find_project(
+            self,
+            identity: IdentityContextResponse,
+            project_id: UUID,
+            required: ProjectPermission,
+            *,
+            for_update: bool = False,
+        ) -> Project | None:
+            if not for_update or project_id != target_project_id:
+                return super().find_project(
+                    identity,
+                    project_id,
+                    required,
+                    for_update=for_update,
+                )
+            role = gate.before_locked_read(self._gate_session)
+            project = super().find_project(
+                identity,
+                project_id,
+                required,
                 for_update=for_update,
             )
-        role = gate.before_locked_read(session)
-        project = real_get_project(
-            session,
-            org_id=org_id,
-            project_id=project_id,
-            for_update=for_update,
-        )
-        gate.after_locked_read(role)
-        return project
-
-    target_project_id = project_id
-    monkeypatch.setattr(repository, "get_project", gated_get_project)
+            gate.after_locked_read(role)
+            return project
 
     def add_dependency(
         role: WorkerRole,
@@ -471,7 +474,10 @@ def test_concurrent_dependency_additions_cannot_close_cycle(
             _install_race_session_deadlines(session)
             gate.register(session, role)
             try:
-                return ProjectService(session).add_dependency(
+                return ProjectService(
+                    session,
+                    policy=GatedAuthorizationPolicy(session),
+                ).add_dependency(
                     identity=identity,
                     predecessor_task_id=predecessor_task_id,
                     successor_task_id=successor_task_id,

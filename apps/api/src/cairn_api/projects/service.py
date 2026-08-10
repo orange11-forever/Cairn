@@ -339,8 +339,6 @@ class ProjectService:
         successor_task_id: UUID,
         audit: RequestAuditContext,
     ) -> DependencyResponse:
-        if predecessor_task_id == successor_task_id:
-            raise _invalid_dependency()
         org_id = identity.organization.id
         with self._session.begin():
             successor = repository.get_task(
@@ -357,6 +355,8 @@ class ProjectService:
                 ProjectPermission.WRITE,
                 for_update=True,
             )
+            if predecessor_task_id == successor_task_id:
+                raise _invalid_dependency()
             predecessor = repository.get_task(
                 self._session,
                 org_id=org_id,

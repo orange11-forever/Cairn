@@ -132,6 +132,36 @@ def test_default_org_reader_can_read_but_all_mutations_are_concealed_and_revocat
 
 
 @pytest.mark.integration
+def test_self_dependency_on_inaccessible_successor_is_concealed(
+    database: Database,
+    api_settings: Settings,
+) -> None:
+    """Break caught: self-link validation reveals an inaccessible successor task."""
+    owner = seed_actor(database, MembershipRole.OWNER)
+    member = seed_actor(database, MembershipRole.MEMBER, owner.organization_id)
+    with authenticated_client(api_settings, database, owner) as client:
+        project = client.post("/api/v1/projects", json={"name": "Self link conceal"})
+        assert project.status_code == 201
+        task = client.post(
+            f"/api/v1/projects/{project.json()['id']}/tasks",
+            json={"title": "Private mutation"},
+        )
+        assert task.status_code == 201
+
+    task_id = task.json()["id"]
+    with authenticated_client(api_settings, database, member) as client:
+        response = client.post(
+            f"/api/v1/tasks/{task_id}/dependencies",
+            headers={"X-Request-ID": "req-self-link-concealed"},
+            json={"predecessorTaskId": task_id},
+        )
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "not_found"
+    assert response.json()["traceId"] == "req-self-link-concealed"
+
+
+@pytest.mark.integration
 def test_viewer_manage_acl_is_capped_at_read(
     database: Database, api_settings: Settings
 ) -> None:
