@@ -56,6 +56,40 @@ def test_acl_migration_creates_normalized_active_grant_contract(
         "ck_resource_acl_entries_granted_actor",
         "ck_resource_acl_entries_revoked_actor",
     }
+    foreign_keys = {
+        item["name"]: item
+        for item in inspector.get_foreign_keys("resource_acl_entries")
+    }
+    assert set(foreign_keys) == {
+        "fk_resource_acl_entries_org_id_organizations",
+        "fk_resource_acl_entries_granted_by_id_users",
+        "fk_resource_acl_entries_revoked_by_id_users",
+    }
+    for name, constrained_columns, referred_table, ondelete in (
+        (
+            "fk_resource_acl_entries_org_id_organizations",
+            ["org_id"],
+            "organizations",
+            "CASCADE",
+        ),
+        (
+            "fk_resource_acl_entries_granted_by_id_users",
+            ["granted_by_id"],
+            "users",
+            None,
+        ),
+        (
+            "fk_resource_acl_entries_revoked_by_id_users",
+            ["revoked_by_id"],
+            "users",
+            None,
+        ),
+    ):
+        foreign_key = foreign_keys[name]
+        assert foreign_key["constrained_columns"] == constrained_columns
+        assert foreign_key["referred_table"] == referred_table
+        assert foreign_key["referred_columns"] == ["id"]
+        assert foreign_key.get("options", {}).get("ondelete") == ondelete
     indexes = {
         item["name"]: item
         for item in inspector.get_indexes("resource_acl_entries")
@@ -168,6 +202,88 @@ def test_acl_database_preserves_revoked_history_but_rejects_duplicate_active_gra
 
 
 @pytest.mark.integration
+def test_acl_rows_are_deleted_when_their_organization_is_deleted(
+    migrated_connection: Connection,
+) -> None:
+    acl = Table("resource_acl_entries", MetaData(), autoload_with=migrated_connection)
+    organizations = Table("organizations", MetaData(), autoload_with=migrated_connection)
+    org_id = UUID("00000000-0000-4000-8000-000000009104")
+    acl_id = UUID("00000000-0000-4000-8000-000000009406")
+    migrated_connection.execute(
+        insert(organizations),
+        {"id": org_id, "slug": "acl-cascade", "name": "ACL Cascade"},
+    )
+    migrated_connection.execute(
+        insert(acl),
+        {
+            "id": acl_id,
+            "org_id": org_id,
+            "resource_type": "project",
+            "resource_id": UUID("00000000-0000-4000-8000-000000009204"),
+            "principal_type": "org",
+            "principal_id": str(org_id),
+            "permission": "read",
+            "granted_by_type": "system",
+        },
+    )
+
+    migrated_connection.execute(delete(organizations).where(organizations.c.id == org_id))
+
+    assert migrated_connection.scalar(
+        select(func.count()).select_from(acl).where(acl.c.id == acl_id)
+    ) == 0
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    ("actor_location", "expected_constraint"),
+    [
+        ("grant", "fk_resource_acl_entries_granted_by_id_users"),
+        ("revocation", "fk_resource_acl_entries_revoked_by_id_users"),
+    ],
+)
+def test_acl_database_rejects_unknown_user_actor_uuids(
+    migrated_connection: Connection,
+    actor_location: str,
+    expected_constraint: str,
+) -> None:
+    acl = Table("resource_acl_entries", MetaData(), autoload_with=migrated_connection)
+    organizations = Table("organizations", MetaData(), autoload_with=migrated_connection)
+    org_id = UUID("00000000-0000-4000-8000-000000009105")
+    unknown_user_id = UUID("00000000-0000-4000-8000-000000009502")
+    values: dict[str, object] = {
+        "id": UUID("00000000-0000-4000-8000-000000009407"),
+        "org_id": org_id,
+        "resource_type": "project",
+        "resource_id": UUID("00000000-0000-4000-8000-000000009205"),
+        "principal_type": "org",
+        "principal_id": str(org_id),
+        "permission": "read",
+        "granted_by_type": "system",
+    }
+    if actor_location == "grant":
+        values.update(
+            granted_by_type="user",
+            granted_by_id=unknown_user_id,
+        )
+    else:
+        values.update(
+            revoked_by_type="user",
+            revoked_by_id=unknown_user_id,
+            revoked_at=datetime(2026, 8, 10, tzinfo=UTC),
+        )
+    migrated_connection.execute(
+        insert(organizations),
+        {"id": org_id, "slug": "acl-unknown-actor", "name": "Unknown Actor"},
+    )
+
+    with pytest.raises(IntegrityError) as exc_info, migrated_connection.begin_nested():
+        migrated_connection.execute(insert(acl), values)
+
+    assert expected_constraint in str(exc_info.value.orig)
+
+
+@pytest.mark.integration
 @pytest.mark.parametrize(
     ("granted_by_type", "granted_by_id"),
     [
@@ -214,6 +330,67 @@ def test_acl_database_rejects_invalid_grant_actor_shapes(
                 "granted_by_id": granted_by_id,
             },
         )
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    ("revoked_at", "revoked_by_type", "revoked_by_id"),
+    [
+        (None, "user", UUID("00000000-0000-4000-8000-000000009503")),
+        (datetime(2026, 8, 10, tzinfo=UTC), None, None),
+        (datetime(2026, 8, 10, tzinfo=UTC), "user", None),
+        (
+            datetime(2026, 8, 10, tzinfo=UTC),
+            "system",
+            UUID("00000000-0000-4000-8000-000000009503"),
+        ),
+    ],
+)
+def test_acl_database_rejects_invalid_revoked_actor_shapes(
+    migrated_connection: Connection,
+    revoked_at: datetime | None,
+    revoked_by_type: str | None,
+    revoked_by_id: UUID | None,
+) -> None:
+    acl = Table("resource_acl_entries", MetaData(), autoload_with=migrated_connection)
+    organizations = Table("organizations", MetaData(), autoload_with=migrated_connection)
+    users = Table("users", MetaData(), autoload_with=migrated_connection)
+    org_id = UUID("00000000-0000-4000-8000-000000009106")
+    actor_id = UUID("00000000-0000-4000-8000-000000009503")
+    migrated_connection.execute(
+        insert(organizations),
+        {"id": org_id, "slug": "acl-revoked-actor", "name": "Revoked Actor"},
+    )
+    migrated_connection.execute(
+        insert(users),
+        {
+            "id": actor_id,
+            "email": "acl-revoked-actor@example.com",
+            "normalized_email": "acl-revoked-actor@example.com",
+            "password_hash": "not-used-by-this-constraint-test",
+            "is_active": True,
+        },
+    )
+
+    with pytest.raises(IntegrityError) as exc_info, migrated_connection.begin_nested():
+        migrated_connection.execute(
+            insert(acl),
+            {
+                "id": UUID("00000000-0000-4000-8000-000000009408"),
+                "org_id": org_id,
+                "resource_type": "project",
+                "resource_id": UUID("00000000-0000-4000-8000-000000009206"),
+                "principal_type": "org",
+                "principal_id": str(org_id),
+                "permission": "read",
+                "granted_by_type": "system",
+                "revoked_at": revoked_at,
+                "revoked_by_type": revoked_by_type,
+                "revoked_by_id": revoked_by_id,
+            },
+        )
+
+    assert "ck_resource_acl_entries_revoked_actor" in str(exc_info.value.orig)
 
 
 @pytest.mark.integration

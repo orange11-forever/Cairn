@@ -30,12 +30,12 @@ class ResourceAclEntry(Base):
             name="granted_actor",
         ),
         CheckConstraint(
-            "(revoked_at IS NULL AND revoked_by_type IS NULL "
+            "COALESCE((revoked_at IS NULL AND revoked_by_type IS NULL "
             "AND revoked_by_id IS NULL) OR "
             "(revoked_at IS NOT NULL AND revoked_by_type = 'user' "
             "AND revoked_by_id IS NOT NULL) OR "
             "(revoked_at IS NOT NULL AND revoked_by_type = 'system' "
-            "AND revoked_by_id IS NULL)",
+            "AND revoked_by_id IS NULL), FALSE)",
             name="revoked_actor",
         ),
         Index(

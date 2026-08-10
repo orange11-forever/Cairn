@@ -55,12 +55,12 @@ def upgrade() -> None:
             name=op.f("ck_resource_acl_entries_granted_actor"),
         ),
         sa.CheckConstraint(
-            "(revoked_at IS NULL AND revoked_by_type IS NULL "
+            "COALESCE((revoked_at IS NULL AND revoked_by_type IS NULL "
             "AND revoked_by_id IS NULL) OR "
             "(revoked_at IS NOT NULL AND revoked_by_type = 'user' "
             "AND revoked_by_id IS NOT NULL) OR "
             "(revoked_at IS NOT NULL AND revoked_by_type = 'system' "
-            "AND revoked_by_id IS NULL)",
+            "AND revoked_by_id IS NULL), FALSE)",
             name=op.f("ck_resource_acl_entries_revoked_actor"),
         ),
         sa.ForeignKeyConstraint(
