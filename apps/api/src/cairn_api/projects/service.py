@@ -45,14 +45,6 @@ def _not_found() -> ApiProblem:
     return ApiProblem(status_code=404, code="not_found", message="资源不存在")
 
 
-def _invalid_task_reference() -> ApiProblem:
-    return ApiProblem(
-        status_code=422,
-        code="invalid_task_reference",
-        message="任务引用不属于当前项目",
-    )
-
-
 def _invalid_state_transition() -> ApiProblem:
     return ApiProblem(
         status_code=409,
@@ -202,21 +194,23 @@ class ProjectService:
                 for_update=True,
             )
             if stage_id is not None:
-                stage = repository.get_stage(self._session, org_id=org_id, stage_id=stage_id)
+                stage = repository.get_stage(
+                    self._session,
+                    org_id=org_id,
+                    project_id=project_id,
+                    stage_id=stage_id,
+                )
                 if stage is None:
                     raise _not_found()
-                if stage.project_id != project_id:
-                    raise _invalid_task_reference()
             if parent_task_id is not None:
                 parent = repository.get_task(
                     self._session,
                     org_id=org_id,
                     task_id=parent_task_id,
+                    project_id=project_id,
                 )
                 if parent is None:
                     raise _not_found()
-                if parent.project_id != project_id:
-                    raise _invalid_task_reference()
             task = repository.create_task(
                 self._session,
                 org_id=org_id,

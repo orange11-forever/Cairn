@@ -20,7 +20,9 @@ from cairn_api.organizations import repository as organization_repository
 from cairn_api.organizations.models import Membership, Organization
 from cairn_api.organizations.schemas import MembershipResponse, OrganizationResponse
 from cairn_api.organizations.service import OrganizationService
-from cairn_api.projects.models import OutboxEvent, Project
+from cairn_api.projects import repository as project_repository
+from cairn_api.projects.models import OutboxEvent, Project, Task
+from cairn_api.projects.service import ProjectService
 from sqlalchemy import Engine, func, select
 from sqlalchemy.orm import Session
 
@@ -374,6 +376,154 @@ def test_concurrent_owner_demotions_preserve_one_owner(
                 OutboxEvent.event_type == "membership.role_changed",
             )
         ) == 1
+
+
+@pytest.mark.integration
+def test_project_mutation_rechecks_role_after_waiting_for_project_lock(
+    database: Database,
+    migrated_engine: Engine,
+) -> None:
+    """Break caught: a blocked mutation must not use its restored role snapshot."""
+    owner = seed_actor(database, MembershipRole.OWNER)
+    admin = seed_actor(database, MembershipRole.ADMIN, owner.organization_id)
+    project_id = uuid4()
+    with database.session_factory.begin() as session:
+        session.add(
+            Project(
+                id=project_id,
+                org_id=owner.organization_id,
+                name="Fresh role after project lock",
+            )
+        )
+
+    gate = LockGate()
+
+    class GatedAuthorizationPolicy(AuthorizationPolicy):
+        def __init__(self, session: Session) -> None:
+            super().__init__(session)
+            self._gate_session = session
+
+        def find_project(
+            self,
+            identity: IdentityContextResponse,
+            project_id: UUID,
+            required: ProjectPermission,
+            *,
+            for_update: bool = False,
+        ) -> Project | None:
+            if not for_update:
+                return super().find_project(
+                    identity,
+                    project_id,
+                    required,
+                    for_update=for_update,
+                )
+            role = gate.before_locked_read(self._gate_session)
+            project = super().find_project(
+                identity,
+                project_id,
+                required,
+                for_update=for_update,
+            )
+            gate.after_locked_read(role)
+            return project
+
+    def hold_project_lock() -> object:
+        with database.session_factory.begin() as session:
+            install_race_session_deadlines(session)
+            gate.register(session, "holder")
+            role = gate.before_locked_read(session)
+            project = project_repository.get_project(
+                session,
+                org_id=owner.organization_id,
+                project_id=project_id,
+                for_update=True,
+            )
+            assert project is not None
+            gate.after_locked_read(role)
+        return None
+
+    def create_task_with_restored_admin() -> object:
+        with database.session_factory() as session:
+            install_race_session_deadlines(session)
+            gate.register(session, "waiter")
+            try:
+                return ProjectService(
+                    session,
+                    policy=GatedAuthorizationPolicy(session),
+                ).create_task(
+                    identity=_identity(admin),
+                    project_id=project_id,
+                    title="Must be concealed after demotion",
+                    stage_id=None,
+                    parent_task_id=None,
+                    priority="medium",
+                    due_at=None,
+                    acceptance_criteria=None,
+                    audit=_audit("req-stale-admin-mutation"),
+                )
+            except ApiProblem as problem:
+                return problem
+
+    executor = ThreadPoolExecutor(max_workers=2)
+    futures: list[Future[object]] = []
+    try:
+        holder = executor.submit(hold_project_lock)
+        futures.append(holder)
+        wait_for_race_event(
+            gate.holder_locked,
+            futures,
+            awaited_condition="the holder project lock",
+        )
+        mutation = executor.submit(create_task_with_restored_admin)
+        futures.append(mutation)
+        wait_for_race_event(
+            gate.waiter_entered,
+            futures,
+            awaited_condition="the blocked project mutation",
+        )
+        assert_waiting_on_lock(migrated_engine, gate, futures)
+
+        with database.session_factory() as session:
+            changed = OrganizationService(session).update_membership_role(
+                identity=_identity(owner),
+                organization_id=owner.organization_id,
+                membership_id=admin.membership_id,
+                requested_role=MembershipRole.VIEWER,
+                audit=_audit("req-demote-blocked-admin"),
+            )
+        assert changed.role is MembershipRole.VIEWER
+
+        gate.release_holder.set()
+        holder.result(timeout=FUTURE_SECONDS)
+        result = mutation.result(timeout=FUTURE_SECONDS)
+    finally:
+        shutdown_race_executor(
+            executor,
+            futures,
+            cancel_signal=gate.release_holder,
+            force_cancel=lambda: terminate_race_backends(migrated_engine, gate),
+            primary_exception=sys.exception(),
+        )
+
+    assert isinstance(result, ApiProblem)
+    assert (result.status_code, result.code) == (404, "not_found")
+    with database.session_factory() as session:
+        assert session.scalar(
+            select(func.count()).select_from(Task).where(Task.project_id == project_id)
+        ) == 0
+        assert session.scalar(
+            select(func.count()).select_from(AuditLog).where(
+                AuditLog.resource_id == project_id,
+                AuditLog.action == "task.created",
+            )
+        ) == 0
+        assert session.scalar(
+            select(func.count()).select_from(OutboxEvent).where(
+                OutboxEvent.aggregate_id == project_id,
+                OutboxEvent.event_type == "task.created",
+            )
+        ) == 0
 
 
 @pytest.mark.integration

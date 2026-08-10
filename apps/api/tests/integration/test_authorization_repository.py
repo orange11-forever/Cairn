@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 from typing import cast
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from cairn_api.auth.models import User
@@ -112,6 +112,71 @@ def test_database_policy_resolves_org_role_user_grants_and_role_ceiling(
         assert exc_info.value.status_code == 404
         assert exc_info.value.code == "not_found"
         assert exc_info.value.message == "资源不存在"
+
+
+@pytest.mark.integration
+def test_locked_project_check_conceals_missing_cross_org_or_cross_user_membership(
+    migrated_connection: Connection,
+) -> None:
+    """Break caught: locked authorization must bind membership to org and user."""
+    other_org_id = UUID("00000000-0000-4000-8000-000000003002")
+    with Session(bind=migrated_connection) as session:
+        project = _seed_policy_graph(session)
+        owner_membership = session.scalars(
+            select(Membership).where(
+                Membership.org_id == ORG_ID,
+                Membership.user_id == OWNER_ID,
+            )
+        ).one()
+        member_membership = session.scalars(
+            select(Membership).where(
+                Membership.org_id == ORG_ID,
+                Membership.user_id == MEMBER_ID,
+            )
+        ).one()
+        session.add(Organization(id=other_org_id, slug="other-policy", name="Other"))
+        session.flush()
+        cross_org_membership = Membership(
+            org_id=other_org_id,
+            user_id=OWNER_ID,
+            role=MembershipRole.OWNER.value,
+        )
+        session.add(cross_org_membership)
+        session.flush()
+
+        policy = AuthorizationPolicy(session)
+        base_identity = _identity(OWNER_ID, MembershipRole.OWNER)
+
+        def identity_with_membership(membership_id: UUID) -> IdentityContextResponse:
+            return base_identity.model_copy(
+                update={
+                    "membership": MembershipResponse(
+                        id=membership_id,
+                        role=MembershipRole.OWNER,
+                    )
+                }
+            )
+
+        assert policy.find_project(
+            identity_with_membership(owner_membership.id),
+            project.id,
+            ProjectPermission.MANAGE,
+            for_update=True,
+        ) == project
+        for invalid_membership_id in (
+            uuid4(),
+            member_membership.id,
+            cross_org_membership.id,
+        ):
+            assert (
+                policy.find_project(
+                    identity_with_membership(invalid_membership_id),
+                    project.id,
+                    ProjectPermission.MANAGE,
+                    for_update=True,
+                )
+                is None
+            )
 
 
 @pytest.mark.integration

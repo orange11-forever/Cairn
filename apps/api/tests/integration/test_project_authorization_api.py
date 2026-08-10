@@ -2,12 +2,14 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
+from cairn_api.audit.models import AuditLog
 from cairn_api.authorization.models import ResourceAclEntry
 from cairn_api.authorization.types import MembershipRole
 from cairn_api.db.session import Database
-from cairn_api.projects.models import Project
+from cairn_api.projects.models import OutboxEvent, Project, ProjectStage, Task
 from cairn_api.settings import Settings
-from sqlalchemy import select
+from httpx2 import Response
+from sqlalchemy import func, select
 
 from .authorization_helpers import (
     APP_ORIGIN,
@@ -129,6 +131,116 @@ def test_default_org_reader_can_read_but_all_mutations_are_concealed_and_revocat
         hidden = client.get(f"/api/v1/projects/{project_id}")
         assert hidden.status_code == 404
         assert hidden.json()["code"] == "not_found"
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("reference_field", ["stageId", "parentTaskId"])
+def test_create_task_conceals_hidden_cross_project_references_like_missing_ids(
+    reference_field: str,
+    database: Database,
+    api_settings: Settings,
+) -> None:
+    """Break caught: task references must not reveal hidden project objects."""
+    actor = seed_actor(database, MembershipRole.MEMBER)
+    writable_project_id = uuid4()
+    hidden_project_id = uuid4()
+    hidden_stage_id = uuid4()
+    hidden_task_id = uuid4()
+    with database.session_factory.begin() as session:
+        session.add_all(
+            [
+                Project(
+                    id=writable_project_id,
+                    org_id=actor.organization_id,
+                    name="Writable project",
+                ),
+                Project(
+                    id=hidden_project_id,
+                    org_id=actor.organization_id,
+                    name="Hidden reference project",
+                ),
+            ]
+        )
+        session.flush()
+        session.add(
+            ResourceAclEntry(
+                org_id=actor.organization_id,
+                resource_type="project",
+                resource_id=writable_project_id,
+                principal_type="user",
+                principal_id=str(actor.user_id),
+                permission="write",
+                granted_by_type="system",
+            )
+        )
+        hidden_org_grant = ResourceAclEntry(
+            org_id=actor.organization_id,
+            resource_type="project",
+            resource_id=hidden_project_id,
+            principal_type="org",
+            principal_id=str(actor.organization_id),
+            permission="read",
+            granted_by_type="system",
+            revoked_at=datetime.now(UTC),
+            revoked_by_type="system",
+        )
+        session.add(hidden_org_grant)
+        session.add(
+            ProjectStage(
+                id=hidden_stage_id,
+                org_id=actor.organization_id,
+                project_id=hidden_project_id,
+                name="Hidden stage",
+            )
+        )
+        session.add(
+            Task(
+                id=hidden_task_id,
+                org_id=actor.organization_id,
+                project_id=hidden_project_id,
+                title="Hidden parent task",
+            )
+        )
+
+    real_reference_id = (
+        hidden_stage_id if reference_field == "stageId" else hidden_task_id
+    )
+    trace_id = f"req-concealed-{reference_field.lower()}"
+    responses: list[Response] = []
+    with authenticated_client(api_settings, database, actor) as client:
+        for reference_id in (real_reference_id, uuid4()):
+            responses.append(
+                client.post(
+                    f"/api/v1/projects/{writable_project_id}/tasks",
+                    headers={"X-Request-ID": trace_id},
+                    json={"title": "Oracle probe", reference_field: str(reference_id)},
+                )
+            )
+
+    assert [response.status_code for response in responses] == [404, 404]
+    assert responses[0].json() == responses[1].json() == {
+        "message": "资源不存在",
+        "code": "not_found",
+        "traceId": trace_id,
+    }
+    with database.session_factory() as session:
+        assert session.scalar(
+            select(func.count()).select_from(Task).where(
+                Task.project_id == writable_project_id
+            )
+        ) == 0
+        assert session.scalar(
+            select(func.count()).select_from(AuditLog).where(
+                AuditLog.action == "task.created",
+                AuditLog.org_id == actor.organization_id,
+            )
+        ) == 0
+        assert session.scalar(
+            select(func.count()).select_from(OutboxEvent).where(
+                OutboxEvent.event_type == "task.created",
+                OutboxEvent.aggregate_id == writable_project_id,
+            )
+        ) == 0
 
 
 @pytest.mark.integration

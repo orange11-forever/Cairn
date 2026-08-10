@@ -9,6 +9,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from cairn_api.authorization.models import ResourceAclEntry
 from cairn_api.authorization.types import (
     ActorType,
+    MembershipRole,
     PrincipalRef,
     ProjectPermission,
     ResourceType,
@@ -116,6 +117,25 @@ def is_current_org_member(session: Session, *, org_id: UUID, user_id: UUID) -> b
     )
 
 
+def get_current_membership_role(
+    session: Session,
+    *,
+    org_id: UUID,
+    membership_id: UUID,
+    user_id: UUID,
+    for_update: bool = False,
+) -> MembershipRole | None:
+    statement = select(Membership.role).where(
+        Membership.org_id == org_id,
+        Membership.id == membership_id,
+        Membership.user_id == user_id,
+    )
+    if for_update:
+        statement = statement.with_for_update(of=Membership)
+    role = session.scalar(statement)
+    return None if role is None else MembershipRole(role)
+
+
 def active_acl_exists_clause(
     *,
     org_id: UUID,
@@ -154,6 +174,7 @@ __all__ = [
     "active_acl_exists_clause",
     "create_entry",
     "get_active_entry",
+    "get_current_membership_role",
     "is_current_org_member",
     "list_active_entries",
     "revoke_entry",

@@ -300,6 +300,8 @@ def test_transition_table_is_immutable_and_accepts_exactly_the_approved_edges(
         for requested_status in all_statuses:
             session = MagicMock(spec=Session)
             task = _task(org_id, project.id, status=current_status)
+            policy = MagicMock(spec=AuthorizationPolicy)
+            policy.require_project.return_value = project
             monkeypatch.setattr(repository, "get_task", MagicMock(return_value=task))
 
             def set_task_status(
@@ -322,7 +324,7 @@ def test_transition_table_is_immutable_and_accepts_exactly_the_approved_edges(
             update = MagicMock(side_effect=set_task_status)
             monkeypatch.setattr(repository, "set_task_status", update)
             if requested_status in expected[current_status]:
-                result = ProjectService(session).transition_task(
+                result = ProjectService(session, policy=policy).transition_task(
                     identity=identity,
                     task_id=task.id,
                     requested_status=requested_status,
@@ -339,7 +341,7 @@ def test_transition_table_is_immutable_and_accepts_exactly_the_approved_edges(
                 }
             else:
                 with pytest.raises(ApiProblem) as raised:
-                    ProjectService(session).transition_task(
+                    ProjectService(session, policy=policy).transition_task(
                         identity=identity,
                         task_id=task.id,
                         requested_status=requested_status,
@@ -538,6 +540,8 @@ def test_add_dependency_rejects_invalid_edges_before_writes(
         return predecessor if task_id == predecessor.id else successor
 
     identity = _identity(org_id)
+    policy = MagicMock(spec=AuthorizationPolicy)
+    policy.require_project.return_value = project
     monkeypatch.setattr(repository, "get_task", get_task)
     monkeypatch.setattr(
         repository,
@@ -553,7 +557,7 @@ def test_add_dependency_rejects_invalid_edges_before_writes(
     monkeypatch.setattr(repository, "create_dependency", create)
 
     with pytest.raises(ApiProblem) as raised:
-        ProjectService(session).add_dependency(
+        ProjectService(session, policy=policy).add_dependency(
             identity=identity,
             predecessor_task_id=predecessor.id,
             successor_task_id=successor_id,

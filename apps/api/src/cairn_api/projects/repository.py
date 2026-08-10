@@ -57,11 +57,13 @@ def get_stage(
     session: Session,
     *,
     org_id: UUID,
+    project_id: UUID,
     stage_id: UUID,
 ) -> ProjectStage | None:
     return session.scalar(
         select(ProjectStage).where(
             ProjectStage.org_id == org_id,
+            ProjectStage.project_id == project_id,
             ProjectStage.id == stage_id,
         )
     )

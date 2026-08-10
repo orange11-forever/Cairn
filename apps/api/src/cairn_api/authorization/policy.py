@@ -84,6 +84,15 @@ class AuthorizationPolicy:
         resource_id: ColumnElement[UUID],
     ) -> ColumnElement[bool]:
         role = MembershipRole(identity.membership.role)
+        return self._project_filter_for_role(identity, role, required, resource_id)
+
+    def _project_filter_for_role(
+        self,
+        identity: IdentityContextResponse,
+        role: MembershipRole,
+        required: ProjectPermission,
+        resource_id: ColumnElement[UUID],
+    ) -> ColumnElement[bool]:
         if role in {MembershipRole.OWNER, MembershipRole.ADMIN}:
             return true()
         if role is MembershipRole.VIEWER and required is not ProjectPermission.READ:
@@ -120,11 +129,23 @@ class AuthorizationPolicy:
             )
             if locked_project_id is None:
                 return None
+            role = repository.get_current_membership_role(
+                self._session,
+                org_id=identity.organization.id,
+                membership_id=identity.membership.id,
+                user_id=identity.user.id,
+                for_update=True,
+            )
+            if role is None:
+                return None
+        else:
+            role = MembershipRole(identity.membership.role)
         statement = select(Project).where(
             Project.org_id == identity.organization.id,
             Project.id == project_id,
-            self.project_filter(
+            self._project_filter_for_role(
                 identity,
+                role,
                 required,
                 cast(ColumnElement[UUID], Project.id),
             ),
