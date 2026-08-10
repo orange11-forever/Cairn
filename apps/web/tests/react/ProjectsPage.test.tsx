@@ -349,6 +349,25 @@ test("viewer membership renders project tasks without mutation controls", async 
   expect(within(task).getByText("只读权限")).toBeInTheDocument();
 });
 
+test("an unknown membership role fails closed without mutation controls", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    return url.pathname === "/api/v1/projects"
+      ? jsonResponse({ items: [PROJECT], nextCursor: null })
+      : jsonResponse({ items: [TASK], nextCursor: null });
+  }));
+
+  renderProjects(undefined, {
+    ...IDENTITY,
+    membership: { ...IDENTITY.membership, role: "future_role" },
+  });
+
+  const task = await screen.findByRole("article", { name: "核对迁移清单" });
+  expect(within(task).getByText("待处理")).toBeInTheDocument();
+  expect(within(task).queryByRole("button", { name: "开始任务" })).toBeNull();
+  expect(within(task).getByText("只读权限")).toBeInTheDocument();
+});
+
 test("concealed transition failure explains that edit permission may have changed", async () => {
   const user = userEvent.setup();
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {

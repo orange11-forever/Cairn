@@ -234,6 +234,9 @@ function TaskWorkspace({
     csrfToken,
     sessionSignal: signal,
   });
+  const canTransition = membershipRole === "owner"
+    || membershipRole === "admin"
+    || membershipRole === "member";
   const taskItems = tasks.data?.pages.flatMap((page) => page.items) ?? [];
   const hasTaskRefetchError = tasks.isRefetchError && !tasks.isFetchNextPageError;
   const transitionRefreshFailed = hasTaskRefetchError
@@ -303,7 +306,7 @@ function TaskWorkspace({
             <TaskRow
               key={task.id}
               task={task}
-              canTransition={membershipRole !== "viewer"}
+              canTransition={canTransition}
               actionsDisabled={transition.isPending || hasTaskRefetchError}
               pending={transition.isPending}
               pendingTaskId={transition.variables?.taskId ?? null}
