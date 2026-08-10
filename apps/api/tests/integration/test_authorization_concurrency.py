@@ -112,8 +112,8 @@ def test_bounded_cleanup_preserves_primary_exception_and_joins_worker() -> None:
 
     executor = ThreadPoolExecutor(max_workers=1)
     future = executor.submit(wait_for_cancellation)
-    assert worker_started.wait(1.0)
     try:
+        assert worker_started.wait(1.0)
         with pytest.raises(ValueError) as exc_info:
             try:
                 raise primary_exception
@@ -128,6 +128,7 @@ def test_bounded_cleanup_preserves_primary_exception_and_joins_worker() -> None:
                     force_timeout=1.0,
                 )
     finally:
+        cooperative_cancel.set()
         allow_cooperative_exit.set()
         executor.shutdown(wait=True, cancel_futures=True)
 
@@ -140,6 +141,39 @@ def test_bounded_cleanup_preserves_primary_exception_and_joins_worker() -> None:
         "force cancellation failed: backend termination failed"
     ]
     assert worker_finished.is_set()
+    assert future.done()
+    assert all(not worker.is_alive() for worker in worker_threads)
+
+
+@pytest.mark.integration
+def test_cleanup_startup_timeout_releases_signals_and_joins_worker() -> None:
+    """Break caught: startup timeout must enter protected executor cleanup."""
+    allow_worker_start = Event()
+    worker_started = Event()
+    cooperative_cancel = Event()
+    allow_cooperative_exit = Event()
+    worker_threads: list[Thread] = []
+
+    def delayed_worker() -> None:
+        worker_threads.append(current_thread())
+        allow_worker_start.wait()
+        worker_started.set()
+        cooperative_cancel.wait()
+        allow_cooperative_exit.wait()
+
+    executor = ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(delayed_worker)
+    with pytest.raises(AssertionError, match="worker did not start"):
+        try:
+            assert worker_started.wait(0.0), "worker did not start"
+        finally:
+            cooperative_cancel.set()
+            allow_cooperative_exit.set()
+            allow_worker_start.set()
+            executor.shutdown(wait=True, cancel_futures=True)
+
+    assert cooperative_cancel.is_set()
+    assert allow_cooperative_exit.is_set()
     assert future.done()
     assert all(not worker.is_alive() for worker in worker_threads)
 
