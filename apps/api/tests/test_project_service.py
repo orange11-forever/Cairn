@@ -7,6 +7,7 @@ import pytest
 from cairn_api.audit.models import AuditLog
 from cairn_api.auth.schemas import IdentityContextResponse, UserResponse
 from cairn_api.auth.service import RequestAuditContext
+from cairn_api.authorization.types import MembershipRole
 from cairn_api.errors import ApiProblem
 from cairn_api.organizations.schemas import MembershipResponse, OrganizationResponse
 from cairn_api.projects import repository
@@ -26,7 +27,7 @@ def _identity(org_id: UUID) -> IdentityContextResponse:
     return IdentityContextResponse(
         user=UserResponse(id=uuid4(), email="member@example.com", display_name="Member"),
         organization=OrganizationResponse(id=org_id, slug=f"org-{org_id}", name="Organization"),
-        membership=MembershipResponse(id=uuid4(), role="owner"),
+        membership=MembershipResponse(id=uuid4(), role=MembershipRole.OWNER),
         csrf_token="csrf-token",
     )
 

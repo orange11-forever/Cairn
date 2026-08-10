@@ -14,6 +14,7 @@ from cairn_api.audit.models import AuditLog
 from cairn_api.auth.models import User
 from cairn_api.auth.schemas import IdentityContextResponse, UserResponse
 from cairn_api.auth.service import RequestAuditContext
+from cairn_api.authorization.types import MembershipRole
 from cairn_api.db.session import Database
 from cairn_api.errors import ApiProblem
 from cairn_api.organizations.models import Membership, Organization
@@ -197,7 +198,10 @@ def _seed_identity(database: Database) -> IdentityContextResponse:
                 slug=organization.slug,
                 name=organization.name,
             ),
-            membership=MembershipResponse(id=membership.id, role=membership.role),
+            membership=MembershipResponse(
+                id=membership.id,
+                role=MembershipRole(membership.role),
+            ),
             csrf_token="not-used-by-service-tests",
         )
 

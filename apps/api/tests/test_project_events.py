@@ -9,6 +9,7 @@ import pytest
 from cairn_api.app import create_app
 from cairn_api.auth.dependencies import get_current_identity
 from cairn_api.auth.schemas import IdentityContextResponse, UserResponse
+from cairn_api.authorization.types import MembershipRole
 from cairn_api.db.session import Database, get_db
 from cairn_api.organizations.schemas import MembershipResponse, OrganizationResponse
 from cairn_api.projects.events import (
@@ -32,7 +33,7 @@ def _identity(org_id: UUID) -> IdentityContextResponse:
     return IdentityContextResponse(
         user=UserResponse(id=uuid4(), email="member@example.com", display_name="Member"),
         organization=OrganizationResponse(id=org_id, slug="event-org", name="Event Org"),
-        membership=MembershipResponse(id=uuid4(), role="owner"),
+        membership=MembershipResponse(id=uuid4(), role=MembershipRole.OWNER),
         csrf_token="csrf-token",
     )
 

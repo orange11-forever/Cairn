@@ -2,6 +2,8 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from cairn_api.authorization.types import MembershipRole
+
 
 class OrganizationResponse(BaseModel):
     id: UUID
@@ -11,4 +13,4 @@ class OrganizationResponse(BaseModel):
 
 class MembershipResponse(BaseModel):
     id: UUID
-    role: str
+    role: MembershipRole
