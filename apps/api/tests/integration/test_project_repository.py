@@ -1,10 +1,64 @@
+from datetime import UTC, datetime, timedelta
 from itertools import pairwise
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
+from cairn_api.authorization.models import ResourceAclEntry
+from cairn_api.organizations.models import Organization
 from cairn_api.projects import repository
+from cairn_api.projects.models import Project
 from sqlalchemy import Connection, MetaData, Table, insert, text
 from sqlalchemy.orm import Session
+
+
+@pytest.mark.integration
+def test_project_access_filter_is_applied_before_cursor_pagination(
+    migrated_connection: Connection,
+) -> None:
+    """Break caught: filtering after LIMIT omits later authorized rows and leaks a cursor."""
+    org_id = uuid4()
+    user_id = uuid4()
+    base = datetime(2026, 8, 10, 8, 0, tzinfo=UTC)
+    projects = [
+        Project(
+            id=uuid4(),
+            org_id=org_id,
+            name=name,
+            created_at=base + timedelta(seconds=index),
+            updated_at=base + timedelta(seconds=index),
+        )
+        for index, name in enumerate(("Visible A", "Hidden B", "Visible C"))
+    ]
+    with Session(bind=migrated_connection) as session:
+        session.add(Organization(id=org_id, slug=f"filter-{org_id}", name="Filter org"))
+        session.add_all(projects)
+        session.flush()
+        session.add_all(
+            [
+                ResourceAclEntry(
+                    org_id=org_id,
+                    resource_type="project",
+                    resource_id=project.id,
+                    principal_type="user",
+                    principal_id=str(user_id),
+                    permission="read",
+                    granted_by_type="system",
+                )
+                for project in (projects[0], projects[2])
+            ]
+        )
+        session.flush()
+        access_filter = Project.id.in_((projects[0].id, projects[2].id))
+        page, cursor = repository.list_projects(
+            session,
+            org_id=org_id,
+            access_filter=access_filter,
+            cursor=None,
+            limit=2,
+        )
+
+    assert [project.id for project in page] == [projects[0].id, projects[2].id]
+    assert cursor is None
 
 
 @pytest.mark.integration

@@ -104,13 +104,13 @@ function requestDetails(input: RequestInfo | URL, init?: RequestInit) {
 
 function renderProjects(queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-})) {
+}), identity = IDENTITY) {
   return {
     queryClient,
     ...render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={["/projects"]}>
-          <SessionProvider restoredIdentity={IDENTITY}>
+          <SessionProvider restoredIdentity={identity}>
             <ProjectsPage />
           </SessionProvider>
         </MemoryRouter>
@@ -329,6 +329,71 @@ test("task rows show status, priority, due date, acceptance criteria, and legal 
   expect(within(task).getByText("全部资料都有负责人并通过抽查。")).toBeInTheDocument();
   expect(within(task).getByRole("button", { name: "开始任务" })).toBeEnabled();
   expect(within(task).queryByRole("button", { name: /完成|阻塞|取消/ })).toBeNull();
+});
+
+test("viewer membership renders project tasks without mutation controls", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    return url.pathname === "/api/v1/projects"
+      ? jsonResponse({ items: [PROJECT], nextCursor: null })
+      : jsonResponse({ items: [TASK], nextCursor: null });
+  }));
+
+  renderProjects(undefined, {
+    ...IDENTITY,
+    membership: { ...IDENTITY.membership, role: "viewer" },
+  });
+
+  const task = await screen.findByRole("article", { name: "核对迁移清单" });
+  expect(within(task).queryByRole("button", { name: "开始任务" })).toBeNull();
+  expect(within(task).getByText("只读权限")).toBeInTheDocument();
+});
+
+test("an unknown membership role fails closed without mutation controls", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    return url.pathname === "/api/v1/projects"
+      ? jsonResponse({ items: [PROJECT], nextCursor: null })
+      : jsonResponse({ items: [TASK], nextCursor: null });
+  }));
+
+  renderProjects(undefined, {
+    ...IDENTITY,
+    membership: {
+      ...IDENTITY.membership,
+      role: "future_role" as IdentityContext["membership"]["role"],
+    },
+  });
+
+  const task = await screen.findByRole("article", { name: "核对迁移清单" });
+  expect(within(task).getByText("待处理")).toBeInTheDocument();
+  expect(within(task).queryByRole("button", { name: "开始任务" })).toBeNull();
+  expect(within(task).getByText("只读权限")).toBeInTheDocument();
+});
+
+test("concealed transition failure explains that edit permission may have changed", async () => {
+  const user = userEvent.setup();
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input instanceof Request ? input : new Request(input);
+    const url = new URL(request.url);
+    if (url.pathname === "/api/v1/projects") {
+      return jsonResponse({ items: [PROJECT], nextCursor: null });
+    }
+    if (request.method === "PATCH") {
+      return jsonResponse({
+        code: "not_found",
+        message: "资源不存在",
+        traceId: "trace-revoked-write",
+      }, 404);
+    }
+    return jsonResponse({ items: [TASK], nextCursor: null });
+  }));
+
+  renderProjects();
+  await user.click(await screen.findByRole("button", { name: "开始任务" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "项目不存在或你已失去编辑权限，请刷新项目列表",
+  );
 });
 
 test("a pending status transition disables actions and invalidates only the selected task query", async () => {

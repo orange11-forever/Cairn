@@ -12,6 +12,7 @@ from starlette.responses import JSONResponse
 from cairn_api import __version__
 from cairn_api.auth.router import clear_session_cookie
 from cairn_api.auth.router import router as auth_router
+from cairn_api.authorization.router import router as authorization_router
 from cairn_api.db.errors import DATABASE_UNAVAILABLE_ERRORS
 from cairn_api.db.session import Database
 from cairn_api.errors import ApiProblem, error_response
@@ -169,6 +170,7 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
 
     application.include_router(auth_router)
     application.include_router(organizations_router)
+    application.include_router(authorization_router)
     application.include_router(projects_router)
 
     return application

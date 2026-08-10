@@ -5,9 +5,9 @@
 ## 当前已交付
 
 - React 19、TypeScript 与 Vite 构成 Web 客户端；身份、项目和任务请求连接真实 FastAPI，文档、上传和问答仍连接 Node mock。
-- FastAPI 采用模块化单体边界，提供 Cookie 会话、组织身份、项目、任务、依赖、状态机、追加式审计、事务性 Outbox 与有界 SSE 查询。
-- PostgreSQL 16 保存当前身份、项目任务、审计和 Outbox 数据；生成的 TypeScript SDK 对齐 OpenAPI。
-- 知识资源、对象存储、异步摄取、向量检索、完整 RBAC/ACL、Agent 执行和模型 Provider 尚未实现。
+- FastAPI 采用模块化单体边界，提供 Cookie 会话、组织身份与 RBAC、项目 ACL、成员角色管理、项目、任务、依赖、状态机、追加式审计、事务性 Outbox 与有界 SSE 查询。
+- PostgreSQL 16 保存当前身份、成员角色、规范化项目 ACL、项目任务、审计和 Outbox 数据；生成的 TypeScript SDK 对齐 OpenAPI。
+- 群组、邀请、成员移除、ACL/成员管理 UI、知识资源、对象存储、异步摄取、向量检索、Agent 执行和模型 Provider 尚未实现。
 
 ## 目标架构
 
@@ -19,7 +19,7 @@
 ## 安全与数据不变量
 
 1. `org_id` 是所有租户数据访问的第一过滤条件，客户端不能声明可信租户、actor 或创建者。
-2. 权限由规范化 ACL 预过滤；任何搜索、问答或 Agent 工具都不能先取回跨权限内容再在应用层遮盖。
+2. 规范化 ACL 和当前成员关系是授权事实来源；权限在数据库查询中预过滤，任何搜索、问答或 Agent 工具都不能先取回跨权限内容再在应用层遮盖。
 3. 审计日志追加写入，不通过普通业务路径更新或删除。
 4. 业务写入、审计记录与 Outbox 事件在同一事务提交。
 5. 普通删除使用可审计的软删除；物理清除是独立、显式且受权限约束的流程。
@@ -29,7 +29,7 @@
 ## 阶段路线
 
 - 阶段 2.5.0：许可证、公开架构、跨平台仓库规则与受 CI 保护的 PR 流程。
-- 阶段 2.5A：RBAC/ACL，先建立资源授权与统一策略边界。
-- 阶段 3：知识摄取与检索，引入 Worker、S3/MinIO、Resource/ResourceVersion、解析、分块、索引与权限过滤搜索。
+- 阶段 2.5A：RBAC/ACL（已交付），包含组织角色、项目 ACL、成员角色 API、concealment、CSRF，以及权限变化与审计/Outbox 的事务一致性。
+- 阶段 3：知识摄取与检索（下一阶段），引入 Worker、S3/MinIO、Resource/ResourceVersion、解析、分块、索引与检索前权限过滤。
 
 后续 Agent、模型 Provider 和工作流能力必须建立在租户、权限、审计和知识边界之上，不能绕过这些基础能力提前接入生产数据。

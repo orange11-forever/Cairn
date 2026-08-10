@@ -59,3 +59,50 @@ test("SDK validates identity responses from generated OpenAPI component schemas"
     false,
   );
 });
+
+test("SDK validates generated membership and ACL response schemas", () => {
+  const membershipFixture = {
+    id: "00000000-0000-4000-8000-000000003001",
+    userId: "00000000-0000-4000-8000-000000001001",
+    email: "member@example.com",
+    displayName: "Member",
+    role: "member",
+    createdAt: "2026-08-10T09:30:00Z",
+  };
+  assert.equal(matchesComponentSchema("MembershipDetailResponse", membershipFixture), true);
+  assert.equal(
+    matchesComponentSchema("MembershipDetailResponse", {
+      ...membershipFixture,
+      id: "not-a-uuid",
+    }),
+    false,
+  );
+  assert.equal(
+    matchesComponentSchema("MembershipDetailResponse", {
+      ...membershipFixture,
+      role: "operator",
+    }),
+    false,
+  );
+
+  const aclFixture = {
+    id: "00000000-0000-4000-8000-000000006001",
+    resourceType: "project",
+    resourceId: "00000000-0000-4000-8000-000000004001",
+    principalType: "user",
+    principalId: "00000000-0000-4000-8000-000000001001",
+    permission: "manage",
+    grantedByType: "user",
+    grantedById: "00000000-0000-4000-8000-000000001001",
+    grantedAt: "2026-08-10T09:30:00Z",
+  };
+  assert.equal(matchesComponentSchema("AclEntryResponse", aclFixture), true);
+  assert.equal(
+    matchesComponentSchema("AclEntryResponse", { ...aclFixture, permission: "deny" }),
+    false,
+  );
+  assert.equal(
+    matchesComponentSchema("AclEntryResponse", { ...aclFixture, resourceId: "not-a-uuid" }),
+    false,
+  );
+});

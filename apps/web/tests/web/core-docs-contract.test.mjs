@@ -12,6 +12,11 @@ const projectTaskEndpoints = [
   "PATCH /api/v1/tasks/{task_id}/status",
   "POST /api/v1/tasks/{task_id}/dependencies",
   "GET /api/v1/projects/{project_id}/events",
+  "GET /api/v1/organizations/{organization_id}/memberships",
+  "PATCH /api/v1/organizations/{organization_id}/memberships/{membership_id}",
+  "GET /api/v1/projects/{project_id}/acl",
+  "PUT /api/v1/projects/{project_id}/acl/{principal_type}/{principal_id}",
+  "DELETE /api/v1/projects/{project_id}/acl/{principal_type}/{principal_id}",
 ];
 
 function escapeRegExp(value) {
@@ -54,7 +59,7 @@ test("root documentation describes the real core development path", async () => 
   assert.doesNotMatch(readme, /真实鉴权.*仍未实现/);
 });
 
-test("API documentation records auth hardening and keeps deferred work explicit", async () => {
+test("API documentation records the delivered authorization boundary and deferred work", async () => {
   const readme = await readFile(new URL("apps/api/README.md", repositoryRoot), "utf8");
 
   assert.match(readme, /Bearer\/OIDC.*未实现/);
@@ -62,7 +67,11 @@ test("API documentation records auth hardening and keeps deferred work explicit"
   assert.match(readme, /CAIRN_AUTH_RATE_LIMIT_SECRET/);
   assert.match(readme, /CAIRN_TRUSTED_PROXY_CIDRS/);
   assert.match(readme, /pnpm auth:cleanup/);
-  assert.match(readme, /完整 RBAC\/ACL.*未实现/);
+  assert.match(readme, /阶段 2\.5A.*已交付/);
+  assert.match(readme, /read\s*<\s*write\s*<\s*manage/);
+  assert.match(readme, /viewer[^。\n]*上限[^。\n]*read/i);
+  assert.match(readme, /last_owner_required/);
+  assert.match(readme, /群组.*未实现/);
   assert.match(readme, /知识.*端点.*未实现/);
 });
 
@@ -87,6 +96,18 @@ test("API documentation inventories every delivered project and task endpoint", 
   const readme = await readFile(new URL("apps/api/README.md", repositoryRoot), "utf8");
 
   assertEndpointInventory(readme, "apps/api/README.md");
+});
+
+test("root documentation publishes Stage 2.5A without expanding the UI boundary", async () => {
+  const readme = await readFile(new URL("README.md", repositoryRoot), "utf8");
+
+  assert.match(readme, /已完成阶段 2\.5A/);
+  for (const role of ["owner", "admin", "member", "viewer"]) {
+    assert.match(readme, new RegExp(`\\b${role}\\b`, "i"));
+  }
+  assert.match(readme, /ACL.*UI.*未实现/i);
+  assert.match(readme, /群组.*未实现/);
+  assert.match(readme, /知识摄取.*搜索.*未实现/);
 });
 
 test("API documentation specifies the exact task transition graph and terminal states", async () => {
@@ -147,6 +168,25 @@ test("documentation distinguishes resource hiding from non-disclosing event read
     assert.match(readme, /events[^。\n]*不泄露[^。\n]*项目[^。\n]*存在/);
   }
   assert.doesNotMatch(apiReadme, /跨租户读取或写入返回统一的 `404 not_found`/);
+});
+
+test("API documentation authorizes event reads before querying the Outbox", async () => {
+  // Break caught: documentation bypasses the delivered project ACL policy or omits
+  // one of the three concealed inputs that short-circuit before Outbox retrieval.
+  const readme = await readFile(new URL("apps/api/README.md", repositoryRoot), "utf8");
+
+  assert.match(
+    readme,
+    /events[^。\n]*先[^。\n]*(?:ACL|授权)[^。\n]*`read`[^。\n]*授权通过[^。\n]*才[^。\n]*Outbox/i,
+  );
+  assert.match(
+    readme,
+    /events[^。\n]*不存在[^。\n]*跨组织[^。\n]*同组织[^。\n]*无 `read` 权限[^。\n]*`200`[^。\n]*空[^。\n]*`text\/event-stream`/i,
+  );
+  assert.doesNotMatch(
+    readme,
+    /events[^。\n]*(?:不先加载项目|不验证项目是否存在)/i,
+  );
 });
 
 test("API documentation specifies cursor pagination and bounded tenant-filtered SSE", async () => {

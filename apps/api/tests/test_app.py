@@ -70,8 +70,12 @@ def test_openapi_contains_only_approved_paths(client: TestClient) -> None:
         "/api/v1/session",
         "/api/v1/logout",
         "/api/v1/organizations/{organization_id}",
+        "/api/v1/organizations/{organization_id}/memberships",
+        "/api/v1/organizations/{organization_id}/memberships/{membership_id}",
         "/api/v1/projects",
         "/api/v1/projects/{project_id}",
+        "/api/v1/projects/{project_id}/acl",
+        "/api/v1/projects/{project_id}/acl/{principal_type}/{principal_id}",
         "/api/v1/projects/{project_id}/events",
         "/api/v1/projects/{project_id}/tasks",
         "/api/v1/tasks/{task_id}/status",
@@ -148,6 +152,79 @@ def test_openapi_project_events_declares_bounded_sse_read_contract() -> None:
     assert operation["responses"]["503"]["content"]["application/json"]["schema"][
         "$ref"
     ].endswith("/ErrorBody")
+
+
+def test_openapi_declares_project_acl_write_contracts() -> None:
+    schema = create_app().openapi()
+    path = schema["paths"][
+        "/api/v1/projects/{project_id}/acl/{principal_type}/{principal_id}"
+    ]
+
+    for operation in (path["put"], path["delete"]):
+        csrf_parameter = next(
+            parameter
+            for parameter in operation["parameters"]
+            if parameter["name"] == "X-CSRF-Token"
+        )
+        assert csrf_parameter["required"] is True
+        for status_code in ("404", "422", "503"):
+            assert operation["responses"][status_code]["content"]["application/json"][
+                "schema"
+            ]["$ref"].endswith("/ErrorBody")
+
+    request_schema = schema["components"]["schemas"]["AclGrantRequest"]
+    assert request_schema["additionalProperties"] is False
+    assert set(request_schema["properties"]) == {"permission"}
+    permission_ref = request_schema["properties"]["permission"]["$ref"]
+    permission_schema = schema["components"]["schemas"][permission_ref.rsplit("/", 1)[-1]]
+    assert permission_schema["enum"] == ["read", "write", "manage"]
+
+    for operation in (path["put"], path["delete"]):
+        parameters = {parameter["name"]: parameter for parameter in operation["parameters"]}
+        assert parameters["project_id"]["schema"]["format"] == "uuid"
+        assert parameters["principal_type"]["schema"] == {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16,
+            "title": "Principal Type",
+        }
+        assert parameters["principal_id"]["schema"] == {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "title": "Principal Id",
+        }
+
+
+def test_openapi_declares_membership_list_and_role_patch_contracts() -> None:
+    schema = create_app().openapi()
+    collection = schema["paths"][
+        "/api/v1/organizations/{organization_id}/memberships"
+    ]
+    item = schema["paths"][
+        "/api/v1/organizations/{organization_id}/memberships/{membership_id}"
+    ]
+
+    assert set(collection) == {"get"}
+    assert set(item) == {"patch"}
+    csrf_parameter = next(
+        parameter
+        for parameter in item["patch"]["parameters"]
+        if parameter["name"] == "X-CSRF-Token"
+    )
+    assert csrf_parameter["required"] is True
+    request_schema = schema["components"]["schemas"]["MembershipRoleUpdateRequest"]
+    assert request_schema["additionalProperties"] is False
+    assert set(request_schema["properties"]) == {"role"}
+    role_ref = request_schema["properties"]["role"]["$ref"]
+    role_schema = schema["components"]["schemas"][role_ref.rsplit("/", 1)[-1]]
+    assert role_schema["enum"] == ["owner", "admin", "member", "viewer"]
+
+    parameters = {
+        parameter["name"]: parameter for parameter in item["patch"]["parameters"]
+    }
+    assert parameters["organization_id"]["schema"]["format"] == "uuid"
+    assert parameters["membership_id"]["schema"]["format"] == "uuid"
 
 
 def test_openapi_declares_logout_csrf_header() -> None:

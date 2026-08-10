@@ -27,6 +27,7 @@ from cairn_api.auth.security import (
     verify_csrf_token,
     verify_password,
 )
+from cairn_api.authorization.types import MembershipRole
 from cairn_api.errors import ApiProblem
 from cairn_api.organizations.schemas import MembershipResponse, OrganizationResponse
 from cairn_api.settings import Settings
@@ -93,7 +94,7 @@ def _identity(
         ),
         membership=MembershipResponse(
             id=record.membership.id,
-            role=record.membership.role,
+            role=MembershipRole(record.membership.role),
         ),
         csrf_token=csrf_token,
     )

@@ -1,5 +1,114 @@
 // Generated from FastAPI OpenAPI by scripts/generate-sdk.mjs. Do not edit.
 export const componentSchemas = {
+  "AclEntryResponse": {
+    "properties": {
+      "grantedAt": {
+        "format": "date-time",
+        "title": "Grantedat",
+        "type": "string"
+      },
+      "grantedById": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Grantedbyid"
+      },
+      "grantedByType": {
+        "$ref": "#/components/schemas/ActorType"
+      },
+      "id": {
+        "format": "uuid",
+        "title": "Id",
+        "type": "string"
+      },
+      "permission": {
+        "$ref": "#/components/schemas/ProjectPermission"
+      },
+      "principalId": {
+        "title": "Principalid",
+        "type": "string"
+      },
+      "principalType": {
+        "$ref": "#/components/schemas/PrincipalType"
+      },
+      "resourceId": {
+        "format": "uuid",
+        "title": "Resourceid",
+        "type": "string"
+      },
+      "resourceType": {
+        "$ref": "#/components/schemas/ResourceType"
+      }
+    },
+    "required": [
+      "id",
+      "resourceType",
+      "resourceId",
+      "principalType",
+      "principalId",
+      "permission",
+      "grantedByType",
+      "grantedById",
+      "grantedAt"
+    ],
+    "title": "AclEntryResponse",
+    "type": "object"
+  },
+  "AclGrantRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "permission": {
+        "$ref": "#/components/schemas/ProjectPermission"
+      }
+    },
+    "required": [
+      "permission"
+    ],
+    "title": "AclGrantRequest",
+    "type": "object"
+  },
+  "AclPage": {
+    "properties": {
+      "items": {
+        "items": {
+          "$ref": "#/components/schemas/AclEntryResponse"
+        },
+        "title": "Items",
+        "type": "array"
+      },
+      "nextCursor": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Nextcursor"
+      }
+    },
+    "required": [
+      "items",
+      "nextCursor"
+    ],
+    "title": "AclPage",
+    "type": "object"
+  },
+  "ActorType": {
+    "enum": [
+      "user",
+      "system"
+    ],
+    "title": "ActorType",
+    "type": "string"
+  },
   "ApiVersionResponse": {
     "properties": {
       "service": {
@@ -156,6 +265,75 @@ export const componentSchemas = {
     "title": "LoginRequest",
     "type": "object"
   },
+  "MembershipDetailResponse": {
+    "properties": {
+      "createdAt": {
+        "format": "date-time",
+        "title": "Createdat",
+        "type": "string"
+      },
+      "displayName": {
+        "title": "Displayname",
+        "type": "string"
+      },
+      "email": {
+        "format": "email",
+        "title": "Email",
+        "type": "string"
+      },
+      "id": {
+        "format": "uuid",
+        "title": "Id",
+        "type": "string"
+      },
+      "role": {
+        "$ref": "#/components/schemas/MembershipRole"
+      },
+      "userId": {
+        "format": "uuid",
+        "title": "Userid",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "userId",
+      "email",
+      "displayName",
+      "role",
+      "createdAt"
+    ],
+    "title": "MembershipDetailResponse",
+    "type": "object"
+  },
+  "MembershipPage": {
+    "properties": {
+      "items": {
+        "items": {
+          "$ref": "#/components/schemas/MembershipDetailResponse"
+        },
+        "title": "Items",
+        "type": "array"
+      },
+      "nextCursor": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Nextcursor"
+      }
+    },
+    "required": [
+      "items",
+      "nextCursor"
+    ],
+    "title": "MembershipPage",
+    "type": "object"
+  },
   "MembershipResponse": {
     "properties": {
       "id": {
@@ -164,8 +342,7 @@ export const componentSchemas = {
         "type": "string"
       },
       "role": {
-        "title": "Role",
-        "type": "string"
+        "$ref": "#/components/schemas/MembershipRole"
       }
     },
     "required": [
@@ -173,6 +350,29 @@ export const componentSchemas = {
       "role"
     ],
     "title": "MembershipResponse",
+    "type": "object"
+  },
+  "MembershipRole": {
+    "enum": [
+      "owner",
+      "admin",
+      "member",
+      "viewer"
+    ],
+    "title": "MembershipRole",
+    "type": "string"
+  },
+  "MembershipRoleUpdateRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "role": {
+        "$ref": "#/components/schemas/MembershipRole"
+      }
+    },
+    "required": [
+      "role"
+    ],
+    "title": "MembershipRoleUpdateRequest",
     "type": "object"
   },
   "OrganizationResponse": {
@@ -198,6 +398,16 @@ export const componentSchemas = {
     ],
     "title": "OrganizationResponse",
     "type": "object"
+  },
+  "PrincipalType": {
+    "enum": [
+      "org",
+      "role",
+      "user",
+      "group"
+    ],
+    "title": "PrincipalType",
+    "type": "string"
   },
   "ProjectCreateRequest": {
     "additionalProperties": false,
@@ -254,6 +464,15 @@ export const componentSchemas = {
     ],
     "title": "ProjectPage",
     "type": "object"
+  },
+  "ProjectPermission": {
+    "enum": [
+      "read",
+      "write",
+      "manage"
+    ],
+    "title": "ProjectPermission",
+    "type": "string"
   },
   "ProjectResponse": {
     "properties": {
@@ -312,6 +531,13 @@ export const componentSchemas = {
     },
     "title": "ReadyResponse",
     "type": "object"
+  },
+  "ResourceType": {
+    "enum": [
+      "project"
+    ],
+    "title": "ResourceType",
+    "type": "string"
   },
   "TaskCreateRequest": {
     "additionalProperties": false,

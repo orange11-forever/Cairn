@@ -1,12 +1,6 @@
 from __future__ import annotations
 
-from _thread import LockType
-from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
-from threading import Event, Lock
-from time import monotonic, sleep
-from typing import Literal, cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -14,6 +8,8 @@ from cairn_api.audit.models import AuditLog
 from cairn_api.auth.models import User
 from cairn_api.auth.schemas import IdentityContextResponse, UserResponse
 from cairn_api.auth.service import RequestAuditContext
+from cairn_api.authorization.policy import AuthorizationPolicy
+from cairn_api.authorization.types import MembershipRole, ProjectPermission
 from cairn_api.db.session import Database
 from cairn_api.errors import ApiProblem
 from cairn_api.organizations.models import Membership, Organization
@@ -22,15 +18,19 @@ from cairn_api.projects import repository
 from cairn_api.projects.models import OutboxEvent, Project, Task, TaskDependency
 from cairn_api.projects.schemas import DependencyResponse, TaskResponse
 from cairn_api.projects.service import ProjectService
-from sqlalchemy import Connection, Engine, event, func, select, text
-from sqlalchemy.orm import Session, SessionTransaction
+from sqlalchemy import Engine, func, select, text
+from sqlalchemy.orm import Session
 
-WAIT_SECONDS = 5.0
-FUTURE_SECONDS = 10.0
-POLL_SECONDS = 0.01
-LOCK_TIMEOUT_MILLISECONDS = 6_000
-STATEMENT_TIMEOUT_MILLISECONDS = 8_000
-WorkerRole = Literal["holder", "waiter"]
+from .concurrency_helpers import (
+    FUTURE_SECONDS,
+    LOCK_TIMEOUT_MILLISECONDS,
+    STATEMENT_TIMEOUT_MILLISECONDS,
+    WAIT_SECONDS,
+    LockGate,
+    WorkerRole,
+    assert_waiting_on_lock,
+    install_race_session_deadlines,
+)
 
 
 def _audit(trace_id: str) -> RequestAuditContext:
@@ -41,37 +41,10 @@ def _audit(trace_id: str) -> RequestAuditContext:
     )
 
 
-def _set_race_transaction_deadlines(connection: Connection) -> None:
-    connection.execute(
-        text(
-            """
-            SELECT set_config('lock_timeout', :lock_timeout, true),
-                   set_config('statement_timeout', :statement_timeout, true)
-            """
-        ),
-        {
-            "lock_timeout": f"{LOCK_TIMEOUT_MILLISECONDS}ms",
-            "statement_timeout": f"{STATEMENT_TIMEOUT_MILLISECONDS}ms",
-        },
-    ).one()
-
-
-def _set_race_session_deadlines(
-    _session: Session,
-    _transaction: SessionTransaction,
-    connection: Connection,
-) -> None:
-    _set_race_transaction_deadlines(connection)
-
-
-def _install_race_session_deadlines(session: Session) -> None:
-    event.listen(session, "after_begin", _set_race_session_deadlines)
-
-
 @pytest.mark.integration
 def test_race_transaction_deadlines_are_active(database: Database) -> None:
     with database.session_factory() as session:
-        _install_race_session_deadlines(session)
+        install_race_session_deadlines(session)
         lock_timeout_ms, statement_timeout_ms = session.execute(
             text(
                 """
@@ -87,84 +60,6 @@ def test_race_transaction_deadlines_are_active(database: Database) -> None:
 
     assert int(lock_timeout_ms) == LOCK_TIMEOUT_MILLISECONDS
     assert int(statement_timeout_ms) == STATEMENT_TIMEOUT_MILLISECONDS
-
-
-@dataclass
-class _LockGate:
-    roles: dict[int, WorkerRole] = field(default_factory=dict[int, WorkerRole])
-    backend_pids: dict[WorkerRole, int] = field(default_factory=dict[WorkerRole, int])
-    holder_locked: Event = field(default_factory=Event)
-    waiter_entered: Event = field(default_factory=Event)
-    release_holder: Event = field(default_factory=Event)
-    guard: LockType = field(default_factory=Lock)
-
-    def register(self, session: Session, role: WorkerRole) -> None:
-        with self.guard:
-            self.roles[id(session)] = role
-
-    def before_locked_read(self, session: Session) -> WorkerRole | None:
-        with self.guard:
-            role = self.roles.get(id(session))
-        if role is None:
-            return None
-        backend_pid = session.scalar(text("SELECT pg_backend_pid()"))
-        assert isinstance(backend_pid, int)
-        with self.guard:
-            self.backend_pids[role] = backend_pid
-        if role == "waiter":
-            self.waiter_entered.set()
-        return role
-
-    def after_locked_read(self, role: WorkerRole | None) -> None:
-        if role != "holder":
-            return
-        self.holder_locked.set()
-        if not self.release_holder.wait(WAIT_SECONDS):
-            raise AssertionError("holder was not released before the coordination deadline")
-
-    def pid(self, role: WorkerRole) -> int:
-        with self.guard:
-            return self.backend_pids[role]
-
-
-def _assert_waiting_on_lock(engine: Engine, gate: _LockGate) -> None:
-    waiter_pid = gate.pid("waiter")
-    holder_pid = gate.pid("holder")
-    deadline = monotonic() + WAIT_SECONDS
-    last_activity: dict[str, object] | None = None
-    statement = text(
-        """
-        SELECT pg_blocking_pids(pid) AS blocking_pids,
-               state,
-               wait_event_type,
-               wait_event
-        FROM pg_stat_activity
-        WHERE pid = :waiter_pid
-        """
-    )
-    with engine.connect() as connection:
-        _set_race_transaction_deadlines(connection)
-        while monotonic() < deadline:
-            row = (
-                connection.execute(
-                    statement,
-                    {"waiter_pid": waiter_pid},
-                )
-                .mappings()
-                .one_or_none()
-            )
-            last_activity = dict(row) if row is not None else None
-            blockers = cast(
-                Sequence[int],
-                () if row is None or row["blocking_pids"] is None else row["blocking_pids"],
-            )
-            if holder_pid in blockers:
-                return
-            sleep(POLL_SECONDS)
-    raise AssertionError(
-        "waiter backend did not block on holder backend: "
-        f"holder_pid={holder_pid}, waiter_pid={waiter_pid}, activity={last_activity}"
-    )
 
 
 def _seed_identity(database: Database) -> IdentityContextResponse:
@@ -197,7 +92,10 @@ def _seed_identity(database: Database) -> IdentityContextResponse:
                 slug=organization.slug,
                 name=organization.name,
             ),
-            membership=MembershipResponse(id=membership.id, role=membership.role),
+            membership=MembershipResponse(
+                id=membership.id,
+                role=MembershipRole(membership.role),
+            ),
             csrf_token="not-used-by-service-tests",
         )
 
@@ -279,7 +177,7 @@ def test_competing_task_transitions_serialize_with_single_side_effect(
         )
     assert isinstance(baseline_audits, int)
 
-    gate = _LockGate()
+    gate = LockGate()
     real_get_task = repository.get_task
 
     def gated_get_task(
@@ -315,7 +213,7 @@ def test_competing_task_transitions_serialize_with_single_side_effect(
         trace_id: str,
     ) -> TaskResponse | ApiProblem:
         with database.session_factory() as session:
-            _install_race_session_deadlines(session)
+            install_race_session_deadlines(session)
             gate.register(session, role)
             try:
                 return ProjectService(session).transition_task(
@@ -338,7 +236,7 @@ def test_competing_task_transitions_serialize_with_single_side_effect(
                 "req-race-transition-cancelled",
             )
             assert gate.waiter_entered.wait(WAIT_SECONDS)
-            _assert_waiting_on_lock(migrated_engine, gate)
+            assert_waiting_on_lock(migrated_engine, gate)
             gate.release_holder.set()
             holder_result = holder.result(timeout=FUTURE_SECONDS)
             waiter_result = waiter.result(timeout=FUTURE_SECONDS)
@@ -383,7 +281,6 @@ def test_competing_task_transitions_serialize_with_single_side_effect(
 def test_concurrent_dependency_additions_cannot_close_cycle(
     database: Database,
     migrated_engine: Engine,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     identity = _seed_identity(database)
     project_id, task_ids = _create_project_with_tasks(
@@ -427,35 +324,38 @@ def test_concurrent_dependency_additions_cannot_close_cycle(
     assert isinstance(baseline_audits, int)
     assert isinstance(baseline_events, int)
 
-    gate = _LockGate()
-    real_get_project = repository.get_project
+    gate = LockGate()
+    target_project_id = project_id
 
-    def gated_get_project(
-        session: Session,
-        *,
-        org_id: UUID,
-        project_id: UUID,
-        for_update: bool = False,
-    ) -> Project | None:
-        if not for_update or project_id != target_project_id:
-            return real_get_project(
-                session,
-                org_id=org_id,
-                project_id=project_id,
+    class GatedAuthorizationPolicy(AuthorizationPolicy):
+        def __init__(self, session: Session) -> None:
+            super().__init__(session)
+            self._gate_session = session
+
+        def find_project(
+            self,
+            identity: IdentityContextResponse,
+            project_id: UUID,
+            required: ProjectPermission,
+            *,
+            for_update: bool = False,
+        ) -> Project | None:
+            if not for_update or project_id != target_project_id:
+                return super().find_project(
+                    identity,
+                    project_id,
+                    required,
+                    for_update=for_update,
+                )
+            role = gate.before_locked_read(self._gate_session)
+            project = super().find_project(
+                identity,
+                project_id,
+                required,
                 for_update=for_update,
             )
-        role = gate.before_locked_read(session)
-        project = real_get_project(
-            session,
-            org_id=org_id,
-            project_id=project_id,
-            for_update=for_update,
-        )
-        gate.after_locked_read(role)
-        return project
-
-    target_project_id = project_id
-    monkeypatch.setattr(repository, "get_project", gated_get_project)
+            gate.after_locked_read(role)
+            return project
 
     def add_dependency(
         role: WorkerRole,
@@ -464,10 +364,13 @@ def test_concurrent_dependency_additions_cannot_close_cycle(
         trace_id: str,
     ) -> DependencyResponse | ApiProblem:
         with database.session_factory() as session:
-            _install_race_session_deadlines(session)
+            install_race_session_deadlines(session)
             gate.register(session, role)
             try:
-                return ProjectService(session).add_dependency(
+                return ProjectService(
+                    session,
+                    policy=GatedAuthorizationPolicy(session),
+                ).add_dependency(
                     identity=identity,
                     predecessor_task_id=predecessor_task_id,
                     successor_task_id=successor_task_id,
@@ -494,7 +397,7 @@ def test_concurrent_dependency_additions_cannot_close_cycle(
                 "req-race-dependency-c-d",
             )
             assert gate.waiter_entered.wait(WAIT_SECONDS)
-            _assert_waiting_on_lock(migrated_engine, gate)
+            assert_waiting_on_lock(migrated_engine, gate)
             gate.release_holder.set()
             holder_result = holder.result(timeout=FUTURE_SECONDS)
             waiter_result = waiter.result(timeout=FUTURE_SECONDS)

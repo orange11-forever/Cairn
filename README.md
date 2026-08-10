@@ -11,11 +11,11 @@
 </p>
 
 > [!IMPORTANT]
-> Cairn 已完成阶段 2 的项目任务基础。当前核心开发链路包含真实 PostgreSQL 16、FastAPI Cookie 身份与项目任务 API、React/Vite Web 项目视图，以及仍承载文档原型的 Node mock；知识摄取、完整权限与 AI Provider 仍在后续阶段建设。
+> Cairn 已完成阶段 2.5A：当前核心链路使用真实 PostgreSQL 16，FastAPI API 已对组织角色实施 RBAC，并以项目 ACL 约束项目、任务与事件访问。知识摄取与搜索是下一阶段；文档、上传和问答仍由 Node mock 承载。
 
-## 阶段 2 已完成边界
+## 阶段 2 与 2.5A 已完成边界
 
-共享 API 契约、响应式 Web 与真实身份基础已经完成。阶段 2 在此基础上已交付项目、任务、依赖、状态机、事务性 Outbox 和有界 SSE 查询基础。
+共享 API 契约、响应式 Web 与真实身份基础已经完成。阶段 2 已交付项目、任务、依赖、状态机、事务性 Outbox 和有界 SSE 查询；阶段 2.5A 已交付组织角色、项目 ACL 与成员角色管理 API。
 
 - `@cairn/contracts` 统一现有登录、文档、问答、上传和错误响应契约；
 - Web 保留本地容错、请求取消、查询缓存和 UI 状态边界；
@@ -23,6 +23,8 @@
 - 已登录用户可在 Web 项目视图中查看游标分页的项目和任务，并通过服务端状态机更新任务状态；
 - 组织、用户、成员、Cookie 会话、登录限流状态和审计写入 PostgreSQL，Web 身份请求连接 FastAPI；
 - 项目、任务、依赖、审计行和 Outbox 事件写入 PostgreSQL；每次已接受的命令在同一事务中提交业务变更、审计记录和事件；
+- 项目读取和写入在数据库查询中同时应用组织边界、成员角色与规范化 ACL，不先取回无权资源再隐藏；
+- Web 项目页把 `viewer` 的任务视图呈现为只读；服务端始终是授权权威；
 - 文档、上传和问答仍连接 Node mock API，不代表知识系统已经完成。
 
 ## 项目与任务 API
@@ -40,14 +42,35 @@
 | 转换任务状态 | `PATCH /api/v1/tasks/{task_id}/status` | 由服务端状态机校验转换，不接受任意状态跳转 |
 | 添加任务依赖 | `POST /api/v1/tasks/{task_id}/dependencies` | 请求体中的前置任务指向路由中的后继任务，形成 predecessor → successor |
 | 查询项目事件 | `GET /api/v1/projects/{project_id}/events` | 按当前组织和项目 aggregate 过滤，返回一次最多 100 条、随后结束的 SSE 批次；不存在或跨租户 ID 均为空 `200` |
+| 列出组织成员 | `GET /api/v1/organizations/{organization_id}/memberships` | `owner` 与 `admin` 可使用稳定游标分页读取当前组织成员 |
+| 更新成员角色 | `PATCH /api/v1/organizations/{organization_id}/memberships/{membership_id}` | 按角色矩阵更新成员；最后一名 `owner` 不能被降级 |
+| 列出项目 ACL | `GET /api/v1/projects/{project_id}/acl` | 需要项目 `manage` 权限；只列出当前有效条目 |
+| 设置项目 ACL | `PUT /api/v1/projects/{project_id}/acl/{principal_type}/{principal_id}` | 幂等设置 `read`、`write` 或 `manage` |
+| 撤销项目 ACL | `DELETE /api/v1/projects/{project_id}/acl/{principal_type}/{principal_id}` | 幂等撤销当前有效条目并保留历史行 |
 
 `Project` 是阶段 2 的聚合根：任务创建、状态变化和依赖边都以所属项目作为 Outbox aggregate，项目事件查询也按组织与项目共同隔离。项目与任务列表的 `limit` 为 1–100，默认 50；响应通过 `nextCursor` 续页。
+
+## 组织 RBAC 与项目 ACL
+
+项目权限按 `read < write < manage` 递增：`write` 包含 `read`，`manage` 包含两者。创建项目时会授予当前组织 `read` 和创建者用户 `manage`；其他有效的 `org`、`role`、`user` ACL 取最高权限。角色矩阵如下：
+
+| 组织角色 | 项目与成员能力 |
+|---|---|
+| `owner` | 对当前组织所有项目隐式拥有 `manage`；可创建项目、列出成员并更新任意成员角色 |
+| `admin` | 对当前组织所有项目隐式拥有 `manage`；可创建项目、列出成员，只能在 `member` 与 `viewer` 之间切换角色 |
+| `member` | 可创建项目；对其他项目仅拥有匹配 ACL 授予的权限，不能管理成员角色 |
+| `viewer` | 不能创建项目；ACL 即使授予 `write` 或 `manage`，有效权限上限仍为 `read`，不能管理成员角色 |
+
+项目详情、任务读写和 ACL 操作对不存在、跨组织或权限不足的项目统一返回 `404 not_found`，避免暴露项目存在性。成员列表对当前组织中无管理权的 `member`/`viewer` 返回 `403 forbidden`；跨组织或不可见的成员目标返回 `404 not_found`。降级最后一名所有者返回 `409 last_owner_required`。
+
+Cookie 会话下的成员 `PATCH` 与 ACL `PUT`/`DELETE` 都要求合法 Origin 和会话绑定的 `X-CSRF-Token`。实际角色或 ACL 变化会把业务变更、追加式审计记录和 Outbox 事件放在同一事务提交；重复设置相同值和撤销不存在的 ACL 是无副作用的幂等成功，不新增审计或 Outbox 事件。
 
 显式延后：
 
 - 完整阶段/里程碑编辑 UI、React Flow/ELK 图编辑、拖拽 Kanban 和时间线可视化延后；
 - Outbox worker 发布、长连接重连 SSE、Redis fan-out、评论、通知和任务执行延后；
-- Bearer/OIDC、现有成员边界以外的 RBAC/ACL、知识摄取/搜索、Agent 执行和模型 Provider 延后。
+- 群组、邀请和成员移除未实现；ACL 管理 UI 与成员管理 UI 未实现；
+- Bearer/OIDC、知识摄取与搜索未实现；Agent 执行和模型 Provider 延后。
 
 ## 核心能力
 
@@ -184,9 +207,9 @@ pnpm dev:api
 - 版本探针：`http://127.0.0.1:8080/api/v1`
 - OpenAPI：`http://127.0.0.1:8080/docs`
 
-API 现已提供 PostgreSQL readiness、登录、会话恢复、注销、当前组织以及项目任务接口。登录失败限制由 PostgreSQL 持久化：同一规范化邮箱在 15 分钟窗口内最多失败 5 次，同一来源 IP 最多失败 30 次，达到阈值后阻止 15 分钟；表中仅保存使用 `CAIRN_AUTH_RATE_LIMIT_SECRET` 生成的 HMAC 摘要，不保存明文邮箱或 IP。文档、上传和问答仍由 Node mock 提供。
+API 现已提供 PostgreSQL readiness、登录、会话恢复、注销、当前组织、项目任务、成员角色与项目 ACL 接口。登录失败限制由 PostgreSQL 持久化：同一规范化邮箱在 15 分钟窗口内最多失败 5 次，同一来源 IP 最多失败 30 次，达到阈值后阻止 15 分钟；表中仅保存使用 `CAIRN_AUTH_RATE_LIMIT_SECRET` 生成的 HMAC 摘要，不保存明文邮箱或 IP。文档、上传和问答仍由 Node mock 提供。
 
-当前切片不包含 Bearer/OIDC、完整 RBAC/ACL、知识摄取、知识端点、任务执行或 AI Provider。AI Provider 与外部 Agent 接入必须建立在组织、权限、审计、项目和知识基础完成之后，不能绕过这些边界提前扩展。
+当前切片不包含 Bearer/OIDC、群组、邀请、成员移除、ACL/成员管理 UI、知识摄取与搜索、任务执行或 AI Provider。AI Provider 与外部 Agent 接入必须建立在组织、权限、审计、项目和知识基础完成之后，不能绕过这些边界提前扩展。
 
 可按需清理过期或已撤销的认证状态：
 

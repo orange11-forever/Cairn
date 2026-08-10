@@ -1,6 +1,6 @@
 # apps/api: FastAPI 后端
 
-`apps/api` 是根 uv workspace 中可安装、可独立启动的 FastAPI package，现已提供 PostgreSQL 组织身份、Cookie 会话、项目任务、审计、事务性 Outbox、有界 SSE、配置、请求 ID、统一错误、健康检查和 OpenAPI；知识、Agent 执行和治理能力仍在后续阶段。
+`apps/api` 是根 uv workspace 中可安装、可独立启动的 FastAPI package，现已提供 PostgreSQL 组织身份、Cookie 会话、组织 RBAC、项目 ACL、项目任务、审计、事务性 Outbox、有界 SSE、配置、请求 ID、统一错误、健康检查和 OpenAPI；知识、Agent 执行和治理能力仍在后续阶段。
 
 Web 的身份请求连接本 API；文档、上传和问答原型仍连接 `mocks/docs-server.mjs`。当前产品、架构和阶段路线以 [公开架构说明](../../docs/architecture.md) 为准。
 
@@ -30,8 +30,9 @@ Docker Desktop 必须保持运行。生产环境必须使用 HTTPS `APP_URL`/`CO
 ## 当前能力边界
 
 - 已实现：组织、用户、成员关系、Argon2id 密码、Cookie 会话、CSRF、PostgreSQL 登录限流、当前组织查询、项目、任务、任务依赖、状态机、追加式审计、事务性 Outbox 和有界 SSE 查询。
+- 阶段 2.5A 已交付项目范围的组织 RBAC、规范化 ACL、成员角色列表与更新 API。
 - `Bearer/OIDC`：未实现。
-- 完整 RBAC/ACL：未实现。
+- 群组、邀请、成员移除、ACL 管理 UI 与成员管理 UI：未实现。
 - 知识摄取与知识端点：未实现，文档、上传和问答仍由 Node mock 提供。
 - AI Provider 与外部 Agent：未实现，必须等待组织、权限、审计、项目和知识基础完成。
 
@@ -43,10 +44,9 @@ Docker Desktop 必须保持运行。生产环境必须使用 HTTPS `APP_URL`/`CO
 
 ## 阶段 2 项目任务契约
 
-项目与任务端点只信任认证依赖提供的 `CurrentIdentity`，以其中的组织作为租户权威。创建请求明确禁止客户端提交可信 `org_id`、创建者或 actor 字段。项目详情与任务读写对缺失或跨租户资源返回 `404 not_found`；events 查询不先加载项目，而是按身份组织与 `Project` aggregate 过滤，所以使用下述非泄露空流语义：
+项目与任务端点只信任认证依赖提供的 `CurrentIdentity`，以其中的组织作为租户权威。创建请求明确禁止客户端提交可信 `org_id`、创建者或 actor 字段。项目详情与任务读写对缺失或跨租户资源返回 `404 not_found`；events 查询则先按当前组织、成员角色与项目 ACL 校验 `read`，授权通过才按组织与 `Project` aggregate 查询 Outbox，所以使用下述非泄露空流语义：
 
-- `events` 查询不存在的项目 ID：返回 `200` 空 `text/event-stream`，不泄露项目是否存在；
-- `events` 查询跨租户项目 ID：返回 `200` 空 `text/event-stream`，同样不泄露项目是否存在。
+- `events` 查询不存在、跨组织（跨租户）或同组织但无 `read` 权限的项目 ID：均返回 `200` 空 `text/event-stream`，不查询 Outbox，也不泄露项目是否存在或调用者缺少权限。
 
 ### 端点
 
@@ -59,9 +59,31 @@ Docker Desktop 必须保持运行。生产环境必须使用 HTTPS `APP_URL`/`CO
 | `GET /api/v1/projects/{project_id}/tasks` | 分页列出项目任务 |
 | `PATCH /api/v1/tasks/{task_id}/status` | 通过服务端状态机转换任务状态 |
 | `POST /api/v1/tasks/{task_id}/dependencies` | 添加指向路由任务的前置依赖 |
-| `GET /api/v1/projects/{project_id}/events` | 读取有界项目 SSE 事件批次 |
+| `GET /api/v1/projects/{project_id}/events` | 先执行项目 `read` 授权；通过后读取有界 Outbox SSE 批次，否则返回空 `200` stream |
+| `GET /api/v1/organizations/{organization_id}/memberships` | 分页列出当前组织成员；仅 `owner`、`admin` |
+| `PATCH /api/v1/organizations/{organization_id}/memberships/{membership_id}` | 按角色矩阵更新成员角色 |
+| `GET /api/v1/projects/{project_id}/acl` | 分页列出项目当前有效 ACL；需要 `manage` |
+| `PUT /api/v1/projects/{project_id}/acl/{principal_type}/{principal_id}` | 幂等设置项目 ACL |
+| `DELETE /api/v1/projects/{project_id}/acl/{principal_type}/{principal_id}` | 幂等撤销项目 ACL 并保留历史行 |
 
-Cookie 会话下的 `POST`/`PATCH` 命令要求合法 Origin 和会话绑定的 `X-CSRF-Token`。已接受的项目创建、任务创建、状态转换或依赖创建会把业务变化、追加式审计行与 Outbox 事件放在同一数据库事务中提交。
+Cookie 会话下的 `POST`/`PATCH`/`PUT`/`DELETE` 命令要求合法 Origin 和会话绑定的 `X-CSRF-Token`。已接受的项目、任务、成员角色或 ACL 变化会把业务变化、追加式审计行与 Outbox 事件放在同一数据库事务中提交。
+
+### 阶段 2.5A 授权与成员管理
+
+项目权限的顺序严格为 `read < write < manage`，更高权限包含更低权限。授权查询以当前组织为第一过滤条件，再组合组织角色和当前有效的规范化 ACL：
+
+| 组织角色 | 项目权限 | 项目创建 | 成员管理 |
+|---|---|---|---|
+| `owner` | 所有当前组织项目隐式 `manage` | 允许 | 可列出成员并把任意成员切换为任意角色 |
+| `admin` | 所有当前组织项目隐式 `manage` | 允许 | 可列出成员；只能在 `member` 与 `viewer` 之间切换 |
+| `member` | 匹配 `org`、`role`、`user` ACL 的最高权限 | 允许 | 不允许 |
+| `viewer` | 匹配 ACL 后的有效权限上限为 `read` | 禁止，返回 `403 forbidden` | 不允许 |
+
+创建项目在同一事务中写入组织 `read` 和创建者用户 `manage` 两条 ACL。ACL 当前支持 `org`、`role` 与当前组织内的 `user` principal；群组 principal 未实现，非法类型、外部组织、组织外用户或非法角色返回 `422 invalid_principal`。ACL 没有 deny 条目；多个匹配 grant 取最高权限。
+
+项目详情、任务读写和 ACL 读写要求相应的 `read`、`write` 或 `manage`。不存在、跨组织和权限不足的项目统一返回 `404 not_found`，因此调用者不能借错误差异探测项目。`events` 继续使用前述空 `200 text/event-stream` 语义。成员列表对当前组织内权限不足的 `member`/`viewer` 返回 `403 forbidden`；组织 ID 不匹配、成员不存在或成员来自其他组织返回 `404 not_found`。
+
+`owner` 可管理所有角色；`admin` 不能管理 `owner`/`admin`，也不能把成员提升到这两个角色。组织的最后一名 `owner` 不能被降级，返回 `409 last_owner_required`。设置已有的相同角色或相同 ACL、以及撤销不存在的 ACL 都是幂等成功，不写新的审计或 Outbox；实际变化会锁定授权边界，并在业务写入、审计记录与 Outbox 事件全部成功后一起提交，失败则整体回滚。
 
 ### 任务状态机
 
@@ -95,28 +117,29 @@ Cookie 会话下的 `POST`/`PATCH` 命令要求合法 Origin 和会话绑定的 
 
 项目列表和项目任务列表采用稳定、不透明的 `(created_at, id)` 游标分页。查询参数 `limit` 范围为 1–100、默认 50；有下一页时响应提供 `nextCursor`，客户端应原样作为下一次请求的 `cursor`，不能解析或构造它。无效游标返回 `422 invalid_cursor`。
 
-`GET /api/v1/projects/{project_id}/events?after=...` 不验证项目是否存在，而是按 `(occurred_at, id)` 升序读取当前组织、当前 `Project` 聚合的 Outbox 事件。响应为 `text/event-stream`；SSE 批次一次最多 100 个 frame，发送完即结束。`id` 是不透明续读游标，可在下一次请求的 `after` 中使用。这不是长连接订阅，数据库错误会在开始响应前返回 `503 database_unavailable`，其他租户的事件不会进入结果；不存在或跨租户的项目 ID 都得到相同的空 `200 text/event-stream`，而不是 `404`。
+`GET /api/v1/projects/{project_id}/events?after=...` 先在当前组织中结合成员角色与项目 ACL 校验 `read`。不存在、跨组织或同组织但无读取权限的项目都会在查询 Outbox 前得到相同的空 `200 text/event-stream`，而不是 `404`；只有授权通过后，服务端才按 `(occurred_at, id)` 升序读取当前组织、当前 `Project` 聚合的 Outbox 事件。响应为 `text/event-stream`；SSE 批次一次最多 100 个 frame，发送完即结束。`id` 是不透明续读游标，可在下一次请求的 `after` 中使用。这不是长连接订阅，数据库错误会在开始响应前返回 `503 database_unavailable`，其他租户的事件不会进入结果。
 
 ### 显式延后
 
 - 完整阶段/里程碑编辑 UI、React Flow/ELK 图编辑、拖拽 Kanban 和时间线可视化延后。
 - Outbox worker 发布、长连接重连 SSE、Redis fan-out、评论、通知和任务执行延后。
-- Bearer/OIDC、现有成员边界以外的 RBAC/ACL、知识摄取/搜索、Agent 执行和模型 Provider 延后。
+- 群组、邀请、成员移除、ACL/成员管理 UI、Bearer/OIDC、知识摄取/搜索、Agent 执行和模型 Provider 延后。
 
 ## 实施顺序
 
 | 阶段 | API 侧主要交付 |
 |---|---|
 | 0 | FastAPI 骨架、`/health`、`/api/v1`、统一错误、OpenAPI SDK、测试和 CI |
-| 1 | 已完成组织、成员、Cookie 身份、审计和 PostgreSQL 迁移；Bearer、RBAC、ACL 延后 |
+| 1 | 已完成组织、成员、Cookie 身份、审计和 PostgreSQL 迁移；Bearer 延后 |
 | 2 | 已完成项目与任务 DAG、状态机、Outbox 和有界 SSE 查询模型 |
+| 2.5A | 已完成组织 RBAC、项目 ACL 与成员角色管理 API；群组、邀请、成员移除和管理 UI 延后 |
 | 3 | 通用资源、对象存储、摄取状态、权限感知搜索和引用 |
 | 4 | Agent、模型策略、运行、预算、审批与 AgentRunner 契约 |
 | 5-6 | 外部编程 Agent、代码智能、OIDC/SAML、配额、审计查询和部署治理 |
 
 ## 后续数据模型不变量
 
-以下内容是后续阶段必须遵守的设计约束，不代表对应业务表、端点或流程已经实现。
+以下内容同时记录已交付授权边界和后续阶段必须遵守的设计约束；明确标为后续的资源、搜索、Agent 或 Provider 能力尚未实现。
 
 ### 1. 组织是租户边界
 
@@ -134,19 +157,20 @@ Cookie 会话下的 `POST`/`PATCH` 命令要求合法 Origin 和会话绑定的 
 授权事实来源是规范化 ACL 表，不是资源行上的字符串数组：
 
 ```text
-resources 1 --- N resource_acl_entries
+projects 1 --- N resource_acl_entries
 
 resource_acl_entries:
   org_id
+  resource_type
   resource_id
   principal_type   user | group | role | org
   principal_id
   permission       read | write | manage
-  created_at
-  revoked_at
+  granted_by_type / granted_by_id / granted_at
+  revoked_by_type / revoked_by_id / revoked_at
 ```
 
-`principal_type` 与 `principal_id` 分列保存，避免裸 id 在用户、群组和角色之间产生歧义。唯一约束至少覆盖组织、资源、principal 和 permission，普通授权查询忽略 `revoked_at` 非空的条目。
+`principal_type` 与 `principal_id` 分列保存，避免裸 id 在用户、群组和角色之间产生歧义。当前只实现 `project` 资源以及 `org`、`role`、`user` principal；群组未实现。每个组织、资源和 principal 同时最多一条当前有效授权，普通授权查询忽略 `revoked_at` 非空的历史条目。
 
 搜索索引可以保存版本化 principal token 快照并建立 GIN 索引，但快照只用于查询加速：
 

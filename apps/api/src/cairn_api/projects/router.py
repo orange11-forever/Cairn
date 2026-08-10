@@ -1,21 +1,21 @@
-from collections.abc import Callable
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 from starlette.responses import StreamingResponse
 
+from cairn_api.auth.csrf import CSRF_REQUIRED_OPENAPI, require_mutation_csrf
 from cairn_api.auth.dependencies import (
     CurrentIdentity,
     get_audit_context,
-    get_request_settings,
 )
-from cairn_api.auth.security import verify_csrf_token
 from cairn_api.auth.service import RequestAuditContext
+from cairn_api.authorization.policy import AuthorizationPolicy
+from cairn_api.authorization.types import ProjectPermission
 from cairn_api.db.session import get_db
-from cairn_api.errors import ApiProblem, ErrorBody
-from cairn_api.projects import repository
+from cairn_api.errors import ErrorBody
+from cairn_api.pagination import load_cursor_page
 from cairn_api.projects.events import materialize_project_event_frames
 from cairn_api.projects.schemas import (
     DependencyResponse,
@@ -46,57 +46,6 @@ MUTATION_ERRORS: dict[int | str, dict[str, Any]] = {
     **AUTHENTICATED_ERRORS,
     403: {"description": "请求来源或 CSRF 令牌无效", "model": ErrorBody},
 }
-CSRF_REQUIRED_OPENAPI: dict[str, Any] = {
-    "parameters": [
-        {
-            "name": "X-CSRF-Token",
-            "in": "header",
-            "required": True,
-            "schema": {"type": "string", "minLength": 1},
-            "description": "Session-bound CSRF token returned by login or session restore.",
-        }
-    ]
-}
-
-
-def require_mutation_csrf(
-    request: Request,
-) -> None:
-    settings = get_request_settings(request)
-    expected_origin = str(settings.app_url).rstrip("/") if settings.app_url is not None else None
-    session_token = request.cookies.get(settings.session_cookie_name)
-    csrf_token = request.headers.get("x-csrf-token")
-    valid_token = False
-    if (
-        session_token is not None
-        and csrf_token is not None
-        and session_token.isascii()
-        and csrf_token.isascii()
-    ):
-        valid_token = verify_csrf_token(
-            session_token,
-            csrf_token,
-            settings.csrf_secret.encode("utf-8"),
-        )
-    if expected_origin is None or request.headers.get("origin") != expected_origin or not valid_token:
-        raise ApiProblem(
-            status_code=403,
-            code="csrf_failed",
-            message="请求来源或 CSRF 令牌无效",
-        )
-
-
-def _load_cursor_page[Page](load: Callable[[], Page]) -> Page:
-    try:
-        return load()
-    except repository.InvalidCursorError as exc:
-        raise ApiProblem(
-            status_code=422,
-            code="invalid_cursor",
-            message="分页游标无效",
-        ) from exc
-
-
 @router.post(
     "/projects",
     response_model=ProjectResponse,
@@ -130,7 +79,7 @@ def list_projects(
     cursor: Cursor = None,
     limit: PageLimit = 50,
 ) -> ProjectPage:
-    return _load_cursor_page(
+    return load_cursor_page(
         lambda: ProjectService(session).list_projects(
             identity=identity,
             cursor=cursor,
@@ -176,6 +125,19 @@ def get_project_events(
     session: SessionDependency,
     after: EventCursor = None,
 ) -> StreamingResponse:
+    if (
+        AuthorizationPolicy(session).find_project(
+            identity,
+            project_id,
+            ProjectPermission.READ,
+        )
+        is None
+    ):
+        return StreamingResponse(
+            iter(()),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache"},
+        )
     frames = materialize_project_event_frames(
         session,
         org_id=identity.organization.id,
@@ -235,7 +197,7 @@ def list_project_tasks(
     cursor: Cursor = None,
     limit: PageLimit = 50,
 ) -> TaskPage:
-    return _load_cursor_page(
+    return load_cursor_page(
         lambda: ProjectService(session).list_project_tasks(
             identity=identity,
             project_id=project_id,
