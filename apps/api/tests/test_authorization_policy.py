@@ -1,11 +1,38 @@
+from uuid import UUID
+
 import pytest
+from cairn_api.auth.schemas import IdentityContextResponse, UserResponse
 from cairn_api.authorization.policy import (
+    AuthorizationPolicy,
     can_change_membership_role,
     can_create_project,
     effective_project_permission,
     permission_allows,
 )
 from cairn_api.authorization.types import MembershipRole, ProjectPermission
+from cairn_api.errors import ApiProblem
+from cairn_api.organizations.schemas import MembershipResponse, OrganizationResponse
+from sqlalchemy.orm import Session
+
+
+def _identity(role: MembershipRole) -> IdentityContextResponse:
+    return IdentityContextResponse(
+        user=UserResponse(
+            id=UUID("00000000-0000-4000-8000-000000000101"),
+            email="policy@example.test",
+            display_name=None,
+        ),
+        organization=OrganizationResponse(
+            id=UUID("00000000-0000-4000-8000-000000000201"),
+            slug="policy",
+            name="Policy",
+        ),
+        membership=MembershipResponse(
+            id=UUID("00000000-0000-4000-8000-000000000301"),
+            role=role,
+        ),
+        csrf_token="test-csrf",
+    )
 
 
 @pytest.mark.parametrize(
@@ -63,3 +90,20 @@ def test_project_creation_and_membership_role_matrix_are_explicit() -> None:
     assert not can_change_membership_role(
         MembershipRole.MEMBER, MembershipRole.VIEWER, MembershipRole.MEMBER
     )
+
+
+def test_database_policy_rejects_viewer_project_creation_with_forbidden_problem() -> None:
+    # Break caught: route callers can bypass the project-creation role matrix.
+    policy = AuthorizationPolicy(Session())
+
+    with pytest.raises(ApiProblem) as exc_info:
+        policy.require_project_creation(_identity(MembershipRole.VIEWER))
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.code == "forbidden"
+    assert exc_info.value.message == "没有执行该操作的权限"
+
+
+def test_database_policy_allows_member_project_creation() -> None:
+    # Break caught: ordinary members are incorrectly denied project creation.
+    AuthorizationPolicy(Session()).require_project_creation(_identity(MembershipRole.MEMBER))

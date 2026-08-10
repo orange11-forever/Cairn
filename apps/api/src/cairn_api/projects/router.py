@@ -1,4 +1,3 @@
-from collections.abc import Callable
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -15,7 +14,7 @@ from cairn_api.auth.security import verify_csrf_token
 from cairn_api.auth.service import RequestAuditContext
 from cairn_api.db.session import get_db
 from cairn_api.errors import ApiProblem, ErrorBody
-from cairn_api.projects import repository
+from cairn_api.pagination import load_cursor_page
 from cairn_api.projects.events import materialize_project_event_frames
 from cairn_api.projects.schemas import (
     DependencyResponse,
@@ -86,17 +85,6 @@ def require_mutation_csrf(
         )
 
 
-def _load_cursor_page[Page](load: Callable[[], Page]) -> Page:
-    try:
-        return load()
-    except repository.InvalidCursorError as exc:
-        raise ApiProblem(
-            status_code=422,
-            code="invalid_cursor",
-            message="分页游标无效",
-        ) from exc
-
-
 @router.post(
     "/projects",
     response_model=ProjectResponse,
@@ -130,7 +118,7 @@ def list_projects(
     cursor: Cursor = None,
     limit: PageLimit = 50,
 ) -> ProjectPage:
-    return _load_cursor_page(
+    return load_cursor_page(
         lambda: ProjectService(session).list_projects(
             identity=identity,
             cursor=cursor,
@@ -235,7 +223,7 @@ def list_project_tasks(
     cursor: Cursor = None,
     limit: PageLimit = 50,
 ) -> TaskPage:
-    return _load_cursor_page(
+    return load_cursor_page(
         lambda: ProjectService(session).list_project_tasks(
             identity=identity,
             project_id=project_id,

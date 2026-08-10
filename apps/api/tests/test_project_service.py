@@ -10,6 +10,7 @@ from cairn_api.auth.service import RequestAuditContext
 from cairn_api.authorization.types import MembershipRole
 from cairn_api.errors import ApiProblem
 from cairn_api.organizations.schemas import MembershipResponse, OrganizationResponse
+from cairn_api.pagination import InvalidCursorError
 from cairn_api.projects import repository
 from cairn_api.projects.models import OutboxEvent, Project, Task, TaskDependency
 from cairn_api.projects.service import ALLOWED_TASK_TRANSITIONS, ProjectService
@@ -595,7 +596,7 @@ def test_project_repository_reports_malformed_cursor_with_dedicated_error() -> N
     session = MagicMock(spec=Session)
 
     # Break caught: cursor decoding leaks a generic ValueError that callers cannot distinguish.
-    with pytest.raises(repository.InvalidCursorError):
+    with pytest.raises(InvalidCursorError):
         repository.list_projects(
             session,
             org_id=uuid4(),
