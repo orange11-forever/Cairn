@@ -3,6 +3,7 @@ from logging.config import fileConfig
 from alembic import context
 from cairn_api.audit.models import AuditLog
 from cairn_api.auth.models import AuthSession, User
+from cairn_api.authorization.models import ResourceAclEntry
 from cairn_api.db.base import Base
 from cairn_api.organizations.models import Membership, Organization
 from cairn_api.projects.models import (
@@ -33,6 +34,7 @@ _MAPPED_TYPES = (
     OutboxEvent,
     Project,
     ProjectStage,
+    ResourceAclEntry,
     Task,
     TaskDependency,
     User,
