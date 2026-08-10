@@ -72,6 +72,8 @@ def test_openapi_contains_only_approved_paths(client: TestClient) -> None:
         "/api/v1/organizations/{organization_id}",
         "/api/v1/projects",
         "/api/v1/projects/{project_id}",
+        "/api/v1/projects/{project_id}/acl",
+        "/api/v1/projects/{project_id}/acl/{principal_type}/{principal_id}",
         "/api/v1/projects/{project_id}/events",
         "/api/v1/projects/{project_id}/tasks",
         "/api/v1/tasks/{task_id}/status",
@@ -148,6 +150,29 @@ def test_openapi_project_events_declares_bounded_sse_read_contract() -> None:
     assert operation["responses"]["503"]["content"]["application/json"]["schema"][
         "$ref"
     ].endswith("/ErrorBody")
+
+
+def test_openapi_declares_project_acl_write_contracts() -> None:
+    schema = create_app().openapi()
+    path = schema["paths"][
+        "/api/v1/projects/{project_id}/acl/{principal_type}/{principal_id}"
+    ]
+
+    for operation in (path["put"], path["delete"]):
+        csrf_parameter = next(
+            parameter
+            for parameter in operation["parameters"]
+            if parameter["name"] == "X-CSRF-Token"
+        )
+        assert csrf_parameter["required"] is True
+        for status_code in ("404", "422", "503"):
+            assert operation["responses"][status_code]["content"]["application/json"][
+                "schema"
+            ]["$ref"].endswith("/ErrorBody")
+
+    request_schema = schema["components"]["schemas"]["AclGrantRequest"]
+    assert request_schema["additionalProperties"] is False
+    assert set(request_schema["properties"]) == {"permission"}
 
 
 def test_openapi_declares_logout_csrf_header() -> None:
