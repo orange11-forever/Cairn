@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { stopProcessTree, waitForServer } from "../apps/web/scripts/process-utils.mjs";
-import { resolveDockerCommand } from "./docker-command.mjs";
+import { dockerEnvironment, resolveDockerCommand } from "./docker-command.mjs";
 import { spawnInvocation } from "./spawn-command.mjs";
 
 const REPOSITORY_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -111,17 +111,26 @@ export function resolveVerificationConfig(
   };
 }
 
-export function createProcessManager({ spawnProcess = spawn } = {}) {
+export function createProcessManager({
+  spawnProcess = spawn,
+  platform = process.platform,
+} = {}) {
   const active = new Set();
 
   function start(command, args, options = {}) {
     const invocation = spawnInvocation(command, args);
+    const childEnvironment = dockerEnvironment({
+      dockerCommand: invocation.command,
+      env: options.env ?? process.env,
+      platform,
+    });
     const child = spawnProcess(invocation.command, invocation.args, {
       cwd: REPOSITORY_ROOT,
       detached: process.platform !== "win32",
       shell: false,
       stdio: "inherit",
       ...options,
+      env: childEnvironment,
     });
     active.add(child);
     const completion = new Promise((resolveCompletion) => {
