@@ -172,18 +172,23 @@ class Settings(BaseSettings):
             raise ValueError("production cannot use the example auth rate-limit secret")
         if self.auth_rate_limit_secret == self.csrf_secret:
             raise ValueError("production auth rate-limit secret must differ from the CSRF secret")
-        if self.object_store_access_key.get_secret_value() == "cairn-local":
+        object_store_access_key = self.object_store_access_key.get_secret_value().strip()
+        object_store_secret_key = self.object_store_secret_key.get_secret_value().strip()
+        search_audit_secret = self.search_audit_secret.get_secret_value().strip()
+        if not object_store_access_key:
+            raise ValueError("production object-store access key cannot be blank")
+        if not object_store_secret_key:
+            raise ValueError("production object-store secret key cannot be blank")
+        if object_store_access_key == "cairn-local":
             raise ValueError("production cannot use the example object-store access key")
-        if (
-            self.object_store_secret_key.get_secret_value()
-            == "cairn-local-only-change-before-deploying"
-        ):
+        if object_store_secret_key == "cairn-local-only-change-before-deploying":
             raise ValueError("production cannot use the example object-store secret key")
         if not self.embedding_api_key.get_secret_value().strip():
             raise ValueError("production requires a nonblank Embedding API key")
-        if (
-            self.search_audit_secret.get_secret_value()
-            == "local-development-search-audit-secret-change-before-deploying-32-bytes"
+        if len(search_audit_secret.encode("utf-8")) < 32:
+            raise ValueError("production search audit secret must be at least 32 bytes")
+        if search_audit_secret == (
+            "local-development-search-audit-secret-change-before-deploying-32-bytes"
         ):
             raise ValueError("production cannot use the example search audit secret")
         if self.search_org_limit_per_minute < 1:

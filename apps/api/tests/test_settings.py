@@ -11,7 +11,7 @@ PRODUCTION_SETTINGS: dict[str, object] = {
     "object_store_access_key": "production-object-store-access-key",
     "object_store_secret_key": "production-object-store-secret-key",
     "embedding_api_key": "production-embedding-api-key",
-    "search_audit_secret": "production-search-audit-secret",
+    "search_audit_secret": "production-search-audit-secret-at-least-32-bytes",
 }
 
 
@@ -134,6 +134,51 @@ def test_production_rejects_example_knowledge_secrets(
 ) -> None:
     with pytest.raises(ValidationError, match="example"):
         production_settings(**{field_name: example_value})
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    ["object_store_access_key", "object_store_secret_key"],
+)
+@pytest.mark.parametrize("value", ["", " \t "])
+def test_production_rejects_blank_object_store_credentials(
+    field_name: str, value: str
+) -> None:
+    with pytest.raises(ValidationError, match="object-store.*blank"):
+        production_settings(**{field_name: value})
+
+
+@pytest.mark.parametrize(
+    ("field_name", "example_value"),
+    [
+        ("object_store_access_key", " \t cairn-local "),
+        (
+            "object_store_secret_key",
+            " cairn-local-only-change-before-deploying \n",
+        ),
+        (
+            "search_audit_secret",
+            " local-development-search-audit-secret-change-before-deploying-32-bytes ",
+        ),
+    ],
+)
+def test_production_rejects_padded_example_knowledge_secrets(
+    field_name: str, example_value: str
+) -> None:
+    with pytest.raises(ValidationError, match="example"):
+        production_settings(**{field_name: example_value})
+
+
+@pytest.mark.parametrize("secret", ["", " \t ", "x", "x" * 31])
+def test_production_requires_32_utf8_bytes_for_search_audit_secret(secret: str) -> None:
+    with pytest.raises(ValidationError, match="search audit secret.*32 bytes"):
+        production_settings(search_audit_secret=secret)
+
+
+def test_production_counts_search_audit_secret_length_in_utf8_bytes() -> None:
+    settings = production_settings(search_audit_secret="密" * 16)
+
+    assert settings.search_audit_secret.get_secret_value() == "密" * 16
 
 
 def test_production_rejects_blank_embedding_api_key() -> None:

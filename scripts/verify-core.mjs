@@ -12,6 +12,7 @@ const COMPOSE_FILE = resolve(REPOSITORY_ROOT, "deploy/compose/core.yml");
 const UV = process.platform === "win32" ? "uv.exe" : "uv";
 const NEVER = new Promise(() => undefined);
 const STAGES = Object.freeze([
+  "minio",
   "migrate",
   "integration",
   "seed",
@@ -64,9 +65,13 @@ export function resolveVerificationConfig(
     CAIRN_AUTH_RATE_LIMIT_SECRET: "proxy-verification-rate-limit-secret-at-least-32-bytes",
     CAIRN_CSRF_SECRET: "proxy-verification-csrf-secret-at-least-32-bytes",
     CAIRN_ENVIRONMENT: "production",
+    CAIRN_OBJECT_STORE_ACCESS_KEY: "proxy-verification-object-store-access",
+    CAIRN_OBJECT_STORE_SECRET_KEY: "proxy-verification-object-store-secret",
+    CAIRN_SEARCH_AUDIT_SECRET: "proxy-verification-search-audit-secret-at-least-32-bytes",
     CAIRN_SESSION_COOKIE_SECURE: "true",
     CAIRN_TRUSTED_PROXY_CIDRS: "127.0.0.0/8,::1/128",
     CORS_ORIGINS: productionWebOrigin,
+    EMBEDDING_API_KEY: "proxy-verification-embedding-key",
     VITE_IDENTITY_API_URL: productionProxyOrigin,
   };
 
@@ -168,7 +173,7 @@ function createCompose(config, processManager) {
   };
 }
 
-function createStageRunner(config, processManager) {
+export function createStageRunner(config, processManager) {
   const nodeTask = (task) =>
     processManager.run(
       process.execPath,
@@ -177,6 +182,13 @@ function createStageRunner(config, processManager) {
     );
 
   return async (stage) => {
+    if (stage === "minio") {
+      return processManager.run(
+        process.execPath,
+        ["scripts/minio-smoke.mjs"],
+        { env: config.environment },
+      );
+    }
     if (stage === "migrate") return nodeTask("db:migrate");
     if (stage === "integration") {
       const integrationEnvironment = { ...config.environment };

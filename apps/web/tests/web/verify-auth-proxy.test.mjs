@@ -27,6 +27,16 @@ test("production verification config uses HTTPS origins and a trusted loopback p
   assert.equal(config.environment.CAIRN_TRUSTED_PROXY_CIDRS, "127.0.0.0/8,::1/128");
   assert.equal(config.environment.CAIRN_SESSION_COOKIE_SECURE, "true");
   assert.equal(config.environment.CAIRN_ENVIRONMENT, "production");
+  assert.equal(
+    config.environment.CAIRN_OBJECT_STORE_ACCESS_KEY,
+    "proxy-verification-object-store-access",
+  );
+  assert.equal(
+    config.environment.CAIRN_OBJECT_STORE_SECRET_KEY,
+    "proxy-verification-object-store-secret",
+  );
+  assert.equal(config.environment.EMBEDDING_API_KEY, "proxy-verification-embedding-key");
+  assert.ok(Buffer.byteLength(config.environment.CAIRN_SEARCH_AUDIT_SECRET, "utf8") >= 32);
 });
 
 test("core config adds production origins without changing normal local service origins", () => {
@@ -42,6 +52,13 @@ test("core config adds production origins without changing normal local service 
   assert.equal(config.productionApiOrigin, "https://localhost:58099");
   assert.equal(config.productionWebOrigin, "https://localhost:55099");
   assert.equal(config.productionEnvironment.CAIRN_TRUSTED_PROXY_CIDRS, "127.0.0.0/8,::1/128");
+  assert.equal(
+    config.productionEnvironment.CAIRN_OBJECT_STORE_ACCESS_KEY,
+    "proxy-verification-object-store-access",
+  );
+  assert.ok(
+    Buffer.byteLength(config.productionEnvironment.CAIRN_SEARCH_AUDIT_SECRET, "utf8") >= 32,
+  );
 });
 
 test("missing OpenSSL reports an actionable dependency error", async () => {

@@ -2,10 +2,33 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  createStageRunner,
   createVerificationProjectName,
   resolveVerificationConfig,
   runCoreVerification,
 } from "../../../../scripts/verify-core.mjs";
+
+test("MinIO verification stage invokes the daemon-backed smoke", async () => {
+  const calls = [];
+  const runner = createStageRunner(
+    { environment: { CAIRN_ENVIRONMENT: "test" } },
+    {
+      run: async (command, args, options) => {
+        calls.push({ command, args, options });
+        return 0;
+      },
+    },
+  );
+
+  assert.equal(await runner("minio"), 0);
+  assert.deepEqual(calls, [
+    {
+      command: process.execPath,
+      args: ["scripts/minio-smoke.mjs"],
+      options: { env: { CAIRN_ENVIRONMENT: "test" } },
+    },
+  ]);
+});
 
 test("verification project names use only the repository prefix and random hex", () => {
   const projectName = createVerificationProjectName({
@@ -82,6 +105,7 @@ test("successful verification follows the required stage order", async () => {
     "postgres",
   ]);
   assert.deepEqual(stages, [
+    "minio",
     "migrate",
     "integration",
     "seed",
