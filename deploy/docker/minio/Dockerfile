@@ -2,7 +2,13 @@ ARG GO_VERSION=1.24.8
 FROM golang:${GO_VERSION}-bookworm AS builder
 
 ARG MINIO_VERSION=RELEASE.2025-10-15T17-29-55Z
-RUN git clone --branch "${MINIO_VERSION}" --depth 1 https://github.com/minio/minio.git /src/minio
+ARG CAIRN_BUILD_CA_CERT_BASE64=""
+RUN if [ -n "${CAIRN_BUILD_CA_CERT_BASE64}" ]; then \
+      printf '%s' "${CAIRN_BUILD_CA_CERT_BASE64}" \
+        | base64 --decode > /usr/local/share/ca-certificates/cairn-build.crt; \
+      update-ca-certificates; \
+    fi \
+    && git clone --branch "${MINIO_VERSION}" --depth 1 https://github.com/minio/minio.git /src/minio
 COPY deploy/docker/minio/build.sh /usr/local/src/build-minio.sh
 RUN MINIO_SOURCE_DIR=/src/minio MINIO_OUTPUT_PATH=/out/minio sh /usr/local/src/build-minio.sh
 

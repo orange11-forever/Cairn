@@ -31,8 +31,12 @@ async function readComposeConfig() {
       cwd: REPOSITORY_ROOT,
       env: {
         ...process.env,
+        CAIRN_BUILD_CA_CERT_BASE64: "Y2VydA==",
+        CAIRN_BUILD_HTTP_PROXY: "http://proxy.example:8080",
+        CAIRN_BUILD_HTTPS_PROXY: "http://proxy.example:8443",
         CAIRN_MINIO_PORT: "19000",
         CAIRN_MINIO_CONSOLE_PORT: "19001",
+        NO_PROXY: "localhost,127.0.0.1",
       },
     },
   );
@@ -102,6 +106,10 @@ test("Core Compose resolves pgvector and healthy persistent MinIO", async () => 
   assert.equal(minio.build.dockerfile, "deploy/docker/minio/Dockerfile");
   assert.equal(minio.build.args.GO_VERSION, "1.24.8");
   assert.equal(minio.build.args.MINIO_VERSION, "RELEASE.2025-10-15T17-29-55Z");
+  assert.equal(minio.build.args.HTTP_PROXY, "http://proxy.example:8080");
+  assert.equal(minio.build.args.HTTPS_PROXY, "http://proxy.example:8443");
+  assert.equal(minio.build.args.NO_PROXY, "localhost,127.0.0.1");
+  assert.equal(minio.build.args.CAIRN_BUILD_CA_CERT_BASE64, "Y2VydA==");
   assert.deepEqual(minio.command, ["server", "/data", "--console-address", ":9001"]);
   assert.deepEqual(
     minio.ports.map(({ published, target }) => ({ published, target })),

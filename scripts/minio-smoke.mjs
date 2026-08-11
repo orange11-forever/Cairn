@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
-import { resolveDockerCommand } from "./docker-command.mjs";
+import { dockerEnvironment, resolveDockerCommand } from "./docker-command.mjs";
 
 const execFile = promisify(execFileCallback);
 const REPOSITORY_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -47,6 +47,7 @@ export async function runMinioSmoke({
   projectName = createMinioSmokeProjectName(),
   environment = process.env,
   dockerCommand = "docker",
+  platform = process.platform,
   uvCommand = UV,
   runCommand = defaultRunCommand,
 } = {}) {
@@ -61,6 +62,11 @@ export async function runMinioSmoke({
     CAIRN_OBJECT_STORE_ACCESS_KEY: "cairn-smoke-access",
     CAIRN_OBJECT_STORE_SECRET_KEY: "cairn-smoke-secret-change-me",
   };
+  const composeEnvironment = dockerEnvironment({
+    dockerCommand,
+    env: smokeEnvironment,
+    platform,
+  });
   const composePrefix = ["compose", "-f", COMPOSE_FILE, "-p", projectName];
   let failure;
 
@@ -68,19 +74,19 @@ export async function runMinioSmoke({
     await runCommand(
       dockerCommand,
       [...composePrefix, "up", "-d", "--build", "--wait", "minio"],
-      { env: smokeEnvironment },
+      { env: composeEnvironment },
     );
     const version = await runCommand(
       dockerCommand,
       [...composePrefix, "exec", "-T", "minio", "minio", "--version"],
-      { env: smokeEnvironment },
+      { env: composeEnvironment },
     );
     verifyReleaseVersion(version.stdout);
 
     const publishedPort = await runCommand(
       dockerCommand,
       [...composePrefix, "port", "minio", "9000"],
-      { env: smokeEnvironment },
+      { env: composeEnvironment },
     );
     const endpoint = `http://127.0.0.1:${parsePublishedPort(publishedPort.stdout)}`;
     await runCommand(
@@ -103,7 +109,7 @@ export async function runMinioSmoke({
     await runCommand(
       dockerCommand,
       [...composePrefix, "down", "--volumes", "--remove-orphans"],
-      { env: smokeEnvironment },
+      { env: composeEnvironment },
     );
   } catch (cleanupError) {
     if (failure === undefined) throw cleanupError;

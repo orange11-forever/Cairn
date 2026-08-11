@@ -55,6 +55,39 @@ test("MinIO smoke builds a fresh project and verifies version plus object I/O", 
   );
 });
 
+test("MinIO smoke bridges WSL proxy trust into docker.exe builds", async () => {
+  const calls = [];
+  const runCommand = async (command, args, options) => {
+    calls.push({ command, args, options });
+    if (args.includes("--version")) return commandResult(`minio version ${MINIO_RELEASE}\n`);
+    if (args.includes("port")) return commandResult("127.0.0.1:49154\n");
+    return commandResult();
+  };
+
+  await runMinioSmoke({
+    projectName: "cairn-minio-smoke-proxy",
+    dockerCommand: "docker.exe",
+    platform: "linux",
+    environment: {
+      CAIRN_BUILD_CA_CERT_BASE64: "Y2VydA==",
+      HTTP_PROXY: "http://127.0.0.1:7897",
+      HTTPS_PROXY: "http://localhost:7897",
+      NO_PROXY: "localhost,127.0.0.1",
+    },
+    runCommand,
+  });
+
+  const dockerEnvironment = calls.find(({ command }) => command === "docker.exe").options.env;
+  assert.equal(dockerEnvironment.CAIRN_BUILD_HTTP_PROXY, "http://host.docker.internal:7897/");
+  assert.equal(dockerEnvironment.CAIRN_BUILD_HTTPS_PROXY, "http://host.docker.internal:7897/");
+  assert.equal(
+    dockerEnvironment.WSLENV,
+    "CAIRN_MINIO_PORT:CAIRN_MINIO_CONSOLE_PORT:CAIRN_OBJECT_STORE_ACCESS_KEY:" +
+      "CAIRN_OBJECT_STORE_SECRET_KEY:CAIRN_BUILD_HTTP_PROXY:CAIRN_BUILD_HTTPS_PROXY:" +
+      "NO_PROXY:CAIRN_BUILD_CA_CERT_BASE64",
+  );
+});
+
 test("MinIO smoke removes only its isolated project after a failed object round trip", async () => {
   const calls = [];
   const runCommand = async (command, args, options) => {

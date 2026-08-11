@@ -48,9 +48,11 @@ test("bridges Compose interpolation variables to docker.exe from WSL", async (co
     dockerCommand,
     args: ["config"],
     env: {
-      ...process.env,
       CAIRN_DOCKER_ENV_OUTPUT: outputPath,
       CAIRN_POSTGRES_PORT: "55436",
+      HTTP_PROXY: "http://127.0.0.1:7897",
+      HTTPS_PROXY: "http://localhost:7897",
+      PATH: process.env.PATH,
       POSTGRES_DB: "cairn_test",
       POSTGRES_PASSWORD: "cairn-local-only",
       POSTGRES_USER: "cairn",
@@ -63,6 +65,7 @@ test("bridges Compose interpolation variables to docker.exe from WSL", async (co
   assert.equal(exitCode, 0);
   assert.equal(
     await readFile(outputPath, "utf8"),
-    "EXISTING/p:POSTGRES_DB/w:CAIRN_POSTGRES_PORT:POSTGRES_USER:POSTGRES_PASSWORD",
+    "EXISTING/p:POSTGRES_DB/w:CAIRN_POSTGRES_PORT:POSTGRES_USER:POSTGRES_PASSWORD:" +
+      "CAIRN_BUILD_HTTP_PROXY:CAIRN_BUILD_HTTPS_PROXY",
   );
 });
