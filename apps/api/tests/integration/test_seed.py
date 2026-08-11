@@ -87,6 +87,10 @@ def test_demo_seed_rejects_production(
         session_cookie_secure=True,
         csrf_secret="production-only-csrf-secret-with-at-least-32-bytes",
         auth_rate_limit_secret="production-only-auth-rate-limit-secret-with-at-least-32-bytes",
+        object_store_access_key="production-object-store-access-key",
+        object_store_secret_key="production-object-store-secret-key",
+        embedding_api_key="production-embedding-api-key",
+        search_audit_secret="production-search-audit-secret-at-least-32-bytes",
         _env_file=None,  # pyright: ignore[reportCallIssue]
     )
 

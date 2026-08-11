@@ -1,4 +1,32 @@
 import { spawn } from "node:child_process";
+import { basename } from "node:path";
+
+const COMPOSE_INTERPOLATION_VARIABLES = [
+  "CAIRN_POSTGRES_PORT",
+  "POSTGRES_DB",
+  "POSTGRES_USER",
+  "POSTGRES_PASSWORD",
+  "CAIRN_MINIO_PORT",
+  "CAIRN_MINIO_CONSOLE_PORT",
+  "CAIRN_OBJECT_STORE_ACCESS_KEY",
+  "CAIRN_OBJECT_STORE_SECRET_KEY",
+  "CAIRN_BUILD_HTTP_PROXY",
+  "CAIRN_BUILD_HTTPS_PROXY",
+  "NO_PROXY",
+  "CAIRN_BUILD_CA_CERT_BASE64",
+];
+
+function containerProxyUrl(value) {
+  try {
+    const proxy = new URL(value);
+    if (["127.0.0.1", "localhost", "[::1]"].includes(proxy.hostname)) {
+      proxy.hostname = "host.docker.internal";
+    }
+    return proxy.href;
+  } catch {
+    return value;
+  }
+}
 
 function probeDocker(command, env) {
   return new Promise((resolve) => {
@@ -31,10 +59,41 @@ export async function resolveDockerCommand({
   );
 }
 
-export function runCompose({ dockerCommand, args, env = process.env, stdio = "inherit" }) {
+export function dockerEnvironment({
+  dockerCommand,
+  env = process.env,
+  platform = process.platform,
+}) {
+  if (platform !== "linux" || basename(dockerCommand).toLowerCase() !== "docker.exe") {
+    return env;
+  }
+  const bridged = { ...env };
+  const httpProxy = env.CAIRN_BUILD_HTTP_PROXY ?? env.HTTP_PROXY ?? env.http_proxy;
+  const httpsProxy = env.CAIRN_BUILD_HTTPS_PROXY ?? env.HTTPS_PROXY ?? env.https_proxy;
+  const noProxy = env.NO_PROXY ?? env.no_proxy;
+  if (httpProxy !== undefined) bridged.CAIRN_BUILD_HTTP_PROXY = containerProxyUrl(httpProxy);
+  if (httpsProxy !== undefined) bridged.CAIRN_BUILD_HTTPS_PROXY = containerProxyUrl(httpsProxy);
+  if (noProxy !== undefined) bridged.NO_PROXY = noProxy;
+
+  const entries = (bridged.WSLENV ?? "").split(":").filter(Boolean);
+  const forwardedNames = new Set(entries.map((entry) => entry.split("/", 1)[0]));
+  const additions = COMPOSE_INTERPOLATION_VARIABLES.filter(
+    (name) => bridged[name] !== undefined && !forwardedNames.has(name),
+  );
+  if (additions.length === 0) return bridged;
+  return { ...bridged, WSLENV: [...entries, ...additions].join(":") };
+}
+
+export function runCompose({
+  dockerCommand,
+  args,
+  env = process.env,
+  platform = process.platform,
+  stdio = "inherit",
+}) {
   return new Promise((resolveExitCode) => {
     const child = spawn(dockerCommand, ["compose", ...args], {
-      env,
+      env: dockerEnvironment({ dockerCommand, env, platform }),
       shell: false,
       stdio,
     });

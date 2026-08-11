@@ -1,11 +1,36 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import test from "node:test";
 
 import {
+  createProcessManager,
+  createStageRunner,
   createVerificationProjectName,
   resolveVerificationConfig,
   runCoreVerification,
 } from "../../../../scripts/verify-core.mjs";
+
+test("MinIO verification stage invokes the daemon-backed smoke", async () => {
+  const calls = [];
+  const runner = createStageRunner(
+    { environment: { CAIRN_ENVIRONMENT: "test" } },
+    {
+      run: async (command, args, options) => {
+        calls.push({ command, args, options });
+        return 0;
+      },
+    },
+  );
+
+  assert.equal(await runner("minio"), 0);
+  assert.deepEqual(calls, [
+    {
+      command: process.execPath,
+      args: ["scripts/minio-smoke.mjs"],
+      options: { env: { CAIRN_ENVIRONMENT: "test" } },
+    },
+  ]);
+});
 
 test("verification project names use only the repository prefix and random hex", () => {
   const projectName = createVerificationProjectName({
@@ -31,6 +56,34 @@ test("verification database and service ports are configurable", () => {
   assert.equal(config.webOrigin, "http://localhost:55099");
   assert.equal(config.mockOrigin, "http://localhost:58799");
   assert.match(config.databaseUrl, /127\.0\.0\.1:55499\/cairn_test$/);
+});
+
+test("core process manager bridges Compose variables when WSL launches docker.exe", async () => {
+  let childEnvironment;
+  const processManager = createProcessManager({
+    platform: "linux",
+    spawnProcess: (_command, _args, options) => {
+      childEnvironment = options.env;
+      const child = new EventEmitter();
+      queueMicrotask(() => child.emit("exit", 0, null));
+      return child;
+    },
+  });
+
+  const exitCode = await processManager.run("docker.exe", ["compose", "config"], {
+    env: {
+      CAIRN_POSTGRES_PORT: "55436",
+      POSTGRES_DB: "cairn_test",
+      POSTGRES_PASSWORD: "cairn-local-only",
+      POSTGRES_USER: "cairn",
+    },
+  });
+
+  assert.equal(exitCode, 0);
+  assert.equal(
+    childEnvironment.WSLENV,
+    "CAIRN_POSTGRES_PORT:POSTGRES_DB:POSTGRES_USER:POSTGRES_PASSWORD",
+  );
 });
 
 test("core verification always removes its isolated Compose project", async () => {
@@ -82,6 +135,7 @@ test("successful verification follows the required stage order", async () => {
     "postgres",
   ]);
   assert.deepEqual(stages, [
+    "minio",
     "migrate",
     "integration",
     "seed",

@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
+from starlette.types import ASGIApp
 
 from cairn_api import __version__
 from cairn_api.auth.router import clear_session_cookie
@@ -38,6 +39,28 @@ class ReadyResponse(BaseModel):
     status: Literal["ready"] = "ready"
 
 
+class CairnFastAPI(FastAPI):
+    cairn_cors_origins: tuple[str, ...] = ()
+
+    def build_middleware_stack(self) -> ASGIApp:
+        # CORS must wrap server errors; request IDs must also wrap CORS preflights.
+        application = super().build_middleware_stack()
+        if self.cairn_cors_origins:
+            application = CORSMiddleware(
+                application,
+                allow_origins=list(self.cairn_cors_origins),
+                allow_credentials=True,
+                allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+                allow_headers=[
+                    "Authorization",
+                    "Content-Type",
+                    "X-CSRF-Token",
+                    "X-Request-ID",
+                ],
+            )
+        return RequestIdMiddleware(application)
+
+
 def get_request_id(request: Request) -> str:
     request_id = getattr(request.state, "request_id", None)
     return request_id if isinstance(request_id, str) else new_request_id()
@@ -55,18 +78,10 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
         finally:
             current_database.dispose()
 
-    application = FastAPI(title="Cairn API", version=__version__, lifespan=lifespan)
+    application = CairnFastAPI(title="Cairn API", version=__version__, lifespan=lifespan)
+    application.cairn_cors_origins = tuple(current_settings.cors_origins)
     application.state.settings = current_settings
     application.state.database = current_database
-    if current_settings.cors_origins:
-        application.add_middleware(
-            CORSMiddleware,
-            allow_origins=current_settings.cors_origins,
-            allow_credentials=True,
-            allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-            allow_headers=["Authorization", "Content-Type", "X-CSRF-Token", "X-Request-ID"],
-        )
-    application.add_middleware(RequestIdMiddleware)
 
     @application.exception_handler(ApiProblem)
     async def api_problem_handler(  # pyright: ignore[reportUnusedFunction]
@@ -93,11 +108,17 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
             404: ("not_found", "请求的资源不存在"),
             405: ("method_not_allowed", "请求方法不被允许"),
         }.get(exc.status_code, ("http_error", "请求失败"))
+        headers = None
+        if exc.status_code == 405 and exc.headers is not None:
+            allow = exc.headers.get("Allow")
+            if allow is not None:
+                headers = {"Allow": allow}
         return error_response(
             status_code=exc.status_code,
             code=error[0],
             message=error[1],
             trace_id=get_request_id(request),
+            headers=headers,
         )
 
     @application.exception_handler(RequestValidationError)

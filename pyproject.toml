@@ -9,10 +9,11 @@ dependencies = []
 package = false
 
 [tool.uv.workspace]
-members = ["apps/api"]
+members = ["apps/api", "apps/worker"]
 
 [tool.pytest.ini_options]
-testpaths = ["apps/api/tests"]
+testpaths = ["apps/api/tests", "apps/worker/tests"]
+addopts = ["--import-mode=importlib"]
 markers = [
   "integration: requires an isolated PostgreSQL database",
 ]
@@ -22,7 +23,7 @@ line-length = 100
 target-version = "py312"
 
 [tool.pyright]
-include = ["apps/api/src", "apps/api/tests"]
+include = ["apps/api/src", "apps/api/tests", "apps/worker/src", "apps/worker/tests"]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
 venvPath = "."
