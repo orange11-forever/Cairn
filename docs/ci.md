@@ -74,6 +74,8 @@ GitHub-hosted 临时 runner 被整体销毁，因此不会污染后续运行。
 
 本个人项目采用零审批 Pull Request：功能分支完成本地验证后推送，创建面向 `main` 的 PR，不要求 approving review，但必须等待 `CI / Full verification` 成功。通过后使用 squash merge，并删除已合并的远端功能分支。
 
+本地提交前仍按[代码审查规范](review.md)依次完成规格审查和质量审查；这两类审查用于提高缺陷发现率，不增加 GitHub required approval，也不替代唯一的 `pnpm verify` 自动化门禁。
+
 仓库规则禁止直接推送 `main`，禁止强制推送和删除 `main`，不得配置持久 bypass。仓库所有者也遵循同一条 CI 门禁；临时排障不能通过关闭 TLS 校验、强推或绕过 required check 完成。
 
 ## 官方依据

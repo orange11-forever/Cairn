@@ -182,19 +182,6 @@ export const componentSchemas = {
     "title": "ErrorBody",
     "type": "object"
   },
-  "HTTPValidationError": {
-    "properties": {
-      "detail": {
-        "items": {
-          "$ref": "#/components/schemas/ValidationError"
-        },
-        "title": "Detail",
-        "type": "array"
-      }
-    },
-    "title": "HTTPValidationError",
-    "type": "object"
-  },
   "HealthResponse": {
     "properties": {
       "service": {
@@ -814,46 +801,6 @@ export const componentSchemas = {
       "displayName"
     ],
     "title": "UserResponse",
-    "type": "object"
-  },
-  "ValidationError": {
-    "properties": {
-      "ctx": {
-        "title": "Context",
-        "type": "object"
-      },
-      "input": {
-        "title": "Input"
-      },
-      "loc": {
-        "items": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "integer"
-            }
-          ]
-        },
-        "title": "Location",
-        "type": "array"
-      },
-      "msg": {
-        "title": "Message",
-        "type": "string"
-      },
-      "type": {
-        "title": "Error Type",
-        "type": "string"
-      }
-    },
-    "required": [
-      "loc",
-      "msg",
-      "type"
-    ],
-    "title": "ValidationError",
     "type": "object"
   }
 } as const;

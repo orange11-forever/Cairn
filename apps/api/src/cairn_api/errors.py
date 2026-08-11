@@ -38,9 +38,11 @@ def error_response(
 ) -> JSONResponse:
     body = ErrorBody(message=message, code=code, trace_id=trace_id)
     response_headers = {"X-Request-ID": trace_id}
+    safe_headers = {"allow": "Allow", "retry-after": "Retry-After"}
     for name, value in (headers or {}).items():
-        if name.lower() == "retry-after":
-            response_headers["Retry-After"] = value
+        canonical_name = safe_headers.get(name.lower())
+        if canonical_name is not None:
+            response_headers[canonical_name] = value
     return JSONResponse(
         status_code=status_code,
         content=body.model_dump(mode="json", by_alias=True),

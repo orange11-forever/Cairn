@@ -24,11 +24,15 @@ AuditContext = Annotated[RequestAuditContext, Depends(get_audit_context)]
 Cursor = Annotated[str | None, Query(max_length=2048)]
 PageLimit = Annotated[int, Query(ge=1, le=100)]
 
-AUTHENTICATED_ERRORS: dict[int | str, dict[str, Any]] = {
+IDENTITY_ERRORS: dict[int | str, dict[str, Any]] = {
     401: {"description": "会话无效", "model": ErrorBody},
-    403: {"description": "没有执行该操作的权限", "model": ErrorBody},
     422: {"description": "请求参数无效", "model": ErrorBody},
+    500: {"description": "服务器内部错误", "model": ErrorBody},
     503: {"description": "数据库暂时不可用", "model": ErrorBody},
+}
+AUTHENTICATED_ERRORS: dict[int | str, dict[str, Any]] = {
+    **IDENTITY_ERRORS,
+    403: {"description": "没有执行该操作的权限", "model": ErrorBody},
 }
 MUTATION_ERRORS: dict[int | str, dict[str, Any]] = {
     **AUTHENTICATED_ERRORS,
@@ -37,7 +41,14 @@ MUTATION_ERRORS: dict[int | str, dict[str, Any]] = {
 }
 
 
-@router.get("/{organization_id}", response_model=OrganizationResponse)
+@router.get(
+    "/{organization_id}",
+    response_model=OrganizationResponse,
+    responses={
+        **IDENTITY_ERRORS,
+        404: {"description": "组织不存在", "model": ErrorBody},
+    },
+)
 def get_organization(
     organization_id: UUID,
     identity: CurrentIdentity,

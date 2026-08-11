@@ -1,4 +1,12 @@
 import { spawn } from "node:child_process";
+import { basename } from "node:path";
+
+const COMPOSE_INTERPOLATION_VARIABLES = [
+  "CAIRN_POSTGRES_PORT",
+  "POSTGRES_DB",
+  "POSTGRES_USER",
+  "POSTGRES_PASSWORD",
+];
 
 function probeDocker(command, env) {
   return new Promise((resolve) => {
@@ -31,10 +39,33 @@ export async function resolveDockerCommand({
   );
 }
 
-export function runCompose({ dockerCommand, args, env = process.env, stdio = "inherit" }) {
+export function dockerEnvironment({
+  dockerCommand,
+  env = process.env,
+  platform = process.platform,
+}) {
+  if (platform !== "linux" || basename(dockerCommand).toLowerCase() !== "docker.exe") {
+    return env;
+  }
+  const entries = (env.WSLENV ?? "").split(":").filter(Boolean);
+  const forwardedNames = new Set(entries.map((entry) => entry.split("/", 1)[0]));
+  const additions = COMPOSE_INTERPOLATION_VARIABLES.filter(
+    (name) => env[name] !== undefined && !forwardedNames.has(name),
+  );
+  if (additions.length === 0) return env;
+  return { ...env, WSLENV: [...entries, ...additions].join(":") };
+}
+
+export function runCompose({
+  dockerCommand,
+  args,
+  env = process.env,
+  platform = process.platform,
+  stdio = "inherit",
+}) {
   return new Promise((resolveExitCode) => {
     const child = spawn(dockerCommand, ["compose", ...args], {
-      env,
+      env: dockerEnvironment({ dockerCommand, env, platform }),
       shell: false,
       stdio,
     });

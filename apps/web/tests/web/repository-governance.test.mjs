@@ -37,6 +37,12 @@ async function readRepositoryFile(relativePath) {
   return readFile(join(REPOSITORY_ROOT, relativePath), "utf8");
 }
 
+function frontMatter(markdown) {
+  const match = /^---\n([\s\S]*?)\n---\n/.exec(markdown);
+  assert.ok(match, "review policy must start with YAML front matter");
+  return load(match[1]);
+}
+
 test("repository publishes the approved ISC license verbatim", async () => {
   assert.equal(await readRepositoryFile("LICENSE"), EXPECTED_ISC_LICENSE);
 });
@@ -202,4 +208,28 @@ test("repository governance names the exact required CI check", async () => {
   ]) {
     assert.ok(ciDocs.includes(policy), `missing CI governance policy: ${policy}`);
   }
+});
+
+test("public review policy enforces boundary and negative-path review", async () => {
+  const reviewDocument = await readRepositoryFile("docs/review.md").catch(() => null);
+  assert.notEqual(reviewDocument, null, "docs/review.md must exist");
+  const policy = frontMatter(reviewDocument).review;
+
+  assert.deepEqual(policy.sequence, ["specification", "quality"]);
+  assert.deepEqual(policy.scope, ["diff", "affected-boundary"]);
+  assert.deepEqual(policy.negativePaths, [
+    "validation",
+    "authentication-authorization",
+    "infrastructure",
+    "unexpected-exception",
+  ]);
+  assert.deepEqual(policy.contractDimensions, [
+    "status",
+    "body-schema",
+    "request-trace-id",
+    "security-protocol-headers",
+    "openapi-sdk",
+  ]);
+  assert.equal(policy.requiredGate, "pnpm verify");
+  assert.equal(policy.requiredApprovals, 0);
 });
