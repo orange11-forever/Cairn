@@ -27,6 +27,7 @@ PageLimit = Annotated[int, Query(ge=1, le=100)]
 IDENTITY_ERRORS: dict[int | str, dict[str, Any]] = {
     401: {"description": "会话无效", "model": ErrorBody},
     422: {"description": "请求参数无效", "model": ErrorBody},
+    500: {"description": "服务器内部错误", "model": ErrorBody},
     503: {"description": "数据库暂时不可用", "model": ErrorBody},
 }
 AUTHENTICATED_ERRORS: dict[int | str, dict[str, Any]] = {

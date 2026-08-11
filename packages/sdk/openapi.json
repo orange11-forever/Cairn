@@ -904,6 +904,16 @@
             },
             "description": "登录尝试过于频繁"
           },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "服务器内部错误"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -956,7 +966,7 @@
             },
             "description": "请求来源或 CSRF 令牌无效"
           },
-          "422": {
+          "500": {
             "content": {
               "application/json": {
                 "schema": {
@@ -964,7 +974,7 @@
                 }
               }
             },
-            "description": "请求参数无效"
+            "description": "服务器内部错误"
           },
           "503": {
             "content": {
@@ -1038,6 +1048,16 @@
               }
             },
             "description": "请求参数无效"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "服务器内部错误"
           },
           "503": {
             "content": {
@@ -1150,6 +1170,16 @@
               }
             },
             "description": "请求参数无效"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "服务器内部错误"
           },
           "503": {
             "content": {
@@ -1273,6 +1303,16 @@
               }
             },
             "description": "请求参数无效"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "服务器内部错误"
           },
           "503": {
             "content": {
@@ -2162,6 +2202,16 @@
               }
             },
             "description": "会话无效"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "服务器内部错误"
           },
           "503": {
             "content": {

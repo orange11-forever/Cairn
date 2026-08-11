@@ -735,6 +735,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            /** @description 服务器内部错误 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
             /** @description 数据库暂时不可用 */
             503: {
                 headers: {
@@ -773,8 +782,8 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
-            /** @description 请求参数无效 */
-            422: {
+            /** @description 服务器内部错误 */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -833,6 +842,15 @@ export interface operations {
             };
             /** @description 请求参数无效 */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -903,6 +921,15 @@ export interface operations {
             };
             /** @description 请求参数无效 */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -987,6 +1014,15 @@ export interface operations {
             };
             /** @description 请求参数无效 */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1589,6 +1625,15 @@ export interface operations {
             };
             /** @description 会话无效 */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -337,44 +337,66 @@ def test_method_not_allowed_is_normalized(client: TestClient) -> None:
     assert response.json()["traceId"] == response.headers["x-request-id"]
 
 
-def test_openapi_auth_and_organization_errors_match_runtime_contracts() -> None:
-    schema = create_app().openapi()
-    cases = [
-        (
+@pytest.mark.parametrize(
+    ("path", "method", "success_status", "error_statuses"),
+    [
+        pytest.param(
             "/api/v1/login",
             "post",
             "200",
-            {"401", "403", "409", "422", "429", "503"},
+            {"401", "403", "409", "422", "429", "500", "503"},
+            id="login",
         ),
-        ("/api/v1/session", "get", "200", {"401", "503"}),
-        ("/api/v1/logout", "post", "204", {"403", "422", "503"}),
-        (
+        pytest.param(
+            "/api/v1/session",
+            "get",
+            "200",
+            {"401", "500", "503"},
+            id="session",
+        ),
+        pytest.param(
+            "/api/v1/logout",
+            "post",
+            "204",
+            {"403", "500", "503"},
+            id="logout",
+        ),
+        pytest.param(
             "/api/v1/organizations/{organization_id}",
             "get",
             "200",
-            {"401", "404", "422", "503"},
+            {"401", "404", "422", "500", "503"},
+            id="organization",
         ),
-        (
+        pytest.param(
             "/api/v1/organizations/{organization_id}/memberships",
             "get",
             "200",
-            {"401", "403", "404", "422", "503"},
+            {"401", "403", "404", "422", "500", "503"},
+            id="membership-list",
         ),
-        (
+        pytest.param(
             "/api/v1/organizations/{organization_id}/memberships/{membership_id}",
             "patch",
             "200",
-            {"401", "403", "404", "409", "422", "503"},
+            {"401", "403", "404", "409", "422", "500", "503"},
+            id="membership-update",
         ),
-    ]
-
-    for path, method, success_status, error_statuses in cases:
-        responses = schema["paths"][path][method]["responses"]
-        assert set(responses) == {success_status} | error_statuses, (path, method)
-        for status_code in error_statuses:
-            assert responses[status_code]["content"]["application/json"]["schema"][
-                "$ref"
-            ].endswith("/ErrorBody"), (path, method, status_code)
+    ],
+)
+def test_openapi_auth_and_organization_errors_match_runtime_contracts(
+    path: str,
+    method: str,
+    success_status: str,
+    error_statuses: set[str],
+) -> None:
+    schema = create_app().openapi()
+    responses = schema["paths"][path][method]["responses"]
+    assert set(responses) == {success_status} | error_statuses
+    for status_code in error_statuses:
+        assert responses[status_code]["content"]["application/json"]["schema"][
+            "$ref"
+        ].endswith("/ErrorBody")
 
 
 def test_error_response_forwards_retry_after_but_rejects_unapproved_headers() -> None:

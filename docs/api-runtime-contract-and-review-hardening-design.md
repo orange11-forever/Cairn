@@ -16,7 +16,7 @@ During baseline verification, a separate deterministic problem appeared under WS
 
 ## Goals
 
-- Keep every JSON API error normalized as `{message, code, trace_id}`.
+- Keep every JSON API error normalized as `{message, code, traceId}`.
 - Apply configured CORS policy to unexpected `500` responses as well as normal and handled-error responses.
 - Preserve protocol headers, beginning with `Allow` on `405`, when normalizing framework errors.
 - Make OpenAPI describe the error statuses that auth and organization operations can actually return.
@@ -59,12 +59,12 @@ The `StarletteHTTPException` handler will pass through only explicitly safe prot
 
 Auth and organization route declarations will use reusable response maps so runtime and specification remain aligned:
 
-- Login: `401`, `403`, `409`, `422`, `429`, `503`.
-- Session restore: `401`, `503`.
-- Logout: `403`, `422`, `503`.
-- Organization detail: `401`, `404`, `422`, `503`.
-- Membership list: existing `401`, `403`, `404`, `422`, `503`.
-- Membership role update: existing `401`, `403`, `404`, `409`, `422`, `503`.
+- Login: `401`, `403`, `409`, `422`, `429`, `500`, `503`.
+- Session restore: `401`, `500`, `503`.
+- Logout: `403`, `500`, `503`.
+- Organization detail: `401`, `404`, `422`, `500`, `503`.
+- Membership list: `401`, `403`, `404`, `422`, `500`, `503`.
+- Membership role update: `401`, `403`, `404`, `409`, `422`, `500`, `503`.
 
 Every declared error response uses `ErrorBody`. Statuses are based on reachable route, dependency, validation, and service paths rather than a blanket list.
 
