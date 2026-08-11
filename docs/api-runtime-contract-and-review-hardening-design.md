@@ -47,9 +47,9 @@ This is deliberately narrower than forwarding every environment variable across 
 
 ### 2. CORS at the outer application boundary
 
-Configured CORS handling must wrap the complete application exception path. A small internal `FastAPI` subclass will wrap the stack returned by FastAPI's normal `build_middleware_stack` with `CORSMiddleware` when origins are configured. This puts CORS outside Starlette's server-error middleware, so an unexpected exception converted there still receives CORS headers.
+Configured CORS handling must wrap the complete application exception path. A small internal `FastAPI` subclass will wrap the stack returned by FastAPI's normal `build_middleware_stack` with `CORSMiddleware` when origins are configured, then place request-ID handling outermost. This puts CORS outside Starlette's server-error middleware, so an unexpected exception converted there still receives CORS headers, while normal, preflight, and error responses all retain request correlation.
 
-The public factory continues to return a `FastAPI` instance. Application state, lifespan, OpenAPI access, dependency overrides, routes, and exception handlers therefore keep their current interfaces, and middleware construction remains lazy. When no origins are configured, the subclass returns FastAPI's normal stack unchanged.
+The public factory continues to return a `FastAPI` instance. Application state, lifespan, OpenAPI access, dependency overrides, routes, and exception handlers therefore keep their current interfaces, and middleware construction remains lazy. When no origins are configured, the CORS layer is omitted while request-ID handling remains outermost.
 
 ### 3. Safe framework-header propagation
 
@@ -61,7 +61,7 @@ Auth and organization route declarations will use reusable response maps so runt
 
 - Login: `401`, `403`, `409`, `422`, `429`, `503`.
 - Session restore: `401`, `503`.
-- Logout: `403`, `503`.
+- Logout: `403`, `422`, `503`.
 - Organization detail: `401`, `404`, `422`, `503`.
 - Membership list: existing `401`, `403`, `404`, `422`, `503`.
 - Membership role update: existing `401`, `403`, `404`, `409`, `422`, `503`.

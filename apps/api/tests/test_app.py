@@ -331,21 +331,53 @@ def test_method_not_allowed_is_normalized(client: TestClient) -> None:
     response = client.post("/health")
 
     assert response.status_code == 405
+    assert response.headers["allow"] == "GET"
     assert response.json()["code"] == "method_not_allowed"
     assert response.json()["message"] == "请求方法不被允许"
     assert response.json()["traceId"] == response.headers["x-request-id"]
 
 
-def test_login_openapi_declares_rate_limit_error() -> None:
+def test_openapi_auth_and_organization_errors_match_runtime_contracts() -> None:
     schema = create_app().openapi()
-    responses = schema["paths"]["/api/v1/login"]["post"]["responses"]
-    assert "429" in responses
-    assert responses["429"]["content"]["application/json"]["schema"]["$ref"].endswith(
-        "/ErrorBody"
-    )
+    cases = [
+        (
+            "/api/v1/login",
+            "post",
+            "200",
+            {"401", "403", "409", "422", "429", "503"},
+        ),
+        ("/api/v1/session", "get", "200", {"401", "503"}),
+        ("/api/v1/logout", "post", "204", {"403", "422", "503"}),
+        (
+            "/api/v1/organizations/{organization_id}",
+            "get",
+            "200",
+            {"401", "404", "422", "503"},
+        ),
+        (
+            "/api/v1/organizations/{organization_id}/memberships",
+            "get",
+            "200",
+            {"401", "403", "404", "422", "503"},
+        ),
+        (
+            "/api/v1/organizations/{organization_id}/memberships/{membership_id}",
+            "patch",
+            "200",
+            {"401", "403", "404", "409", "422", "503"},
+        ),
+    ]
+
+    for path, method, success_status, error_statuses in cases:
+        responses = schema["paths"][path][method]["responses"]
+        assert set(responses) == {success_status} | error_statuses, (path, method)
+        for status_code in error_statuses:
+            assert responses[status_code]["content"]["application/json"]["schema"][
+                "$ref"
+            ].endswith("/ErrorBody"), (path, method, status_code)
 
 
-def test_error_response_only_forwards_server_retry_after_header() -> None:
+def test_error_response_forwards_retry_after_but_rejects_unapproved_headers() -> None:
     from cairn_api.errors import ApiProblem
 
     app = create_app()
@@ -400,6 +432,35 @@ def test_internal_error_does_not_leak_details() -> None:
     assert response.json()["message"] == "服务器内部错误"
     assert response.json()["traceId"] == response.headers["x-request-id"]
     assert "secret stack detail" not in response.text
+
+
+def test_internal_error_applies_configured_cors_and_preserves_request_id() -> None:
+    from cairn_api.settings import Settings
+
+    origin = "http://localhost:5500"
+    app: FastAPI = create_app(
+        Settings(cors_origins=origin, _env_file=None)  # pyright: ignore[reportCallIssue]
+    )
+
+    @app.get("/_test/cors-error", include_in_schema=False)
+    def _fail_with_origin() -> None:  # pyright: ignore[reportUnusedFunction]
+        raise RuntimeError("private cross-origin detail")
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get(
+            "/_test/cors-error",
+            headers={"Origin": origin, "X-Request-ID": "req-cors-error-500"},
+        )
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "message": "服务器内部错误",
+        "code": "internal_error",
+        "traceId": "req-cors-error-500",
+    }
+    assert response.headers["x-request-id"] == "req-cors-error-500"
+    assert response.headers["access-control-allow-origin"] == origin
+    assert response.headers["access-control-allow-credentials"] == "true"
 
 
 def test_configured_cors_origin_handles_credentialed_preflight(
