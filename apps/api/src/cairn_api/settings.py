@@ -1,7 +1,7 @@
 from ipaddress import IPv4Network, IPv6Network
 from typing import Annotated, Literal, cast
 
-from pydantic import AnyHttpUrl, Field, TypeAdapter, field_validator, model_validator
+from pydantic import AnyHttpUrl, Field, SecretStr, TypeAdapter, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from cairn_api.client_ip import parse_trusted_proxy_cidrs
@@ -23,6 +23,91 @@ class Settings(BaseSettings):
     database_url: str = Field(
         default="postgresql+psycopg://cairn:cairn-local-only@127.0.0.1:5432/cairn",
         validation_alias="DATABASE_URL",
+    )
+    object_store_endpoint_url: AnyHttpUrl = Field(
+        default=AnyHttpUrl("http://127.0.0.1:9000"),
+        validation_alias="CAIRN_OBJECT_STORE_ENDPOINT_URL",
+    )
+    object_store_public_endpoint_url: AnyHttpUrl = Field(
+        default=AnyHttpUrl("http://127.0.0.1:9000"),
+        validation_alias="CAIRN_OBJECT_STORE_PUBLIC_ENDPOINT_URL",
+    )
+    embedding_base_url: AnyHttpUrl = Field(
+        default=AnyHttpUrl("http://127.0.0.1:58081/v1"),
+        validation_alias="EMBEDDING_BASE_URL",
+    )
+    object_store_region: str = Field(
+        default="us-east-1",
+        validation_alias="CAIRN_OBJECT_STORE_REGION",
+    )
+    object_store_bucket: str = Field(
+        default="cairn",
+        validation_alias="CAIRN_OBJECT_STORE_BUCKET",
+    )
+    object_store_access_key: SecretStr = Field(
+        default=SecretStr("cairn-local"),
+        validation_alias="CAIRN_OBJECT_STORE_ACCESS_KEY",
+    )
+    object_store_secret_key: SecretStr = Field(
+        default=SecretStr("cairn-local-only-change-before-deploying"),
+        validation_alias="CAIRN_OBJECT_STORE_SECRET_KEY",
+    )
+    object_store_path_style: bool = Field(
+        default=True,
+        validation_alias="CAIRN_OBJECT_STORE_PATH_STYLE",
+    )
+    upload_session_ttl_seconds: int = Field(
+        default=900,
+        gt=0,
+        validation_alias="CAIRN_UPLOAD_SESSION_TTL_SECONDS",
+    )
+    download_url_ttl_seconds: int = Field(
+        default=300,
+        gt=0,
+        validation_alias="CAIRN_DOWNLOAD_URL_TTL_SECONDS",
+    )
+    embedding_provider_key: str = Field(
+        default="local-fake",
+        validation_alias="EMBEDDING_PROVIDER",
+    )
+    embedding_api_key: SecretStr = Field(
+        default=SecretStr("local-fake-embedding-key"),
+        validation_alias="EMBEDDING_API_KEY",
+    )
+    embedding_model: str = Field(
+        default="text-embedding-v4",
+        validation_alias="EMBEDDING_MODEL",
+    )
+    embedding_dimensions: int = Field(
+        default=1024,
+        validation_alias="EMBEDDING_DIM",
+    )
+    embedding_batch_size: int = Field(
+        default=10,
+        ge=1,
+        le=10,
+        validation_alias="EMBEDDING_BATCH_SIZE",
+    )
+    embedding_timeout_seconds: float = Field(
+        default=30.0,
+        gt=0,
+        validation_alias="EMBEDDING_TIMEOUT_SECONDS",
+    )
+    search_user_limit_per_minute: int = Field(
+        default=30,
+        ge=1,
+        validation_alias="CAIRN_SEARCH_USER_LIMIT_PER_MINUTE",
+    )
+    search_org_limit_per_minute: int = Field(
+        default=300,
+        ge=0,
+        validation_alias="CAIRN_SEARCH_ORG_LIMIT_PER_MINUTE",
+    )
+    search_audit_secret: SecretStr = Field(
+        default=SecretStr(
+            "local-development-search-audit-secret-change-before-deploying-32-bytes"
+        ),
+        validation_alias="CAIRN_SEARCH_AUDIT_SECRET",
     )
     bind_host: str = Field(default="127.0.0.1", validation_alias="CAIRN_BIND_HOST")
     http_port: int = Field(default=8080, ge=1, le=65535, validation_alias="CAIRN_HTTP_PORT")
@@ -87,7 +172,54 @@ class Settings(BaseSettings):
             raise ValueError("production cannot use the example auth rate-limit secret")
         if self.auth_rate_limit_secret == self.csrf_secret:
             raise ValueError("production auth rate-limit secret must differ from the CSRF secret")
+        if self.object_store_access_key.get_secret_value() == "cairn-local":
+            raise ValueError("production cannot use the example object-store access key")
+        if (
+            self.object_store_secret_key.get_secret_value()
+            == "cairn-local-only-change-before-deploying"
+        ):
+            raise ValueError("production cannot use the example object-store secret key")
+        if not self.embedding_api_key.get_secret_value().strip():
+            raise ValueError("production requires a nonblank Embedding API key")
+        if (
+            self.search_audit_secret.get_secret_value()
+            == "local-development-search-audit-secret-change-before-deploying-32-bytes"
+        ):
+            raise ValueError("production cannot use the example search audit secret")
+        if self.search_org_limit_per_minute < 1:
+            raise ValueError("production organization search rate limit must be at least 1")
         return self
+
+    @field_validator(
+        "object_store_endpoint_url",
+        "object_store_public_endpoint_url",
+        "embedding_base_url",
+    )
+    @classmethod
+    def reject_url_credentials(cls, value: AnyHttpUrl) -> AnyHttpUrl:
+        if value.username is not None or value.password is not None:
+            raise ValueError("service URLs cannot contain credentials")
+        return value
+
+    @field_validator(
+        "object_store_region",
+        "object_store_bucket",
+        "embedding_provider_key",
+        "embedding_model",
+    )
+    @classmethod
+    def reject_blank_knowledge_identifiers(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("knowledge setting cannot be blank")
+        return normalized
+
+    @field_validator("embedding_dimensions")
+    @classmethod
+    def require_stage_3a_embedding_dimensions(cls, value: int) -> int:
+        if value != 1024:
+            raise ValueError("Stage 3A requires exactly 1024 Embedding dimensions")
+        return value
 
     @field_validator("app_url")
     @classmethod

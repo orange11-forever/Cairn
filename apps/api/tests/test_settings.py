@@ -1,6 +1,23 @@
 import pytest
 from cairn_api.settings import Settings
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
+
+PRODUCTION_SETTINGS: dict[str, object] = {
+    "environment": "production",
+    "app_url": "https://cairn.example",
+    "session_cookie_secure": True,
+    "csrf_secret": "production-only-csrf-secret-with-at-least-32-bytes",
+    "auth_rate_limit_secret": "production-only-rate-limit-secret-with-at-least-32-bytes",
+    "object_store_access_key": "production-object-store-access-key",
+    "object_store_secret_key": "production-object-store-secret-key",
+    "embedding_api_key": "production-embedding-api-key",
+    "search_audit_secret": "production-search-audit-secret",
+}
+
+
+def production_settings(**overrides: object) -> Settings:
+    values = PRODUCTION_SETTINGS | overrides
+    return Settings(**values, _env_file=None)  # pyright: ignore[reportCallIssue]
 
 
 def test_settings_defaults() -> None:
@@ -22,6 +39,111 @@ def test_settings_defaults() -> None:
         "local-development-auth-rate-limit-secret-change-before-deploying-32-bytes"
     )
     assert settings.trusted_proxy_cidrs == ()
+
+
+def test_knowledge_services_default_to_local_runtime() -> None:
+    settings = Settings(_env_file=None)  # pyright: ignore[reportCallIssue]
+
+    assert str(settings.object_store_endpoint_url) == "http://127.0.0.1:9000/"
+    assert str(settings.object_store_public_endpoint_url) == "http://127.0.0.1:9000/"
+    assert str(settings.embedding_base_url) == "http://127.0.0.1:58081/v1"
+
+
+def test_knowledge_settings_have_bounded_local_defaults() -> None:
+    settings = Settings(_env_file=None)  # pyright: ignore[reportCallIssue]
+
+    assert settings.object_store_region == "us-east-1"
+    assert settings.object_store_bucket == "cairn"
+    assert settings.object_store_path_style is True
+    assert settings.upload_session_ttl_seconds == 900
+    assert settings.download_url_ttl_seconds == 300
+    assert settings.embedding_provider_key == "local-fake"
+    assert settings.embedding_model == "text-embedding-v4"
+    assert settings.embedding_dimensions == 1024
+    assert settings.embedding_batch_size == 10
+    assert settings.embedding_timeout_seconds == 30.0
+    assert settings.search_user_limit_per_minute == 30
+    assert settings.search_org_limit_per_minute == 300
+
+
+@pytest.mark.parametrize(
+    ("field_name", "url"),
+    [
+        ("object_store_endpoint_url", "http://access:secret@127.0.0.1:9000"),
+        ("object_store_public_endpoint_url", "https://access:secret@objects.example"),
+        ("embedding_base_url", "https://api-key:secret@embedding.example/v1"),
+    ],
+)
+def test_knowledge_urls_reject_embedded_credentials(field_name: str, url: str) -> None:
+    with pytest.raises(ValidationError, match="credentials"):
+        Settings(**{field_name: url}, _env_file=None)  # pyright: ignore[reportCallIssue]
+
+
+@pytest.mark.parametrize("dimensions", [0, 768, 1536])
+def test_embedding_dimensions_are_fixed_for_stage_3a(dimensions: int) -> None:
+    with pytest.raises(ValidationError, match="1024"):
+        Settings(embedding_dimensions=dimensions, _env_file=None)  # pyright: ignore[reportCallIssue]
+
+
+@pytest.mark.parametrize("batch_size", [0, 11])
+def test_embedding_batch_size_stays_within_provider_contract(batch_size: int) -> None:
+    with pytest.raises(ValidationError):
+        Settings(embedding_batch_size=batch_size, _env_file=None)  # pyright: ignore[reportCallIssue]
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    ["object_store_bucket", "embedding_provider_key", "embedding_model"],
+)
+def test_knowledge_identifiers_reject_blank_values(field_name: str) -> None:
+    with pytest.raises(ValidationError, match="blank"):
+        Settings(**{field_name: " \t "}, _env_file=None)  # pyright: ignore[reportCallIssue]
+
+
+def test_knowledge_credentials_are_redacted_from_settings_representations() -> None:
+    plaintext_values = {
+        "object_store_access_key": "visible-access-key",
+        "object_store_secret_key": "visible-secret-key",
+        "embedding_api_key": "visible-embedding-key",
+        "search_audit_secret": "visible-audit-secret",
+    }
+
+    settings = Settings(**plaintext_values, _env_file=None)  # pyright: ignore[reportCallIssue]
+
+    for field_name, plaintext in plaintext_values.items():
+        secret = getattr(settings, field_name)
+        assert isinstance(secret, SecretStr)
+        assert secret.get_secret_value() == plaintext
+        assert plaintext not in repr(settings)
+        assert plaintext not in settings.model_dump_json()
+
+
+@pytest.mark.parametrize(
+    ("field_name", "example_value"),
+    [
+        ("object_store_access_key", "cairn-local"),
+        ("object_store_secret_key", "cairn-local-only-change-before-deploying"),
+        (
+            "search_audit_secret",
+            "local-development-search-audit-secret-change-before-deploying-32-bytes",
+        ),
+    ],
+)
+def test_production_rejects_example_knowledge_secrets(
+    field_name: str, example_value: str
+) -> None:
+    with pytest.raises(ValidationError, match="example"):
+        production_settings(**{field_name: example_value})
+
+
+def test_production_rejects_blank_embedding_api_key() -> None:
+    with pytest.raises(ValidationError, match="Embedding API key"):
+        production_settings(embedding_api_key=" \t ")
+
+
+def test_production_requires_enabled_organization_search_limit() -> None:
+    with pytest.raises(ValidationError, match="organization search rate limit"):
+        production_settings(search_org_limit_per_minute=0)
 
 
 @pytest.mark.parametrize("port", [0, 65536])
@@ -77,45 +199,21 @@ def test_settings_require_postgresql_psycopg_driver(database_url: str) -> None:
 )
 def test_production_rejects_missing_short_or_example_csrf_secrets(csrf_secret: str) -> None:
     with pytest.raises(ValidationError):
-        Settings(
-            environment="production",
-            app_url="https://cairn.example",
-            session_cookie_secure=True,
-            csrf_secret=csrf_secret,
-            _env_file=None,  # pyright: ignore[reportCallIssue]
-        )
+        production_settings(csrf_secret=csrf_secret)
 
 
 def test_production_requires_secure_session_cookie() -> None:
     with pytest.raises(ValidationError):
-        Settings(
-            environment="production",
-            app_url="https://cairn.example",
-            session_cookie_secure=False,
-            csrf_secret="production-only-csrf-secret-with-at-least-32-bytes",
-            _env_file=None,  # pyright: ignore[reportCallIssue]
-        )
+        production_settings(session_cookie_secure=False)
 
 
 def test_production_requires_app_url() -> None:
     with pytest.raises(ValidationError, match="APP_URL"):
-        Settings(
-            environment="production",
-            session_cookie_secure=True,
-            csrf_secret="production-only-csrf-secret-with-at-least-32-bytes",
-            _env_file=None,  # pyright: ignore[reportCallIssue]
-        )
+        production_settings(app_url=None)
 
 
 def test_production_accepts_secure_cookie_and_non_example_secret() -> None:
-    settings = Settings(
-        environment="production",
-        app_url="https://cairn.example",
-        session_cookie_secure=True,
-        csrf_secret="production-only-csrf-secret-with-at-least-32-bytes",
-        auth_rate_limit_secret="production-only-rate-limit-secret-with-at-least-32-bytes",
-        _env_file=None,  # pyright: ignore[reportCallIssue]
-    )
+    settings = production_settings()
 
     assert settings.session_cookie_secure is True
 
@@ -123,53 +221,33 @@ def test_production_accepts_secure_cookie_and_non_example_secret() -> None:
 def test_production_rejects_reused_csrf_and_rate_limit_secret() -> None:
     shared_secret = "production-shared-secret-with-at-least-32-bytes"
     with pytest.raises(ValidationError, match="rate-limit secret"):
-        Settings(
-            environment="production",
-            app_url="https://cairn.example",
+        production_settings(
             cors_origins="https://cairn.example",
-            session_cookie_secure=True,
             csrf_secret=shared_secret,
             auth_rate_limit_secret=shared_secret,
-            _env_file=None,  # pyright: ignore[reportCallIssue]
         )
 
 
 @pytest.mark.parametrize("app_url", ["http://cairn.example", "http://localhost:8080"])
 def test_production_rejects_http_app_url(app_url: str) -> None:
     with pytest.raises(ValidationError, match="HTTPS"):
-        Settings(
-            environment="production",
+        production_settings(
             app_url=app_url,
-            session_cookie_secure=True,
-            csrf_secret="production-only-csrf-secret-with-at-least-32-bytes",
-            auth_rate_limit_secret="production-only-rate-limit-secret-with-at-least-32-bytes",
-            _env_file=None,  # pyright: ignore[reportCallIssue]
         )
 
 
 def test_production_rejects_http_cors_origin() -> None:
     with pytest.raises(ValidationError, match="HTTPS"):
-        Settings(
-            environment="production",
-            app_url="https://cairn.example",
+        production_settings(
             cors_origins="http://frontend.example",
-            session_cookie_secure=True,
-            csrf_secret="production-only-csrf-secret-with-at-least-32-bytes",
-            auth_rate_limit_secret="production-only-rate-limit-secret-with-at-least-32-bytes",
-            _env_file=None,  # pyright: ignore[reportCallIssue]
         )
 
 
 @pytest.mark.parametrize("secret", ["", "short", "local-development-auth-rate-limit-secret-change-before-deploying-32-bytes"])
 def test_production_rejects_missing_short_or_example_rate_limit_secret(secret: str) -> None:
     with pytest.raises(ValidationError):
-        Settings(
-            environment="production",
-            app_url="https://cairn.example",
-            session_cookie_secure=True,
-            csrf_secret="production-only-csrf-secret-with-at-least-32-bytes",
+        production_settings(
             auth_rate_limit_secret=secret,
-            _env_file=None,  # pyright: ignore[reportCallIssue]
         )
 
 
@@ -192,15 +270,10 @@ def test_settings_parses_comma_separated_trusted_proxy_cidrs_from_environment(
 
 
 def test_production_accepts_https_values_and_normalizes_origins() -> None:
-    settings = Settings(
-        environment="production",
+    settings = production_settings(
         app_url="https://cairn.example/",
         cors_origins="https://frontend.example/",
-        session_cookie_secure=True,
-        csrf_secret="production-only-csrf-secret-with-at-least-32-bytes",
-        auth_rate_limit_secret="production-only-rate-limit-secret-with-at-least-32-bytes",
         trusted_proxy_cidrs="10.0.0.0/8, 2001:db8::/32",
-        _env_file=None,  # pyright: ignore[reportCallIssue]
     )
     assert str(settings.app_url) == "https://cairn.example/"
     assert settings.cors_origins == ["https://frontend.example"]
