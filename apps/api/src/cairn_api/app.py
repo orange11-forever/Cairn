@@ -22,6 +22,7 @@ from cairn_api.knowledge.object_store import (
     ObjectStore,
     ObjectStoreUnavailable,
 )
+from cairn_api.knowledge.router import router as knowledge_router
 from cairn_api.logging import configure_app_logging
 from cairn_api.middleware import RequestIdMiddleware, new_request_id
 from cairn_api.organizations.router import router as organizations_router
@@ -234,6 +235,7 @@ def create_app(
     application.include_router(organizations_router)
     application.include_router(authorization_router)
     application.include_router(projects_router)
+    application.include_router(knowledge_router)
 
     return application
 

@@ -95,6 +95,8 @@ def test_openapi_contains_only_approved_paths(client: TestClient) -> None:
         "/api/v1/projects/{project_id}/acl",
         "/api/v1/projects/{project_id}/acl/{principal_type}/{principal_id}",
         "/api/v1/projects/{project_id}/events",
+        "/api/v1/projects/{project_id}/knowledge/uploads",
+        "/api/v1/projects/{project_id}/knowledge/uploads/{upload_id}/complete",
         "/api/v1/projects/{project_id}/tasks",
         "/api/v1/tasks/{task_id}/status",
         "/api/v1/tasks/{task_id}/dependencies",
@@ -162,6 +164,46 @@ def test_openapi_project_requests_forbid_identity_fields_and_bound_values() -> N
         assert operation["responses"]["403"]["content"]["application/json"]["schema"][
             "$ref"
         ].endswith("/ErrorBody")
+
+
+def test_openapi_knowledge_uploads_are_json_only_bounded_and_traced() -> None:
+    schema = create_app().openapi()
+    components = schema["components"]["schemas"]
+    request_schema = components["UploadBatchCreateRequest"]
+    intent_schema = components["UploadFileIntent"]
+    paths = schema["paths"]
+    create = paths["/api/v1/projects/{project_id}/knowledge/uploads"]["post"]
+    complete_path = paths["/api/v1/projects/{project_id}/knowledge/uploads/{upload_id}/complete"]
+
+    assert request_schema["additionalProperties"] is False
+    assert request_schema["properties"]["files"]["minItems"] == 1
+    assert request_schema["properties"]["files"]["maxItems"] == 20
+    assert intent_schema["additionalProperties"] is False
+    assert set(intent_schema["properties"]) == {
+        "fileName",
+        "mediaType",
+        "sizeBytes",
+        "sha256",
+    }
+    assert intent_schema["properties"]["fileName"]["maxLength"] == 255
+    assert intent_schema["properties"]["mediaType"]["maxLength"] == 127
+    assert intent_schema["properties"]["sizeBytes"]["exclusiveMinimum"] == 0
+    assert intent_schema["properties"]["sha256"]["pattern"] == "^[0-9a-f]{64}$"
+    assert set(create["requestBody"]["content"]) == {"application/json"}
+    assert set(complete_path) == {"post"}
+
+    for operation, success_status in ((create, "201"), (complete_path["post"], "200")):
+        csrf = next(
+            parameter
+            for parameter in operation["parameters"]
+            if parameter["name"] == "X-CSRF-Token"
+        )
+        assert csrf["required"] is True
+        assert "X-Request-ID" in operation["responses"][success_status]["headers"]
+        for error_status in ("401", "403", "404", "409", "410", "422", "500", "503"):
+            response = operation["responses"][error_status]
+            assert response["content"]["application/json"]["schema"]["$ref"].endswith("/ErrorBody")
+            assert "X-Request-ID" in response["headers"]
 
 
 def test_openapi_project_events_declares_bounded_sse_read_contract() -> None:

@@ -232,6 +232,17 @@ export const componentSchemas = {
     "title": "IdentityContextResponse",
     "type": "object"
   },
+  "IngestionItemStatus": {
+    "enum": [
+      "awaiting_upload",
+      "queued",
+      "processing",
+      "ready",
+      "failed"
+    ],
+    "title": "IngestionItemStatus",
+    "type": "string"
+  },
   "LoginRequest": {
     "properties": {
       "email": {
@@ -770,6 +781,183 @@ export const componentSchemas = {
       "status"
     ],
     "title": "TaskStatusUpdateRequest",
+    "type": "object"
+  },
+  "UploadBatchCreateRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "files": {
+        "items": {
+          "$ref": "#/components/schemas/UploadFileIntent"
+        },
+        "maxItems": 20,
+        "minItems": 1,
+        "title": "Files",
+        "type": "array"
+      }
+    },
+    "required": [
+      "files"
+    ],
+    "title": "UploadBatchCreateRequest",
+    "type": "object"
+  },
+  "UploadBatchCreateResponse": {
+    "properties": {
+      "batchId": {
+        "format": "uuid",
+        "title": "Batchid",
+        "type": "string"
+      },
+      "uploads": {
+        "items": {
+          "$ref": "#/components/schemas/UploadInstruction"
+        },
+        "title": "Uploads",
+        "type": "array"
+      }
+    },
+    "required": [
+      "batchId",
+      "uploads"
+    ],
+    "title": "UploadBatchCreateResponse",
+    "type": "object"
+  },
+  "UploadCompleteResponse": {
+    "properties": {
+      "batchId": {
+        "format": "uuid",
+        "title": "Batchid",
+        "type": "string"
+      },
+      "itemId": {
+        "format": "uuid",
+        "title": "Itemid",
+        "type": "string"
+      },
+      "resourceId": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Resourceid"
+      },
+      "resourceVersionId": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Resourceversionid"
+      },
+      "status": {
+        "$ref": "#/components/schemas/IngestionItemStatus"
+      },
+      "uploadId": {
+        "format": "uuid",
+        "title": "Uploadid",
+        "type": "string"
+      }
+    },
+    "required": [
+      "uploadId",
+      "batchId",
+      "itemId",
+      "resourceId",
+      "resourceVersionId",
+      "status"
+    ],
+    "title": "UploadCompleteResponse",
+    "type": "object"
+  },
+  "UploadFileIntent": {
+    "additionalProperties": false,
+    "properties": {
+      "fileName": {
+        "maxLength": 255,
+        "minLength": 1,
+        "title": "Filename",
+        "type": "string"
+      },
+      "mediaType": {
+        "maxLength": 127,
+        "minLength": 1,
+        "title": "Mediatype",
+        "type": "string"
+      },
+      "sha256": {
+        "pattern": "^[0-9a-f]{64}$",
+        "title": "Sha256",
+        "type": "string"
+      },
+      "sizeBytes": {
+        "exclusiveMinimum": 0,
+        "title": "Sizebytes",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "fileName",
+      "mediaType",
+      "sizeBytes",
+      "sha256"
+    ],
+    "title": "UploadFileIntent",
+    "type": "object"
+  },
+  "UploadInstruction": {
+    "properties": {
+      "expiresAt": {
+        "format": "date-time",
+        "title": "Expiresat",
+        "type": "string"
+      },
+      "headers": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "title": "Headers",
+        "type": "object"
+      },
+      "itemId": {
+        "format": "uuid",
+        "title": "Itemid",
+        "type": "string"
+      },
+      "method": {
+        "const": "PUT",
+        "default": "PUT",
+        "title": "Method",
+        "type": "string"
+      },
+      "uploadId": {
+        "format": "uuid",
+        "title": "Uploadid",
+        "type": "string"
+      },
+      "url": {
+        "title": "Url",
+        "type": "string"
+      }
+    },
+    "required": [
+      "uploadId",
+      "itemId",
+      "url",
+      "headers",
+      "expiresAt"
+    ],
+    "title": "UploadInstruction",
     "type": "object"
   },
   "UserResponse": {
