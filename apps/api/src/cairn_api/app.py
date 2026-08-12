@@ -16,7 +16,12 @@ from cairn_api.auth.router import router as auth_router
 from cairn_api.authorization.router import router as authorization_router
 from cairn_api.db.errors import DATABASE_UNAVAILABLE_ERRORS
 from cairn_api.db.session import Database
-from cairn_api.errors import ApiProblem, error_response
+from cairn_api.errors import ApiProblem, ErrorBody, error_response
+from cairn_api.knowledge.object_store import (
+    Boto3ObjectStore,
+    ObjectStore,
+    ObjectStoreUnavailable,
+)
 from cairn_api.logging import configure_app_logging
 from cairn_api.middleware import RequestIdMiddleware, new_request_id
 from cairn_api.organizations.router import router as organizations_router
@@ -66,9 +71,14 @@ def get_request_id(request: Request) -> str:
     return request_id if isinstance(request_id, str) else new_request_id()
 
 
-def create_app(settings: Settings | None = None, database: Database | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    database: Database | None = None,
+    object_store: ObjectStore | None = None,
+) -> FastAPI:
     current_settings = settings or Settings()
     current_database = database or Database(current_settings.database_url)
+    current_object_store = object_store or Boto3ObjectStore.from_settings(current_settings)
     logger = configure_app_logging(current_settings.log_level)
 
     @asynccontextmanager
@@ -76,12 +86,16 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
         try:
             yield
         finally:
-            current_database.dispose()
+            try:
+                current_database.dispose()
+            finally:
+                current_object_store.close()
 
     application = CairnFastAPI(title="Cairn API", version=__version__, lifespan=lifespan)
     application.cairn_cors_origins = tuple(current_settings.cors_origins)
     application.state.settings = current_settings
     application.state.database = current_database
+    application.state.object_store = current_object_store
 
     @application.exception_handler(ApiProblem)
     async def api_problem_handler(  # pyright: ignore[reportUnusedFunction]
@@ -172,7 +186,25 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
     async def health() -> HealthResponse:  # pyright: ignore[reportUnusedFunction]
         return HealthResponse(version=__version__)
 
-    @application.get("/ready", response_model=ReadyResponse)
+    request_id_header = {
+        "X-Request-ID": {
+            "description": "请求追踪标识",
+            "schema": {"type": "string"},
+        }
+    }
+
+    @application.get(
+        "/ready",
+        response_model=ReadyResponse,
+        responses={
+            200: {"description": "依赖已就绪", "headers": request_id_header},
+            503: {
+                "description": "数据库或对象存储暂时不可用",
+                "model": ErrorBody,
+                "headers": request_id_header,
+            },
+        },
+    )
     def ready(request: Request) -> ReadyResponse | JSONResponse:  # pyright: ignore[reportUnusedFunction]
         try:
             current_database.check_ready()
@@ -181,6 +213,15 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
                 status_code=503,
                 code="database_unavailable",
                 message="数据库暂时不可用",
+                trace_id=get_request_id(request),
+            )
+        try:
+            current_object_store.check_ready()
+        except ObjectStoreUnavailable:
+            return error_response(
+                status_code=503,
+                code="object_store_unavailable",
+                message="对象存储暂时不可用",
                 trace_id=get_request_id(request),
             )
         return ReadyResponse()

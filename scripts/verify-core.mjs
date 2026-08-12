@@ -12,6 +12,7 @@ const COMPOSE_FILE = resolve(REPOSITORY_ROOT, "deploy/compose/core.yml");
 const UV = process.platform === "win32" ? "uv.exe" : "uv";
 const NEVER = new Promise(() => undefined);
 const STAGES = Object.freeze([
+  "object-store-bootstrap",
   "minio",
   "migrate",
   "integration",
@@ -47,12 +48,19 @@ export function resolveVerificationConfig(
     throw new Error("verification project must match ^cairn-(verify|test)-[a-z0-9-]+$");
   }
   const databasePort = readPort(environment, "CAIRN_VERIFY_POSTGRES_PORT", 55436);
+  const minioPort = readPort(environment, "CAIRN_VERIFY_MINIO_PORT", 59000);
+  const minioConsolePort = readPort(
+    environment,
+    "CAIRN_VERIFY_MINIO_CONSOLE_PORT",
+    59001,
+  );
   const apiPort = readPort(environment, "CAIRN_VERIFY_API_PORT", 58080);
   const webPort = readPort(environment, "CAIRN_VERIFY_WEB_PORT", 55500);
   const mockPort = readPort(environment, "CAIRN_VERIFY_MOCK_PORT", 58787);
   const proxyPort = readPort(environment, "CAIRN_VERIFY_PROXY_PORT", 58443);
   const databaseUrl =
     `postgresql+psycopg://cairn:cairn-local-only@127.0.0.1:${databasePort}/cairn_test`;
+  const objectStoreEndpoint = `http://127.0.0.1:${minioPort}`;
   const apiOrigin = `http://localhost:${apiPort}`;
   const webOrigin = `http://localhost:${webPort}`;
   const mockOrigin = `http://localhost:${mockPort}`;
@@ -66,6 +74,8 @@ export function resolveVerificationConfig(
     CAIRN_CSRF_SECRET: "proxy-verification-csrf-secret-at-least-32-bytes",
     CAIRN_ENVIRONMENT: "production",
     CAIRN_OBJECT_STORE_ACCESS_KEY: "proxy-verification-object-store-access",
+    CAIRN_OBJECT_STORE_ENDPOINT_URL: objectStoreEndpoint,
+    CAIRN_OBJECT_STORE_PUBLIC_ENDPOINT_URL: objectStoreEndpoint,
     CAIRN_OBJECT_STORE_SECRET_KEY: "proxy-verification-object-store-secret",
     CAIRN_SEARCH_AUDIT_SECRET: "proxy-verification-search-audit-secret-at-least-32-bytes",
     CAIRN_SESSION_COOKIE_SECURE: "true",
@@ -78,6 +88,8 @@ export function resolveVerificationConfig(
   return {
     projectName,
     databasePort,
+    minioPort,
+    minioConsolePort,
     apiPort,
     webPort,
     mockPort,
@@ -96,14 +108,24 @@ export function resolveVerificationConfig(
       CAIRN_CSRF_SECRET: "test-only-csrf-secret-with-at-least-32-bytes",
       CAIRN_ENVIRONMENT: "test",
       CAIRN_HTTP_PORT: String(apiPort),
+      CAIRN_MINIO_CONSOLE_PORT: String(minioConsolePort),
+      CAIRN_MINIO_PORT: String(minioPort),
+      CAIRN_OBJECT_STORE_ACCESS_KEY: "proxy-verification-object-store-access",
+      CAIRN_OBJECT_STORE_ENDPOINT_URL: objectStoreEndpoint,
+      CAIRN_OBJECT_STORE_PUBLIC_ENDPOINT_URL: objectStoreEndpoint,
+      CAIRN_OBJECT_STORE_SECRET_KEY: "proxy-verification-object-store-secret",
       CAIRN_POSTGRES_PORT: String(databasePort),
       CAIRN_SESSION_COOKIE_SECURE: "false",
       CAIRN_TEST_DATABASE_URL: databaseUrl,
+      CAIRN_TEST_CORS_ORIGIN: webOrigin,
+      CAIRN_TEST_S3_ENDPOINT_URL: objectStoreEndpoint,
       CAIRN_VERIFY_API_PORT: String(apiPort),
       CAIRN_VERIFY_IDENTITY_ORIGIN: apiOrigin,
       CAIRN_VERIFY_MOCK_PORT: String(mockPort),
       CAIRN_VERIFY_PROXY_PORT: String(proxyPort),
       CAIRN_VERIFY_POSTGRES_PORT: String(databasePort),
+      CAIRN_VERIFY_MINIO_CONSOLE_PORT: String(minioConsolePort),
+      CAIRN_VERIFY_MINIO_PORT: String(minioPort),
       CAIRN_VERIFY_WEB_PORT: String(webPort),
       CORS_ORIGINS: webOrigin,
       DATABASE_URL: databaseUrl,
@@ -191,6 +213,13 @@ export function createStageRunner(config, processManager) {
     );
 
   return async (stage) => {
+    if (stage === "object-store-bootstrap") {
+      return processManager.run(
+        UV,
+        ["run", "--package", "cairn-api", "cairn-api", "object-store-bootstrap"],
+        { env: config.environment },
+      );
+    }
     if (stage === "minio") {
       return processManager.run(
         process.execPath,
@@ -282,8 +311,10 @@ export async function runCoreVerification(options = {}) {
       config.projectName,
       "up",
       "-d",
+      "--build",
       "--wait",
       "postgres",
+      "minio",
     ]);
     if (exitCode === 0) {
       for (const stage of STAGES) {

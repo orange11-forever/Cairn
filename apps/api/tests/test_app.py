@@ -8,6 +8,7 @@ from unittest.mock import Mock
 import pytest
 from cairn_api.app import create_app
 from cairn_api.db.session import Database
+from cairn_api.knowledge.object_store import ObjectStore, ObjectStoreUnavailable
 from cairn_api.logging import configure_app_logging
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -36,6 +37,23 @@ def test_uvicorn_leaves_proxy_headers_for_the_application_to_validate(
         log_level="info",
         proxy_headers=False,
     )
+
+
+def test_object_store_bootstrap_cli_uses_settings_origins_and_closes_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from cairn_api import __main__
+
+    store = Mock()
+    bootstrap = Mock(return_value=store)
+    settings = SimpleNamespace(cors_origins=["https://web.example"])
+    monkeypatch.setattr(__main__, "Settings", lambda: settings)
+    monkeypatch.setattr(__main__, "bootstrap_object_store", bootstrap)
+    monkeypatch.setattr(sys, "argv", ["cairn-api", "object-store-bootstrap"])
+
+    assert __main__.main() == 0
+    bootstrap.assert_called_once_with(settings, allowed_origins=settings.cors_origins)
+    store.close.assert_called_once_with()
 
 
 @pytest.fixture
@@ -81,6 +99,21 @@ def test_openapi_contains_only_approved_paths(client: TestClient) -> None:
         "/api/v1/tasks/{task_id}/status",
         "/api/v1/tasks/{task_id}/dependencies",
     }
+
+
+def test_openapi_ready_declares_success_and_dependency_failure_contracts() -> None:
+    operation = create_app().openapi()["paths"]["/ready"]["get"]
+
+    assert set(operation["responses"]) == {"200", "503"}
+    assert operation["responses"]["200"]["content"]["application/json"]["schema"][
+        "$ref"
+    ].endswith("/ReadyResponse")
+    assert operation["responses"]["503"]["content"]["application/json"]["schema"][
+        "$ref"
+    ].endswith("/ErrorBody")
+    for status_code in ("200", "503"):
+        request_id = operation["responses"][status_code]["headers"]["X-Request-ID"]
+        assert request_id["schema"] == {"type": "string"}
 
 
 def test_openapi_project_requests_forbid_identity_fields_and_bound_values() -> None:
@@ -245,30 +278,38 @@ def test_openapi_declares_logout_csrf_header() -> None:
 
 def test_health_does_not_touch_database() -> None:
     database = Mock(spec=Database)
+    object_store = Mock(spec=ObjectStore)
 
-    with TestClient(create_app(database=database)) as client:
+    with TestClient(create_app(database=database, object_store=object_store)) as client:
         response = client.get("/health")
 
     assert response.status_code == 200
     database.check_ready.assert_not_called()
+    object_store.check_ready.assert_not_called()
 
 
 def test_ready_reports_database_success() -> None:
     database = Mock(spec=Database)
+    object_store = Mock(spec=ObjectStore)
 
-    with TestClient(create_app(database=database)) as client:
+    with TestClient(create_app(database=database, object_store=object_store)) as client:
         response = client.get("/ready")
 
     assert response.status_code == 200
     assert response.json() == {"status": "ready"}
     database.check_ready.assert_called_once_with()
+    object_store.check_ready.assert_called_once_with()
 
 
 def test_ready_reports_database_failure_with_trace_id() -> None:
     database = Mock(spec=Database)
+    object_store = Mock(spec=ObjectStore)
     database.check_ready.side_effect = OperationalError("SELECT 1", {}, Exception("down"))
 
-    with TestClient(create_app(database=database), raise_server_exceptions=False) as client:
+    with TestClient(
+        create_app(database=database, object_store=object_store),
+        raise_server_exceptions=False,
+    ) as client:
         response = client.get("/ready")
 
     assert response.status_code == 503
@@ -277,13 +318,38 @@ def test_ready_reports_database_failure_with_trace_id() -> None:
     assert response.json()["traceId"] == response.headers["x-request-id"]
     assert "SELECT 1" not in response.text
     assert "down" not in response.text
+    object_store.check_ready.assert_not_called()
+
+
+def test_ready_reports_object_store_failure_with_trace_id() -> None:
+    database = Mock(spec=Database)
+    object_store = Mock(spec=ObjectStore)
+    object_store.check_ready.side_effect = ObjectStoreUnavailable()
+
+    with TestClient(
+        create_app(database=database, object_store=object_store),
+        raise_server_exceptions=False,
+    ) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "code": "object_store_unavailable",
+        "message": "对象存储暂时不可用",
+        "traceId": response.headers["x-request-id"],
+    }
+    database.check_ready.assert_called_once_with()
 
 
 def test_ready_does_not_normalize_programming_errors() -> None:
     database = Mock(spec=Database)
+    object_store = Mock(spec=ObjectStore)
     database.check_ready.side_effect = RuntimeError("programming mistake")
 
-    with TestClient(create_app(database=database), raise_server_exceptions=False) as client:
+    with TestClient(
+        create_app(database=database, object_store=object_store),
+        raise_server_exceptions=False,
+    ) as client:
         response = client.get("/ready")
 
     assert response.status_code == 500
@@ -292,11 +358,36 @@ def test_ready_does_not_normalize_programming_errors() -> None:
 
 def test_app_lifespan_disposes_database() -> None:
     database = Mock(spec=Database)
+    object_store = Mock(spec=ObjectStore)
 
-    with TestClient(create_app(database=database)):
+    with TestClient(create_app(database=database, object_store=object_store)):
         database.dispose.assert_not_called()
+        object_store.close.assert_not_called()
 
     database.dispose.assert_called_once_with()
+    object_store.close.assert_called_once_with()
+
+
+def test_app_lifespan_closes_object_store_when_database_disposal_fails() -> None:
+    database = Mock(spec=Database)
+    database.dispose.side_effect = RuntimeError("database dispose failed")
+    object_store = Mock(spec=ObjectStore)
+
+    with (
+        pytest.raises(RuntimeError, match="database dispose failed"),
+        TestClient(create_app(database=database, object_store=object_store)),
+    ):
+        pass
+
+    object_store.close.assert_called_once_with()
+
+
+def test_app_exposes_the_injected_object_store() -> None:
+    object_store = Mock(spec=ObjectStore)
+
+    application = create_app(object_store=object_store)
+
+    assert application.state.object_store is object_store
 
 
 def test_unknown_route_has_normalized_error_and_generated_request_id(

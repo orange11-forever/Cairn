@@ -10,7 +10,9 @@ RUN if [ -n "${CAIRN_BUILD_CA_CERT_BASE64}" ]; then \
     fi \
     && git clone --branch "${MINIO_VERSION}" --depth 1 https://github.com/minio/minio.git /src/minio
 COPY deploy/docker/minio/build.sh /usr/local/src/build-minio.sh
-RUN MINIO_SOURCE_DIR=/src/minio MINIO_OUTPUT_PATH=/out/minio sh /usr/local/src/build-minio.sh
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    MINIO_SOURCE_DIR=/src/minio MINIO_OUTPUT_PATH=/out/minio sh /usr/local/src/build-minio.sh
 
 FROM debian:bookworm-slim AS runtime
 

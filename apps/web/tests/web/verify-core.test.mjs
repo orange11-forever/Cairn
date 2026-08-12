@@ -45,6 +45,8 @@ test("verification project names use only the repository prefix and random hex",
 test("verification database and service ports are configurable", () => {
   const config = resolveVerificationConfig({
     CAIRN_VERIFY_POSTGRES_PORT: "55499",
+    CAIRN_VERIFY_MINIO_PORT: "59099",
+    CAIRN_VERIFY_MINIO_CONSOLE_PORT: "59199",
     CAIRN_VERIFY_API_PORT: "58099",
     CAIRN_VERIFY_WEB_PORT: "55099",
     CAIRN_VERIFY_MOCK_PORT: "58799",
@@ -52,6 +54,9 @@ test("verification database and service ports are configurable", () => {
 
   assert.equal(config.projectName, "cairn-verify-fixed-deadbeef");
   assert.equal(config.databasePort, 55499);
+  assert.equal(config.minioPort, 59099);
+  assert.equal(config.environment.CAIRN_OBJECT_STORE_ENDPOINT_URL, "http://127.0.0.1:59099");
+  assert.equal(config.environment.CAIRN_TEST_S3_ENDPOINT_URL, "http://127.0.0.1:59099");
   assert.equal(config.apiOrigin, "http://localhost:58099");
   assert.equal(config.webOrigin, "http://localhost:55099");
   assert.equal(config.mockOrigin, "http://localhost:58799");
@@ -131,10 +136,14 @@ test("successful verification follows the required stage order", async () => {
     "cairn-test-order",
     "up",
     "-d",
+    "--build",
     "--wait",
     "postgres",
+    "minio",
   ]);
+  assert.deepEqual(stages.slice(0, 2), ["object-store-bootstrap", "minio"]);
   assert.deepEqual(stages, [
+    "object-store-bootstrap",
     "minio",
     "migrate",
     "integration",

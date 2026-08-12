@@ -65,11 +65,11 @@ def database(
 @pytest.fixture(autouse=True)
 def cleanup_identity_rows(
     request: pytest.FixtureRequest,
-    test_database_url: str,
 ) -> Generator[None, None, None]:
     yield
     if not {"migrated_connection", "migrated_engine"}.intersection(request.fixturenames):
         return
+    test_database_url = request.getfixturevalue("test_database_url")
     assert make_url(test_database_url).database == "cairn_test"
     engine = request.getfixturevalue("migrated_engine")
     with engine.begin() as connection:

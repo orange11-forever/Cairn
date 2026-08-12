@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -138,4 +139,144 @@ test("Core Compose resolves pgvector and healthy persistent MinIO", async () => 
     "cairn_minio_data",
     "cairn_postgres_data",
   ]);
+});
+
+test("MinIO source builds retain Go caches and retry transient downloads", async () => {
+  const dockerfile = await readFile(
+    join(REPOSITORY_ROOT, "deploy/docker/minio/Dockerfile"),
+    "utf8",
+  );
+  assert.match(dockerfile, /--mount=type=cache,target=\/go\/pkg\/mod/);
+  assert.match(dockerfile, /--mount=type=cache,target=\/root\/.cache\/go-build/);
+
+  const temporaryRoot = await mkdtemp(join(tmpdir(), "cairn-minio-build-"));
+  const fakeBin = join(temporaryRoot, "bin");
+  const sourceDirectory = join(temporaryRoot, "source");
+  const outputPath = join(temporaryRoot, "out", "minio");
+  const invocationLog = join(temporaryRoot, "go-invocations.log");
+  try {
+    await mkdir(fakeBin);
+    await mkdir(sourceDirectory);
+    await writeFile(
+      join(fakeBin, "go"),
+      [
+        "#!/bin/sh",
+        "set -eu",
+        'printf "%s\\n" "$1" >> "$CAIRN_FAKE_GO_LOG"',
+        'if [ "$1" = "run" ]; then',
+        "  printf '%s\\n' '-X github.com/minio/minio/cmd.Version=test'",
+        "  exit 0",
+        "fi",
+        'attempts=$(grep -c "^build$" "$CAIRN_FAKE_GO_LOG")',
+        'if [ "$attempts" -lt 3 ]; then exit 1; fi',
+        ': > "$MINIO_OUTPUT_PATH"',
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+
+    await execFileAsync(
+      "sh",
+      [join(REPOSITORY_ROOT, "deploy/docker/minio/build.sh")],
+      {
+        cwd: REPOSITORY_ROOT,
+        env: {
+          ...process.env,
+          PATH: `${fakeBin}:${process.env.PATH}`,
+          CAIRN_FAKE_GO_LOG: invocationLog,
+          MINIO_BUILD_MAX_ATTEMPTS: "3",
+          MINIO_BUILD_RETRY_DELAY_SECONDS: "0",
+          MINIO_OUTPUT_PATH: outputPath,
+          MINIO_SOURCE_DIR: sourceDirectory,
+        },
+      },
+    );
+
+    const invocations = (await readFile(invocationLog, "utf8")).trim().split("\n");
+    assert.deepEqual(invocations, ["run", "build", "run", "build", "run", "build"]);
+    assert.equal(await readFile(outputPath, "utf8"), "");
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+test("MinIO source builds stop at the retry limit and preserve the failure", async () => {
+  const temporaryRoot = await mkdtemp(join(tmpdir(), "cairn-minio-build-failure-"));
+  const fakeBin = join(temporaryRoot, "bin");
+  const sourceDirectory = join(temporaryRoot, "source");
+  const outputPath = join(temporaryRoot, "out", "minio");
+  const invocationLog = join(temporaryRoot, "go-invocations.log");
+  try {
+    await mkdir(fakeBin);
+    await mkdir(sourceDirectory);
+    await writeFile(
+      join(fakeBin, "go"),
+      [
+        "#!/bin/sh",
+        "set -eu",
+        'printf "%s\\n" "$1" >> "$CAIRN_FAKE_GO_LOG"',
+        'if [ "$1" = "run" ]; then',
+        "  printf '%s\\n' '-X github.com/minio/minio/cmd.Version=test'",
+        "  exit 0",
+        "fi",
+        "exit 37",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+
+    await assert.rejects(
+      execFileAsync("sh", [join(REPOSITORY_ROOT, "deploy/docker/minio/build.sh")], {
+        cwd: REPOSITORY_ROOT,
+        env: {
+          ...process.env,
+          PATH: `${fakeBin}:${process.env.PATH}`,
+          CAIRN_FAKE_GO_LOG: invocationLog,
+          MINIO_BUILD_MAX_ATTEMPTS: "3",
+          MINIO_BUILD_RETRY_DELAY_SECONDS: "0",
+          MINIO_OUTPUT_PATH: outputPath,
+          MINIO_SOURCE_DIR: sourceDirectory,
+        },
+      }),
+      (error) => {
+        assert.equal(error.code, 37);
+        assert.equal(
+          error.stderr.match(/MinIO build attempt \d+ failed; retrying/g)?.length,
+          2,
+        );
+        return true;
+      },
+    );
+
+    const invocations = (await readFile(invocationLog, "utf8")).trim().split("\n");
+    assert.deepEqual(invocations, ["run", "build", "run", "build", "run", "build"]);
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+test("MinIO source builds reject invalid retry configuration", async () => {
+  const buildScript = join(REPOSITORY_ROOT, "deploy/docker/minio/build.sh");
+  const cases = [
+    {
+      environment: { MINIO_BUILD_MAX_ATTEMPTS: "0" },
+      message: /MINIO_BUILD_MAX_ATTEMPTS must be a positive integer/,
+    },
+    {
+      environment: { MINIO_BUILD_RETRY_DELAY_SECONDS: "-1" },
+      message: /MINIO_BUILD_RETRY_DELAY_SECONDS must be a non-negative integer/,
+    },
+  ];
+
+  for (const { environment, message } of cases) {
+    await assert.rejects(
+      execFileAsync("sh", [buildScript], {
+        cwd: REPOSITORY_ROOT,
+        env: { ...process.env, ...environment },
+      }),
+      (error) => {
+        assert.equal(error.code, 2);
+        assert.match(error.stderr, message);
+        return true;
+      },
+    );
+  }
 });
