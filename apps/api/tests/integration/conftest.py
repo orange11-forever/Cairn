@@ -75,8 +75,26 @@ def cleanup_identity_rows(
     with engine.begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE TABLE resource_acl_entries, outbox_events, task_dependencies, "
+                "TRUNCATE TABLE chunk_embeddings, knowledge_chunks, "
+                "ingestion_job_attempts, ingestion_jobs, upload_sessions, "
+                "ingestion_items, knowledge_resource_versions, knowledge_resources, "
+                "ingestion_batches, search_rate_limit_buckets, "
+                "resource_acl_entries, outbox_events, task_dependencies, "
                 "tasks, milestones, project_stages, projects, auth_rate_limits, "
                 "audit_logs, auth_sessions, memberships, users, organizations CASCADE"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO embedding_profiles ("
+                "id, org_id, provider_key, model, dimensions, distance_metric, "
+                "chunking_config, index_config, version, status"
+                ") VALUES ("
+                "'00000000-0000-4000-8000-000000000501', NULL, 'default', "
+                "'text-embedding-v4', 1024, 'cosine', "
+                '\'{"maxCodepoints": 1800, "overlapCodepoints": 180}\'::jsonb, '
+                '\'{"strategy": "exact", "candidateLimit": 50}\'::jsonb, '
+                "'default-v1', 'active'"
+                ") ON CONFLICT (version) WHERE org_id IS NULL DO NOTHING"
             )
         )
