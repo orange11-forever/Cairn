@@ -6,6 +6,11 @@ import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
+import {
+  dockerEnvironment,
+  resolveDockerCommand,
+} from "../../../../scripts/docker-command.mjs";
+
 const REPOSITORY_ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../../..");
 const execFileAsync = promisify(execFile);
 
@@ -24,20 +29,22 @@ async function readToml(relativePath) {
 }
 
 async function readComposeConfig() {
+  const baseEnv = {
+    ...process.env,
+    CAIRN_BUILD_CA_CERT_BASE64: "Y2VydA==",
+    CAIRN_BUILD_HTTP_PROXY: "http://proxy.example:8080",
+    CAIRN_BUILD_HTTPS_PROXY: "http://proxy.example:8443",
+    CAIRN_MINIO_PORT: "19000",
+    CAIRN_MINIO_CONSOLE_PORT: "19001",
+    NO_PROXY: "localhost,127.0.0.1",
+  };
+  const dockerCommand = await resolveDockerCommand({ env: baseEnv });
   const { stdout } = await execFileAsync(
-    "docker",
+    dockerCommand,
     ["compose", "-f", "deploy/compose/core.yml", "config", "--format", "json"],
     {
       cwd: REPOSITORY_ROOT,
-      env: {
-        ...process.env,
-        CAIRN_BUILD_CA_CERT_BASE64: "Y2VydA==",
-        CAIRN_BUILD_HTTP_PROXY: "http://proxy.example:8080",
-        CAIRN_BUILD_HTTPS_PROXY: "http://proxy.example:8443",
-        CAIRN_MINIO_PORT: "19000",
-        CAIRN_MINIO_CONSOLE_PORT: "19001",
-        NO_PROXY: "localhost,127.0.0.1",
-      },
+      env: dockerEnvironment({ dockerCommand, env: baseEnv }),
     },
   );
   return JSON.parse(stdout);
@@ -102,12 +109,16 @@ test("Core Compose resolves pgvector and healthy persistent MinIO", async () => 
     [{ source: "cairn_postgres_data", target: "/var/lib/postgresql/data" }],
   );
 
-  assert.equal(minio.build.context, REPOSITORY_ROOT);
+  const normalizedBuildContext = minio.build.context.replaceAll("\\", "/");
+  assert.ok(
+    normalizedBuildContext === REPOSITORY_ROOT ||
+      normalizedBuildContext.endsWith(REPOSITORY_ROOT),
+  );
   assert.equal(minio.build.dockerfile, "deploy/docker/minio/Dockerfile");
   assert.equal(minio.build.args.GO_VERSION, "1.24.8");
   assert.equal(minio.build.args.MINIO_VERSION, "RELEASE.2025-10-15T17-29-55Z");
-  assert.equal(minio.build.args.HTTP_PROXY, "http://proxy.example:8080");
-  assert.equal(minio.build.args.HTTPS_PROXY, "http://proxy.example:8443");
+  assert.equal(new URL(minio.build.args.HTTP_PROXY).origin, "http://proxy.example:8080");
+  assert.equal(new URL(minio.build.args.HTTPS_PROXY).origin, "http://proxy.example:8443");
   assert.equal(minio.build.args.NO_PROXY, "localhost,127.0.0.1");
   assert.equal(minio.build.args.CAIRN_BUILD_CA_CERT_BASE64, "Y2VydA==");
   assert.deepEqual(minio.command, ["server", "/data", "--console-address", ":9001"]);
