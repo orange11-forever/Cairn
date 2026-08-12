@@ -56,6 +56,19 @@ def test_object_store_bootstrap_cli_uses_settings_origins_and_closes_client(
     store.close.assert_called_once_with()
 
 
+def test_upload_cleanup_cli_dispatches_maintenance_command(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from cairn_api import __main__
+
+    cleanup = Mock(return_value=0)
+    monkeypatch.setattr(__main__, "run_upload_cleanup_command", cleanup)
+    monkeypatch.setattr(sys, "argv", ["cairn-api", "upload-cleanup"])
+
+    assert __main__.main() == 0
+    cleanup.assert_called_once_with()
+
+
 @pytest.fixture
 def client() -> Iterator[TestClient]:
     with TestClient(create_app()) as test_client:
@@ -97,6 +110,12 @@ def test_openapi_contains_only_approved_paths(client: TestClient) -> None:
         "/api/v1/projects/{project_id}/events",
         "/api/v1/projects/{project_id}/knowledge/uploads",
         "/api/v1/projects/{project_id}/knowledge/uploads/{upload_id}/complete",
+        "/api/v1/projects/{project_id}/knowledge/batches/{batch_id}",
+        "/api/v1/projects/{project_id}/knowledge/resources",
+        "/api/v1/projects/{project_id}/knowledge/resources/{resource_id}",
+        "/api/v1/projects/{project_id}/knowledge/resources/{resource_id}/versions/{version_id}/retry",
+        "/api/v1/projects/{project_id}/knowledge/resources/{resource_id}/download",
+        "/api/v1/projects/{project_id}/knowledge/resources/{resource_id}/chunks/{chunk_id}",
         "/api/v1/projects/{project_id}/tasks",
         "/api/v1/tasks/{task_id}/status",
         "/api/v1/tasks/{task_id}/dependencies",
@@ -204,6 +223,80 @@ def test_openapi_knowledge_uploads_are_json_only_bounded_and_traced() -> None:
             response = operation["responses"][error_status]
             assert response["content"]["application/json"]["schema"]["$ref"].endswith("/ErrorBody")
             assert "X-Request-ID" in response["headers"]
+
+
+def test_openapi_knowledge_resource_lifecycle_is_bounded_secured_and_traced() -> None:
+    schema = create_app().openapi()
+    paths = schema["paths"]
+    resources = paths["/api/v1/projects/{project_id}/knowledge/resources"]["get"]
+    detail_path = paths["/api/v1/projects/{project_id}/knowledge/resources/{resource_id}"]
+    retry = paths[
+        "/api/v1/projects/{project_id}/knowledge/resources/{resource_id}/versions/"
+        "{version_id}/retry"
+    ]["post"]
+    download = paths["/api/v1/projects/{project_id}/knowledge/resources/{resource_id}/download"][
+        "get"
+    ]
+
+    parameters = {parameter["name"]: parameter for parameter in resources["parameters"]}
+    assert parameters["cursor"]["schema"]["anyOf"][0] == {
+        "type": "string",
+        "maxLength": 2048,
+    }
+    assert parameters["limit"]["schema"] == {
+        "type": "integer",
+        "maximum": 100,
+        "minimum": 1,
+        "default": 50,
+        "title": "Limit",
+    }
+
+    operations = [
+        paths["/api/v1/projects/{project_id}/knowledge/batches/{batch_id}"]["get"],
+        resources,
+        detail_path["get"],
+        retry,
+        detail_path["delete"],
+        download,
+        paths["/api/v1/projects/{project_id}/knowledge/resources/{resource_id}/chunks/{chunk_id}"][
+            "get"
+        ],
+    ]
+    for operation in operations:
+        success_status = next(
+            code for code in ("200", "204", "307") if code in operation["responses"]
+        )
+        assert "X-Request-ID" in operation["responses"][success_status]["headers"]
+        for error_status in ("401", "404", "422", "500", "503"):
+            response = operation["responses"][error_status]
+            assert response["content"]["application/json"]["schema"]["$ref"].endswith("/ErrorBody")
+            assert "X-Request-ID" in response["headers"]
+
+    for operation in (retry, detail_path["delete"]):
+        csrf = next(
+            parameter
+            for parameter in operation["parameters"]
+            if parameter["name"] == "X-CSRF-Token"
+        )
+        assert csrf["required"] is True
+        assert "403" in operation["responses"]
+    assert "409" in retry["responses"]
+    assert "409" not in detail_path["delete"]["responses"]
+    for operation in (resources, detail_path["get"], download):
+        assert all(parameter["name"] != "X-CSRF-Token" for parameter in operation["parameters"])
+
+    assert download["responses"]["307"]["headers"]["Location"]["schema"] == {
+        "type": "string",
+        "format": "uri",
+    }
+    assert (
+        "objectKey" not in schema["components"]["schemas"]["KnowledgeVersionResponse"]["properties"]
+    )
+    resource_properties = schema["components"]["schemas"]["KnowledgeResourceResponse"][
+        "properties"
+    ]
+    assert "latestVersion" in resource_properties
+    assert "currentVersion" not in resource_properties
 
 
 def test_openapi_project_events_declares_bounded_sse_read_contract() -> None:

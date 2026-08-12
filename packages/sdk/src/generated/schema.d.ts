@@ -193,6 +193,109 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/knowledge/batches/{batch_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Knowledge Batch */
+        get: operations["get_knowledge_batch_api_v1_projects__project_id__knowledge_batches__batch_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/knowledge/resources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Knowledge Resources */
+        get: operations["list_knowledge_resources_api_v1_projects__project_id__knowledge_resources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/knowledge/resources/{resource_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Knowledge Resource */
+        get: operations["get_knowledge_resource_api_v1_projects__project_id__knowledge_resources__resource_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Knowledge Resource */
+        delete: operations["delete_knowledge_resource_api_v1_projects__project_id__knowledge_resources__resource_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/knowledge/resources/{resource_id}/chunks/{chunk_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Knowledge Chunk Context */
+        get: operations["get_knowledge_chunk_context_api_v1_projects__project_id__knowledge_resources__resource_id__chunks__chunk_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/knowledge/resources/{resource_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Knowledge Resource */
+        get: operations["download_knowledge_resource_api_v1_projects__project_id__knowledge_resources__resource_id__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/knowledge/resources/{resource_id}/versions/{version_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry Knowledge Resource Version */
+        post: operations["retry_knowledge_resource_version_api_v1_projects__project_id__knowledge_resources__resource_id__versions__version_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/knowledge/uploads": {
         parameters: {
             query?: never;
@@ -391,6 +494,72 @@ export interface components {
              */
             version: "v1";
         };
+        /** BatchDetailResponse */
+        BatchDetailResponse: {
+            /** Completedat */
+            completedAt: string | null;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Failedcount */
+            failedCount: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Itemcount */
+            itemCount: number;
+            /** Items */
+            items: components["schemas"]["IngestionItemResponse"][];
+            /** Readycount */
+            readyCount: number;
+            status: components["schemas"]["IngestionBatchStatus"];
+        };
+        /** ChunkContextResponse */
+        ChunkContextResponse: {
+            after: components["schemas"]["ChunkResponse"] | null;
+            before: components["schemas"]["ChunkResponse"] | null;
+            hit: components["schemas"]["ChunkResponse"];
+            /**
+             * Resourceid
+             * Format: uuid
+             */
+            resourceId: string;
+            /**
+             * Resourceversionid
+             * Format: uuid
+             */
+            resourceVersionId: string;
+        };
+        /** ChunkResponse */
+        ChunkResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Locator */
+            locator: components["schemas"]["PdfLocator"] | components["schemas"]["DocxLocator"] | components["schemas"]["PptxLocator"] | components["schemas"]["XlsxLocator"] | components["schemas"]["CsvLocator"] | components["schemas"]["HtmlLocator"] | components["schemas"]["TextLocator"];
+            /** Ordinal */
+            ordinal: number;
+            /** Text */
+            text: string;
+        };
+        /** CsvLocator */
+        CsvLocator: {
+            /** Rowend */
+            rowEnd: number;
+            /** Rowstart */
+            rowStart: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "csv";
+        };
         /** DependencyResponse */
         DependencyResponse: {
             /**
@@ -413,6 +582,20 @@ export interface components {
              * Format: uuid
              */
             successorTaskId: string;
+        };
+        /** DocxLocator */
+        DocxLocator: {
+            /** Headingpath */
+            headingPath: string[];
+            /** Paragraph */
+            paragraph?: number | null;
+            /** Table */
+            table?: number | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "docx";
         };
         /** ErrorBody */
         ErrorBody: {
@@ -440,6 +623,18 @@ export interface components {
             /** Version */
             version: string;
         };
+        /** HtmlLocator */
+        HtmlLocator: {
+            /** Block */
+            block: number;
+            /** Headingpath */
+            headingPath: string[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "html";
+        };
         /** IdentityContextResponse */
         IdentityContextResponse: {
             /** Csrftoken */
@@ -449,10 +644,116 @@ export interface components {
             user: components["schemas"]["UserResponse"];
         };
         /**
+         * IngestionBatchStatus
+         * @enum {string}
+         */
+        IngestionBatchStatus: "pending" | "processing" | "completed" | "completed_with_errors" | "failed";
+        /** IngestionItemResponse */
+        IngestionItemResponse: {
+            /** Completedat */
+            completedAt: string | null;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Errorcode */
+            errorCode: string | null;
+            /** Errordetail */
+            errorDetail: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Mediatype */
+            mediaType: string;
+            /** Normalizedpath */
+            normalizedPath: string;
+            /** Parentitemid */
+            parentItemId: string | null;
+            /** Resourceid */
+            resourceId: string | null;
+            /** Resourceversionid */
+            resourceVersionId: string | null;
+            /** Sizebytes */
+            sizeBytes: number;
+            status: components["schemas"]["IngestionItemStatus"];
+        };
+        /**
          * IngestionItemStatus
          * @enum {string}
          */
         IngestionItemStatus: "awaiting_upload" | "queued" | "processing" | "ready" | "failed";
+        /** KnowledgeCapabilities */
+        KnowledgeCapabilities: {
+            /** Canwrite */
+            canWrite: boolean;
+        };
+        /** KnowledgeResourcePage */
+        KnowledgeResourcePage: {
+            capabilities: components["schemas"]["KnowledgeCapabilities"];
+            /** Items */
+            items: components["schemas"]["KnowledgeResourceResponse"][];
+            /** Nextcursor */
+            nextCursor: string | null;
+        };
+        /** KnowledgeResourceResponse */
+        KnowledgeResourceResponse: {
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            latestVersion: components["schemas"]["KnowledgeVersionResponse"] | null;
+            /** Sourcetype */
+            sourceType: string;
+            /** Title */
+            title: string;
+            /**
+             * Updatedat
+             * Format: date-time
+             */
+            updatedAt: string;
+        };
+        /** KnowledgeVersionResponse */
+        KnowledgeVersionResponse: {
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Errorcode */
+            errorCode: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Mediatype */
+            mediaType: string;
+            /** Processingstartedat */
+            processingStartedAt: string | null;
+            /** Readyat */
+            readyAt: string | null;
+            /**
+             * Retryable
+             * @default false
+             */
+            retryable: boolean;
+            /** Sha256 */
+            sha256: string;
+            /** Sizebytes */
+            sizeBytes: number;
+            /** Sourcetype */
+            sourceType: string;
+            status: components["schemas"]["ResourceVersionStatus"];
+        };
         /** LoginRequest */
         LoginRequest: {
             /**
@@ -526,6 +827,31 @@ export interface components {
             /** Slug */
             slug: string;
         };
+        /** PdfLocator */
+        PdfLocator: {
+            /** Page */
+            page: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "pdf";
+        };
+        /** PptxLocator */
+        PptxLocator: {
+            /**
+             * Area
+             * @enum {string}
+             */
+            area: "body" | "notes";
+            /** Slide */
+            slide: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "pptx";
+        };
         /**
          * PrincipalType
          * @enum {string}
@@ -586,6 +912,11 @@ export interface components {
          * @enum {string}
          */
         ResourceType: "project";
+        /**
+         * ResourceVersionStatus
+         * @enum {string}
+         */
+        ResourceVersionStatus: "queued" | "processing" | "ready" | "failed";
         /** TaskCreateRequest */
         TaskCreateRequest: {
             /** Acceptancecriteria */
@@ -665,6 +996,20 @@ export interface components {
         /** TaskStatusUpdateRequest */
         TaskStatusUpdateRequest: {
             status: components["schemas"]["TaskStatus"];
+        };
+        /** TextLocator */
+        TextLocator: {
+            /** Headingpath */
+            headingPath?: string[];
+            /** Lineend */
+            lineEnd: number;
+            /** Linestart */
+            lineStart: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "markdown" | "text";
         };
         /** UploadBatchCreateRequest */
         UploadBatchCreateRequest: {
@@ -756,6 +1101,18 @@ export interface components {
              * Format: uuid
              */
             id: string;
+        };
+        /** XlsxLocator */
+        XlsxLocator: {
+            /** Cellrange */
+            cellRange: string;
+            /** Sheet */
+            sheet: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "xlsx";
         };
     };
     responses: never;
@@ -1580,6 +1937,607 @@ export interface operations {
             /** @description 数据库暂时不可用 */
             503: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_knowledge_batch_api_v1_projects__project_id__knowledge_batches__batch_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 知识导入批次详情 */
+            200: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchDetailResponse"];
+                };
+            };
+            /** @description 会话无效 */
+            401: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目或知识资源不存在 */
+            404: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求参数无效 */
+            422: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 数据库或对象存储暂时不可用 */
+            503: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_knowledge_resources_api_v1_projects__project_id__knowledge_resources_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 知识资源分页 */
+            200: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeResourcePage"];
+                };
+            };
+            /** @description 会话无效 */
+            401: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目或知识资源不存在 */
+            404: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求参数无效 */
+            422: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 数据库或对象存储暂时不可用 */
+            503: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_knowledge_resource_api_v1_projects__project_id__knowledge_resources__resource_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                resource_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 知识资源详情 */
+            200: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeResourceResponse"];
+                };
+            };
+            /** @description 会话无效 */
+            401: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目或知识资源不存在 */
+            404: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求参数无效 */
+            422: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 数据库或对象存储暂时不可用 */
+            503: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_knowledge_resource_api_v1_projects__project_id__knowledge_resources__resource_id__delete: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Session-bound CSRF token returned by login or session restore. */
+                "X-CSRF-Token": string;
+            };
+            path: {
+                project_id: string;
+                resource_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 知识资源已删除 */
+            204: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 会话无效 */
+            401: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求来源或 CSRF 令牌无效 */
+            403: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目或知识资源不存在 */
+            404: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求参数无效 */
+            422: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 数据库或对象存储暂时不可用 */
+            503: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_knowledge_chunk_context_api_v1_projects__project_id__knowledge_resources__resource_id__chunks__chunk_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                resource_id: string;
+                chunk_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 知识片段引用上下文 */
+            200: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChunkContextResponse"];
+                };
+            };
+            /** @description 会话无效 */
+            401: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目或知识资源不存在 */
+            404: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求参数无效 */
+            422: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 数据库或对象存储暂时不可用 */
+            503: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    download_knowledge_resource_api_v1_projects__project_id__knowledge_resources__resource_id__download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                resource_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 重定向到短期附件下载地址 */
+            307: {
+                headers: {
+                    /** @description 五分钟有效的附件下载地址 */
+                    Location?: string;
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 会话无效 */
+            401: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目或知识资源不存在 */
+            404: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求参数无效 */
+            422: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 数据库或对象存储暂时不可用 */
+            503: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    retry_knowledge_resource_version_api_v1_projects__project_id__knowledge_resources__resource_id__versions__version_id__retry_post: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Session-bound CSRF token returned by login or session restore. */
+                "X-CSRF-Token": string;
+            };
+            path: {
+                project_id: string;
+                resource_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 知识资源版本已重新排队 */
+            200: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeResourceResponse"];
+                };
+            };
+            /** @description 会话无效 */
+            401: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求来源或 CSRF 令牌无效 */
+            403: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目或知识资源不存在 */
+            404: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 知识资源状态不允许该操作 */
+            409: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求参数无效 */
+            422: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 数据库或对象存储暂时不可用 */
+            503: {
+                headers: {
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
                     [name: string]: unknown;
                 };
                 content: {
