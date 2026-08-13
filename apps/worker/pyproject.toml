@@ -13,6 +13,9 @@ dependencies = [
   "python-pptx>=1.0,<2",
 ]
 
+[project.scripts]
+cairn-worker = "cairn_worker.__main__:main"
+
 [dependency-groups]
 dev = [
   "pyright>=1.1.390,<2",
