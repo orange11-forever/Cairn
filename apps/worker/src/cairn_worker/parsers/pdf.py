@@ -1,4 +1,4 @@
-from collections.abc import Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from io import BytesIO
 from threading import RLock
@@ -210,10 +210,16 @@ def _content_key(value: object, reader: PdfReader) -> tuple[_ContentKey, StreamO
 def _token_count(data: bytes, remaining: int) -> int:
     count = 0
     inside = False
+    delimiters = b"()<>[]{}/%"
     for value in data:
         whitespace = value in b"\x00\x09\x0a\x0c\x0d\x20"
         if whitespace:
             inside = False
+        elif value in delimiters:
+            inside = False
+            count += 1
+            if count > remaining:
+                raise ValueError("PDF content exceeds operator work limit")
         elif not inside:
             count += 1
             if count > remaining:
@@ -231,46 +237,63 @@ def _raw_resources(owner: DictionaryObject) -> DictionaryObject | None:
     return resources
 
 
-def _form_references(owner: DictionaryObject) -> list[object]:
+def _form_references(
+    owner: DictionaryObject,
+    reserve: Callable[[], None],
+) -> Iterator[object]:
     resources = _raw_resources(owner)
     if resources is None:
-        return []
+        return
     xobjects = resources.get("/XObject")
     if xobjects is None:
-        return []
+        return
     if not isinstance(xobjects, DictionaryObject):
         raise TypeError("PDF XObject resources must be a dictionary")
-    forms: list[object] = []
     for name in xobjects:
+        reserve()
         candidate = xobjects.raw_get(name)
         resolved = candidate.get_object() if isinstance(candidate, IndirectObject) else candidate
         if isinstance(resolved, StreamObject) and resolved.get("/Subtype") == "/Form":
-            forms.append(candidate)
-    return forms
+            yield candidate
 
 
 def _preflight_page_content(reader: PdfReader, pages: Sequence[object]) -> None:
     seen: set[_ContentKey] = set()
     decoded_bytes = 0
     tokens = 0
+    object_work = 0
 
-    def inspect(candidate: object, depth: int) -> None:
+    def reserve() -> None:
+        nonlocal object_work
+        if object_work >= PDF_MAX_CONTENT_STREAMS:
+            raise ValueError("PDF content exceeds stream limit")
+        object_work += 1
+
+    def inspect(candidate: object, depth: int, *, reserved: bool = False) -> None:
         nonlocal decoded_bytes, tokens
         if depth > PDF_MAX_FORM_DEPTH:
             raise ValueError("PDF Form XObject exceeds recursion limit")
-        if len(seen) >= PDF_MAX_CONTENT_STREAMS:
-            raise ValueError("PDF content exceeds stream limit")
+        if not reserved:
+            reserve()
         key, stream = _content_key(candidate, reader)
         if key in seen:
             raise ValueError("PDF content contains a cyclic or repeated stream")
         seen.add(key)
-        data = stream.get_data()
+        remaining_bytes = PDF_MAX_AGGREGATE_DECODED_BYTES - decoded_bytes
+        if remaining_bytes <= 0:
+            raise ValueError("PDF content exceeds aggregate decoded-byte limit")
+        previous_limit = filters.ZLIB_MAX_OUTPUT_LENGTH
+        filters.ZLIB_MAX_OUTPUT_LENGTH = min(previous_limit, remaining_bytes)
+        try:
+            data = stream.get_data()
+        finally:
+            filters.ZLIB_MAX_OUTPUT_LENGTH = previous_limit
         decoded_bytes += len(data)
         if decoded_bytes > PDF_MAX_AGGREGATE_DECODED_BYTES:
             raise ValueError("PDF content exceeds aggregate decoded-byte limit")
         tokens += _token_count(data, PDF_MAX_CONTENT_TOKENS - tokens)
-        for form in _form_references(stream):
-            inspect(form, depth + 1)
+        for form in _form_references(stream, reserve):
+            inspect(form, depth + 1, reserved=True)
 
     for page_object in pages:
         if not isinstance(page_object, DictionaryObject):
@@ -281,8 +304,8 @@ def _preflight_page_content(reader: PdfReader, pages: Sequence[object]) -> None:
                 inspect(candidate, 0)
         elif contents is not None:
             inspect(contents, 0)
-        for form in _form_references(page_object):
-            inspect(form, 1)
+        for form in _form_references(page_object, reserve):
+            inspect(form, 1, reserved=True)
 
 
 class PdfParser(DocumentParser):

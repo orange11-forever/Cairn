@@ -33,7 +33,7 @@ def _xml_hidden(element: object) -> bool:
     if not candidates:
         return False
     value = candidates[0].get("hidden")
-    return value is not None and value.casefold() in _TRUTHY_XML
+    return value is not None and value.strip().casefold() in _TRUTHY_XML
 
 
 def _text_frame_text(text_frame: TextFrame) -> str:
@@ -93,7 +93,7 @@ class PptxParser(DocumentParser):
         work = [0]
         for slide_number, slide in enumerate(presentation.slides, start=1):
             show = cast(str | None, cast(Any, slide.element).get("show"))
-            if show is not None and show.casefold() in {"0", "false", "off", "no"}:
+            if show is not None and show.strip().casefold() in {"0", "false", "off", "no"}:
                 continue
             body = "\n".join(
                 segment

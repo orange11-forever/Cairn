@@ -12,7 +12,7 @@ from openpyxl.utils.cell import get_column_letter, range_boundaries
 from openpyxl.worksheet.worksheet import Worksheet
 
 from cairn_worker.parsers import BlockKind, DocumentParser, ParsedBlock, read_parser_source
-from cairn_worker.parsers.limits import ensure_block_capacity
+from cairn_worker.parsers.limits import PARSER_SOURCE_MAX_BYTES, ensure_block_capacity
 from cairn_worker.parsers.office_safety import validate_opc_package
 
 XLSX_ROWS_PER_BLOCK = 50
@@ -20,6 +20,7 @@ XLSX_MAX_SHEETS = 1_000
 XLSX_MAX_SOURCE_ROW = 100_000
 XLSX_MAX_SOURCE_COLUMN = 4_096
 XLSX_MAX_DIMENSION_CELLS = 2_000_000
+XLSX_MAX_OUTPUT_CHARACTERS = PARSER_SOURCE_MAX_BYTES
 _CELL_REFERENCE = re.compile(r"\$?([A-Z]{1,3})\$?([1-9][0-9]*)\Z", re.IGNORECASE)
 
 
@@ -187,6 +188,7 @@ class XlsxParser(DocumentParser):
             if len(workbook.worksheets) > XLSX_MAX_SHEETS:
                 raise ValueError("workbook sheet count exceeds parser work limit")
             blocks: list[ParsedBlock] = []
+            output_characters = 0
             for worksheet in workbook.worksheets:
                 min_column, min_row, max_column, max_row = _sheet_bounds(worksheet)
                 rows: list[tuple[int, dict[int, str]]] = []
@@ -208,6 +210,9 @@ class XlsxParser(DocumentParser):
                             and displayed.strip()
                             and isinstance(cell.column, int)
                         ):
+                            output_characters += len(displayed) + 1
+                            if output_characters > XLSX_MAX_OUTPUT_CHARACTERS:
+                                raise ValueError("XLSX text exceeds parser output limit")
                             values[cell.column] = displayed
                     if not values:
                         continue

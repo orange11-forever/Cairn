@@ -15,6 +15,7 @@ from pypdf.generic import (
     IndirectObject,
     NameObject,
     NumberObject,
+    StreamObject,
 )
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
@@ -678,3 +679,37 @@ def test_pdf_parser_restores_zlib_limit_after_failure_and_serializes_observers(
     assert (  # pyright: ignore[reportPrivateImportUsage]
         pdf_parser.filters.ZLIB_MAX_OUTPUT_LENGTH == 0  # pyright: ignore[reportPrivateImportUsage]
     )
+
+
+def test_pdf_parser_operator_proxy_counts_adjacent_delimiters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from cairn_worker.parsers import pdf as pdf_parser
+
+    monkeypatch.setattr(pdf_parser, "PDF_MAX_CONTENT_TOKENS", 5)
+    with pytest.raises(WorkerFailure) as caught:
+        PdfParser().parse(BytesIO(_pdf_with_content_streams(b"q/Q/q/Q")))
+    assert caught.value.code == "parser_failed"
+
+
+def test_pdf_parser_stops_before_resolving_form_beyond_stream_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from cairn_worker.parsers import pdf as pdf_parser
+
+    content = _pdf_with_forms()
+    resolved_forms = [0]
+    original = IndirectObject.get_object
+
+    def tracking(reference: IndirectObject) -> object:
+        result = original(reference)
+        if isinstance(result, StreamObject) and result.get("/Subtype") == "/Form":
+            resolved_forms[0] += 1
+        return result
+
+    monkeypatch.setattr(pdf_parser, "PDF_MAX_CONTENT_STREAMS", 1)
+    monkeypatch.setattr(IndirectObject, "get_object", tracking)
+    with pytest.raises(WorkerFailure) as caught:
+        PdfParser().parse(BytesIO(content))
+    assert caught.value.code == "parser_failed"
+    assert resolved_forms[0] == 0

@@ -1,5 +1,6 @@
 import warnings
 from io import BytesIO
+from itertools import pairwise
 from typing import Any, cast
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -128,6 +129,34 @@ def _mark_first_member_encrypted(package: bytes) -> bytes:
     marked[local + 6 : local + 8] = local_flags.to_bytes(2, "little")
     marked[central + 8 : central + 10] = central_flags.to_bytes(2, "little")
     return bytes(marked)
+
+
+def _corrupt_member_payload(package: bytes, name: str) -> bytes:
+    damaged = bytearray(package)
+    with ZipFile(BytesIO(package)) as source:
+        member = source.getinfo(name)
+        offset = member.header_offset
+        filename_length = int.from_bytes(damaged[offset + 26 : offset + 28], "little")
+        extra_length = int.from_bytes(damaged[offset + 28 : offset + 30], "little")
+        data_offset = offset + 30 + filename_length + extra_length
+        damaged[data_offset] ^= 0x80
+    return bytes(damaged)
+
+
+def _overlap_member_payload(package: bytes, name: str) -> bytes:
+    damaged = bytearray(package)
+    cursor = 0
+    encoded_name = name.encode()
+    while True:
+        central = damaged.find(b"PK\x01\x02", cursor)
+        assert central >= 0
+        filename_length = int.from_bytes(damaged[central + 28 : central + 30], "little")
+        filename = bytes(damaged[central + 46 : central + 46 + filename_length])
+        if filename == encoded_name:
+            compressed_size = int.from_bytes(damaged[central + 20 : central + 24], "little")
+            damaged[central + 20 : central + 24] = (compressed_size + 1_024).to_bytes(4, "little")
+            return bytes(damaged)
+        cursor = central + 46 + filename_length
 
 
 def _revision_docx() -> bytes:
@@ -366,18 +395,16 @@ def test_docx_parser_handles_revisions_nested_tables_merges_and_inherited_hidden
     blocks = DocxParser().parse(BytesIO(_nested_merged_hidden_docx()))
     assert [block.text for block in blocks] == [
         "Heading",
-        "outer\tright\nhorizontal",
-        "nested",
+        "outer\nnested\tright\nhorizontal",
         "vertical",
         "visible tail",
         "override-visible",
     ]
-    assert [block.locator.model_dump(by_alias=True) for block in blocks[1:4]] == [
+    assert [block.locator.model_dump(by_alias=True) for block in blocks[1:3]] == [
         {"type": "docx", "headingPath": ["Heading"], "paragraph": None, "table": 1},
         {"type": "docx", "headingPath": ["Heading"], "paragraph": None, "table": 2},
-        {"type": "docx", "headingPath": ["Heading"], "paragraph": None, "table": 3},
     ]
-    assert "nested" not in blocks[1].text
+    assert blocks[1].text.count("nested") == 1
 
     block_revision = DocxParser().parse(BytesIO(_block_revision_docx()))
     assert [block.text for block in block_revision] == ["before", "inserted block", "after"]
@@ -522,3 +549,205 @@ def test_docx_parser_runtime_work_limits_have_exact_boundaries(
     with pytest.raises(WorkerFailure) as caught:
         DocxParser().parse(BytesIO(_save_docx(document)))
     assert caught.value.code == "parser_failed"
+
+
+def test_docx_style_resolution_rejects_cycles_and_excess_depth_incrementally(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from cairn_worker.parsers import docx as docx_parser
+
+    class Style:
+        def __init__(self) -> None:
+            self.font = type("Font", (), {"hidden": None})()
+            self.base_style: Style | None = None
+
+    first = Style()
+    second = Style()
+    first.base_style = second
+    second.base_style = first
+    monkeypatch.setattr(docx_parser, "DOCX_MAX_STYLE_DEPTH", 2, raising=False)
+    with pytest.raises(ValueError):
+        docx_parser._style_hidden(first)  # pyright: ignore[reportPrivateUsage]
+
+    chain = [Style() for _ in range(4)]
+    for parent, child in pairwise(chain):
+        parent.base_style = child
+    with pytest.raises(ValueError):
+        docx_parser._style_hidden(chain[0])  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("style_kind", ["character", "paragraph"])
+def test_docx_parser_rejects_effective_hidden_style_cycles(
+    monkeypatch: pytest.MonkeyPatch,
+    style_kind: str,
+) -> None:
+    from cairn_worker.parsers import docx as docx_parser
+
+    document = Document()
+    style_type = (
+        WD_STYLE_TYPE.CHARACTER
+        if style_kind == "character"
+        else WD_STYLE_TYPE.PARAGRAPH
+    )
+    styles = cast(Any, document.styles)
+    first = styles.add_style("CycleOne", style_type)
+    second = styles.add_style("CycleTwo", style_type)
+    first.base_style = second
+    second.base_style = first
+    if style_kind == "character":
+        run = document.add_paragraph().add_run("visible")
+        run.style = first
+    else:
+        document.add_paragraph("visible", style=first)
+    monkeypatch.setattr(docx_parser, "DOCX_MAX_STYLE_DEPTH", 4)
+    with pytest.raises(WorkerFailure) as caught:
+        DocxParser().parse(BytesIO(_save_docx(document)))
+    assert caught.value.code == "parser_failed"
+
+
+def test_docx_recursive_revision_walker_owns_visible_wrapped_text_once() -> None:
+    document = Document()
+    document.add_paragraph("anchor")
+    package = _save_docx(document)
+    with ZipFile(BytesIO(package)) as source:
+        xml = source.read("word/document.xml")
+    paragraph = (
+        b"<w:p>"
+        b"<w:sdt><w:sdtContent><w:r><w:t>sdt</w:t></w:r></w:sdtContent></w:sdt>"
+        b"<w:fldSimple w:instr=\"DATE\"><w:r><w:t> field</w:t></w:r></w:fldSimple>"
+        b"<w:moveTo><w:r><w:t> moved</w:t></w:r></w:moveTo>"
+        b"<w:moveFrom><w:r><w:t> secret</w:t></w:r></w:moveFrom>"
+        b"</w:p>"
+    )
+    xml = xml.replace(b"<w:p><w:r><w:t>anchor</w:t></w:r></w:p>", paragraph)
+    blocks = DocxParser().parse(BytesIO(_replace_member(package, "word/document.xml", xml)))
+    assert [block.text for block in blocks] == ["sdt field moved"]
+
+
+def test_docx_recursive_block_walker_preserves_wrapped_table_preorder() -> None:
+    package = _nested_merged_hidden_docx()
+    with ZipFile(BytesIO(package)) as source:
+        xml = source.read("word/document.xml")
+    first_table = xml.index(b"<w:tbl>")
+    cursor = first_table
+    depth = 0
+    while True:
+        opening = xml.find(b"<w:tbl>", cursor)
+        closing = xml.find(b"</w:tbl>", cursor)
+        if opening >= 0 and opening < closing:
+            depth += 1
+            cursor = opening + len(b"<w:tbl>")
+        else:
+            depth -= 1
+            cursor = closing + len(b"</w:tbl>")
+            if depth == 0:
+                table_end = cursor
+                break
+    table = xml[first_table:table_end]
+    xml = xml[:first_table] + b"<w:sdt><w:sdtContent>" + table + b"</w:sdtContent></w:sdt>" + xml[table_end:]
+    blocks = DocxParser().parse(BytesIO(_replace_member(package, "word/document.xml", xml)))
+    assert [block.text for block in blocks[:3]] == [
+        "Heading",
+        "outer\nnested\tright\nhorizontal",
+        "vertical",
+    ]
+    assert [block.locator.model_dump()["table"] for block in blocks[1:3]] == [1, 2]
+
+
+def test_docx_nested_table_text_is_owned_once_at_exact_cell_source_position() -> None:
+    document = Document()
+    table = document.add_table(rows=1, cols=1)
+    cell = table.cell(0, 0)
+    cell.paragraphs[0].text = "before"
+    nested = cell.add_table(rows=1, cols=1)
+    nested.cell(0, 0).text = "nested"
+    cell.add_paragraph("after")
+
+    blocks = DocxParser().parse(BytesIO(_save_docx(document)))
+
+    assert [block.text for block in blocks] == ["before\nnested\nafter"]
+    assert [block.locator.model_dump()["table"] for block in blocks] == [1]
+    assert blocks[0].text.count("nested") == 1
+
+
+def test_docx_table_cell_limit_stops_before_excess_cell_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from cairn_worker.parsers import docx as docx_parser
+
+    document = Document()
+    table = document.add_table(rows=1, cols=3)
+    for index, cell in enumerate(table.rows[0].cells):
+        cell.text = str(index)
+    calls = [0]
+    original = docx_parser._cell_text  # pyright: ignore[reportPrivateUsage]
+
+    def tracking(cell: object, work: list[int]) -> str:
+        calls[0] += 1
+        return original(cell, work)  # pyright: ignore[reportArgumentType]
+
+    monkeypatch.setattr(docx_parser, "DOCX_MAX_TABLE_CELLS", 1)
+    monkeypatch.setattr(docx_parser, "_cell_text", tracking)
+    with pytest.raises(WorkerFailure) as caught:
+        DocxParser().parse(BytesIO(_save_docx(document)))
+    assert caught.value.code == "parser_failed"
+    assert calls[0] == 1
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "word//alias.xml",
+        "word/./alias.xml",
+        "word/%2Falias.xml",
+        "word/%5Calias.xml",
+        "word/%2E/alias.xml",
+    ],
+)
+def test_docx_parser_rejects_separator_and_dot_alias_members(name: str) -> None:
+    with pytest.raises(WorkerFailure) as caught:
+        DocxParser().parse(BytesIO(_append_member(_structured_docx(), name, b"<x/>")))
+    assert caught.value.code == "parser_failed"
+
+
+@pytest.mark.parametrize("target", ["media//x.png", "./media/x.png", "%2Fprivate.xml", "%5Cprivate.xml"])
+def test_docx_parser_rejects_ambiguous_relationship_target_separators(target: str) -> None:
+    package = _structured_docx()
+    with ZipFile(BytesIO(package)) as source:
+        relationships = source.read("word/_rels/document.xml.rels")
+    relationships = relationships.replace(
+        b"</Relationships>",
+        f'<Relationship Id="alias" Type="private" Target="{target}"/></Relationships>'.encode(),
+    )
+    with pytest.raises(WorkerFailure) as caught:
+        DocxParser().parse(
+            BytesIO(_replace_member(package, "word/_rels/document.xml.rels", relationships))
+        )
+    assert caught.value.code == "parser_failed"
+
+
+@pytest.mark.parametrize("damage", ["crc", "overlap"])
+def test_docx_parser_validates_all_members_before_document_construction(
+    monkeypatch: pytest.MonkeyPatch,
+    damage: str,
+) -> None:
+    from cairn_worker.parsers import docx as docx_parser
+
+    package = _append_member(_structured_docx(), "word/media/blob.bin", b"binary payload")
+    package = (
+        _corrupt_member_payload(package, "word/media/blob.bin")
+        if damage == "crc"
+        else _overlap_member_payload(package, "word/media/blob.bin")
+    )
+    constructed = [False]
+
+    def unexpected_document(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        constructed[0] = True
+        raise AssertionError
+
+    monkeypatch.setattr(docx_parser, "Document", unexpected_document)
+    with pytest.raises(WorkerFailure) as caught:
+        DocxParser().parse(BytesIO(package))
+    assert caught.value.code == "parser_failed"
+    assert constructed[0] is False

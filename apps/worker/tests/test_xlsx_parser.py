@@ -66,6 +66,40 @@ def _understate_first_worksheet_dimension(package: bytes) -> bytes:
     return output.getvalue()
 
 
+def _repeated_shared_string_xlsx(repetitions: int) -> bytes:
+    workbook = Workbook()
+    worksheet = workbook.active
+    assert worksheet is not None
+    for row in range(1, repetitions + 1):
+        worksheet.cell(row=row, column=1, value="repeat")
+    package = _save(workbook)
+    output = BytesIO()
+    with ZipFile(BytesIO(package), "r") as source, ZipFile(
+        output, "w", compression=ZIP_DEFLATED
+    ) as target:
+        for member in source.infolist():
+            data = source.read(member)
+            if member.filename == "xl/worksheets/sheet1.xml":
+                data = data.replace(
+                    b't="inlineStr"><is><t>repeat</t></is>', b't="s"><v>0</v>'
+                )
+            elif member.filename == "[Content_Types].xml":
+                data = data.replace(
+                    b"</Types>",
+                    b'<Override PartName="/xl/sharedStrings.xml" '
+                    b'ContentType="application/vnd.openxmlformats-officedocument.'
+                    b'spreadsheetml.sharedStrings+xml"/></Types>',
+                )
+            target.writestr(member, data)
+        target.writestr(
+            "xl/sharedStrings.xml",
+            b'<?xml version="1.0" encoding="UTF-8"?>'
+            b'<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+            b'count="1" uniqueCount="1"><si><t>repeat</t></si></sst>',
+        )
+    return output.getvalue()
+
+
 def test_xlsx_parser_emits_displayed_scalars_sparse_ranges_and_workbook_order() -> None:
     """Break caught: sparse row/column bounds and displayed scalar formatting must stay exact."""
     blocks = XlsxParser().parse(BytesIO(_structured_xlsx()))
@@ -297,3 +331,23 @@ def test_xlsx_parser_never_silently_drops_cells_outside_understated_dimensions(
         assert [block.text for block in blocks] == ["\toutside"]
         assert blocks[0].locator.model_dump(by_alias=True)["cellRange"] == "A1:B3"
     assert close_count == [1]
+
+
+def test_xlsx_parser_rejects_repeated_shared_string_output_before_join(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from cairn_worker.parsers import xlsx as xlsx_parser
+
+    joined = [False]
+
+    def unexpected_block(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        joined[0] = True
+        raise AssertionError("oversized repeated output reached block join")
+
+    monkeypatch.setattr(xlsx_parser, "XLSX_MAX_OUTPUT_CHARACTERS", 20, raising=False)
+    monkeypatch.setattr(xlsx_parser, "_sheet_block", unexpected_block)
+    with pytest.raises(WorkerFailure) as caught:
+        XlsxParser().parse(BytesIO(_repeated_shared_string_xlsx(19)))
+    assert caught.value.code == "parser_failed"
+    assert joined[0] is False

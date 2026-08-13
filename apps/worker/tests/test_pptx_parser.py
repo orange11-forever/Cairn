@@ -248,3 +248,29 @@ def test_pptx_parser_runtime_table_cell_work_has_exact_boundary(
     with pytest.raises(WorkerFailure) as caught:
         PptxParser().parse(BytesIO(output.getvalue()))
     assert caught.value.code == "parser_failed"
+
+
+def test_pptx_parser_normalizes_whitespace_around_hidden_and_show_flags() -> None:
+    package = _structured_pptx()
+    hidden_slide = _replace_member(
+        package,
+        "ppt/slides/slide1.xml",
+        lambda xml: xml.replace(b"<p:sld ", b'<p:sld show=" 0 \t" ', 1),
+    )
+    assert [block.text for block in PptxParser().parse(BytesIO(hidden_slide))] == ["Second"]
+
+    def hide_body(xml: bytes) -> bytes:
+        xml = xml.replace(b'<p:cNvPr id="2"', b'<p:cNvPr hidden=" true \n" id="2"', 1)
+        xml = xml.replace(b'<p:cNvPr id="3"', b'<p:cNvPr hidden=" on " id="3"', 1)
+        xml = xml.replace(b'<p:cNvPr id="4"', b'<p:cNvPr hidden=" yes " id="4"', 1)
+        return xml
+
+    hidden = _replace_member(package, "ppt/slides/slide1.xml", hide_body)
+    hidden = _replace_member(
+        hidden,
+        "ppt/notesSlides/notesSlide1.xml",
+        lambda xml: xml.replace(
+            b'<p:cNvPr id="3"', b'<p:cNvPr hidden=" 1 " id="3"', 1
+        ),
+    )
+    assert [block.text for block in PptxParser().parse(BytesIO(hidden))] == ["Second"]

@@ -6,7 +6,6 @@ from typing import Any, BinaryIO, Protocol, cast
 from cairn_api.knowledge.schemas import DocxLocator
 from docx import Document
 from docx.document import Document as DocumentObject
-from docx.oxml.ns import qn
 from docx.oxml.table import CT_Tbl
 from docx.oxml.text.paragraph import CT_P
 from docx.table import Table
@@ -19,6 +18,7 @@ from cairn_worker.parsers.office_safety import validate_opc_package
 
 DOCX_MAX_BODY_ELEMENTS = 100_000
 DOCX_MAX_TABLE_CELLS = 1_000_000
+DOCX_MAX_STYLE_DEPTH = 64
 _HEADING_STYLE = re.compile(r"^Heading\s*([1-9])$", re.IGNORECASE)
 
 
@@ -28,7 +28,17 @@ class _TableCell(Protocol):
 
 
 def _style_hidden(style: Any | None) -> bool | None:
+    seen: set[object] = set()
+    depth = 0
     while style is not None:
+        if depth >= DOCX_MAX_STYLE_DEPTH:
+            raise ValueError("DOCX style inheritance exceeds parser work limit")
+        style_id = cast(str | None, getattr(style, "style_id", None))
+        identity: object = style_id if style_id is not None else id(style)
+        if identity in seen:
+            raise ValueError("DOCX style inheritance contains a cycle")
+        seen.add(identity)
+        depth += 1
         if style.font.hidden is not None:
             return bool(style.font.hidden)
         style = style.base_style
@@ -54,32 +64,47 @@ def _visible_run_text(run: Run) -> str:
 def _visible_paragraph_text(paragraph: Paragraph) -> str:
     parts: list[str] = []
     paragraph_element = cast(Any, paragraph._p)  # pyright: ignore[reportPrivateUsage]
+
+    def walk(element: Any) -> None:
+        local = element.tag.rsplit("}", 1)[-1]
+        if local in {"del", "moveFrom"}:
+            return
+        if local == "r":
+            parts.append(_visible_run_text(Run(element, paragraph)))
+            return
+        for child in element.iterchildren():
+            walk(child)
+
     for child in paragraph_element.iterchildren():
-        local = child.tag.rsplit("}", 1)[-1]
-        if local == "del":
-            continue
-        if local in {"ins", "hyperlink"}:
-            runs = child.iterdescendants(qn("w:r"))
-        elif local == "r":
-            runs = (child,)
-        else:
-            continue
-        parts.extend(_visible_run_text(Run(run, paragraph)) for run in runs)
+        walk(child)
     return "".join(parts)
 
 
-def _cell_text(cell: _TableCell) -> str:
-    paragraphs = [
-        text
-        for paragraph in cell.paragraphs
-        if (text := _visible_paragraph_text(paragraph).strip())
-    ]
-    return "\n".join(paragraphs)
+def _cell_text(cell: _TableCell, work: list[int]) -> str:
+    segments: list[str] = []
+
+    def walk(element: Any) -> None:
+        local = element.tag.rsplit("}", 1)[-1]
+        if local in {"del", "moveFrom"}:
+            return
+        if isinstance(element, CT_P):
+            text = _visible_paragraph_text(Paragraph(element, cast(Any, cell))).strip()
+        elif isinstance(element, CT_Tbl):
+            text = _table_text(Table(element, cast(Any, cell)), work)
+        else:
+            for child in element.iterchildren():
+                walk(child)
+            return
+        if text:
+            segments.append(text)
+
+    for element in cast(Any, cell)._tc.iterchildren():
+        walk(element)
+    return "\n".join(segments)
 
 
-def _table_text(table: Table) -> tuple[str, int]:
+def _table_text(table: Table, work: list[int]) -> str:
     rows: list[str] = []
-    visited_cells = 0
     seen_cells: set[object] = set()
     for row in table.rows:
         cells: list[str] = []
@@ -87,12 +112,14 @@ def _table_text(table: Table) -> tuple[str, int]:
             identity = cell._tc  # pyright: ignore[reportPrivateUsage]
             if identity in seen_cells:
                 continue
+            if work[0] >= DOCX_MAX_TABLE_CELLS:
+                raise ValueError("DOCX tables exceed parser work limit")
             seen_cells.add(identity)
-            visited_cells += 1
-            cells.append(_cell_text(cell))
+            work[0] += 1
+            cells.append(_cell_text(cell, work))
         if any(cell.strip() for cell in cells):
             rows.append("\t".join(cells))
-    return "\n".join(rows), visited_cells
+    return "\n".join(rows)
 
 
 def _heading_level(paragraph: Paragraph) -> int | None:
@@ -173,10 +200,9 @@ class DocxParser(DocumentParser):
             elif isinstance(element, CT_Tbl):
                 table_ordinal += 1
                 current_ordinal = table_ordinal
-                text, visited_cells = _table_text(Table(element, document))
-                table_cells += visited_cells
-                if table_cells > DOCX_MAX_TABLE_CELLS:
-                    raise ValueError("DOCX tables exceed parser work limit")
+                work = [table_cells]
+                text = _table_text(Table(element, document), work)
+                table_cells = work[0]
                 if text.strip():
                     ensure_block_capacity(len(blocks))
                     blocks.append(
@@ -189,29 +215,19 @@ class DocxParser(DocumentParser):
                             ),
                         )
                     )
-                table_element = cast(Any, element)
-                for nested in table_element.iterdescendants(qn("w:tbl")):
-                    nearest_table = next(
-                        (
-                            ancestor
-                            for ancestor in nested.iterancestors()
-                            if ancestor.tag == qn("w:tbl")
-                        ),
-                        None,
-                    )
-                    if nearest_table is element:
-                        visit(nested)
+
+        def walk_blocks(element: Any) -> None:
+            local = element.tag.rsplit("}", 1)[-1]
+            if local in {"del", "moveFrom"}:
+                return
+            if isinstance(element, CT_P | CT_Tbl):
+                visit(element)
+                return
+            for child in element.iterchildren():
+                walk_blocks(child)
 
         for element in elements:
-            local = cast(Any, element).tag.rsplit("}", 1)[-1]
-            if local == "del":
-                continue
-            if local == "ins":
-                for inserted in cast(Any, element).iterchildren():
-                    if isinstance(inserted, CT_P | CT_Tbl):
-                        visit(inserted)
-            elif isinstance(element, CT_P | CT_Tbl):
-                visit(element)
+            walk_blocks(cast(Any, element))
         return blocks
 
 

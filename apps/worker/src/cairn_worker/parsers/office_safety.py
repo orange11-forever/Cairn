@@ -5,7 +5,7 @@ from io import BytesIO
 from pathlib import PurePosixPath
 from urllib.parse import unquote_to_bytes
 from xml.parsers import expat
-from zipfile import BadZipFile, ZipFile
+from zipfile import BadZipFile, ZipFile, ZipInfo
 
 # These package-only limits are intentionally separate from the public 50 MiB source limit.
 # They bound central-directory work and decompression before an Office library sees the package.
@@ -16,6 +16,7 @@ OPC_MAX_COMPRESSION_RATIO = 100
 OPC_MAX_XML_DECODED_CHARACTERS = 100 * 1024 * 1024
 OPC_MAX_XML_ELEMENTS = 2_000_000
 OPC_MAX_XML_TEXT_CHARACTERS = 50 * 1024 * 1024
+_OPC_READ_CHUNK_BYTES = 64 * 1024
 
 _CONTENT_TYPES_MEMBER = "[Content_Types].xml"
 _MACRO_MEMBER_NAMES = ("vbaproject.bin", "vbadata.xml")
@@ -31,6 +32,13 @@ def _canonical_opc_path(name: str) -> str:
         escapes = _PERCENT_ESCAPE.findall(name)
         if len(escapes) != name.count("%"):
             raise ValueError("invalid percent escape in OPC path")
+        if re.search(r"%(?:2e|2f|5c)", name, re.IGNORECASE):
+            raise ValueError("encoded separator or dot in OPC path")
+    raw_path = name.removesuffix("/")
+    if "//" in raw_path or any(
+        part in {"", ".", ".."} for part in raw_path.split("/")
+    ):
+        raise ValueError("ambiguous OPC path")
     decoded = unquote_to_bytes(name).decode("utf-8", errors="strict")
     normalized = unicodedata.normalize("NFC", decoded).rstrip("/")
     if (
@@ -89,6 +97,11 @@ def _relationship_source(member_name: str) -> PurePosixPath:
 
 
 def _validate_relationship_target(member_name: str, target: str) -> None:
+    if re.search(r"%(?:2e|2f|5c)", target, re.IGNORECASE):
+        raise ValueError("encoded separator or dot in relationship target")
+    target_path = target.removeprefix("/")
+    if "//" in target_path or any(part == "." for part in target_path.split("/")):
+        raise ValueError("ambiguous relationship target")
     decoded = unicodedata.normalize(
         "NFC", unquote_to_bytes(target).decode("utf-8", errors="strict")
     )
@@ -159,6 +172,28 @@ def _scan_xml(content: bytes, *, member_name: str, totals: list[int]) -> str:
     return lowered
 
 
+def _read_member_checked(
+    package: ZipFile,
+    member: ZipInfo,
+    actual_aggregate: list[int],
+    *,
+    retain: bool,
+) -> bytes:
+    retained = bytearray()
+    actual_entry = 0
+    with package.open(member, "r") as source:
+        while chunk := source.read(_OPC_READ_CHUNK_BYTES):
+            actual_entry += len(chunk)
+            actual_aggregate[0] += len(chunk)
+            if actual_entry > OPC_MAX_ENTRY_UNCOMPRESSED_BYTES:
+                raise ValueError("OPC entry exceeds actual expansion limit")
+            if actual_aggregate[0] > OPC_MAX_UNCOMPRESSED_BYTES:
+                raise ValueError("OPC package exceeds actual expansion limit")
+            if retain:
+                retained.extend(chunk)
+    return bytes(retained)
+
+
 def validate_opc_package(content: bytes, *, required_member: str) -> None:
     try:
         with ZipFile(BytesIO(content), "r") as package:
@@ -169,6 +204,7 @@ def validate_opc_package(content: bytes, *, required_member: str) -> None:
             seen: set[str] = set()
             exact_names: set[str] = set()
             aggregate_size = 0
+            actual_aggregate = [0]
             xml_totals = [0, 0, 0]
             content_types: str | None = None
             for member in members:
@@ -199,9 +235,18 @@ def validate_opc_package(content: bytes, *, required_member: str) -> None:
                     raise ValueError("macro-bearing OPC package")
                 if PurePosixPath(lowered_name).name in _ENCRYPTED_PACKAGE_MEMBERS:
                     raise ValueError("encrypted OPC package")
-                if lowered_name.endswith((".xml", ".rels")):
+                is_xml = lowered_name.endswith((".xml", ".rels"))
+                # Incrementally reading every member validates local headers, overlap boundaries,
+                # actual expansion and CRC before any Office library receives the package.
+                member_content = _read_member_checked(
+                    package,
+                    member,
+                    actual_aggregate,
+                    retain=is_xml,
+                )
+                if is_xml:
                     xml_content = _scan_xml(
-                        package.read(member), member_name=lowered_name, totals=xml_totals
+                        member_content, member_name=lowered_name, totals=xml_totals
                     )
                     if normalized_name == _CONTENT_TYPES_MEMBER:
                         content_types = xml_content
@@ -212,7 +257,7 @@ def validate_opc_package(content: bytes, *, required_member: str) -> None:
                 raise ValueError("OPC package is missing content types")
             if any(marker in content_types for marker in _MACRO_CONTENT_MARKERS):
                 raise ValueError("macro-bearing OPC package")
-    except (BadZipFile, OSError, RuntimeError, ValueError):
+    except (BadZipFile, EOFError, OSError, RuntimeError, ValueError):
         raise ValueError("unsafe or malformed OPC package") from None
 
 
