@@ -2,7 +2,7 @@ import re
 from typing import BinaryIO
 
 from bs4 import BeautifulSoup
-from bs4.element import NavigableString, Tag
+from bs4.element import NavigableString, PreformattedString, Tag
 from cairn_api.knowledge.schemas import HtmlLocator
 
 from cairn_worker.parsers import (
@@ -40,10 +40,13 @@ def _update_heading_path(path: list[str], level: int, title: str) -> list[str]:
 def _inline_text(element: Tag) -> str:
     parts: list[str] = []
     for child in element.children:
-        if isinstance(child, NavigableString):
+        if isinstance(child, NavigableString) and not isinstance(child, PreformattedString):
             parts.append(str(child))
-        elif isinstance(child, Tag) and child.name not in _BLOCK_DESCENDANTS:
-            parts.append(_inline_text(child))
+        elif isinstance(child, Tag):
+            if child.name == "br":
+                parts.append("\n")
+            elif child.name not in _BLOCK_DESCENDANTS:
+                parts.append(_inline_text(child))
     return "".join(parts)
 
 

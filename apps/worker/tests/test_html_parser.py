@@ -106,6 +106,117 @@ def test_html_parser_preserves_source_adjacency_across_inline_markup(
     ]
 
 
+def test_html_parser_excludes_nested_comments_from_every_visible_owner(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Break caught: special DOM strings must never become indexed or diagnostic text."""
+    html = b"""
+      <h1>Head<span><!--private heading comment--></span>ing</h1>
+      <p>Para<em><!--private paragraph comment--></em>graph</p>
+      <ul><li>List<strong><!--private list comment--></strong>item</li></ul>
+      <table><tr><td>Cell<span><!--private table comment--></span>text</td></tr></table>
+    """
+
+    blocks = ParserRegistry().for_media_type("text/html").parse(BytesIO(html))
+
+    assert [(block.kind, block.text) for block in blocks] == [
+        (BlockKind.HEADING, "Heading"),
+        (BlockKind.PARAGRAPH, "Paragraph"),
+        (BlockKind.PARAGRAPH, "Listitem"),
+        (BlockKind.TABLE, "Celltext"),
+    ]
+    assert [block.locator for block in blocks] == [
+        HtmlLocator(headingPath=["Heading"], block=1),
+        HtmlLocator(headingPath=["Heading"], block=2),
+        HtmlLocator(headingPath=["Heading"], block=3),
+        HtmlLocator(headingPath=["Heading"], block=4),
+    ]
+    observable = "\n".join(
+        [
+            *(block.text for block in blocks),
+            *(block.locator.model_dump_json(by_alias=True) for block in blocks),
+            caplog.text,
+        ]
+    )
+    assert "private" not in observable
+
+
+@pytest.mark.parametrize(
+    "special",
+    [
+        "<?private processing instruction?>",
+        "<![CDATA[private cdata section]]>",
+    ],
+    ids=("processing-instruction", "cdata"),
+)
+def test_html_parser_excludes_other_nonvisible_special_strings(special: str) -> None:
+    """Break caught: non-comment special strings must not masquerade as visible leaves."""
+    html = f"<p>left<span>{special}</span>right</p>".encode()
+
+    blocks = ParserRegistry().for_media_type("text/html").parse(BytesIO(html))
+
+    assert [(block.kind, block.text) for block in blocks] == [
+        (BlockKind.PARAGRAPH, "leftright"),
+    ]
+    assert "private" not in blocks[0].locator.model_dump_json(by_alias=True)
+
+
+def test_html_parser_does_not_leak_comment_only_content_on_failure(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Break caught: hidden comment text must not escape through failure diagnostics."""
+    private_comment = "private failure comment"
+
+    with pytest.raises(WorkerFailure) as caught:
+        ParserRegistry().for_media_type("text/html").parse(
+            BytesIO(f"<p><span><!--{private_comment}--></span></p>".encode())
+        )
+
+    assert caught.value.code == "no_extractable_text"
+    assert caught.value.retryable is False
+    assert private_comment not in caught.value.safe_detail
+    assert private_comment not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("html", "expected"),
+    [
+        (b"<p>first<br>second</p>", "first\nsecond"),
+        (b"<p><br>first<br></p>", "first"),
+        (b"<p>first<br><br>second</p>", "first\n\nsecond"),
+        (b"<p>first\r\n<br>second</p>", "first\n\nsecond"),
+    ],
+    ids=("middle", "edge", "repeated", "normalized-source-newline"),
+)
+def test_html_parser_represents_paragraph_breaks_deterministically(
+    html: bytes,
+    expected: str,
+) -> None:
+    """Break caught: visible line breaks must not collapse adjacent paragraph text."""
+    blocks = ParserRegistry().for_media_type("text/html").parse(BytesIO(html))
+
+    assert [(block.kind, block.text) for block in blocks] == [
+        (BlockKind.PARAGRAPH, expected),
+    ]
+
+
+def test_html_parser_represents_table_cell_break_edges_deterministically() -> None:
+    """Break caught: cell line breaks must survive without changing table ownership."""
+    html = (
+        b"<table><tr><td><br>Alpha<br>Beta<br></td>"
+        b"<td>Gamma<br><br>Delta</td></tr></table>"
+    )
+
+    blocks = ParserRegistry().for_media_type("text/html").parse(BytesIO(html))
+
+    assert [(block.kind, block.text) for block in blocks] == [
+        (BlockKind.TABLE, "Alpha\nBeta\tGamma\n\nDelta"),
+    ]
+    assert [block.locator for block in blocks] == [
+        HtmlLocator(headingPath=[], block=1),
+    ]
+
+
 @pytest.mark.parametrize("level", range(1, 7), ids=lambda level: f"h{level}")
 def test_html_heading_owns_nested_inline_code(level: int) -> None:
     """Break caught: heading code must not produce a second weighted content block."""
