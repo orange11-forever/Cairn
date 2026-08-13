@@ -217,6 +217,80 @@ def test_html_parser_represents_table_cell_break_edges_deterministically() -> No
     ]
 
 
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        ("first<br>second", "first\nsecond"),
+        ("first<br><br>second", "first\n\nsecond"),
+        ("<br>  first  <br>", "first"),
+        ("first\r\n<br>second", "first\n\nsecond"),
+        (
+            (
+                "left<!--private comment--><?private instruction?>"
+                "<![CDATA[private cdata]]>right"
+            ),
+            "leftright",
+        ),
+    ],
+    ids=("middle", "repeated", "edges", "source-newline", "special-strings"),
+)
+def test_html_standalone_code_uses_safe_visible_text(
+    body: str,
+    expected: str,
+) -> None:
+    """Break caught: standalone code must preserve breaks without indexing special strings."""
+    html = f"<h1>Guide</h1><code>{body}</code>".encode()
+
+    blocks = ParserRegistry().for_media_type("text/html").parse(BytesIO(html))
+
+    assert [(block.kind, block.text) for block in blocks] == [
+        (BlockKind.HEADING, "Guide"),
+        (BlockKind.CODE, expected),
+    ]
+    assert [block.locator for block in blocks] == [
+        HtmlLocator(headingPath=["Guide"], block=1),
+        HtmlLocator(headingPath=["Guide"], block=2),
+    ]
+    assert "private" not in "\n".join(block.text for block in blocks)
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        ("first<br>second", "first\nsecond"),
+        ("first<br><br>second", "first\n\nsecond"),
+        ("<br>  first  <br>", "first"),
+        ("first\r\n<br>second", "first\n\nsecond"),
+        (
+            (
+                "left<!--private comment--><?private instruction?>"
+                "<![CDATA[private cdata]]>right"
+            ),
+            "leftright",
+        ),
+    ],
+    ids=("middle", "repeated", "edges", "source-newline", "special-strings"),
+)
+def test_html_pre_owns_nested_code_safe_visible_text(
+    body: str,
+    expected: str,
+) -> None:
+    """Break caught: pre must own nested code once with exact safe visible whitespace."""
+    html = f"<h1>Guide</h1><pre><code>{body}</code></pre>".encode()
+
+    blocks = ParserRegistry().for_media_type("text/html").parse(BytesIO(html))
+
+    assert [(block.kind, block.text) for block in blocks] == [
+        (BlockKind.HEADING, "Guide"),
+        (BlockKind.CODE, expected),
+    ]
+    assert [block.locator for block in blocks] == [
+        HtmlLocator(headingPath=["Guide"], block=1),
+        HtmlLocator(headingPath=["Guide"], block=2),
+    ]
+    assert "private" not in "\n".join(block.text for block in blocks)
+
+
 @pytest.mark.parametrize("level", range(1, 7), ids=lambda level: f"h{level}")
 def test_html_heading_owns_nested_inline_code(level: int) -> None:
     """Break caught: heading code must not produce a second weighted content block."""

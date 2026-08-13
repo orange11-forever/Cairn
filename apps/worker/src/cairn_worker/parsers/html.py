@@ -131,7 +131,7 @@ class HtmlParser(DocumentParser):
                 text = _table_text(element)
                 kind = BlockKind.TABLE
             elif name in {"pre", "code"}:
-                text = normalize_parser_text(element.get_text()).strip()
+                text = _plain_text(element)
                 kind = BlockKind.CODE
             else:
                 text = _plain_text(element)
