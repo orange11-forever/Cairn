@@ -2,11 +2,13 @@ from datetime import timedelta
 from importlib.resources import files
 
 import pytest
+from cairn_api.knowledge.models import INGESTION_ERROR_CODES
 from cairn_worker.errors import (
     PERMANENT_ERROR_CODES,
     SAFE_DETAIL_MAX_LENGTH,
     WorkerFailure,
     retry_delay,
+    safe_detail_for,
 )
 
 
@@ -69,17 +71,29 @@ def test_permanent_ingestion_codes_never_retry(code: str) -> None:
     assert WorkerFailure.for_code(code, "safe").retryable is False
 
 
-def test_safe_detail_is_single_line_and_bounded() -> None:
-    """Break caught: attempt history must not persist unbounded multi-line provider output."""
+def test_safe_detail_is_code_derived_and_never_copies_untrusted_text() -> None:
+    """Break caught: attempt history must not persist credentials or raw provider bodies."""
+    secret = 'Bearer sk-secret\n{"error":{"message":"private document text"}}' + "x" * (
+        SAFE_DETAIL_MAX_LENGTH + 100
+    )
     failure = WorkerFailure(
         "parser_failed",
-        "first line\n" + "x" * (SAFE_DETAIL_MAX_LENGTH + 100),
+        secret,
         retryable=True,
     )
 
-    assert len(failure.safe_detail) == SAFE_DETAIL_MAX_LENGTH
+    assert failure.safe_detail == "worker handler or parser failed"
+    assert len(failure.safe_detail) <= SAFE_DETAIL_MAX_LENGTH
     assert "\n" not in failure.safe_detail
-    assert failure.safe_detail.startswith("first line ")
+    assert "sk-secret" not in failure.safe_detail
+    assert "private document text" not in failure.safe_detail
+
+
+def test_every_ingestion_error_code_has_a_bounded_safe_template() -> None:
+    """Break caught: newly persisted failure codes must not fall back to caller text."""
+    details = [safe_detail_for(code) for code in INGESTION_ERROR_CODES]
+
+    assert all(detail and len(detail) <= SAFE_DETAIL_MAX_LENGTH for detail in details)
 
 
 def test_worker_failure_rejects_unknown_codes_and_negative_retry_after() -> None:

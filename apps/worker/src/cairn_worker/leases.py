@@ -19,7 +19,7 @@ from cairn_api.knowledge.models import (
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from cairn_worker.errors import WorkerFailure, retry_delay
+from cairn_worker.errors import WorkerFailure, retry_delay, safe_detail_for
 
 LEASE_DURATION = timedelta(minutes=5)
 HEARTBEAT_INTERVAL = timedelta(seconds=60)
@@ -115,7 +115,7 @@ def claim_next_job(session: Session, *, worker_id: str, now: datetime) -> Claime
             raise RuntimeError("running ingestion job has incomplete lease state")
         abandoned.status = IngestionJobAttemptStatus.FAILED
         abandoned.error_code = "lease_lost"
-        abandoned.safe_detail = "worker lease expired before completion"
+        abandoned.safe_detail = safe_detail_for("lease_lost")
         abandoned.completed_at = now
         if job.attempt >= job.max_attempts:
             job.status = IngestionJobStatus.FAILED
@@ -126,7 +126,7 @@ def claim_next_job(session: Session, *, worker_id: str, now: datetime) -> Claime
                 session,
                 job=job,
                 error_code="ingestion_retry_exhausted",
-                safe_detail="worker lease expired on final attempt",
+                safe_detail=safe_detail_for("ingestion_retry_exhausted"),
                 now=now,
             )
             _emit_terminal_failure(
@@ -194,31 +194,52 @@ def renew_lease(
     return True
 
 
-def _owned_job(session: Session, claim: ClaimedJob, *, now: datetime) -> IngestionJob | None:
-    return session.scalar(
+def _claim_records(
+    session: Session,
+    claim: ClaimedJob,
+) -> tuple[IngestionJob | None, IngestionJobAttempt | None]:
+    job = session.scalar(
         select(IngestionJob)
         .where(
             IngestionJob.id == claim.job_id,
             IngestionJob.org_id == claim.org_id,
             IngestionJob.project_id == claim.project_id,
-            IngestionJob.status == IngestionJobStatus.RUNNING,
-            IngestionJob.lease_owner == claim.lease_owner,
-            IngestionJob.lease_expires_at > now,
         )
         .with_for_update()
     )
-
-
-def _claimed_attempt(session: Session, claim: ClaimedJob) -> IngestionJobAttempt | None:
-    return session.scalar(
+    attempt = session.scalar(
         select(IngestionJobAttempt)
         .where(
             IngestionJobAttempt.id == claim.attempt_id,
             IngestionJobAttempt.job_id == claim.job_id,
-            IngestionJobAttempt.status == IngestionJobAttemptStatus.RUNNING,
+            IngestionJobAttempt.org_id == claim.org_id,
+            IngestionJobAttempt.project_id == claim.project_id,
         )
         .with_for_update()
     )
+    return job, attempt
+
+
+def _is_owned_running(
+    job: IngestionJob | None,
+    attempt: IngestionJobAttempt | None,
+    claim: ClaimedJob,
+    *,
+    now: datetime,
+) -> bool:
+    return bool(
+        job is not None
+        and attempt is not None
+        and job.status == IngestionJobStatus.RUNNING
+        and job.lease_owner == claim.lease_owner
+        and job.lease_expires_at is not None
+        and job.lease_expires_at > now
+        and attempt.status == IngestionJobAttemptStatus.RUNNING
+    )
+
+
+def _raise_lease_lost() -> None:
+    raise WorkerFailure("lease_lost", "", retryable=True)
 
 
 def _clear_lease(job: IngestionJob) -> None:
@@ -228,12 +249,17 @@ def _clear_lease(job: IngestionJob) -> None:
 
 
 def finish_job(session: Session, *, claim: ClaimedJob, now: datetime) -> None:
-    job = _owned_job(session, claim, now=now)
-    if job is None:
+    job, attempt = _claim_records(session, claim)
+    if (
+        job is not None
+        and attempt is not None
+        and job.status == IngestionJobStatus.COMPLETED
+        and attempt.status == IngestionJobAttemptStatus.SUCCEEDED
+    ):
         return
-    attempt = _claimed_attempt(session, claim)
-    if attempt is None:
-        return
+    if not _is_owned_running(job, attempt, claim, now=now):
+        _raise_lease_lost()
+    assert job is not None and attempt is not None
     attempt.status = IngestionJobAttemptStatus.SUCCEEDED
     attempt.completed_at = now
     job.status = IngestionJobStatus.COMPLETED
@@ -241,6 +267,21 @@ def finish_job(session: Session, *, claim: ClaimedJob, now: datetime) -> None:
     job.completed_at = now
     _clear_lease(job)
     session.flush()
+
+
+def ensure_claim_finalized(session: Session, *, claim: ClaimedJob, now: datetime) -> None:
+    session.flush()
+    job, attempt = _claim_records(session, claim)
+    if (
+        job is not None
+        and attempt is not None
+        and job.status == IngestionJobStatus.COMPLETED
+        and attempt.status == IngestionJobAttemptStatus.SUCCEEDED
+    ):
+        return
+    if _is_owned_running(job, attempt, claim, now=now):
+        raise WorkerFailure("parser_failed", "", retryable=True)
+    _raise_lease_lost()
 
 
 def _terminalize_target(
@@ -338,12 +379,17 @@ def fail_job(
     failure: WorkerFailure,
     now: datetime,
 ) -> None:
-    job = _owned_job(session, claim, now=now)
-    if job is None:
+    job, attempt = _claim_records(session, claim)
+    if (
+        job is not None
+        and attempt is not None
+        and attempt.status == IngestionJobAttemptStatus.FAILED
+        and job.status != IngestionJobStatus.RUNNING
+    ):
         return
-    attempt = _claimed_attempt(session, claim)
-    if attempt is None:
-        return
+    if not _is_owned_running(job, attempt, claim, now=now):
+        _raise_lease_lost()
+    assert job is not None and attempt is not None
 
     attempt.status = IngestionJobAttemptStatus.FAILED
     attempt.error_code = failure.code
@@ -386,6 +432,7 @@ __all__ = [
     "LEASE_DURATION",
     "ClaimedJob",
     "claim_next_job",
+    "ensure_claim_finalized",
     "fail_job",
     "finish_job",
     "renew_lease",

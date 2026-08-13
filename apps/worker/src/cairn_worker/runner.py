@@ -24,6 +24,7 @@ from cairn_worker.leases import (
     HEARTBEAT_INTERVAL,
     ClaimedJob,
     claim_next_job,
+    ensure_claim_finalized,
     fail_job,
     renew_lease,
 )
@@ -177,7 +178,10 @@ def run_once(
         ):
             handlers[claim.job_kind](session, claim, heartbeat)
             heartbeat.ensure_owned()
+            ensure_claim_finalized(session, claim=claim, now=current_time())
     except WorkerFailure as failure:
+        if failure.code == "lease_lost":
+            raise
         with _transaction(session_factory) as session:
             fail_job(session, claim=claim, failure=failure, now=current_time())
     except Exception:  # noqa: BLE001 -- persist a bounded fact for unexpected handler failures.

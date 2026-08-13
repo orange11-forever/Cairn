@@ -1,3 +1,4 @@
+import signal
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -262,10 +263,15 @@ def test_run_once_commits_claim_before_starting_work(monkeypatch: pytest.MonkeyP
         events.append("claim")
         return claim
 
-    def handler(*_: object) -> None:
+    def handler(_session: object, _claim: ClaimedJob, _heartbeat: object) -> None:
         events.append("handler")
+        events.append("finish-job")
+
+    def finalized(*_: object, **__: object) -> None:
+        events.append("finalization-check")
 
     monkeypatch.setattr("cairn_worker.runner.claim_next_job", claim_next_job)
+    monkeypatch.setattr("cairn_worker.runner.ensure_claim_finalized", finalized)
 
     assert run_once(
         session_factory=lambda: next(sessions),
@@ -275,7 +281,7 @@ def test_run_once_commits_claim_before_starting_work(monkeypatch: pytest.MonkeyP
         heartbeat_factory=_heartbeat_factory(events),
     )
     assert events.index("commit") < events.index("heartbeat-start") < events.index("handler")
-    assert events[-3:] == ["ownership-check", "commit", "heartbeat-stop"]
+    assert events[-4:] == ["ownership-check", "finalization-check", "commit", "heartbeat-stop"]
 
 
 def test_run_once_records_classified_handler_failure_after_rollback(
@@ -340,5 +346,76 @@ def test_run_once_records_a_bounded_failure_for_unexpected_handler_exception(
         heartbeat_factory=_heartbeat_factory(events),
     )
     assert [(failure.code, failure.safe_detail) for failure in failures] == [
-        ("parser_failed", "unexpected worker handler failure")
+        ("parser_failed", "worker handler or parser failed")
+    ]
+
+
+class _StopProbe:
+    def __init__(self) -> None:
+        self.stopped = False
+        self.waits: list[float | None] = []
+
+    def is_set(self) -> bool:
+        return self.stopped
+
+    def set(self) -> None:
+        self.stopped = True
+
+    def wait(self, timeout: float | None = None) -> bool:
+        self.waits.append(timeout)
+        self.stopped = True
+        return True
+
+
+def test_serve_uses_bounded_idle_polling(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Break caught: an idle worker must re-poll promptly without spinning."""
+    runtime = _runtime_with_profile(_active_profile(), [])
+    stop = _StopProbe()
+
+    def ignore_signal(_current: signal.Signals, _handler: object) -> signal.Handlers:
+        return signal.SIG_DFL
+
+    monkeypatch.setattr(runtime, "_stop", stop)
+    monkeypatch.setattr(runtime, "run_once", lambda: False)
+    monkeypatch.setattr("cairn_worker.runner.signal.signal", ignore_signal)
+
+    runtime.serve()
+
+    assert stop.waits == [1.0]
+    assert stop.waits[0] is not None and 0 < stop.waits[0] <= 5
+
+
+@pytest.mark.parametrize("shutdown_signal", [signal.SIGINT, signal.SIGTERM])
+def test_serve_stops_on_process_shutdown_signals_and_restores_handlers(
+    monkeypatch: pytest.MonkeyPatch,
+    shutdown_signal: signal.Signals,
+) -> None:
+    """Break caught: container shutdown must stop the loop and restore process handlers."""
+    runtime = _runtime_with_profile(_active_profile(), [])
+    installed: dict[signal.Signals, object] = {}
+    restored: list[tuple[signal.Signals, object]] = []
+    previous = {signal.SIGINT: object(), signal.SIGTERM: object()}
+
+    def set_signal(current: signal.Signals, handler: object) -> object:
+        if current not in installed:
+            installed[current] = handler
+            return previous[current]
+        restored.append((current, handler))
+        return previous[current]
+
+    def poll() -> bool:
+        handler = installed[shutdown_signal]
+        assert callable(handler)
+        handler(shutdown_signal, None)
+        return False
+
+    monkeypatch.setattr("cairn_worker.runner.signal.signal", set_signal)
+    monkeypatch.setattr(runtime, "run_once", poll)
+
+    runtime.serve()
+
+    assert set(installed) == {signal.SIGINT, signal.SIGTERM}
+    assert restored == [
+        (signal.SIGINT, previous[signal.SIGINT]),
+        (signal.SIGTERM, previous[signal.SIGTERM]),
     ]
