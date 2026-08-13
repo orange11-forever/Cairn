@@ -11,7 +11,13 @@ from openpyxl import load_workbook
 from openpyxl.utils.cell import get_column_letter, range_boundaries
 from openpyxl.worksheet.worksheet import Worksheet
 
-from cairn_worker.parsers import BlockKind, DocumentParser, ParsedBlock, read_parser_source
+from cairn_worker.parsers import (
+    BlockKind,
+    DocumentParser,
+    ParsedBlock,
+    normalize_parser_text,
+    read_parser_source,
+)
 from cairn_worker.parsers.limits import PARSER_SOURCE_MAX_BYTES, ensure_block_capacity
 from cairn_worker.parsers.office_safety import validate_opc_package
 
@@ -20,7 +26,7 @@ XLSX_MAX_SHEETS = 1_000
 XLSX_MAX_SOURCE_ROW = 100_000
 XLSX_MAX_SOURCE_COLUMN = 4_096
 XLSX_MAX_DIMENSION_CELLS = 2_000_000
-XLSX_MAX_OUTPUT_CHARACTERS = PARSER_SOURCE_MAX_BYTES
+XLSX_MAX_OUTPUT_BYTES = PARSER_SOURCE_MAX_BYTES
 _CELL_REFERENCE = re.compile(r"\$?([A-Z]{1,3})\$?([1-9][0-9]*)\Z", re.IGNORECASE)
 
 
@@ -173,6 +179,34 @@ def _sheet_block(
     )
 
 
+def _reserve_tsv_row_bytes(
+    values: dict[int, str],
+    *,
+    previous_min_column: int | None,
+    previous_max_column: int | None,
+    row_count: int,
+    locator_min_column: int | None,
+    consumed_bytes: int,
+) -> tuple[int, int, int]:
+    current_min = min(values)
+    current_max = max(values)
+    if previous_min_column is None or previous_max_column is None:
+        new_min = min(current_min, locator_min_column or current_min)
+        new_max = current_max
+        generated_bytes = new_max - new_min
+    else:
+        new_min = min(previous_min_column, current_min)
+        new_max = max(previous_max_column, current_max)
+        old_width = previous_max_column - previous_min_column + 1
+        new_width = new_max - new_min + 1
+        generated_bytes = (new_width - 1) + 1 + row_count * (new_width - old_width)
+    value_bytes = sum(len(value.encode("utf-8")) for value in values.values())
+    total = consumed_bytes + generated_bytes + value_bytes
+    if total > XLSX_MAX_OUTPUT_BYTES:
+        raise ValueError("XLSX text exceeds parser output limit")
+    return total, new_min, new_max
+
+
 class XlsxParser(DocumentParser):
     def _parse(self, source: BinaryIO) -> list[ParsedBlock]:
         content = read_parser_source(source)
@@ -188,11 +222,13 @@ class XlsxParser(DocumentParser):
             if len(workbook.worksheets) > XLSX_MAX_SHEETS:
                 raise ValueError("workbook sheet count exceeds parser work limit")
             blocks: list[ParsedBlock] = []
-            output_characters = 0
+            output_bytes = 0
             for worksheet in workbook.worksheets:
                 min_column, min_row, max_column, max_row = _sheet_bounds(worksheet)
                 rows: list[tuple[int, dict[int, str]]] = []
                 first_block = True
+                block_min_column: int | None = None
+                block_max_column: int | None = None
                 for row_number, cells in enumerate(
                     worksheet.iter_rows(
                         min_row=min_row,
@@ -205,17 +241,27 @@ class XlsxParser(DocumentParser):
                     values: dict[int, str] = {}
                     for cell in cells:
                         displayed = _displayed_scalar(cell.value)
+                        normalized = (
+                            normalize_parser_text(displayed)
+                            if displayed is not None
+                            else None
+                        )
                         if (
-                            displayed is not None
-                            and displayed.strip()
+                            normalized is not None
+                            and normalized.strip()
                             and isinstance(cell.column, int)
                         ):
-                            output_characters += len(displayed) + 1
-                            if output_characters > XLSX_MAX_OUTPUT_CHARACTERS:
-                                raise ValueError("XLSX text exceeds parser output limit")
-                            values[cell.column] = displayed
+                            values[cell.column] = normalized
                     if not values:
                         continue
+                    output_bytes, block_min_column, block_max_column = _reserve_tsv_row_bytes(
+                        values,
+                        previous_min_column=block_min_column,
+                        previous_max_column=block_max_column,
+                        row_count=len(rows),
+                        locator_min_column=min_column if first_block else None,
+                        consumed_bytes=output_bytes,
+                    )
                     rows.append((row_number, values))
                     if len(rows) == XLSX_ROWS_PER_BLOCK:
                         ensure_block_capacity(len(blocks))
@@ -228,6 +274,8 @@ class XlsxParser(DocumentParser):
                         )
                         first_block = False
                         rows = []
+                        block_min_column = None
+                        block_max_column = None
                 if rows:
                     ensure_block_capacity(len(blocks))
                     blocks.append(

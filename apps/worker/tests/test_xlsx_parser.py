@@ -345,9 +345,77 @@ def test_xlsx_parser_rejects_repeated_shared_string_output_before_join(
         joined[0] = True
         raise AssertionError("oversized repeated output reached block join")
 
-    monkeypatch.setattr(xlsx_parser, "XLSX_MAX_OUTPUT_CHARACTERS", 20, raising=False)
+    monkeypatch.setattr(xlsx_parser, "XLSX_MAX_OUTPUT_BYTES", 20)
     monkeypatch.setattr(xlsx_parser, "_sheet_block", unexpected_block)
     with pytest.raises(WorkerFailure) as caught:
         XlsxParser().parse(BytesIO(_repeated_shared_string_xlsx(19)))
     assert caught.value.code == "parser_failed"
     assert joined[0] is False
+
+
+@pytest.mark.parametrize(("limit", "should_pass"), [(4_097, True), (4_096, False)])
+def test_xlsx_parser_counts_sparse_generated_tabs_at_exact_utf8_byte_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+    limit: int,
+    should_pass: bool,
+) -> None:
+    from cairn_worker.parsers import xlsx as xlsx_parser
+
+    workbook = Workbook()
+    worksheet = workbook.active
+    assert worksheet is not None
+    worksheet["A1"] = "a"
+    worksheet["FAN1"] = "b"
+    monkeypatch.setattr(xlsx_parser, "XLSX_MAX_OUTPUT_BYTES", limit, raising=False)
+    if should_pass:
+        blocks = XlsxParser().parse(BytesIO(_save(workbook)))
+        assert len(blocks[0].text.encode("utf-8")) == 4_097
+        assert blocks[0].locator.model_dump(by_alias=True)["cellRange"] == "A1:FAN1"
+    else:
+        joined = [False]
+
+        def unexpected_block(*args: object, **kwargs: object) -> object:
+            del args, kwargs
+            joined[0] = True
+            raise AssertionError("sparse excess reached TSV join")
+
+        monkeypatch.setattr(xlsx_parser, "_sheet_block", unexpected_block)
+        with pytest.raises(WorkerFailure) as caught:
+            XlsxParser().parse(BytesIO(_save(workbook)))
+        assert caught.value.code == "parser_failed"
+        assert joined[0] is False
+
+
+@pytest.mark.parametrize(("limit", "should_pass"), [(10, True), (9, False)])
+def test_xlsx_parser_counts_four_byte_unicode_and_newlines_across_sheets(
+    monkeypatch: pytest.MonkeyPatch,
+    limit: int,
+    should_pass: bool,
+) -> None:
+    from cairn_worker.parsers import xlsx as xlsx_parser
+
+    workbook = Workbook()
+    first = workbook.active
+    assert first is not None
+    first["A1"] = "😀"
+    first["A2"] = "x"
+    second = workbook.create_sheet("Second")
+    second["A1"] = "😀"
+    monkeypatch.setattr(xlsx_parser, "XLSX_MAX_OUTPUT_BYTES", limit, raising=False)
+    if should_pass:
+        blocks = XlsxParser().parse(BytesIO(_save(workbook)))
+        assert [block.text for block in blocks] == ["😀\nx", "😀"]
+        assert sum(len(block.text.encode("utf-8")) for block in blocks) == 10
+    else:
+        joined_calls = [0]
+        original = xlsx_parser._sheet_block  # pyright: ignore[reportPrivateUsage]
+
+        def tracking(*args: object, **kwargs: object) -> object:
+            joined_calls[0] += 1
+            return original(*args, **kwargs)  # pyright: ignore[reportArgumentType]
+
+        monkeypatch.setattr(xlsx_parser, "_sheet_block", tracking)
+        with pytest.raises(WorkerFailure) as caught:
+            XlsxParser().parse(BytesIO(_save(workbook)))
+        assert caught.value.code == "parser_failed"
+        assert joined_calls == [1]
