@@ -7,6 +7,7 @@ from enum import StrEnum
 from typing import BinaryIO, cast
 
 from cairn_api.knowledge.media import SupportedMediaType
+from cairn_api.knowledge.object_store import ObjectStoreUnavailable
 from cairn_api.knowledge.schemas import (
     CsvLocator,
     DocxLocator,
@@ -92,6 +93,9 @@ class DocumentParser(ABC):
             for candidate in cast(list[object], parsed):
                 if not isinstance(candidate, ParsedBlock):
                     raise TypeError("parser returned an invalid block")
+                kind = cast(object, candidate.kind)
+                if not isinstance(kind, BlockKind):
+                    raise TypeError("parser returned an invalid block kind")
                 locator = cast(object, candidate.locator)
                 if not isinstance(locator, _LOCATOR_TYPES):
                     raise TypeError("parser returned an invalid locator")
@@ -100,7 +104,7 @@ class DocumentParser(ABC):
                 if text.strip():
                     blocks.append(
                         ParsedBlock(
-                            kind=candidate.kind,
+                            kind=kind,
                             text=text,
                             locator=candidate.locator,
                             metadata=metadata,
@@ -111,6 +115,8 @@ class DocumentParser(ABC):
             return blocks
         except WorkerFailure:
             raise
+        except (ObjectStoreUnavailable, OSError):
+            raise WorkerFailure.for_code("object_store_unavailable", "") from None
         except Exception:  # noqa: BLE001 -- convert every parser failure to a bounded fact.
             raise WorkerFailure("parser_failed", "", retryable=False) from None
 
