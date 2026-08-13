@@ -1,3 +1,5 @@
+import csv
+import tracemalloc
 from io import BytesIO
 
 import pytest
@@ -55,7 +57,7 @@ def test_csv_parser_emits_bounded_ordered_row_groups() -> None:
     assert blocks[-1].text.splitlines() == [f"row-{row}" for row in range(201, 206)]
 
 
-def test_csv_parser_classifies_malformed_or_undecodable_input_safely() -> None:
+def test_csv_parser_classifies_undecodable_input_safely() -> None:
     """Break caught: bad CSV must be permanent and must not leak source bytes in diagnostics."""
     with pytest.raises(WorkerFailure) as caught:
         ParserRegistry().for_media_type("text/csv").parse(
@@ -65,3 +67,43 @@ def test_csv_parser_classifies_malformed_or_undecodable_input_safely() -> None:
     assert caught.value.code == "parser_failed"
     assert caught.value.retryable is False
     assert "private" not in caught.value.safe_detail
+
+
+def test_csv_parser_strictly_rejects_valid_utf8_malformed_quoting() -> None:
+    """Break caught: removing strict CSV parsing must not accept an unterminated quote."""
+    with pytest.raises(WorkerFailure) as caught:
+        ParserRegistry().for_media_type("text/csv").parse(
+            BytesIO(b'name,note\nAlice,"private unterminated')
+        )
+
+    assert caught.value.code == "parser_failed"
+    assert caught.value.retryable is False
+    assert "private" not in caught.value.safe_detail
+
+
+def test_csv_parser_accepts_a_field_above_pythons_implicit_default_limit() -> None:
+    """Break caught: valid accepted-size CSV fields must not depend on Python's 128 KiB default."""
+    field = "x" * 131_073
+
+    blocks = ParserRegistry().for_media_type("text/csv").parse(BytesIO(field.encode()))
+
+    assert blocks[0].text == field
+    assert blocks[0].locator == CsvLocator(rowStart=1, rowEnd=1)
+    assert csv.field_size_limit() == 50 * 1024 * 1024
+
+
+@pytest.mark.parametrize("row", [b"x", b'x"y'], ids=("plain", "literal-quote"))
+def test_csv_row_bomb_is_rejected_before_row_and_block_amplification(row: bytes) -> None:
+    """Break caught: accepted-size CSV must not allocate beyond the output-block policy."""
+    content = (row + b"\n") * 1_000_001
+    tracemalloc.start()
+    try:
+        with pytest.raises(WorkerFailure) as caught:
+            ParserRegistry().for_media_type("text/csv").parse(BytesIO(content))
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+
+    assert caught.value.code == "parser_failed"
+    assert caught.value.retryable is False
+    assert peak < 24 * 1024 * 1024

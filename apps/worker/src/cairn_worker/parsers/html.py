@@ -1,3 +1,4 @@
+import re
 from typing import BinaryIO
 
 from bs4 import BeautifulSoup
@@ -10,10 +11,22 @@ from cairn_worker.parsers import (
     ParsedBlock,
     decode_utf8_text,
     normalize_parser_text,
+    read_parser_source,
+)
+from cairn_worker.parsers.limits import (
+    MAX_HTML_TAG_OPENERS,
+    ParserLimitExceeded,
+    ensure_block_capacity,
 )
 
 _NONVISIBLE_ELEMENTS = ("script", "style", "noscript", "svg", "template")
 _STRUCTURAL_ELEMENTS = ("h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "pre", "code", "table")
+_BLOCK_DESCENDANTS = ("h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "pre", "table")
+_HIDDEN_STYLE = re.compile(
+    r"(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden)"
+    r"(?:\s*!important)?\s*(?:;|$)",
+    re.IGNORECASE,
+)
 
 
 def _html_locator(heading_path: list[str], block: int) -> HtmlLocator:
@@ -31,7 +44,7 @@ def _block_strings(element: Tag) -> list[str]:
             text = str(child).strip()
             if text:
                 strings.append(text)
-        elif isinstance(child, Tag) and child.name not in _STRUCTURAL_ELEMENTS:
+        elif isinstance(child, Tag) and child.name not in _BLOCK_DESCENDANTS:
             strings.extend(_block_strings(child))
     return strings
 
@@ -43,6 +56,8 @@ def _plain_text(element: Tag) -> str:
 def _table_text(table: Tag) -> str:
     rows: list[str] = []
     for row in table.find_all("tr"):
+        if row.find_parent("table") is not table:
+            continue
         cells = [
             _plain_text(cell)
             for cell in row.find_all(("th", "td"), recursive=False)
@@ -52,11 +67,46 @@ def _table_text(table: Tag) -> str:
     return "\n".join(rows)
 
 
+def _count_tag_openers(content: bytes) -> int:
+    count = 0
+    index = 0
+    while index < len(content):
+        index = content.find(b"<", index)
+        if index < 0:
+            break
+        candidate = index + 1
+        while candidate < len(content) and content[candidate] in b" \t\r\n":
+            candidate += 1
+        if candidate < len(content) and (
+            content[candidate] in b"!?"
+            or 65 <= content[candidate] <= 90
+            or 97 <= content[candidate] <= 122
+        ):
+            count += 1
+            if count > MAX_HTML_TAG_OPENERS:
+                raise ParserLimitExceeded
+        index += 1
+    return count
+
+
+def _is_hidden(element: Tag) -> bool:
+    if element.has_attr("hidden"):
+        return True
+    aria_hidden = element.get("aria-hidden")
+    if isinstance(aria_hidden, str) and aria_hidden.strip().lower() == "true":
+        return True
+    style = element.get("style")
+    return isinstance(style, str) and _HIDDEN_STYLE.search(style) is not None
+
+
 class HtmlParser(DocumentParser):
     def _parse(self, source: BinaryIO) -> list[ParsedBlock]:
-        soup = BeautifulSoup(decode_utf8_text(source.read()), "html.parser")
-        for element in soup.find_all(_NONVISIBLE_ELEMENTS):
-            element.decompose()
+        content = read_parser_source(source)
+        _count_tag_openers(content)
+        soup = BeautifulSoup(decode_utf8_text(content), "html.parser")
+        for element in reversed(soup.find_all(True)):
+            if element.name in _NONVISIBLE_ELEMENTS or _is_hidden(element):
+                element.decompose()
 
         blocks: list[ParsedBlock] = []
         heading_path: list[str] = []
@@ -85,6 +135,7 @@ class HtmlParser(DocumentParser):
 
             if not text:
                 continue
+            ensure_block_capacity(len(blocks))
             blocks.append(
                 ParsedBlock(
                     kind=kind,

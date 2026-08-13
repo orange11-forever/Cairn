@@ -1,5 +1,5 @@
 import math
-import unicodedata
+import re
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -20,6 +20,7 @@ from cairn_api.knowledge.schemas import (
 )
 
 from cairn_worker.errors import WorkerFailure
+from cairn_worker.parsers.limits import MAX_PARSED_BLOCKS, PARSER_SOURCE_MAX_BYTES
 
 
 class BlockKind(StrEnum):
@@ -57,18 +58,28 @@ _LOCATOR_TYPES = (
     TextLocator,
 )
 
+_DISALLOWED_CONTROLS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")
+
 
 def normalize_parser_text(text: str) -> str:
     normalized = text.replace("\r\n", "\n").replace("\r", "\n")
-    return "".join(
-        character
-        for character in normalized
-        if character in "\t\n" or unicodedata.category(character) != "Cc"
-    )
+    return _DISALLOWED_CONTROLS.sub("", normalized)
 
 
 def decode_utf8_text(content: bytes) -> str:
     return normalize_parser_text(content.decode("utf-8-sig", errors="strict"))
+
+
+def read_parser_source(source: BinaryIO) -> bytes:
+    try:
+        content = cast(object, source.read(PARSER_SOURCE_MAX_BYTES + 1))
+    except (ObjectStoreUnavailable, OSError):
+        raise WorkerFailure.for_code("object_store_unavailable", "") from None
+    if not isinstance(content, bytes):
+        raise TypeError("parser source returned non-bytes content")
+    if len(content) > PARSER_SOURCE_MAX_BYTES:
+        raise WorkerFailure.for_code("file_too_large", "")
+    return content
 
 
 def _validated_metadata(metadata: object) -> dict[str, ScalarMetadata]:
@@ -89,6 +100,8 @@ class DocumentParser(ABC):
     def parse(self, source: BinaryIO) -> list[ParsedBlock]:
         try:
             parsed = self._parse(source)
+            if len(parsed) > MAX_PARSED_BLOCKS:
+                raise ValueError("parser returned too many blocks")
             blocks: list[ParsedBlock] = []
             for candidate in cast(list[object], parsed):
                 if not isinstance(candidate, ParsedBlock):
@@ -115,8 +128,6 @@ class DocumentParser(ABC):
             return blocks
         except WorkerFailure:
             raise
-        except (ObjectStoreUnavailable, OSError):
-            raise WorkerFailure.for_code("object_store_unavailable", "") from None
         except Exception:  # noqa: BLE001 -- convert every parser failure to a bounded fact.
             raise WorkerFailure("parser_failed", "", retryable=False) from None
 
@@ -153,4 +164,5 @@ __all__ = [
     "ScalarMetadata",
     "decode_utf8_text",
     "normalize_parser_text",
+    "read_parser_source",
 ]

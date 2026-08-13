@@ -1,4 +1,6 @@
 import json
+import math
+import tracemalloc
 import unicodedata
 from io import BytesIO
 from typing import BinaryIO, cast
@@ -120,6 +122,12 @@ class _ExplodingParser(DocumentParser):
         raise ValueError(source.read().decode("utf-8"))
 
 
+class _InternalOSErrorParser(DocumentParser):
+    def _parse(self, source: BinaryIO) -> list[ParsedBlock]:
+        source.read()
+        raise OSError("private parser-library path")
+
+
 class _MalformedKindParser(DocumentParser):
     def _parse(self, source: BinaryIO) -> list[ParsedBlock]:
         del source
@@ -137,6 +145,15 @@ class _MalformedKindParser(DocumentParser):
         ]
 
 
+class _MalformedBlockParser(DocumentParser):
+    def __init__(self, block: ParsedBlock) -> None:
+        self._block = block
+
+    def _parse(self, source: BinaryIO) -> list[ParsedBlock]:
+        del source
+        return [self._block]
+
+
 def test_parser_exceptions_become_permanent_safe_failures() -> None:
     """Break caught: parser diagnostics must never persist source text or enter retries."""
     source_text = "private source 文档"
@@ -150,6 +167,17 @@ def test_parser_exceptions_become_permanent_safe_failures() -> None:
     assert source_text not in caught.value.safe_detail
 
 
+def test_parser_internal_oserror_is_a_permanent_safe_parser_failure() -> None:
+    """Break caught: only source-read I/O failures may be classified as infrastructure."""
+    with pytest.raises(WorkerFailure) as caught:
+        _InternalOSErrorParser().parse(BytesIO(b"read succeeds"))
+
+    assert caught.value.code == "parser_failed"
+    assert caught.value.retryable is False
+    assert caught.value.safe_detail == "worker handler or parser failed"
+    assert "private parser-library path" not in caught.value.safe_detail
+
+
 def test_parser_rejects_a_runtime_invalid_block_kind() -> None:
     """Break caught: annotation-only invalid kinds must not escape the parser boundary."""
     with pytest.raises(WorkerFailure) as caught:
@@ -158,6 +186,91 @@ def test_parser_rejects_a_runtime_invalid_block_kind() -> None:
     assert caught.value.code == "parser_failed"
     assert caught.value.retryable is False
     assert caught.value.safe_detail == "worker handler or parser failed"
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        ParsedBlock(
+            kind=BlockKind.TEXT,
+            text="visible",
+            locator=cast(TextLocator, object()),
+        ),
+        ParsedBlock(
+            kind=BlockKind.TEXT,
+            text="visible",
+            locator=TextLocator(type="text", headingPath=[], lineStart=1, lineEnd=1),
+            metadata=cast(dict[str, str], ["private non-mapping"]),
+        ),
+        ParsedBlock(
+            kind=BlockKind.TEXT,
+            text="visible",
+            locator=TextLocator(type="text", headingPath=[], lineStart=1, lineEnd=1),
+            metadata={cast(str, 7): "private key"},
+        ),
+        ParsedBlock(
+            kind=BlockKind.TEXT,
+            text="visible",
+            locator=TextLocator(type="text", headingPath=[], lineStart=1, lineEnd=1),
+            metadata=cast(dict[str, str], {"nested": ["private nested"]}),
+        ),
+        ParsedBlock(
+            kind=BlockKind.TEXT,
+            text="visible",
+            locator=TextLocator(type="text", headingPath=[], lineStart=1, lineEnd=1),
+            metadata={"score": math.inf},
+        ),
+    ],
+    ids=("locator", "metadata-mapping", "metadata-key", "metadata-value", "metadata-finite"),
+)
+def test_parser_rejects_malformed_locator_and_metadata_without_leaking_values(
+    block: ParsedBlock,
+) -> None:
+    """Break caught: malformed parser output must not reach JSON consumers or diagnostics."""
+    with pytest.raises(WorkerFailure) as caught:
+        _MalformedBlockParser(block).parse(BytesIO(b"ignored"))
+
+    assert caught.value.code == "parser_failed"
+    assert caught.value.retryable is False
+    assert caught.value.safe_detail == "worker handler or parser failed"
+    assert "private" not in caught.value.safe_detail
+
+
+class _OversizedSource(BytesIO):
+    def __init__(self) -> None:
+        super().__init__()
+        self.requested_size: int | None = None
+
+    def read(self, size: int | None = -1) -> bytes:
+        self.requested_size = size
+        return b"x" * (50 * 1024 * 1024 + 1)
+
+
+def test_parser_enforces_the_normal_file_limit_with_one_bounded_read() -> None:
+    """Break caught: parsers must not trust upstream size metadata or read without a ceiling."""
+    source = _OversizedSource()
+
+    with pytest.raises(WorkerFailure) as caught:
+        ParserRegistry().for_media_type("text/plain").parse(source)
+
+    assert source.requested_size == 50 * 1024 * 1024 + 1
+    assert caught.value.code == "file_too_large"
+    assert caught.value.retryable is False
+
+
+def test_one_megabyte_plain_text_has_bounded_peak_memory() -> None:
+    """Break caught: control normalization must not amplify ordinary text into a huge list."""
+    content = b"a\n" * (512 * 1024)
+    tracemalloc.start()
+    try:
+        blocks = ParserRegistry().for_media_type("text/plain").parse(BytesIO(content))
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+
+    assert len(blocks) == 1
+    assert blocks[0].text == content.decode().rstrip("\n")
+    assert peak < 16 * 1024 * 1024
 
 
 def test_registry_rejects_noncanonical_and_unsupported_media_types() -> None:

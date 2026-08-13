@@ -1,6 +1,9 @@
+import tracemalloc
 from io import BytesIO
 
+import pytest
 from cairn_api.knowledge.schemas import HtmlLocator
+from cairn_worker.errors import WorkerFailure
 from cairn_worker.parsers import BlockKind, ParserRegistry
 
 
@@ -63,3 +66,59 @@ def test_html_parser_tolerates_malformed_markup_without_returning_html() -> None
     assert blocks[0].text == "标题"
     assert any("First bold" in block.text for block in blocks)
     assert all("<" not in block.text and ">" not in block.text for block in blocks)
+
+
+def test_html_parser_preserves_inline_code_and_removes_common_hidden_subtrees() -> None:
+    """Break caught: visible inline code must remain while hidden DOM never enters search."""
+    html = b"""
+      <p>Run <code>safe_call()</code> now.</p>
+      <p hidden>private hidden attr</p>
+      <div aria-hidden="TRUE"><p>private aria</p></div>
+      <section style=" color:red; DISPLAY : none "><p>private display</p></section>
+      <span style="visibility:hidden"><code>private visibility</code></span>
+    """
+
+    blocks = ParserRegistry().for_media_type("text/html").parse(BytesIO(html))
+
+    assert [(block.kind, block.text) for block in blocks] == [
+        (BlockKind.PARAGRAPH, "Run safe_call() now."),
+    ]
+
+
+def test_html_parser_assigns_nested_tables_to_one_deterministic_owner() -> None:
+    """Break caught: nested table text must not duplicate through outer and inner blocks."""
+    html = b"""
+      <table><tr><td>Outer<table><tr><td>Inner</td></tr></table></td></tr></table>
+    """
+
+    blocks = ParserRegistry().for_media_type("text/html").parse(BytesIO(html))
+
+    assert [(block.kind, block.text) for block in blocks] == [
+        (BlockKind.TABLE, "Outer"),
+        (BlockKind.TABLE, "Inner"),
+    ]
+    assert [block.locator for block in blocks] == [
+        HtmlLocator(headingPath=[], block=1),
+        HtmlLocator(headingPath=[], block=2),
+    ]
+
+
+@pytest.mark.parametrize(
+    "node",
+    [b"<p>x</p>", b"<!--x-->"],
+    ids=("tags", "comments"),
+)
+def test_html_tag_bomb_is_rejected_before_dom_construction(node: bytes) -> None:
+    """Break caught: accepted-size tag bombs must fail before BeautifulSoup amplification."""
+    content = node * 100_001
+    tracemalloc.start()
+    try:
+        with pytest.raises(WorkerFailure) as caught:
+            ParserRegistry().for_media_type("text/html").parse(BytesIO(content))
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+
+    assert caught.value.code == "parser_failed"
+    assert caught.value.retryable is False
+    assert peak < 16 * 1024 * 1024

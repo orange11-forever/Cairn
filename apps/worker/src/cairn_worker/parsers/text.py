@@ -8,6 +8,12 @@ from cairn_worker.parsers import (
     DocumentParser,
     ParsedBlock,
     decode_utf8_text,
+    read_parser_source,
+)
+from cairn_worker.parsers.limits import (
+    MAX_MARKDOWN_LINES,
+    ParserLimitExceeded,
+    ensure_block_capacity,
 )
 
 _ATX_HEADING = re.compile(r"^ {0,3}(#{1,6})(?:[ \t]+|$)(.*)$")
@@ -34,21 +40,37 @@ def _text_locator(
 
 class TextParser(DocumentParser):
     def _parse(self, source: BinaryIO) -> list[ParsedBlock]:
-        lines = decode_utf8_text(source.read()).split("\n")
-        nonblank = [index for index, line in enumerate(lines) if line.strip()]
-        if not nonblank:
+        text = decode_utf8_text(read_parser_source(source))
+        first_offset: int | None = None
+        last_offset = 0
+        first_line = 0
+        last_line = 0
+        line_number = 1
+        position = 0
+        while position <= len(text):
+            newline = text.find("\n", position)
+            line_end = len(text) if newline < 0 else newline
+            if text[position:line_end].strip():
+                if first_offset is None:
+                    first_offset = position
+                    first_line = line_number
+                last_offset = line_end
+                last_line = line_number
+            if newline < 0:
+                break
+            position = newline + 1
+            line_number += 1
+        if first_offset is None:
             return []
-        first = nonblank[0]
-        last = nonblank[-1]
         return [
             ParsedBlock(
                 kind=BlockKind.TEXT,
-                text="\n".join(lines[first : last + 1]),
+                text=text[first_offset:last_offset],
                 locator=_text_locator(
                     locator_type="text",
                     heading_path=[],
-                    line_start=first + 1,
-                    line_end=last + 1,
+                    line_start=first_line,
+                    line_end=last_line,
                 ),
             )
         ]
@@ -97,7 +119,15 @@ def _update_heading_path(path: list[str], level: int, title: str) -> list[str]:
 
 class MarkdownParser(DocumentParser):
     def _parse(self, source: BinaryIO) -> list[ParsedBlock]:
-        lines = decode_utf8_text(source.read()).split("\n")
+        content = read_parser_source(source)
+        line_breaks = (
+            content.count(b"\n")
+            + content.count(b"\r")
+            - content.count(b"\r\n")
+        )
+        if line_breaks + 1 > MAX_MARKDOWN_LINES:
+            raise ParserLimitExceeded
+        lines = decode_utf8_text(content).split("\n")
         blocks: list[ParsedBlock] = []
         heading_path: list[str] = []
         index = 0
@@ -112,6 +142,7 @@ class MarkdownParser(DocumentParser):
             if heading is not None:
                 level, title = heading
                 heading_path = _update_heading_path(heading_path, level, title)
+                ensure_block_capacity(len(blocks))
                 blocks.append(
                     ParsedBlock(
                         kind=BlockKind.HEADING,
@@ -127,26 +158,6 @@ class MarkdownParser(DocumentParser):
                 index += 1
                 continue
 
-            if index + 1 < len(lines):
-                level = _setext_level(lines[index + 1])
-                if level is not None:
-                    title = line.strip()
-                    heading_path = _update_heading_path(heading_path, level, title)
-                    blocks.append(
-                        ParsedBlock(
-                            kind=BlockKind.HEADING,
-                            text=title,
-                            locator=_text_locator(
-                                locator_type="markdown",
-                                heading_path=heading_path.copy(),
-                                line_start=index + 1,
-                                line_end=index + 2,
-                            ),
-                        )
-                    )
-                    index += 2
-                    continue
-
             fence = _fence_start(line)
             if fence is not None:
                 marker, minimum_length, info = fence
@@ -161,6 +172,7 @@ class MarkdownParser(DocumentParser):
                 if index < len(lines):
                     index += 1
                 metadata = {"language": info.split()[0]} if info else {}
+                ensure_block_capacity(len(blocks))
                 blocks.append(
                     ParsedBlock(
                         kind=BlockKind.CODE,
@@ -176,6 +188,27 @@ class MarkdownParser(DocumentParser):
                 )
                 continue
 
+            if index + 1 < len(lines):
+                level = _setext_level(lines[index + 1])
+                if level is not None:
+                    title = line.strip()
+                    heading_path = _update_heading_path(heading_path, level, title)
+                    ensure_block_capacity(len(blocks))
+                    blocks.append(
+                        ParsedBlock(
+                            kind=BlockKind.HEADING,
+                            text=title,
+                            locator=_text_locator(
+                                locator_type="markdown",
+                                heading_path=heading_path.copy(),
+                                line_start=index + 1,
+                                line_end=index + 2,
+                            ),
+                        )
+                    )
+                    index += 2
+                    continue
+
             start = index
             paragraph_lines: list[str] = []
             while index < len(lines) and lines[index].strip():
@@ -190,6 +223,7 @@ class MarkdownParser(DocumentParser):
                     break
                 paragraph_lines.append(lines[index])
                 index += 1
+            ensure_block_capacity(len(blocks))
             blocks.append(
                 ParsedBlock(
                     kind=BlockKind.PARAGRAPH,

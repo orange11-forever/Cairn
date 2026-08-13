@@ -1,3 +1,4 @@
+import tracemalloc
 from io import BytesIO
 
 import pytest
@@ -79,3 +80,70 @@ def test_markdown_parser_emits_headings_code_and_paragraphs_with_exact_ranges() 
         {},
         {},
     ]
+
+
+@pytest.mark.parametrize(
+    ("opener", "body", "language"),
+    [
+        ("```python", "---\nvalue", "python"),
+        ("~~~javascript", "===\nvalue", "javascript"),
+    ],
+)
+def test_markdown_fence_precedes_setext_lookahead(
+    opener: str,
+    body: str,
+    language: str,
+) -> None:
+    """Break caught: setext-looking fence content must remain code for both marker types."""
+    marker = opener[0] * 3
+    content = f"{opener}\n{body}\n{marker}\n\nAfter".encode()
+
+    blocks = ParserRegistry().for_media_type("text/markdown").parse(BytesIO(content))
+
+    assert [(block.kind, block.text) for block in blocks] == [
+        (BlockKind.CODE, body),
+        (BlockKind.PARAGRAPH, "After"),
+    ]
+    assert blocks[0].metadata == {"language": language}
+    assert blocks[0].locator == TextLocator(
+        type="markdown",
+        headingPath=[],
+        lineStart=1,
+        lineEnd=4,
+    )
+    assert blocks[1].locator == TextLocator(
+        type="markdown",
+        headingPath=[],
+        lineStart=6,
+        lineEnd=6,
+    )
+
+
+@pytest.mark.parametrize("line_ending", [b"\n", b"\r"], ids=("lf", "cr"))
+def test_markdown_heading_bomb_is_rejected_before_block_amplification(
+    line_ending: bytes,
+) -> None:
+    """Break caught: an accepted-size structural bomb must not allocate one object per line."""
+    content = (b"# x" + line_ending) * 262_144
+    tracemalloc.start()
+    try:
+        with pytest.raises(WorkerFailure) as caught:
+            ParserRegistry().for_media_type("text/markdown").parse(BytesIO(content))
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+
+    assert caught.value.code == "parser_failed"
+    assert caught.value.retryable is False
+    assert peak < 16 * 1024 * 1024
+
+
+def test_markdown_rejects_the_block_immediately_above_the_output_limit() -> None:
+    """Break caught: format logic must enforce the explicit 10,000-block output ceiling."""
+    with pytest.raises(WorkerFailure) as caught:
+        ParserRegistry().for_media_type("text/markdown").parse(
+            BytesIO(b"# x\n" * 10_001)
+        )
+
+    assert caught.value.code == "parser_failed"
+    assert caught.value.retryable is False
