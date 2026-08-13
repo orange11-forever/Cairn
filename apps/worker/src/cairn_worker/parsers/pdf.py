@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
 from io import BytesIO
 from threading import RLock
@@ -5,7 +6,14 @@ from typing import BinaryIO
 
 from cairn_api.knowledge.schemas import PdfLocator
 from pypdf import PdfReader, filters
-from pypdf.generic import ArrayObject, DictionaryObject, IndirectObject, NameObject, NumberObject
+from pypdf.generic import (
+    ArrayObject,
+    DictionaryObject,
+    IndirectObject,
+    NameObject,
+    NumberObject,
+    StreamObject,
+)
 
 from cairn_worker.errors import WorkerFailure
 from cairn_worker.parsers import BlockKind, DocumentParser, ParsedBlock, read_parser_source
@@ -16,6 +24,10 @@ PDF_MAX_PAGE_TREE_DEPTH = 128
 PDF_MAX_PAGE_TREE_NODES = MAX_PARSED_BLOCKS * 4
 PDF_MAX_DECOMPRESSED_STREAM_BYTES = PARSER_SOURCE_MAX_BYTES
 PDF_MAX_EXTRACTED_CHARACTERS = PARSER_SOURCE_MAX_BYTES
+PDF_MAX_AGGREGATE_DECODED_BYTES = PARSER_SOURCE_MAX_BYTES
+PDF_MAX_CONTENT_TOKENS = 5_000_000
+PDF_MAX_CONTENT_STREAMS = PDF_MAX_PAGE_TREE_NODES
+PDF_MAX_FORM_DEPTH = 64
 
 # pypdf exposes its Flate output ceiling as a module setting. Serialize the temporary stricter
 # value so concurrent PDF jobs cannot observe a partially restored limit.
@@ -180,14 +192,108 @@ def _preflight_page_tree(reader: PdfReader) -> int:
     return page_count
 
 
+type _ContentKey = tuple[str, int, int] | tuple[str, int]
+
+
+def _content_key(value: object, reader: PdfReader) -> tuple[_ContentKey, StreamObject]:
+    if isinstance(value, IndirectObject):
+        identity = _reference_key(value, reader)
+        resolved = value.get_object()
+        if not isinstance(resolved, StreamObject):
+            raise TypeError("PDF content reference is not a stream")
+        return ("indirect", *identity), resolved
+    if not isinstance(value, StreamObject):
+        raise TypeError("PDF content must be a stream")
+    return ("direct", id(value)), value
+
+
+def _token_count(data: bytes, remaining: int) -> int:
+    count = 0
+    inside = False
+    for value in data:
+        whitespace = value in b"\x00\x09\x0a\x0c\x0d\x20"
+        if whitespace:
+            inside = False
+        elif not inside:
+            count += 1
+            if count > remaining:
+                raise ValueError("PDF content exceeds operator work limit")
+            inside = True
+    return count
+
+
+def _raw_resources(owner: DictionaryObject) -> DictionaryObject | None:
+    resources = owner.get("/Resources")
+    if resources is None:
+        return None
+    if not isinstance(resources, DictionaryObject):
+        raise TypeError("PDF resources must be a dictionary")
+    return resources
+
+
+def _form_references(owner: DictionaryObject) -> list[object]:
+    resources = _raw_resources(owner)
+    if resources is None:
+        return []
+    xobjects = resources.get("/XObject")
+    if xobjects is None:
+        return []
+    if not isinstance(xobjects, DictionaryObject):
+        raise TypeError("PDF XObject resources must be a dictionary")
+    forms: list[object] = []
+    for name in xobjects:
+        candidate = xobjects.raw_get(name)
+        resolved = candidate.get_object() if isinstance(candidate, IndirectObject) else candidate
+        if isinstance(resolved, StreamObject) and resolved.get("/Subtype") == "/Form":
+            forms.append(candidate)
+    return forms
+
+
+def _preflight_page_content(reader: PdfReader, pages: Sequence[object]) -> None:
+    seen: set[_ContentKey] = set()
+    decoded_bytes = 0
+    tokens = 0
+
+    def inspect(candidate: object, depth: int) -> None:
+        nonlocal decoded_bytes, tokens
+        if depth > PDF_MAX_FORM_DEPTH:
+            raise ValueError("PDF Form XObject exceeds recursion limit")
+        if len(seen) >= PDF_MAX_CONTENT_STREAMS:
+            raise ValueError("PDF content exceeds stream limit")
+        key, stream = _content_key(candidate, reader)
+        if key in seen:
+            raise ValueError("PDF content contains a cyclic or repeated stream")
+        seen.add(key)
+        data = stream.get_data()
+        decoded_bytes += len(data)
+        if decoded_bytes > PDF_MAX_AGGREGATE_DECODED_BYTES:
+            raise ValueError("PDF content exceeds aggregate decoded-byte limit")
+        tokens += _token_count(data, PDF_MAX_CONTENT_TOKENS - tokens)
+        for form in _form_references(stream):
+            inspect(form, depth + 1)
+
+    for page_object in pages:
+        if not isinstance(page_object, DictionaryObject):
+            raise TypeError("flattened PDF page must be a dictionary")
+        contents = page_object.get("/Contents")
+        if isinstance(contents, ArrayObject):
+            for candidate in contents:
+                inspect(candidate, 0)
+        elif contents is not None:
+            inspect(contents, 0)
+        for form in _form_references(page_object):
+            inspect(form, 1)
+
+
 class PdfParser(DocumentParser):
     def _parse(self, source: BinaryIO) -> list[ParsedBlock]:
         content = read_parser_source(source)
         with _PDF_PARSE_LOCK:
             previous_limit = filters.ZLIB_MAX_OUTPUT_LENGTH
-            filters.ZLIB_MAX_OUTPUT_LENGTH = min(
-                previous_limit,
-                PDF_MAX_DECOMPRESSED_STREAM_BYTES,
+            filters.ZLIB_MAX_OUTPUT_LENGTH = (
+                PDF_MAX_DECOMPRESSED_STREAM_BYTES
+                if previous_limit <= 0
+                else min(previous_limit, PDF_MAX_DECOMPRESSED_STREAM_BYTES)
             )
             try:
                 return self._parse_bounded_pdf(content)
@@ -199,9 +305,10 @@ class PdfParser(DocumentParser):
         if reader.is_encrypted:
             raise WorkerFailure.for_code("encrypted_pdf_unsupported", "")
         page_count = _preflight_page_tree(reader)
-        pages = reader.pages
+        pages = list(reader.pages)
         if len(pages) != page_count:
             raise ValueError("flattened PDF page count changed after preflight")
+        _preflight_page_content(reader, pages)
 
         blocks: list[ParsedBlock] = []
         extracted_characters = 0

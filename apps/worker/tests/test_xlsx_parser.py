@@ -51,6 +51,21 @@ def _append_member(package: bytes, name: str, content: bytes) -> bytes:
     return output.getvalue()
 
 
+def _understate_first_worksheet_dimension(package: bytes) -> bytes:
+    output = BytesIO()
+    with ZipFile(BytesIO(package), "r") as source, ZipFile(
+        output, "w", compression=ZIP_DEFLATED
+    ) as target:
+        for member in source.infolist():
+            data = source.read(member)
+            if member.filename == "xl/worksheets/sheet1.xml":
+                start = data.index(b"<dimension")
+                end = data.index(b"/>", start) + 2
+                data = data[:start] + b'<dimension ref="A1:A1"/>' + data[end:]
+            target.writestr(member, data)
+    return output.getvalue()
+
+
 def test_xlsx_parser_emits_displayed_scalars_sparse_ranges_and_workbook_order() -> None:
     """Break caught: sparse row/column bounds and displayed scalar formatting must stay exact."""
     blocks = XlsxParser().parse(BytesIO(_structured_xlsx()))
@@ -236,3 +251,49 @@ def test_xlsx_parser_rejects_an_empty_workbook() -> None:
     with pytest.raises(WorkerFailure) as caught:
         XlsxParser().parse(BytesIO(empty_xlsx_fixture()))
     assert caught.value.code == "no_extractable_text"
+
+
+def test_xlsx_parser_never_silently_drops_cells_outside_understated_dimensions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from cairn_worker.parsers import xlsx as xlsx_parser
+
+    workbook = Workbook()
+    worksheet = workbook.active
+    assert worksheet is not None
+    worksheet["B3"] = "outside"
+    content = _understate_first_worksheet_dimension(_save(workbook))
+    close_count = [0]
+    real_load = xlsx_parser.load_workbook  # pyright: ignore[reportPrivateImportUsage]
+
+    def tracking_load(
+        filename: BinaryIO,
+        *,
+        read_only: bool = False,
+        data_only: bool = False,
+        keep_links: bool = True,
+    ) -> object:
+        opened = real_load(
+            filename,
+            read_only=read_only,
+            data_only=data_only,
+            keep_links=keep_links,
+        )
+        original_close = opened.close
+
+        def close() -> None:
+            close_count[0] += 1
+            original_close()
+
+        opened.close = close
+        return opened
+
+    monkeypatch.setattr(xlsx_parser, "load_workbook", tracking_load)
+    try:
+        blocks = XlsxParser().parse(BytesIO(content))
+    except WorkerFailure as failure:
+        assert failure.code == "parser_failed"
+    else:
+        assert [block.text for block in blocks] == ["\toutside"]
+        assert blocks[0].locator.model_dump(by_alias=True)["cellRange"] == "A1:B3"
+    assert close_count == [1]

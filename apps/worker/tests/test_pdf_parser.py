@@ -1,4 +1,5 @@
 from io import BytesIO
+from threading import Event, Thread
 
 import pytest
 from cairn_worker.errors import WorkerFailure
@@ -9,6 +10,7 @@ from pypdf import PdfReader, PdfWriter
 from pypdf._page import PageObject
 from pypdf.generic import (
     ArrayObject,
+    DecodedStreamObject,
     DictionaryObject,
     IndirectObject,
     NameObject,
@@ -155,6 +157,51 @@ def _encrypted_malformed_page_tree() -> bytes:
     _, root = _page_tree_root(writer)
     root[NameObject("/Kids")] = NumberObject(7)
     writer.encrypt("secret")
+    return _write_pdf(writer)
+
+
+def _pdf_with_content_streams(*streams: bytes) -> bytes:
+    writer = _blank_pdf_writer()
+    page = writer.pages[0]
+    references: list[IndirectObject] = []
+    for data in streams:
+        stream = DecodedStreamObject()
+        stream.set_data(data)
+        references.append(writer._add_object(stream))  # pyright: ignore[reportPrivateUsage]
+    page[NameObject("/Contents")] = ArrayObject(references)
+    return _write_pdf(writer)
+
+
+def _pdf_with_forms(*, shared: bool = False, cyclic: bool = False) -> bytes:
+    writer = _blank_pdf_writer()
+    page = writer.pages[0]
+    page_stream = DecodedStreamObject()
+    page_stream.set_data(b"q /F1 Do Q")
+    page[NameObject("/Contents")] = writer._add_object(page_stream)  # pyright: ignore[reportPrivateUsage]
+    first = DecodedStreamObject()
+    first.set_data(b"q Q")
+    first[NameObject("/Type")] = NameObject("/XObject")
+    first[NameObject("/Subtype")] = NameObject("/Form")
+    first_reference = writer._add_object(first)  # pyright: ignore[reportPrivateUsage]
+    second = first if cyclic else DecodedStreamObject()
+    if not cyclic:
+        second.set_data(b"q Q")
+        second[NameObject("/Type")] = NameObject("/XObject")
+        second[NameObject("/Subtype")] = NameObject("/Form")
+    second_reference = first_reference if cyclic else writer._add_object(second)  # pyright: ignore[reportPrivateUsage]
+    first[NameObject("/Resources")] = DictionaryObject(
+        {
+            NameObject("/XObject"): DictionaryObject(
+                {NameObject("/Loop" if cyclic else "/Nested"): second_reference}
+            )
+        }
+    )
+    xobjects = {NameObject("/F1"): first_reference}
+    if shared:
+        xobjects[NameObject("/F2")] = first_reference
+    page[NameObject("/Resources")] = DictionaryObject(
+        {NameObject("/XObject"): DictionaryObject(xobjects)}
+    )
     return _write_pdf(writer)
 
 
@@ -482,3 +529,152 @@ def test_pdf_parser_bounds_compressed_page_stream_expansion(
 
     assert caught.value.code == "parser_failed"
     assert caught.value.retryable is False
+
+
+def test_pdf_parser_bounds_aggregate_decoded_content_before_extraction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from cairn_worker.parsers import pdf as pdf_parser
+
+    monkeypatch.setattr(pdf_parser, "PDF_MAX_AGGREGATE_DECODED_BYTES", 100)
+    extracted = [False]
+
+    def unexpected_extract(self: PageObject, *args: object, **kwargs: object) -> str:
+        del self, args, kwargs
+        extracted[0] = True
+        return "private"
+
+    monkeypatch.setattr(PageObject, "extract_text", unexpected_extract)
+    with pytest.raises(WorkerFailure) as caught:
+        PdfParser().parse(BytesIO(_pdf_with_content_streams(*(b"q Q q Q " for _ in range(20)))))
+
+    assert caught.value.code == "parser_failed"
+    assert extracted[0] is False
+
+
+def test_pdf_parser_bounds_operator_proxy_before_extraction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from cairn_worker.parsers import pdf as pdf_parser
+
+    monkeypatch.setattr(pdf_parser, "PDF_MAX_CONTENT_TOKENS", 4)
+    with pytest.raises(WorkerFailure) as caught:
+        PdfParser().parse(BytesIO(_pdf_with_content_streams(b"q Q q Q q Q")))
+    assert caught.value.code == "parser_failed"
+
+
+@pytest.mark.parametrize("variant", ["shared", "cyclic"])
+def test_pdf_parser_rejects_repeated_or_cyclic_form_xobjects_before_extraction(
+    monkeypatch: pytest.MonkeyPatch,
+    variant: str,
+) -> None:
+    extracted = [False]
+
+    def unexpected_extract(self: PageObject, *args: object, **kwargs: object) -> str:
+        del self, args, kwargs
+        extracted[0] = True
+        return "private"
+
+    monkeypatch.setattr(PageObject, "extract_text", unexpected_extract)
+    with pytest.raises(WorkerFailure) as caught:
+        PdfParser().parse(
+            BytesIO(_pdf_with_forms(shared=variant == "shared", cyclic=variant == "cyclic"))
+        )
+    assert caught.value.code == "parser_failed"
+    assert extracted[0] is False
+
+
+def test_pdf_parser_counts_nested_form_xobjects_in_aggregate_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from cairn_worker.parsers import pdf as pdf_parser
+
+    monkeypatch.setattr(pdf_parser, "PDF_MAX_AGGREGATE_DECODED_BYTES", 12)
+    with pytest.raises(WorkerFailure) as caught:
+        PdfParser().parse(BytesIO(_pdf_with_forms()))
+    assert caught.value.code == "parser_failed"
+
+
+@pytest.mark.parametrize(
+    ("previous", "configured", "expected"),
+    [(0, 128, 128), (64, 128, 64), (256, 128, 128)],
+)
+def test_pdf_parser_installs_and_restores_effective_pypdf_zlib_limit(
+    monkeypatch: pytest.MonkeyPatch,
+    previous: int,
+    configured: int,
+    expected: int,
+) -> None:
+    from cairn_worker.parsers import pdf as pdf_parser
+
+    observed: list[int] = []
+    monkeypatch.setattr(  # pyright: ignore[reportPrivateImportUsage]
+        pdf_parser.filters, "ZLIB_MAX_OUTPUT_LENGTH", previous  # pyright: ignore[reportPrivateImportUsage]
+    )
+    monkeypatch.setattr(pdf_parser, "PDF_MAX_DECOMPRESSED_STREAM_BYTES", configured)
+
+    def observe(self: PdfParser, content: bytes) -> list[object]:
+        del self, content
+        observed.append(  # pyright: ignore[reportPrivateImportUsage]
+            pdf_parser.filters.ZLIB_MAX_OUTPUT_LENGTH  # pyright: ignore[reportPrivateImportUsage]
+        )
+        return []
+
+    monkeypatch.setattr(PdfParser, "_parse_bounded_pdf", observe)
+    with pytest.raises(WorkerFailure) as caught:
+        PdfParser().parse(BytesIO(b"payload"))
+    assert caught.value.code == "no_extractable_text"
+    assert observed == [expected]
+    assert (  # pyright: ignore[reportPrivateImportUsage]
+        pdf_parser.filters.ZLIB_MAX_OUTPUT_LENGTH == previous  # pyright: ignore[reportPrivateImportUsage]
+    )
+
+
+def test_pdf_parser_restores_zlib_limit_after_failure_and_serializes_observers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from cairn_worker.parsers import pdf as pdf_parser
+
+    first_inside = Event()
+    release_first = Event()
+    second_inside = Event()
+    call_count = [0]
+    failures: list[str] = []
+    monkeypatch.setattr(  # pyright: ignore[reportPrivateImportUsage]
+        pdf_parser.filters, "ZLIB_MAX_OUTPUT_LENGTH", 0  # pyright: ignore[reportPrivateImportUsage]
+    )
+    monkeypatch.setattr(pdf_parser, "PDF_MAX_DECOMPRESSED_STREAM_BYTES", 123)
+
+    def controlled_parse(self: PdfParser, content: bytes) -> list[object]:
+        del self, content
+        call_count[0] += 1
+        if call_count[0] == 1:
+            first_inside.set()
+            assert release_first.wait(timeout=5)
+            raise ValueError("private")
+        second_inside.set()
+        return []
+
+    monkeypatch.setattr(PdfParser, "_parse_bounded_pdf", controlled_parse)
+
+    def parse_in_thread() -> None:
+        try:
+            PdfParser().parse(BytesIO(b"payload"))
+        except WorkerFailure as failure:
+            failures.append(failure.code)
+
+    first = Thread(target=parse_in_thread)
+    second = Thread(target=parse_in_thread)
+    first.start()
+    assert first_inside.wait(timeout=5)
+    second.start()
+    assert second_inside.wait(timeout=0.1) is False
+    release_first.set()
+    first.join(timeout=5)
+    second.join(timeout=5)
+    assert sorted(failures) == ["no_extractable_text", "parser_failed"]
+    assert first.is_alive() is False
+    assert second.is_alive() is False
+    assert (  # pyright: ignore[reportPrivateImportUsage]
+        pdf_parser.filters.ZLIB_MAX_OUTPUT_LENGTH == 0  # pyright: ignore[reportPrivateImportUsage]
+    )

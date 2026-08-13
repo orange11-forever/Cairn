@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from io import BytesIO
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -57,6 +58,19 @@ def _append_member(package: bytes, name: str, content: bytes) -> bytes:
         for member in source.infolist():
             target.writestr(member, source.read(member))
         target.writestr(name, content)
+    return output.getvalue()
+
+
+def _replace_member(package: bytes, name: str, transform: Callable[[bytes], bytes]) -> bytes:
+    output = BytesIO()
+    with ZipFile(BytesIO(package), "r") as source, ZipFile(
+        output, "w", compression=ZIP_DEFLATED
+    ) as target:
+        for member in source.infolist():
+            data = source.read(member)
+            if member.filename == name:
+                data = transform(data)
+            target.writestr(member, data)
     return output.getvalue()
 
 
@@ -123,4 +137,114 @@ def test_pptx_parser_enforces_its_slide_work_limit(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(pptx_parser, "PPTX_MAX_SLIDES", 1)
     with pytest.raises(WorkerFailure) as caught:
         PptxParser().parse(BytesIO(_structured_pptx()))
+    assert caught.value.code == "parser_failed"
+
+
+def test_pptx_parser_excludes_hidden_slides_shapes_groups_and_notes() -> None:
+    package = _structured_pptx()
+    hidden_slide = _replace_member(
+        package,
+        "ppt/slides/slide1.xml",
+        lambda xml: xml.replace(b"<p:sld ", b'<p:sld show="0" ', 1),
+    )
+    blocks = PptxParser().parse(BytesIO(hidden_slide))
+    assert [block.text for block in blocks] == ["Second"]
+    assert blocks[0].locator.model_dump(by_alias=True)["slide"] == 2
+
+    def hide_selected(xml: bytes) -> bytes:
+        xml = xml.replace(b'<p:cNvPr id="2"', b'<p:cNvPr hidden="1" id="2"', 1)
+        xml = xml.replace(b'<p:cNvPr id="4"', b'<p:cNvPr hidden="true" id="4"', 1)
+        return xml
+
+    hidden_shapes = _replace_member(package, "ppt/slides/slide1.xml", hide_selected)
+    hidden_shapes = _replace_member(
+        hidden_shapes,
+        "ppt/notesSlides/notesSlide1.xml",
+        lambda xml: xml.replace(
+            b'<p:cNvPr id="3"', b'<p:cNvPr hidden="1" id="3"', 1
+        ),
+    )
+    blocks = PptxParser().parse(BytesIO(hidden_shapes))
+    texts = [block.text for block in blocks]
+    assert "First 世界" not in "\n".join(texts)
+    assert "Grouped" not in "\n".join(texts)
+    assert "Speaker notes" not in "\n".join(texts)
+    assert "name\tvalue\nalpha\t一" in texts[0]
+    assert texts[-1] == "Second"
+
+    hidden_table = _replace_member(
+        package,
+        "ppt/slides/slide1.xml",
+        lambda xml: xml.replace(b'<p:cNvPr id="3"', b'<p:cNvPr hidden="on" id="3"', 1),
+    )
+    table_texts = "\n".join(block.text for block in PptxParser().parse(BytesIO(hidden_table)))
+    assert "name" not in table_texts
+    assert "First 世界" in table_texts
+
+
+def test_pptx_parser_rejects_xml_work_before_presentation_construction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from cairn_worker.parsers import office_safety
+    from cairn_worker.parsers import pptx as pptx_parser
+
+    constructed = [False]
+    monkeypatch.setattr(office_safety, "OPC_MAX_XML_TEXT_CHARACTERS", 1)
+
+    def unexpected_presentation(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        constructed[0] = True
+        raise AssertionError
+
+    monkeypatch.setattr(pptx_parser, "Presentation", unexpected_presentation)
+    with pytest.raises(WorkerFailure) as caught:
+        PptxParser().parse(BytesIO(_structured_pptx()))
+    assert caught.value.code == "parser_failed"
+    assert constructed[0] is False
+
+
+def test_pptx_parser_runtime_shape_work_has_exact_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from cairn_worker.parsers import pptx as pptx_parser
+
+    presentation = Presentation()
+    slide = presentation.slides.add_slide(presentation.slide_layouts[6])
+    slide.shapes.add_textbox(Inches(1), Inches(1), Inches(1), Inches(1)).text = "one"
+    output = BytesIO()
+    presentation.save(output)
+    monkeypatch.setattr(pptx_parser, "PPTX_MAX_SHAPE_AND_CELL_WORK", 1)
+    PptxParser().parse(BytesIO(output.getvalue()))
+
+    slide.shapes.add_textbox(Inches(2), Inches(1), Inches(1), Inches(1)).text = "two"
+    output = BytesIO()
+    presentation.save(output)
+    with pytest.raises(WorkerFailure) as caught:
+        PptxParser().parse(BytesIO(output.getvalue()))
+    assert caught.value.code == "parser_failed"
+
+
+def test_pptx_parser_runtime_table_cell_work_has_exact_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from cairn_worker.parsers import pptx as pptx_parser
+
+    presentation = Presentation()
+    slide = presentation.slides.add_slide(presentation.slide_layouts[6])
+    table = slide.shapes.add_table(1, 1, Inches(1), Inches(1), Inches(2), Inches(1)).table
+    table.cell(0, 0).text = "one"
+    output = BytesIO()
+    presentation.save(output)
+    monkeypatch.setattr(pptx_parser, "PPTX_MAX_SHAPE_AND_CELL_WORK", 2)
+    PptxParser().parse(BytesIO(output.getvalue()))
+
+    presentation = Presentation()
+    slide = presentation.slides.add_slide(presentation.slide_layouts[6])
+    table = slide.shapes.add_table(2, 1, Inches(1), Inches(1), Inches(2), Inches(1)).table
+    table.cell(0, 0).text = "one"
+    table.cell(1, 0).text = "two"
+    output = BytesIO()
+    presentation.save(output)
+    with pytest.raises(WorkerFailure) as caught:
+        PptxParser().parse(BytesIO(output.getvalue()))
     assert caught.value.code == "parser_failed"

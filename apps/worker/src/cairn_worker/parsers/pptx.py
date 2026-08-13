@@ -1,5 +1,5 @@
 from io import BytesIO
-from typing import BinaryIO, Protocol, cast
+from typing import Any, BinaryIO, Protocol, cast
 
 from cairn_api.knowledge.schemas import PptxLocator
 from pptx import Presentation
@@ -15,6 +15,7 @@ from cairn_worker.parsers.office_safety import validate_opc_package
 
 PPTX_MAX_SLIDES = MAX_PARSED_BLOCKS // 2
 PPTX_MAX_SHAPE_AND_CELL_WORK = 1_000_000
+_TRUTHY_XML = {"1", "true", "on", "yes"}
 
 
 class _TextShape(Protocol):
@@ -25,6 +26,14 @@ class _TextShape(Protocol):
 class _TableShape(Protocol):
     @property
     def table(self) -> Table: ...
+
+
+def _xml_hidden(element: object) -> bool:
+    candidates = cast(Any, element).xpath(".//p:cNvPr")
+    if not candidates:
+        return False
+    value = candidates[0].get("hidden")
+    return value is not None and value.casefold() in _TRUTHY_XML
 
 
 def _text_frame_text(text_frame: TextFrame) -> str:
@@ -53,6 +62,8 @@ def _shape_segments(shape: BaseShape, work: list[int]) -> list[str]:
     work[0] += 1
     if work[0] > PPTX_MAX_SHAPE_AND_CELL_WORK:
         raise ValueError("PPTX shapes exceed parser work limit")
+    if _xml_hidden(shape.element):
+        return []
 
     if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
         group = cast(GroupShape, shape)
@@ -81,6 +92,9 @@ class PptxParser(DocumentParser):
         blocks: list[ParsedBlock] = []
         work = [0]
         for slide_number, slide in enumerate(presentation.slides, start=1):
+            show = cast(str | None, cast(Any, slide.element).get("show"))
+            if show is not None and show.casefold() in {"0", "false", "off", "no"}:
+                continue
             body = "\n".join(
                 segment
                 for shape in slide.shapes
@@ -101,6 +115,9 @@ class PptxParser(DocumentParser):
                 notes = (
                     _text_frame_text(notes_text_frame)
                     if notes_text_frame is not None
+                    and not _xml_hidden(
+                        cast(Any, notes_text_frame._txBody).getparent()  # pyright: ignore[reportPrivateUsage]
+                    )
                     else ""
                 )
                 if notes.strip():

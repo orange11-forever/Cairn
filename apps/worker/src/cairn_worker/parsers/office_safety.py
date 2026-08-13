@@ -1,6 +1,10 @@
+import re
 import stat
+import unicodedata
 from io import BytesIO
 from pathlib import PurePosixPath
+from urllib.parse import unquote_to_bytes
+from xml.parsers import expat
 from zipfile import BadZipFile, ZipFile
 
 # These package-only limits are intentionally separate from the public 50 MiB source limit.
@@ -9,21 +13,150 @@ OPC_MAX_ENTRIES = 2_000
 OPC_MAX_UNCOMPRESSED_BYTES = 200 * 1024 * 1024
 OPC_MAX_ENTRY_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
 OPC_MAX_COMPRESSION_RATIO = 100
+OPC_MAX_XML_DECODED_CHARACTERS = 100 * 1024 * 1024
+OPC_MAX_XML_ELEMENTS = 2_000_000
+OPC_MAX_XML_TEXT_CHARACTERS = 50 * 1024 * 1024
 
 _CONTENT_TYPES_MEMBER = "[Content_Types].xml"
 _MACRO_MEMBER_NAMES = ("vbaproject.bin", "vbadata.xml")
-_MACRO_CONTENT_MARKERS = (b"macroenabled", b"vnd.ms-office.vbaproject")
+_MACRO_CONTENT_MARKERS = ("macroenabled", "vnd.ms-office.vbaproject")
 _ENCRYPTED_PACKAGE_MEMBERS = frozenset({"encryptioninfo", "encryptedpackage"})
-_XML_ENTITY_MARKERS = (b"<!doctype", b"<!entity")
+_XML_ENTITY_MARKERS = ("<!doctype", "<!entity")
+_ENCODING_DECLARATION = re.compile(r"<\?xml\s[^>]*encoding\s*=\s*['\"]([^'\"]+)", re.IGNORECASE)
+_PERCENT_ESCAPE = re.compile(r"%[0-9a-fA-F]{2}")
 
 
-def _is_unsafe_member_name(name: str) -> bool:
-    if not name or name.startswith(("/", "\\")) or "\\" in name or "\x00" in name:
-        return True
-    path = PurePosixPath(name.rstrip("/"))
-    return any(part in {"", ".", ".."} for part in path.parts) or (
+def _canonical_opc_path(name: str) -> str:
+    if any(character == "%" for character in name):
+        escapes = _PERCENT_ESCAPE.findall(name)
+        if len(escapes) != name.count("%"):
+            raise ValueError("invalid percent escape in OPC path")
+    decoded = unquote_to_bytes(name).decode("utf-8", errors="strict")
+    normalized = unicodedata.normalize("NFC", decoded).rstrip("/")
+    if (
+        not normalized
+        or normalized.startswith(("/", "\\"))
+        or "\\" in normalized
+        or "\x00" in normalized
+    ):
+        raise ValueError("unsafe OPC path")
+    path = PurePosixPath(normalized)
+    if any(part in {"", ".", ".."} for part in path.parts) or (
         bool(path.parts) and path.parts[0].endswith(":")
+    ):
+        raise ValueError("unsafe OPC path")
+    return normalized.casefold()
+
+
+def _decode_xml(content: bytes) -> str:
+    if content.startswith(b"\xef\xbb\xbf"):
+        codec = "utf-8-sig"
+        family = "utf-8"
+    elif content.startswith(b"\xff\xfe"):
+        codec = "utf-16"
+        family = "utf-16-le"
+    elif content.startswith(b"\xfe\xff"):
+        codec = "utf-16"
+        family = "utf-16-be"
+    elif content.startswith(b"\x00<\x00?"):
+        codec = "utf-16-be"
+        family = "utf-16-be"
+    elif content.startswith(b"<\x00?\x00"):
+        codec = "utf-16-le"
+        family = "utf-16-le"
+    else:
+        codec = "utf-8"
+        family = "utf-8"
+    decoded = content.decode(codec, errors="strict")
+    declaration = _ENCODING_DECLARATION.search(decoded[:512])
+    if declaration is not None:
+        declared = declaration.group(1).casefold().replace("_", "-")
+        allowed = {family}
+        if family.startswith("utf-16"):
+            allowed.add("utf-16")
+        if declared not in allowed:
+            raise ValueError("ambiguous or unsupported XML encoding")
+    return decoded
+
+
+def _relationship_source(member_name: str) -> PurePosixPath:
+    path = PurePosixPath(member_name)
+    if path.name == ".rels" and str(path.parent) == "_rels":
+        return PurePosixPath("")
+    if path.parent.name != "_rels" or not path.name.endswith(".rels"):
+        raise ValueError("invalid relationship part name")
+    return path.parent.parent / path.name.removesuffix(".rels")
+
+
+def _validate_relationship_target(member_name: str, target: str) -> None:
+    decoded = unicodedata.normalize(
+        "NFC", unquote_to_bytes(target).decode("utf-8", errors="strict")
     )
+    if "\\" in decoded or "\x00" in decoded:
+        raise ValueError("unsafe relationship target")
+    if decoded.startswith("/"):
+        _canonical_opc_path(decoded.removeprefix("/"))
+        return
+    source = _relationship_source(member_name)
+    parts = list(source.parent.parts)
+    for part in PurePosixPath(decoded).parts:
+        if part in {"", "."}:
+            continue
+        if part == "..":
+            if not parts:
+                raise ValueError("relationship target escapes package")
+            parts.pop()
+        else:
+            parts.append(part)
+    _canonical_opc_path("/".join(parts))
+
+
+def _scan_xml(content: bytes, *, member_name: str, totals: list[int]) -> str:
+    decoded = _decode_xml(content)
+    totals[0] += len(decoded)
+    if totals[0] > OPC_MAX_XML_DECODED_CHARACTERS:
+        raise ValueError("OPC XML exceeds decoded-character limit")
+    lowered = decoded.casefold()
+    if any(marker in lowered for marker in _XML_ENTITY_MARKERS):
+        raise ValueError("unsafe XML entity declaration")
+
+    parser = expat.ParserCreate()
+
+    def start(name: str, attributes: dict[str, str]) -> None:
+        totals[1] += 1
+        if totals[1] > OPC_MAX_XML_ELEMENTS:
+            raise ValueError("OPC XML exceeds element limit")
+        if member_name.endswith(".rels") and name.rsplit(":", 1)[-1] == "Relationship":
+            mode = attributes.get("TargetMode", "")
+            target = attributes.get("Target")
+            if target is not None and mode.casefold() != "external":
+                _validate_relationship_target(member_name, target)
+
+    def text(data: str) -> None:
+        totals[2] += len(data)
+        if totals[2] > OPC_MAX_XML_TEXT_CHARACTERS:
+            raise ValueError("OPC XML exceeds text limit")
+
+    def reject_declaration(*args: object) -> None:
+        del args
+        raise ValueError("unsafe XML declaration")
+
+    parser.StartElementHandler = start
+    parser.CharacterDataHandler = text
+    parser.StartDoctypeDeclHandler = reject_declaration
+    parser.EntityDeclHandler = reject_declaration
+    def reject_external_entity(
+        context: str,
+        base: str | None,
+        system_id: str | None,
+        public_id: str | None,
+    ) -> int:
+        del context, base, system_id, public_id
+        return 0
+
+    parser.ExternalEntityRefHandler = reject_external_entity
+    parser.Parse(content, True)
+    return lowered
 
 
 def validate_opc_package(content: bytes, *, required_member: str) -> None:
@@ -34,14 +167,18 @@ def validate_opc_package(content: bytes, *, required_member: str) -> None:
                 raise ValueError("invalid OPC entry count")
 
             seen: set[str] = set()
+            exact_names: set[str] = set()
             aggregate_size = 0
-            content_types: bytes | None = None
+            xml_totals = [0, 0, 0]
+            content_types: str | None = None
             for member in members:
                 name = member.filename
                 normalized_name = name.rstrip("/")
-                if _is_unsafe_member_name(name) or normalized_name in seen:
+                canonical_name = _canonical_opc_path(name)
+                if canonical_name in seen:
                     raise ValueError("unsafe OPC entry")
-                seen.add(normalized_name)
+                seen.add(canonical_name)
+                exact_names.add(normalized_name)
 
                 mode = (member.external_attr >> 16) & 0xFFFF
                 if member.flag_bits & 1 or (mode and stat.S_ISLNK(mode)):
@@ -57,19 +194,19 @@ def validate_opc_package(content: bytes, *, required_member: str) -> None:
                 ):
                     raise ValueError("OPC entry exceeds compression-ratio limit")
 
-                lowered_name = normalized_name.lower()
+                lowered_name = canonical_name
                 if lowered_name.endswith(_MACRO_MEMBER_NAMES):
                     raise ValueError("macro-bearing OPC package")
                 if PurePosixPath(lowered_name).name in _ENCRYPTED_PACKAGE_MEMBERS:
                     raise ValueError("encrypted OPC package")
                 if lowered_name.endswith((".xml", ".rels")):
-                    xml_content = package.read(member).lower()
-                    if any(marker in xml_content for marker in _XML_ENTITY_MARKERS):
-                        raise ValueError("unsafe XML entity declaration")
+                    xml_content = _scan_xml(
+                        package.read(member), member_name=lowered_name, totals=xml_totals
+                    )
                     if normalized_name == _CONTENT_TYPES_MEMBER:
                         content_types = xml_content
 
-            if _CONTENT_TYPES_MEMBER not in seen or required_member not in seen:
+            if _CONTENT_TYPES_MEMBER not in exact_names or required_member not in exact_names:
                 raise ValueError("OPC package is missing a required member")
             if content_types is None:
                 raise ValueError("OPC package is missing content types")
