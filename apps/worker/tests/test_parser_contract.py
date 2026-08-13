@@ -280,6 +280,19 @@ class _ShortThenFailSource(BytesIO):
         raise self._failure
 
 
+class _NonBytesThenEofSource(BytesIO):
+    def __init__(self) -> None:
+        super().__init__()
+        self.read_calls = 0
+
+    def read(self, size: int | None = -1) -> bytes:
+        del size
+        self.read_calls += 1
+        if self.read_calls == 1:
+            return cast(bytes, bytearray(b"private non-bytes value"))
+        return b""
+
+
 @pytest.mark.parametrize("fixture", parser_contract_fixtures())
 def test_registered_parsers_consume_short_reads_to_true_eof(
     fixture: ParserFixture,
@@ -343,6 +356,20 @@ def test_registered_parsers_translate_a_failure_after_a_short_read(
     assert caught.value.retryable is True
     assert caught.value.safe_detail == "object storage is unavailable"
     assert "private" not in caught.value.safe_detail
+
+
+def test_parser_rejects_a_non_bytes_source_result_without_leaking_it() -> None:
+    """Break caught: bytes-like or arbitrary read results must not cross the BinaryIO boundary."""
+    source = _NonBytesThenEofSource()
+
+    with pytest.raises(WorkerFailure) as caught:
+        ParserRegistry().for_media_type("text/plain").parse(source)
+
+    assert source.read_calls == 1
+    assert caught.value.code == "parser_failed"
+    assert caught.value.retryable is False
+    assert caught.value.safe_detail == "worker handler or parser failed"
+    assert "private non-bytes value" not in caught.value.safe_detail
 
 
 def test_one_megabyte_plain_text_has_bounded_peak_memory() -> None:
