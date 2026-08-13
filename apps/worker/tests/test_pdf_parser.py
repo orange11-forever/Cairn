@@ -1,5 +1,6 @@
 from io import BytesIO
 from threading import Event, Thread
+from typing import Any
 
 import pytest
 from cairn_worker.errors import WorkerFailure
@@ -7,11 +8,13 @@ from cairn_worker.parsers import BlockKind
 from cairn_worker.parsers.pdf import PdfParser
 from PIL import Image
 from pypdf import PdfReader, PdfWriter
+from pypdf import filters as pypdf_filters
 from pypdf._page import PageObject
 from pypdf.generic import (
     ArrayObject,
     DecodedStreamObject,
     DictionaryObject,
+    EncodedStreamObject,
     IndirectObject,
     NameObject,
     NumberObject,
@@ -170,6 +173,64 @@ def _pdf_with_content_streams(*streams: bytes) -> bytes:
         stream.set_data(data)
         references.append(writer._add_object(stream))  # pyright: ignore[reportPrivateUsage]
     page[NameObject("/Contents")] = ArrayObject(references)
+    return _write_pdf(writer)
+
+
+def _run_length_encoded_repetition(value: bytes, length: int) -> bytes:
+    assert len(value) == 1
+    encoded = bytearray()
+    while length:
+        run = min(length, 128)
+        if run == 1:
+            encoded.extend((0, value[0]))
+        else:
+            encoded.extend((257 - run, value[0]))
+        length -= run
+    encoded.append(128)
+    return bytes(encoded)
+
+
+def _lzw_encoded_literal(value: bytes) -> bytes:
+    codes = [256, *value, 257]
+    accumulator = 0
+    bits = 0
+    output = bytearray()
+    for code in codes:
+        accumulator = (accumulator << 9) | code
+        bits += 9
+        while bits >= 8:
+            bits -= 8
+            output.append((accumulator >> bits) & 0xFF)
+    if bits:
+        output.append((accumulator << (8 - bits)) & 0xFF)
+    return bytes(output)
+
+
+def _pdf_with_run_length_content(*, prefix: bytes = b"", repeated: int) -> bytes:
+    writer = _blank_pdf_writer()
+    page = writer.pages[0]
+    references: list[IndirectObject] = []
+    if prefix:
+        first = DecodedStreamObject()
+        first.set_data(prefix)
+        references.append(writer._add_object(first))  # pyright: ignore[reportPrivateUsage]
+    encoded = EncodedStreamObject()
+    encoded._data = _run_length_encoded_repetition(b"q", repeated)  # pyright: ignore[reportPrivateUsage]
+    encoded[NameObject("/Filter")] = NameObject("/RunLengthDecode")
+    references.append(writer._add_object(encoded))  # pyright: ignore[reportPrivateUsage]
+    page[NameObject("/Contents")] = ArrayObject(references)
+    return _write_pdf(writer)
+
+
+def _pdf_with_lzw_content(data: bytes) -> bytes:
+    writer = _blank_pdf_writer()
+    page = writer.pages[0]
+    encoded = EncodedStreamObject()
+    encoded._data = _lzw_encoded_literal(data)  # pyright: ignore[reportPrivateUsage]
+    encoded[NameObject("/Filter")] = NameObject("/LZWDecode")
+    page[NameObject("/Contents")] = writer._add_object(  # pyright: ignore[reportPrivateUsage]
+        encoded
+    )
     return _write_pdf(writer)
 
 
@@ -596,6 +657,87 @@ def test_pdf_parser_counts_nested_form_xobjects_in_aggregate_limit(
     assert caught.value.code == "parser_failed"
 
 
+def test_pdf_parser_rejects_run_length_before_decoder_exceeds_remaining_aggregate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Break caught: RunLength must not allocate a run beyond aggregate remainder."""
+    from cairn_worker.parsers import pdf as pdf_parser
+
+    calls = [0]
+    real_decode = pypdf_filters.RunLengthDecode.decode
+
+    def tracking_decode(data: bytes, *args: Any, **kwargs: Any) -> bytes:
+        calls[0] += 1
+        return real_decode(data, *args, **kwargs)
+
+    monkeypatch.setattr(pdf_parser, "PDF_MAX_AGGREGATE_DECODED_BYTES", 2)
+    monkeypatch.setattr(pypdf_filters.RunLengthDecode, "decode", tracking_decode)
+    with pytest.raises(WorkerFailure) as caught:
+        PdfParser().parse(BytesIO(_pdf_with_run_length_content(prefix=b"q", repeated=2)))
+    assert caught.value.code == "parser_failed"
+    assert calls == [0]
+
+
+def test_pdf_parser_allows_run_length_at_exact_remaining_aggregate_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from cairn_worker.parsers import pdf as pdf_parser
+
+    calls = [0]
+    real_decode = pypdf_filters.RunLengthDecode.decode
+
+    def tracking_decode(data: bytes, *args: Any, **kwargs: Any) -> bytes:
+        calls[0] += 1
+        return real_decode(data, *args, **kwargs)
+
+    monkeypatch.setattr(pdf_parser, "PDF_MAX_AGGREGATE_DECODED_BYTES", 2)
+    monkeypatch.setattr(pypdf_filters.RunLengthDecode, "decode", tracking_decode)
+    with pytest.raises(WorkerFailure) as caught:
+        PdfParser().parse(BytesIO(_pdf_with_run_length_content(prefix=b"q", repeated=1)))
+    assert caught.value.code == "no_extractable_text"
+    assert calls == [1]
+
+
+def test_pdf_parser_rejects_lzw_before_decoder_allocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from cairn_worker.parsers import pdf as pdf_parser
+
+    calls = [0]
+    real_decode = pypdf_filters.LZWDecode.decode
+
+    def tracking_decode(data: bytes, *args: Any, **kwargs: Any) -> bytes:
+        calls[0] += 1
+        return real_decode(data, *args, **kwargs)
+
+    monkeypatch.setattr(pdf_parser, "PDF_MAX_AGGREGATE_DECODED_BYTES", 1)
+    monkeypatch.setattr(pypdf_filters.LZWDecode, "decode", tracking_decode)
+    with pytest.raises(WorkerFailure) as caught:
+        PdfParser().parse(BytesIO(_pdf_with_lzw_content(b"qq")))
+    assert caught.value.code == "parser_failed"
+    assert calls == [0]
+
+
+def test_pdf_parser_allows_lzw_at_exact_aggregate_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from cairn_worker.parsers import pdf as pdf_parser
+
+    calls = [0]
+    real_decode = pypdf_filters.LZWDecode.decode
+
+    def tracking_decode(data: bytes, *args: Any, **kwargs: Any) -> bytes:
+        calls[0] += 1
+        return real_decode(data, *args, **kwargs)
+
+    monkeypatch.setattr(pdf_parser, "PDF_MAX_AGGREGATE_DECODED_BYTES", 1)
+    monkeypatch.setattr(pypdf_filters.LZWDecode, "decode", tracking_decode)
+    with pytest.raises(WorkerFailure) as caught:
+        PdfParser().parse(BytesIO(_pdf_with_lzw_content(b"q")))
+    assert caught.value.code == "no_extractable_text"
+    assert calls == [1]
+
+
 @pytest.mark.parametrize(
     ("previous", "configured", "expected"),
     [(0, 128, 128), (64, 128, 64), (256, 128, 128)],
@@ -608,16 +750,22 @@ def test_pdf_parser_installs_and_restores_effective_pypdf_zlib_limit(
 ) -> None:
     from cairn_worker.parsers import pdf as pdf_parser
 
-    observed: list[int] = []
+    observed: list[tuple[int, int, int]] = []
     monkeypatch.setattr(  # pyright: ignore[reportPrivateImportUsage]
-        pdf_parser.filters, "ZLIB_MAX_OUTPUT_LENGTH", previous  # pyright: ignore[reportPrivateImportUsage]
+        pypdf_filters, "ZLIB_MAX_OUTPUT_LENGTH", previous
     )
+    monkeypatch.setattr(pypdf_filters, "RUN_LENGTH_MAX_OUTPUT_LENGTH", previous)
+    monkeypatch.setattr(pypdf_filters, "LZW_MAX_OUTPUT_LENGTH", previous)
     monkeypatch.setattr(pdf_parser, "PDF_MAX_DECOMPRESSED_STREAM_BYTES", configured)
 
     def observe(self: PdfParser, content: bytes) -> list[object]:
         del self, content
-        observed.append(  # pyright: ignore[reportPrivateImportUsage]
-            pdf_parser.filters.ZLIB_MAX_OUTPUT_LENGTH  # pyright: ignore[reportPrivateImportUsage]
+        observed.append(
+            (
+                pypdf_filters.ZLIB_MAX_OUTPUT_LENGTH,
+                pypdf_filters.RUN_LENGTH_MAX_OUTPUT_LENGTH,
+                pypdf_filters.LZW_MAX_OUTPUT_LENGTH,
+            )
         )
         return []
 
@@ -625,10 +773,12 @@ def test_pdf_parser_installs_and_restores_effective_pypdf_zlib_limit(
     with pytest.raises(WorkerFailure) as caught:
         PdfParser().parse(BytesIO(b"payload"))
     assert caught.value.code == "no_extractable_text"
-    assert observed == [expected]
+    assert observed == [(expected, expected, expected)]
     assert (  # pyright: ignore[reportPrivateImportUsage]
-        pdf_parser.filters.ZLIB_MAX_OUTPUT_LENGTH == previous  # pyright: ignore[reportPrivateImportUsage]
+        pypdf_filters.ZLIB_MAX_OUTPUT_LENGTH == previous
     )
+    assert pypdf_filters.RUN_LENGTH_MAX_OUTPUT_LENGTH == previous
+    assert pypdf_filters.LZW_MAX_OUTPUT_LENGTH == previous
 
 
 def test_pdf_parser_restores_zlib_limit_after_failure_and_serializes_observers(
@@ -642,8 +792,10 @@ def test_pdf_parser_restores_zlib_limit_after_failure_and_serializes_observers(
     call_count = [0]
     failures: list[str] = []
     monkeypatch.setattr(  # pyright: ignore[reportPrivateImportUsage]
-        pdf_parser.filters, "ZLIB_MAX_OUTPUT_LENGTH", 0  # pyright: ignore[reportPrivateImportUsage]
+        pypdf_filters, "ZLIB_MAX_OUTPUT_LENGTH", 0
     )
+    monkeypatch.setattr(pypdf_filters, "RUN_LENGTH_MAX_OUTPUT_LENGTH", 0)
+    monkeypatch.setattr(pypdf_filters, "LZW_MAX_OUTPUT_LENGTH", 0)
     monkeypatch.setattr(pdf_parser, "PDF_MAX_DECOMPRESSED_STREAM_BYTES", 123)
 
     def controlled_parse(self: PdfParser, content: bytes) -> list[object]:
@@ -677,8 +829,10 @@ def test_pdf_parser_restores_zlib_limit_after_failure_and_serializes_observers(
     assert first.is_alive() is False
     assert second.is_alive() is False
     assert (  # pyright: ignore[reportPrivateImportUsage]
-        pdf_parser.filters.ZLIB_MAX_OUTPUT_LENGTH == 0  # pyright: ignore[reportPrivateImportUsage]
+        pypdf_filters.ZLIB_MAX_OUTPUT_LENGTH == 0
     )
+    assert pypdf_filters.RUN_LENGTH_MAX_OUTPUT_LENGTH == 0
+    assert pypdf_filters.LZW_MAX_OUTPUT_LENGTH == 0
 
 
 def test_pdf_parser_operator_proxy_counts_adjacent_delimiters(

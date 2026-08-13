@@ -139,9 +139,20 @@ def _scan_xml(content: bytes, *, member_name: str, totals: list[int]) -> str:
         totals[1] += 1
         if totals[1] > OPC_MAX_XML_ELEMENTS:
             raise ValueError("OPC XML exceeds element limit")
-        if member_name.endswith(".rels") and name.rsplit(":", 1)[-1] == "Relationship":
-            mode = attributes.get("TargetMode", "")
+        local_name = name.rsplit(":", 1)[-1]
+        if (
+            member_name == _CONTENT_TYPES_MEMBER.casefold()
+            and local_name in {"Default", "Override"}
+        ):
+            content_type = attributes.get("ContentType", "").casefold()
+            if any(marker in content_type for marker in _MACRO_CONTENT_MARKERS):
+                raise ValueError("macro-bearing OPC package")
+        if member_name.endswith(".rels") and local_name == "Relationship":
+            mode = attributes.get("TargetMode", "").strip()
             target = attributes.get("Target")
+            relationship_type = attributes.get("Type", "").strip().casefold().rstrip("/")
+            if mode.casefold() != "external" and relationship_type.endswith("/vbaproject"):
+                raise ValueError("macro-bearing OPC package")
             if target is not None and mode.casefold() != "external":
                 _validate_relationship_target(member_name, target)
 

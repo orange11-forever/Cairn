@@ -27,6 +27,7 @@ XLSX_MAX_SOURCE_ROW = 100_000
 XLSX_MAX_SOURCE_COLUMN = 4_096
 XLSX_MAX_DIMENSION_CELLS = 2_000_000
 XLSX_MAX_OUTPUT_BYTES = PARSER_SOURCE_MAX_BYTES
+_XLSX_UTF8_LENGTH_CACHE_ENTRIES = 4_096
 _CELL_REFERENCE = re.compile(r"\$?([A-Z]{1,3})\$?([1-9][0-9]*)\Z", re.IGNORECASE)
 
 
@@ -179,29 +180,51 @@ def _sheet_block(
     )
 
 
-def _reserve_tsv_row_bytes(
-    values: dict[int, str],
+def _utf8_byte_length(value: str, cache: dict[str, int]) -> int:
+    cached = cache.get(value)
+    if cached is None:
+        cached = len(value.encode("utf-8"))
+        if len(cache) >= _XLSX_UTF8_LENGTH_CACHE_ENTRIES:
+            cache.clear()
+        cache[value] = cached
+    return cached
+
+
+def _reserve_tsv_cell_bytes(
+    value: str,
     *,
+    column: int,
     previous_min_column: int | None,
     previous_max_column: int | None,
     row_count: int,
+    row_started: bool,
     locator_min_column: int | None,
     consumed_bytes: int,
+    utf8_lengths: dict[str, int],
+    committed_pending_bytes: int,
+    excluded_outer_newline_bytes: int,
 ) -> tuple[int, int, int]:
-    current_min = min(values)
-    current_max = max(values)
     if previous_min_column is None or previous_max_column is None:
-        new_min = min(current_min, locator_min_column or current_min)
-        new_max = current_max
+        new_min = min(column, locator_min_column or column)
+        new_max = column
         generated_bytes = new_max - new_min
     else:
-        new_min = min(previous_min_column, current_min)
-        new_max = max(previous_max_column, current_max)
+        new_min = min(previous_min_column, column)
+        new_max = max(previous_max_column, column)
         old_width = previous_max_column - previous_min_column + 1
         new_width = new_max - new_min + 1
-        generated_bytes = (new_width - 1) + 1 + row_count * (new_width - old_width)
-    value_bytes = sum(len(value.encode("utf-8")) for value in values.values())
-    total = consumed_bytes + generated_bytes + value_bytes
+        generated_bytes = (new_width - old_width) * (row_count + 1)
+        if not row_started:
+            generated_bytes += old_width - 1
+            if row_count:
+                generated_bytes += 1
+    total = (
+        consumed_bytes
+        + generated_bytes
+        + committed_pending_bytes
+        + _utf8_byte_length(value, utf8_lengths)
+        - excluded_outer_newline_bytes
+    )
     if total > XLSX_MAX_OUTPUT_BYTES:
         raise ValueError("XLSX text exceeds parser output limit")
     return total, new_min, new_max
@@ -223,12 +246,15 @@ class XlsxParser(DocumentParser):
                 raise ValueError("workbook sheet count exceeds parser work limit")
             blocks: list[ParsedBlock] = []
             output_bytes = 0
+            utf8_lengths: dict[str, int] = {}
             for worksheet in workbook.worksheets:
                 min_column, min_row, max_column, max_row = _sheet_bounds(worksheet)
                 rows: list[tuple[int, dict[int, str]]] = []
                 first_block = True
                 block_min_column: int | None = None
                 block_max_column: int | None = None
+                block_leading_newline_bytes = 0
+                block_trailing_newline_bytes = 0
                 for row_number, cells in enumerate(
                     worksheet.iter_rows(
                         min_row=min_row,
@@ -239,6 +265,7 @@ class XlsxParser(DocumentParser):
                     start=min_row,
                 ):
                     values: dict[int, str] = {}
+                    row_started = False
                     for cell in cells:
                         displayed = _displayed_scalar(cell.value)
                         normalized = (
@@ -251,17 +278,55 @@ class XlsxParser(DocumentParser):
                             and normalized.strip()
                             and isinstance(cell.column, int)
                         ):
+                            leading_newlines = len(normalized) - len(
+                                normalized.lstrip("\n")
+                            )
+                            trailing_newlines = len(normalized) - len(
+                                normalized.rstrip("\n")
+                            )
+                            committed_pending = block_trailing_newline_bytes
+                            block_trailing_newline_bytes = 0
+                            if (
+                                block_min_column is not None
+                                and cell.column < block_min_column
+                            ):
+                                committed_pending += block_leading_newline_bytes
+                                block_leading_newline_bytes = 0
+                            excludes_leading = (
+                                block_min_column is None
+                                and min(cell.column, min_column if first_block else cell.column)
+                                == cell.column
+                            )
+                            resulting_max = max(
+                                block_max_column or cell.column, cell.column
+                            )
+                            excludes_trailing = cell.column == resulting_max
+                            excluded_newlines = (
+                                leading_newlines if excludes_leading else 0
+                            ) + (trailing_newlines if excludes_trailing else 0)
+                            output_bytes, block_min_column, block_max_column = (
+                                _reserve_tsv_cell_bytes(
+                                    normalized,
+                                    column=cell.column,
+                                    previous_min_column=block_min_column,
+                                    previous_max_column=block_max_column,
+                                    row_count=len(rows),
+                                    row_started=row_started,
+                                    locator_min_column=min_column if first_block else None,
+                                    consumed_bytes=output_bytes,
+                                    utf8_lengths=utf8_lengths,
+                                    committed_pending_bytes=committed_pending,
+                                    excluded_outer_newline_bytes=excluded_newlines,
+                                )
+                            )
+                            if excludes_leading:
+                                block_leading_newline_bytes = leading_newlines
+                            if excludes_trailing:
+                                block_trailing_newline_bytes = trailing_newlines
                             values[cell.column] = normalized
+                            row_started = True
                     if not values:
                         continue
-                    output_bytes, block_min_column, block_max_column = _reserve_tsv_row_bytes(
-                        values,
-                        previous_min_column=block_min_column,
-                        previous_max_column=block_max_column,
-                        row_count=len(rows),
-                        locator_min_column=min_column if first_block else None,
-                        consumed_bytes=output_bytes,
-                    )
                     rows.append((row_number, values))
                     if len(rows) == XLSX_ROWS_PER_BLOCK:
                         ensure_block_capacity(len(blocks))
@@ -276,6 +341,8 @@ class XlsxParser(DocumentParser):
                         rows = []
                         block_min_column = None
                         block_max_column = None
+                        block_leading_newline_bytes = 0
+                        block_trailing_newline_bytes = 0
                 if rows:
                     ensure_block_capacity(len(blocks))
                     blocks.append(

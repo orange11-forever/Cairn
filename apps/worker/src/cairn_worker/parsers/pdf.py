@@ -2,7 +2,7 @@ from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from io import BytesIO
 from threading import RLock
-from typing import BinaryIO
+from typing import BinaryIO, cast
 
 from cairn_api.knowledge.schemas import PdfLocator
 from pypdf import PdfReader, filters
@@ -29,8 +29,8 @@ PDF_MAX_CONTENT_TOKENS = 5_000_000
 PDF_MAX_CONTENT_STREAMS = PDF_MAX_PAGE_TREE_NODES
 PDF_MAX_FORM_DEPTH = 64
 
-# pypdf exposes its Flate output ceiling as a module setting. Serialize the temporary stricter
-# value so concurrent PDF jobs cannot observe a partially restored limit.
+# pypdf exposes decoder ceilings as module settings. Serialize temporary stricter values so
+# concurrent PDF jobs cannot observe partially restored limits.
 _PDF_PARSE_LOCK = RLock()
 _PAGE = NameObject("/Page")
 _PAGES = NameObject("/Pages")
@@ -257,6 +257,115 @@ def _form_references(
             yield candidate
 
 
+def _preflight_lzw_data(data: bytes, remaining_bytes: int) -> None:
+    lengths = [1] * 256 + [0] * (4_096 - 256)
+    table_index = 258
+    bits_per_code = 9
+    byte_index = 0
+    bit_buffer = 0
+    buffered_bits = 0
+    output_length = 0
+
+    def next_code() -> int:
+        nonlocal byte_index, bit_buffer, buffered_bits
+        while buffered_bits < bits_per_code:
+            if byte_index >= len(data):
+                raise ValueError("malformed PDF LZW stream")
+            bit_buffer = (bit_buffer << 8) | data[byte_index]
+            byte_index += 1
+            buffered_bits += 8
+        buffered_bits -= bits_per_code
+        code = (bit_buffer >> buffered_bits) & ((1 << bits_per_code) - 1)
+        bit_buffer &= (1 << buffered_bits) - 1
+        return code
+
+    old_code = 256
+    while True:
+        code = next_code()
+        if code == 257:
+            return
+        if code == 256:
+            table_index = 258
+            bits_per_code = 9
+            code = next_code()
+            if code == 257:
+                return
+            if code >= 256 or lengths[code] == 0:
+                raise ValueError("malformed PDF LZW stream")
+            decoded_length = lengths[code]
+            old_code = code
+        elif code < table_index and lengths[code]:
+            decoded_length = lengths[code]
+            if old_code != 256 and table_index < len(lengths):
+                lengths[table_index] = lengths[old_code] + 1
+                table_index += 1
+            old_code = code
+        elif code == table_index and old_code != 256:
+            decoded_length = lengths[old_code] + 1
+            if table_index < len(lengths):
+                lengths[table_index] = decoded_length
+                table_index += 1
+            old_code = code
+        else:
+            raise ValueError("malformed PDF LZW stream")
+        if table_index == 511:
+            bits_per_code = 10
+        elif table_index == 1_023:
+            bits_per_code = 11
+        elif table_index == 2_047:
+            bits_per_code = 12
+        output_length += decoded_length
+        if output_length > remaining_bytes:
+            raise ValueError("PDF content exceeds aggregate decoded-byte limit")
+
+
+def _preflight_amplifying_stream(stream: StreamObject, remaining_bytes: int) -> None:
+    filter_value = stream.get("/Filter")
+    filters_in_order = (
+        list(filter_value) if isinstance(filter_value, ArrayObject) else [filter_value]
+    )
+    names = [str(value) for value in filters_in_order if value is not None]
+    run_length_names = {"/RunLengthDecode", "/RL"}
+    lzw_names = {"/LZWDecode", "/LZW"}
+    has_run_length = any(name in run_length_names for name in names)
+    has_lzw = any(name in lzw_names for name in names)
+    if not has_run_length and not has_lzw:
+        return
+    if len(names) != 1:
+        raise ValueError("PDF chained amplification decoding is not safely bounded")
+    data = cast(object, stream._data)  # pyright: ignore[reportPrivateUsage]
+    if not isinstance(data, bytes):
+        raise TypeError("PDF encoded stream data must be bytes")
+    if has_lzw:
+        _preflight_lzw_data(data, remaining_bytes)
+        return
+    index = 0
+    decoded_length = 0
+    while index < len(data):
+        length = data[index]
+        index += 1
+        if length == 128:
+            return
+        if length < 128:
+            literal_length = length + 1
+            if index + literal_length > len(data):
+                raise ValueError("malformed PDF RunLength stream")
+            index += literal_length
+            decoded_length += literal_length
+        else:
+            if index >= len(data):
+                raise ValueError("malformed PDF RunLength stream")
+            index += 1
+            decoded_length += 257 - length
+        if decoded_length > remaining_bytes:
+            raise ValueError("PDF content exceeds aggregate decoded-byte limit")
+    raise ValueError("malformed PDF RunLength stream")
+
+
+def _effective_decoder_limit(previous: int, configured: int) -> int:
+    return configured if previous <= 0 else min(previous, configured)
+
+
 def _preflight_page_content(reader: PdfReader, pages: Sequence[object]) -> None:
     seen: set[_ContentKey] = set()
     decoded_bytes = 0
@@ -282,12 +391,29 @@ def _preflight_page_content(reader: PdfReader, pages: Sequence[object]) -> None:
         remaining_bytes = PDF_MAX_AGGREGATE_DECODED_BYTES - decoded_bytes
         if remaining_bytes <= 0:
             raise ValueError("PDF content exceeds aggregate decoded-byte limit")
-        previous_limit = filters.ZLIB_MAX_OUTPUT_LENGTH
-        filters.ZLIB_MAX_OUTPUT_LENGTH = min(previous_limit, remaining_bytes)
+        _preflight_amplifying_stream(stream, remaining_bytes)
+        previous_limits = (
+            filters.ZLIB_MAX_OUTPUT_LENGTH,
+            filters.RUN_LENGTH_MAX_OUTPUT_LENGTH,
+            filters.LZW_MAX_OUTPUT_LENGTH,
+        )
+        filters.ZLIB_MAX_OUTPUT_LENGTH = _effective_decoder_limit(
+            previous_limits[0], remaining_bytes
+        )
+        filters.RUN_LENGTH_MAX_OUTPUT_LENGTH = _effective_decoder_limit(
+            previous_limits[1], remaining_bytes
+        )
+        filters.LZW_MAX_OUTPUT_LENGTH = _effective_decoder_limit(
+            previous_limits[2], remaining_bytes
+        )
         try:
             data = stream.get_data()
         finally:
-            filters.ZLIB_MAX_OUTPUT_LENGTH = previous_limit
+            (
+                filters.ZLIB_MAX_OUTPUT_LENGTH,
+                filters.RUN_LENGTH_MAX_OUTPUT_LENGTH,
+                filters.LZW_MAX_OUTPUT_LENGTH,
+            ) = previous_limits
         decoded_bytes += len(data)
         if decoded_bytes > PDF_MAX_AGGREGATE_DECODED_BYTES:
             raise ValueError("PDF content exceeds aggregate decoded-byte limit")
@@ -312,16 +438,28 @@ class PdfParser(DocumentParser):
     def _parse(self, source: BinaryIO) -> list[ParsedBlock]:
         content = read_parser_source(source)
         with _PDF_PARSE_LOCK:
-            previous_limit = filters.ZLIB_MAX_OUTPUT_LENGTH
-            filters.ZLIB_MAX_OUTPUT_LENGTH = (
-                PDF_MAX_DECOMPRESSED_STREAM_BYTES
-                if previous_limit <= 0
-                else min(previous_limit, PDF_MAX_DECOMPRESSED_STREAM_BYTES)
+            previous_limits = (
+                filters.ZLIB_MAX_OUTPUT_LENGTH,
+                filters.RUN_LENGTH_MAX_OUTPUT_LENGTH,
+                filters.LZW_MAX_OUTPUT_LENGTH,
+            )
+            filters.ZLIB_MAX_OUTPUT_LENGTH = _effective_decoder_limit(
+                previous_limits[0], PDF_MAX_DECOMPRESSED_STREAM_BYTES
+            )
+            filters.RUN_LENGTH_MAX_OUTPUT_LENGTH = _effective_decoder_limit(
+                previous_limits[1], PDF_MAX_DECOMPRESSED_STREAM_BYTES
+            )
+            filters.LZW_MAX_OUTPUT_LENGTH = _effective_decoder_limit(
+                previous_limits[2], PDF_MAX_DECOMPRESSED_STREAM_BYTES
             )
             try:
                 return self._parse_bounded_pdf(content)
             finally:
-                filters.ZLIB_MAX_OUTPUT_LENGTH = previous_limit
+                (
+                    filters.ZLIB_MAX_OUTPUT_LENGTH,
+                    filters.RUN_LENGTH_MAX_OUTPUT_LENGTH,
+                    filters.LZW_MAX_OUTPUT_LENGTH,
+                ) = previous_limits
 
     def _parse_bounded_pdf(self, content: bytes) -> list[ParsedBlock]:
         reader = PdfReader(BytesIO(content), strict=True)

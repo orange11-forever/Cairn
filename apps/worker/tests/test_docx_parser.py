@@ -468,6 +468,105 @@ def test_docx_parser_rejects_encoded_macro_content_type_markers(encoding: str) -
     assert caught.value.code == "parser_failed"
 
 
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        (
+            b'<Override PartName="/custom/arbitrary.bin" '
+            b'ContentType="application/vnd.ms-word.document.macroEnabl&#101;d.main+xml"/>'
+        ),
+        (
+            b'<Default Extension="bin" '
+            b'ContentType="application/vnd.ms-office.vbaprojec&#116;"/>'
+        ),
+    ],
+)
+def test_docx_parser_rejects_numeric_reference_macro_content_type_before_library(
+    monkeypatch: pytest.MonkeyPatch,
+    declaration: bytes,
+) -> None:
+    """Break caught: XML references must not conceal semantic macro content types."""
+    from cairn_worker.parsers import docx as docx_parser
+
+    package = empty_docx_fixture()
+    with ZipFile(BytesIO(package)) as source:
+        content_types = source.read("[Content_Types].xml")
+    content_types = content_types.replace(
+        b"</Types>",
+        declaration + b"</Types>",
+    )
+    opened = [False]
+
+    def unexpected_document(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        opened[0] = True
+        raise AssertionError("macro package reached python-docx")
+
+    monkeypatch.setattr(docx_parser, "Document", unexpected_document)
+    hostile = _append_member(
+        _replace_member(package, "[Content_Types].xml", content_types),
+        "custom/arbitrary.bin",
+        b"macro",
+    )
+    with pytest.raises(WorkerFailure) as caught:
+        DocxParser().parse(BytesIO(hostile))
+    assert caught.value.code == "parser_failed"
+    assert opened == [False]
+
+
+def test_docx_parser_rejects_numeric_reference_internal_vba_relationship_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Break caught: arbitrary internal parts must not hide vbaProject relationship types."""
+    from cairn_worker.parsers import docx as docx_parser
+
+    package = empty_docx_fixture()
+    with ZipFile(BytesIO(package)) as source:
+        relationships = source.read("word/_rels/document.xml.rels")
+    relationships = relationships.replace(
+        b"</Relationships>",
+        b'<Relationship Id="rMacro" '
+        b'Type="http://schemas.example.test/relationships/vbaProjec&#116;" '
+        b'Target="../custom/arbitrary.bin"/></Relationships>',
+    )
+    opened = [False]
+
+    def unexpected_document(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        opened[0] = True
+        raise AssertionError("macro relationship reached python-docx")
+
+    monkeypatch.setattr(docx_parser, "Document", unexpected_document)
+    hostile = _append_member(
+        _replace_member(package, "word/_rels/document.xml.rels", relationships),
+        "custom/arbitrary.bin",
+        b"macro",
+    )
+    with pytest.raises(WorkerFailure) as caught:
+        DocxParser().parse(BytesIO(hostile))
+    assert caught.value.code == "parser_failed"
+    assert opened == [False]
+
+
+def test_docx_parser_allows_external_vba_relationship_label_without_fetch() -> None:
+    package = empty_docx_fixture()
+    with ZipFile(BytesIO(package)) as source:
+        relationships = source.read("word/_rels/document.xml.rels")
+    relationships = relationships.replace(
+        b"</Relationships>",
+        b'<Relationship Id="rExternalLabel" '
+        b'Type="http://schemas.example.test/relationships/vbaProject" '
+        b'Target="https://127.0.0.1:1/private" TargetMode="External"/>'
+        b"</Relationships>",
+    )
+
+    with pytest.raises(WorkerFailure) as caught:
+        DocxParser().parse(
+            BytesIO(_replace_member(package, "word/_rels/document.xml.rels", relationships))
+        )
+    assert caught.value.code == "no_extractable_text"
+
+
 def test_docx_parser_rejects_unicode_normalized_duplicate_part_names() -> None:
     package = _append_member(empty_docx_fixture(), "word/caf\u00e9.xml", b"<x/>")
     package = _append_member(package, "word/cafe\u0301.xml", b"<x/>")

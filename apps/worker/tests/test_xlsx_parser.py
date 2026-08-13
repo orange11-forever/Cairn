@@ -100,6 +100,40 @@ def _repeated_shared_string_xlsx(repetitions: int) -> bytes:
     return output.getvalue()
 
 
+def _wide_repeated_shared_string_xlsx(repetitions: int) -> bytes:
+    workbook = Workbook()
+    worksheet = workbook.active
+    assert worksheet is not None
+    for column in range(1, repetitions + 1):
+        worksheet.cell(row=1, column=column, value="repeat")
+    package = _save(workbook)
+    output = BytesIO()
+    with ZipFile(BytesIO(package), "r") as source, ZipFile(
+        output, "w", compression=ZIP_DEFLATED
+    ) as target:
+        for member in source.infolist():
+            data = source.read(member)
+            if member.filename == "xl/worksheets/sheet1.xml":
+                data = data.replace(
+                    b't="inlineStr"><is><t>repeat</t></is>', b't="s"><v>0</v>'
+                )
+            elif member.filename == "[Content_Types].xml":
+                data = data.replace(
+                    b"</Types>",
+                    b'<Override PartName="/xl/sharedStrings.xml" '
+                    b'ContentType="application/vnd.openxmlformats-officedocument.'
+                    b'spreadsheetml.sharedStrings+xml"/></Types>',
+                )
+            target.writestr(member, data)
+        target.writestr(
+            "xl/sharedStrings.xml",
+            b'<?xml version="1.0" encoding="UTF-8"?>'
+            b'<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+            b'count="1" uniqueCount="1"><si><t>repeat</t></si></sst>',
+        )
+    return output.getvalue()
+
+
 def test_xlsx_parser_emits_displayed_scalars_sparse_ranges_and_workbook_order() -> None:
     """Break caught: sparse row/column bounds and displayed scalar formatting must stay exact."""
     blocks = XlsxParser().parse(BytesIO(_structured_xlsx()))
@@ -351,6 +385,99 @@ def test_xlsx_parser_rejects_repeated_shared_string_output_before_join(
         XlsxParser().parse(BytesIO(_repeated_shared_string_xlsx(19)))
     assert caught.value.code == "parser_failed"
     assert joined[0] is False
+
+
+def test_xlsx_parser_stops_wide_shared_row_at_first_excess_cell_and_caches_encoding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Break caught: a wide row must not be fully visited or repeatedly UTF-8 encoded."""
+    from cairn_worker.parsers import xlsx as xlsx_parser
+
+    visits = [0]
+    encodes = [0]
+    real_displayed = xlsx_parser._displayed_scalar  # pyright: ignore[reportPrivateUsage]
+
+    def tracking_displayed(value: object) -> str | None:
+        visits[0] += 1
+        return real_displayed(value)
+
+    def tracking_length(value: str, cache: dict[str, int]) -> int:
+        if value not in cache:
+            encodes[0] += 1
+            cache[value] = len(value.encode("utf-8"))
+        return cache[value]
+
+    monkeypatch.setattr(xlsx_parser, "XLSX_MAX_OUTPUT_BYTES", 1)
+    monkeypatch.setattr(xlsx_parser, "_displayed_scalar", tracking_displayed)
+    monkeypatch.setattr(xlsx_parser, "_utf8_byte_length", tracking_length, raising=False)
+    with pytest.raises(WorkerFailure) as caught:
+        XlsxParser().parse(BytesIO(_wide_repeated_shared_string_xlsx(4_096)))
+    assert caught.value.code == "parser_failed"
+    assert visits == [1]
+    assert encodes == [1]
+
+
+def test_xlsx_parser_encodes_a_repeated_shared_value_only_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from cairn_worker.parsers import xlsx as xlsx_parser
+
+    encodes = [0]
+
+    def tracking_length(value: str, cache: dict[str, int]) -> int:
+        if value not in cache:
+            encodes[0] += 1
+            cache[value] = len(value.encode("utf-8"))
+        return cache[value]
+
+    monkeypatch.setattr(xlsx_parser, "_utf8_byte_length", tracking_length)
+    blocks = XlsxParser().parse(BytesIO(_wide_repeated_shared_string_xlsx(20)))
+
+    assert len(blocks[0].text.encode("utf-8")) == 139
+    assert encodes == [1]
+
+
+@pytest.mark.parametrize("value", ["x\n", "\nx", "\nx\n"])
+def test_xlsx_parser_budgets_the_final_outer_newline_normalized_cell_text(
+    monkeypatch: pytest.MonkeyPatch,
+    value: str,
+) -> None:
+    """Break caught: outer newlines removed from final text must not consume byte budget."""
+    from cairn_worker.parsers import xlsx as xlsx_parser
+
+    workbook = Workbook()
+    worksheet = workbook.active
+    assert worksheet is not None
+    worksheet["A1"] = value
+    monkeypatch.setattr(xlsx_parser, "XLSX_MAX_OUTPUT_BYTES", 1)
+
+    blocks = XlsxParser().parse(BytesIO(_save(workbook)))
+
+    assert [block.text for block in blocks] == ["x"]
+
+
+@pytest.mark.parametrize(("limit", "should_pass"), [(4, True), (3, False)])
+def test_xlsx_parser_preserves_and_budgets_newlines_that_become_internal(
+    monkeypatch: pytest.MonkeyPatch,
+    limit: int,
+    should_pass: bool,
+) -> None:
+    from cairn_worker.parsers import xlsx as xlsx_parser
+
+    workbook = Workbook()
+    worksheet = workbook.active
+    assert worksheet is not None
+    worksheet["A1"] = "x\n"
+    worksheet["A2"] = "y"
+    monkeypatch.setattr(xlsx_parser, "XLSX_MAX_OUTPUT_BYTES", limit)
+
+    if should_pass:
+        blocks = XlsxParser().parse(BytesIO(_save(workbook)))
+        assert [block.text for block in blocks] == ["x\n\ny"]
+    else:
+        with pytest.raises(WorkerFailure) as caught:
+            XlsxParser().parse(BytesIO(_save(workbook)))
+        assert caught.value.code == "parser_failed"
 
 
 @pytest.mark.parametrize(("limit", "should_pass"), [(4_097, True), (4_096, False)])
