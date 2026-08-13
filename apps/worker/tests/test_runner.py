@@ -1,8 +1,13 @@
+import json
 import signal
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from http.client import HTTPMessage
+from io import BytesIO
 from typing import Self, cast
+from urllib.error import HTTPError, URLError
+from urllib.request import HTTPRedirectHandler, Request
 from uuid import uuid4
 
 import pytest
@@ -20,11 +25,154 @@ from cairn_worker.runner import (
     REQUIRED_JOB_KINDS,
     Runtime,
     WorkerRuntime,
+    check_embedding_ready,
     ensure_complete_handlers,
     main,
     run_once,
     validate_worker_id,
 )
+from pydantic import AnyHttpUrl, SecretStr
+
+
+class _EmbeddingOpener:
+    def __init__(self, response: BytesIO | Exception) -> None:
+        self.response = response
+        self.requests: list[Request] = []
+
+    def open(self, request: Request, *, timeout: float) -> BytesIO:
+        assert timeout > 0
+        self.requests.append(request)
+        if isinstance(self.response, Exception):
+            raise self.response
+        return self.response
+
+
+def _embedding_settings(*, base_url: str = "https://embedding.example/v1") -> Settings:
+    return Settings(
+        embedding_base_url=AnyHttpUrl(base_url),
+        embedding_api_key=SecretStr("quality-fix-secret-token"),
+    )
+
+
+def test_embedding_readiness_accepts_a_valid_2xx_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Break caught: redirect protection must preserve the normal authenticated readiness probe."""
+    response = json.dumps({"data": [{"embedding": [0.1] * 1024}]}).encode()
+    opener = _EmbeddingOpener(BytesIO(response))
+    handlers: list[HTTPRedirectHandler] = []
+
+    def build(*values: HTTPRedirectHandler) -> _EmbeddingOpener:
+        handlers.extend(values)
+        return opener
+
+    monkeypatch.setattr("cairn_worker.runner.build_opener", build)
+
+    check_embedding_ready(_embedding_settings())
+
+    assert len(handlers) == 1
+    assert len(opener.requests) == 1
+    request = opener.requests[0]
+    assert request.full_url == "https://embedding.example/v1/embeddings"
+    assert request.get_header("Authorization") == "Bearer quality-fix-secret-token"
+
+
+@pytest.mark.parametrize(
+    "redirect_target",
+    [
+        "https://embedding.example/v1/other",
+        "https://attacker.example/collect",
+        "http://embedding.example/collect",
+    ],
+    ids=["same-origin", "cross-origin", "https-downgrade"],
+)
+def test_embedding_readiness_refuses_every_redirect_without_forwarding_authorization(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    redirect_target: str,
+) -> None:
+    """Break caught: bearer credentials must never cross any provider redirect."""
+    requests: list[Request] = []
+    raw_body = b'{"error":"private provider response"}'
+
+    class RedirectingOpener:
+        def open(self, request: Request, *, timeout: float) -> BytesIO:
+            del timeout
+            requests.append(request)
+            redirected = handlers[0].redirect_request(
+                request,
+                BytesIO(raw_body),
+                302,
+                "token quality-fix-secret-token",
+                HTTPMessage(),
+                redirect_target,
+            )
+            if redirected is not None:
+                requests.append(redirected)
+            raise HTTPError(
+                request.full_url,
+                302,
+                "token quality-fix-secret-token",
+                HTTPMessage(),
+                BytesIO(raw_body),
+            )
+
+    handlers: list[HTTPRedirectHandler] = []
+
+    def build(*values: HTTPRedirectHandler) -> RedirectingOpener:
+        handlers.extend(values)
+        return RedirectingOpener()
+
+    monkeypatch.setattr("cairn_worker.runner.build_opener", build)
+
+    with pytest.raises(RuntimeError) as raised:
+        check_embedding_ready(_embedding_settings())
+
+    assert str(raised.value) == "embedding provider is not ready"
+    assert len(requests) == 1
+    assert requests[0].get_header("Authorization") == "Bearer quality-fix-secret-token"
+    captured = capsys.readouterr()
+    exposed = str(raised.value) + captured.out + captured.err
+    assert redirect_target not in exposed
+    assert "quality-fix-secret-token" not in exposed
+    assert "private provider response" not in exposed
+
+
+@pytest.mark.parametrize(
+    "provider_error",
+    [
+        URLError("token quality-fix-secret-token at https://private.example"),
+        HTTPError(
+            "https://private.example",
+            503,
+            "token quality-fix-secret-token",
+            HTTPMessage(),
+            BytesIO(b"private provider response"),
+        ),
+    ],
+)
+def test_embedding_readiness_reports_bounded_network_and_http_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    provider_error: Exception,
+) -> None:
+    """Break caught: readiness failures must not expose tokens, targets, or response bodies."""
+    opener = _EmbeddingOpener(provider_error)
+
+    def build(*_handlers: HTTPRedirectHandler) -> _EmbeddingOpener:
+        return opener
+
+    monkeypatch.setattr("cairn_worker.runner.build_opener", build)
+
+    with pytest.raises(RuntimeError) as raised:
+        check_embedding_ready(_embedding_settings())
+
+    captured = capsys.readouterr()
+    exposed = str(raised.value) + captured.out + captured.err
+    assert exposed == "embedding provider is not ready"
+    assert "quality-fix-secret-token" not in exposed
+    assert "private.example" not in exposed
+    assert "private provider response" not in exposed
 
 
 @pytest.mark.parametrize(

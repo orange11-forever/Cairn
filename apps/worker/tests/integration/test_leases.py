@@ -423,14 +423,112 @@ def test_retry_then_fifth_failure_marks_archive_item_and_emits_once(migrated_eng
         job = session.get(IngestionJob, job_id)
         item = session.get(IngestionItem, item_id)
         batch = session.get(IngestionBatch, batch_id)
+        attempts = list(
+            session.scalars(
+                select(IngestionJobAttempt)
+                .where(IngestionJobAttempt.job_id == job_id)
+                .order_by(IngestionJobAttempt.ordinal)
+            )
+        )
+        audit = session.scalar(select(AuditLog))
+        outbox = session.scalar(select(OutboxEvent))
         assert job is not None and job.status == IngestionJobStatus.FAILED
         assert job.last_error_code == "ingestion_retry_exhausted"
         assert item is not None and item.status == IngestionItemStatus.FAILED
         assert item.error_code == "ingestion_retry_exhausted"
+        assert item.error_detail == "automatic ingestion retries are exhausted"
         assert batch is not None and batch.failed_count == 1
-        assert session.scalar(select(func.count(IngestionJobAttempt.id))) == 5
-        assert session.scalar(select(func.count(AuditLog.id))) == 1
-        assert session.scalar(select(func.count(OutboxEvent.id))) == 1
+        assert len(attempts) == 5
+        assert attempts[-1].error_code == "ingestion_retry_exhausted"
+        assert attempts[-1].safe_detail == "automatic ingestion retries are exhausted"
+        assert audit is not None
+        assert audit.details["errorCode"] == "ingestion_retry_exhausted"
+        assert audit.details["safeDetail"] == "automatic ingestion retries are exhausted"
+        assert outbox is not None
+        assert outbox.payload["errorCode"] == "ingestion_retry_exhausted"
+        assert outbox.payload["safeDetail"] == "automatic ingestion retries are exhausted"
+
+
+@pytest.mark.integration
+def test_fifth_failure_uses_exhaustion_facts_for_resource_version(
+    migrated_engine: Engine,
+) -> None:
+    """Break caught: resource-version exhaustion facts must share one effective code/template."""
+    now = datetime.now(UTC) + timedelta(minutes=1)
+    resource_id, version_id = uuid4(), uuid4()
+    job_id, org_id, project_id = seed_job(
+        migrated_engine,
+        job_kind=JobKind.INDEX_RESOURCE_VERSION,
+        target_id=version_id,
+        now=now,
+    )
+    with Session(migrated_engine) as session, session.begin():
+        session.add(
+            KnowledgeResource(
+                id=resource_id,
+                org_id=org_id,
+                project_id=project_id,
+                title="exhausted.pdf",
+                source_type=ResourceSourceType.UPLOAD,
+                source_id="upload-exhausted",
+                external_id="exhausted.pdf",
+            )
+        )
+        session.flush()
+        session.add(
+            KnowledgeResourceVersion(
+                id=version_id,
+                org_id=org_id,
+                project_id=project_id,
+                resource_id=resource_id,
+                source_type=ResourceSourceType.UPLOAD,
+                source_id="upload-exhausted",
+                external_id="exhausted.pdf",
+                source_version="v1",
+                object_key=f"orgs/{org_id}/exhausted.pdf",
+                media_type="application/pdf",
+                size_bytes=10,
+                sha256="f" * 64,
+                parser_profile="default-v1",
+                chunking_profile="default-v1",
+                status=ResourceVersionStatus.PROCESSING,
+                processing_started_at=now,
+            )
+        )
+
+    transient = WorkerFailure("embedding_unavailable", "private provider body", retryable=True)
+    for ordinal in range(1, 6):
+        claim_at = now + timedelta(hours=ordinal)
+        with Session(migrated_engine) as session, session.begin():
+            claim = claim_next_job(session, worker_id="worker-a:1", now=claim_at)
+        assert claim is not None
+        with Session(migrated_engine) as session, session.begin():
+            fail_job(session, claim=claim, failure=transient, now=claim_at)
+
+    with Session(migrated_engine) as session:
+        job = session.get(IngestionJob, job_id)
+        version = session.get(KnowledgeResourceVersion, version_id)
+        attempts = list(
+            session.scalars(
+                select(IngestionJobAttempt)
+                .where(IngestionJobAttempt.job_id == job_id)
+                .order_by(IngestionJobAttempt.ordinal)
+            )
+        )
+        audit = session.scalar(select(AuditLog))
+        outbox = session.scalar(select(OutboxEvent))
+        assert job is not None and job.last_error_code == "ingestion_retry_exhausted"
+        assert version is not None and version.status == ResourceVersionStatus.FAILED
+        assert version.error_code == "ingestion_retry_exhausted"
+        assert len(attempts) == 5
+        assert attempts[-1].error_code == "ingestion_retry_exhausted"
+        assert attempts[-1].safe_detail == "automatic ingestion retries are exhausted"
+        assert audit is not None
+        assert audit.details["errorCode"] == "ingestion_retry_exhausted"
+        assert audit.details["safeDetail"] == "automatic ingestion retries are exhausted"
+        assert outbox is not None
+        assert outbox.payload["errorCode"] == "ingestion_retry_exhausted"
+        assert outbox.payload["safeDetail"] == "automatic ingestion retries are exhausted"
 
 
 @pytest.mark.integration

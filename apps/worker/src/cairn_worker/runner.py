@@ -11,7 +11,7 @@ from threading import Event, Lock, Thread, current_thread, main_thread
 from types import FrameType
 from typing import Any, Protocol, Self, cast
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from cairn_api.db.session import Database
 from cairn_api.knowledge.models import EmbeddingProfile, EmbeddingProfileStatus, JobKind
@@ -34,6 +34,11 @@ _WORKER_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
 _POLL_INTERVAL_SECONDS = 1.0
 
 SessionFactory = Callable[[], Any]
+
+
+class _RejectRedirects(HTTPRedirectHandler):
+    def redirect_request(self, *args: Any, **kwargs: Any) -> None:
+        del args, kwargs
 
 
 @contextmanager
@@ -237,7 +242,8 @@ def check_embedding_ready(settings: Settings) -> None:
         method="POST",
     )
     try:
-        with urlopen(request, timeout=settings.embedding_timeout_seconds) as response:
+        opener = build_opener(_RejectRedirects())
+        with opener.open(request, timeout=settings.embedding_timeout_seconds) as response:
             body: object = json.load(response)
     except (HTTPError, URLError, OSError, TimeoutError, ValueError, TypeError):
         raise RuntimeError("embedding provider is not ready") from None

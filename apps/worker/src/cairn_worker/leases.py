@@ -143,6 +143,7 @@ def claim_next_job(session: Session, *, worker_id: str, now: datetime) -> Claime
                     lease_expires_at=expired_at,
                 ),
                 error_code="ingestion_retry_exhausted",
+                safe_detail=safe_detail_for("ingestion_retry_exhausted"),
                 target_details=target_details,
             )
             session.flush()
@@ -340,6 +341,7 @@ def _emit_terminal_failure(
     job: IngestionJob,
     claim: ClaimedJob,
     error_code: str,
+    safe_detail: str,
     target_details: dict[str, object],
 ) -> None:
     details: dict[str, object] = {
@@ -348,6 +350,7 @@ def _emit_terminal_failure(
         "jobKind": str(job.job_kind),
         "targetId": str(job.target_id),
         "errorCode": error_code,
+        "safeDetail": safe_detail,
         **target_details,
     }
     add_audit_log(
@@ -391,11 +394,17 @@ def fail_job(
         _raise_lease_lost()
     assert job is not None and attempt is not None
 
-    attempt.status = IngestionJobAttemptStatus.FAILED
-    attempt.error_code = failure.code
-    attempt.safe_detail = failure.safe_detail
-    attempt.completed_at = now
     terminal = not failure.retryable or job.attempt >= job.max_attempts
+    effective_code = (
+        "ingestion_retry_exhausted" if terminal and failure.retryable else failure.code
+    )
+    effective_detail = (
+        safe_detail_for(effective_code) if terminal and failure.retryable else failure.safe_detail
+    )
+    attempt.status = IngestionJobAttemptStatus.FAILED
+    attempt.error_code = effective_code
+    attempt.safe_detail = effective_detail
+    attempt.completed_at = now
     if not terminal:
         job.status = IngestionJobStatus.QUEUED
         job.next_attempt_at = now + retry_delay(job.attempt, failure)
@@ -405,23 +414,23 @@ def fail_job(
         session.flush()
         return
 
-    terminal_code = failure.code if not failure.retryable else "ingestion_retry_exhausted"
     job.status = IngestionJobStatus.FAILED
-    job.last_error_code = terminal_code
+    job.last_error_code = effective_code
     job.completed_at = now
     _clear_lease(job)
     target_details = _terminalize_target(
         session,
         job=job,
-        error_code=terminal_code,
-        safe_detail=failure.safe_detail,
+        error_code=effective_code,
+        safe_detail=effective_detail,
         now=now,
     )
     _emit_terminal_failure(
         session,
         job=job,
         claim=claim,
-        error_code=terminal_code,
+        error_code=effective_code,
+        safe_detail=effective_detail,
         target_details=target_details,
     )
     session.flush()
