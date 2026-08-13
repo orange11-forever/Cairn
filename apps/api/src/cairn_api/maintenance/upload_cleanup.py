@@ -11,6 +11,7 @@ from sqlalchemy import exists, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from cairn_api.audit.repository import add_audit_log
 from cairn_api.db.session import Database
 from cairn_api.knowledge import repository
 from cairn_api.knowledge.models import (
@@ -141,6 +142,38 @@ def run_upload_cleanup(
         for upload, item in expired:
             mark_expired_upload(session, upload=upload, item=item, failed_at=current_time)
             refresh_expired_batch(session, upload=upload, now=current_time)
+            add_audit_log(
+                session,
+                org_id=upload.org_id,
+                actor_type="system",
+                actor_id=None,
+                action="knowledge.upload_expired",
+                resource_type="upload_session",
+                resource_id=upload.id,
+                trace_id=f"upload-cleanup:{upload.id}",
+                ip=None,
+                user_agent=None,
+                details={
+                    "projectId": str(upload.project_id),
+                    "batchId": str(upload.batch_id),
+                    "itemId": str(upload.item_id),
+                    "errorCode": "upload_expired",
+                },
+            )
+            repository.add_project_outbox_event(
+                session,
+                org_id=upload.org_id,
+                project_id=upload.project_id,
+                event_type="knowledge.upload_expired",
+                payload={
+                    "projectId": str(upload.project_id),
+                    "batchId": str(upload.batch_id),
+                    "uploadId": str(upload.id),
+                    "itemId": str(upload.item_id),
+                    "status": "failed",
+                    "errorCode": "upload_expired",
+                },
+            )
 
     deleted = 0
     missing = 0

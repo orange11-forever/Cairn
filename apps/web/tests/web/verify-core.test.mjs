@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   createProcessManager,
+  createShutdownController,
   createStageRunner,
   createVerificationProjectName,
   resolveVerificationConfig,
@@ -204,4 +205,80 @@ test("default development Compose project is rejected before Docker is called", 
     /verification project must match/,
   );
   assert.deepEqual(calls, []);
+});
+
+test("repeated signals await one child shutdown and isolated Compose cleanup", async () => {
+  const events = [];
+  let releaseChildren;
+  const childrenStopped = new Promise((resolve) => {
+    releaseChildren = resolve;
+  });
+  const processManager = {
+    stopAll: async () => {
+      events.push("stop-children");
+      await childrenStopped;
+      events.push("children-stopped");
+    },
+  };
+  const compose = async (args) => {
+    events.push(args.includes("down") ? "compose-down" : "compose-up");
+    return 0;
+  };
+  const shutdown = createShutdownController({
+    processManager,
+    compose,
+    projectName: "cairn-test-interrupted",
+    reportError: () => undefined,
+  });
+  let verificationSettled = false;
+  const verification = runCoreVerification({
+    projectName: "cairn-test-interrupted",
+    processManager,
+    compose,
+    run: async () => new Promise(() => undefined),
+    shutdown,
+    reportError: () => undefined,
+  }).finally(() => {
+    verificationSettled = true;
+  });
+
+  await new Promise((resolve) => setImmediate(resolve));
+  shutdown.request("SIGTERM");
+  shutdown.request("SIGINT");
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(verificationSettled, false);
+  assert.deepEqual(events, ["compose-up", "stop-children"]);
+  releaseChildren();
+  assert.equal(await verification, 1);
+  assert.equal(await shutdown.shutdown(null), 0);
+  assert.deepEqual(events, [
+    "compose-up",
+    "stop-children",
+    "children-stopped",
+    "compose-down",
+  ]);
+});
+
+test("shutdown still removes the Compose project when child shutdown throws", async () => {
+  const events = [];
+  const errors = [];
+  const shutdown = createShutdownController({
+    processManager: {
+      stopAll: async () => {
+        events.push("stop-children");
+        throw new Error("child stop failed");
+      },
+    },
+    compose: async (args) => {
+      events.push(args.includes("down") ? "compose-down" : "unexpected-compose");
+      return 0;
+    },
+    projectName: "cairn-test-cleanup-error",
+    reportError: (message) => errors.push(message),
+  });
+
+  assert.equal(await shutdown.shutdown(null), 1);
+  assert.deepEqual(events, ["stop-children", "compose-down"]);
+  assert.deepEqual(errors, ["Failed to stop verification children: Error: child stop failed"]);
 });

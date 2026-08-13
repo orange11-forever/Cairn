@@ -14,6 +14,7 @@ from cairn_api.authorization.types import ProjectPermission
 from cairn_api.errors import ApiProblem
 from cairn_api.knowledge import repository
 from cairn_api.knowledge.models import (
+    IngestionBatch,
     IngestionBatchStatus,
     IngestionItem,
     IngestionItemStatus,
@@ -130,11 +131,15 @@ class KnowledgeResourceService:
         *,
         policy: AuthorizationPolicy | None = None,
         now: Callable[[], datetime] | None = None,
+        download_ttl: timedelta = timedelta(minutes=5),
     ) -> None:
+        if download_ttl <= timedelta(0):
+            raise ValueError("download_ttl must be positive")
         self._session = session
         self._object_store = object_store
         self._policy = policy or AuthorizationPolicy(session)
         self._now = now or (lambda: datetime.now(UTC))
+        self._download_ttl = download_ttl
 
     def get_batch(
         self,
@@ -144,11 +149,17 @@ class KnowledgeResourceService:
         batch_id: UUID,
     ) -> BatchDetailResponse:
         self._policy.require_project(identity, project_id, ProjectPermission.READ)
+        access_filter = self._policy.project_filter(
+            identity,
+            ProjectPermission.READ,
+            cast(ColumnElement[UUID], IngestionBatch.project_id),
+        )
         result = repository.get_batch_detail(
             self._session,
             org_id=identity.organization.id,
             project_id=project_id,
             batch_id=batch_id,
+            access_filter=access_filter,
         )
         if result is None:
             raise _not_found()
@@ -206,11 +217,17 @@ class KnowledgeResourceService:
         resource_id: UUID,
     ) -> KnowledgeResourceResponse:
         self._policy.require_project(identity, project_id, ProjectPermission.READ)
+        access_filter = self._policy.project_filter(
+            identity,
+            ProjectPermission.READ,
+            cast(ColumnElement[UUID], KnowledgeResource.project_id),
+        )
         result = repository.get_resource_observation(
             self._session,
             org_id=identity.organization.id,
             project_id=project_id,
             resource_id=resource_id,
+            access_filter=access_filter,
         )
         if result is None:
             raise _not_found()
@@ -339,11 +356,17 @@ class KnowledgeResourceService:
         try:
             with self._session.begin():
                 self._policy.require_project(identity, project_id, ProjectPermission.READ)
+                access_filter = self._policy.project_filter(
+                    identity,
+                    ProjectPermission.READ,
+                    cast(ColumnElement[UUID], KnowledgeResource.project_id),
+                )
                 result = repository.get_active_resource(
                     self._session,
                     org_id=identity.organization.id,
                     project_id=project_id,
                     resource_id=resource_id,
+                    access_filter=access_filter,
                 )
                 if result is None:
                     raise _not_found()
@@ -353,7 +376,7 @@ class KnowledgeResourceService:
                 url = self._object_store.presign_get(
                     object_key=version.object_key,
                     download_name=resource.title,
-                    expires_in=timedelta(minutes=5),
+                    expires_in=self._download_ttl,
                 )
                 self._audit(
                     identity=identity,
@@ -379,12 +402,18 @@ class KnowledgeResourceService:
         chunk_id: UUID,
     ) -> ChunkContextResponse:
         self._policy.require_project(identity, project_id, ProjectPermission.READ)
+        access_filter = self._policy.project_filter(
+            identity,
+            ProjectPermission.READ,
+            cast(ColumnElement[UUID], KnowledgeResource.project_id),
+        )
         result = repository.get_chunk_context(
             self._session,
             org_id=identity.organization.id,
             project_id=project_id,
             resource_id=resource_id,
             chunk_id=chunk_id,
+            access_filter=access_filter,
         )
         if result is None:
             raise _not_found()

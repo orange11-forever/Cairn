@@ -26,6 +26,7 @@ class MemoryObjectStore:
         self.now = now or datetime.now(UTC)
         self.objects: dict[str, ObjectStat] = {}
         self.presigned_keys: list[str] = []
+        self.presigned_get_ttls: list[timedelta] = []
         self.stat_calls: list[str] = []
 
     def presign_put(
@@ -82,7 +83,8 @@ class MemoryObjectStore:
         download_name: str,
         expires_in: timedelta,
     ) -> str:
-        del download_name, expires_in
+        del download_name
+        self.presigned_get_ttls.append(expires_in)
         return f"https://objects.example/{object_key}"
 
     def delete_object(self, *, object_key: str) -> None:

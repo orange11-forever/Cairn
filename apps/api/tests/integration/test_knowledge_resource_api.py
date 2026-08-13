@@ -6,8 +6,10 @@ from uuid import UUID, uuid4
 import pytest
 from cairn_api.app import create_app
 from cairn_api.audit.models import AuditLog
+from cairn_api.auth.schemas import IdentityContextResponse
 from cairn_api.authorization.models import ResourceAclEntry
-from cairn_api.authorization.types import MembershipRole
+from cairn_api.authorization.policy import AuthorizationPolicy
+from cairn_api.authorization.types import MembershipRole, ProjectPermission
 from cairn_api.db.session import Database
 from cairn_api.knowledge import repository, resource_service
 from cairn_api.knowledge.models import (
@@ -27,7 +29,7 @@ from cairn_api.knowledge.models import (
 )
 from cairn_api.knowledge.object_store import ObjectStat, ObjectStoreUnavailable
 from cairn_api.maintenance.upload_cleanup import run_upload_cleanup
-from cairn_api.projects.models import OutboxEvent
+from cairn_api.projects.models import OutboxEvent, Project
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
@@ -146,7 +148,12 @@ def test_resource_list_cursor_capability_detail_context_and_download(
         version = session.get(KnowledgeResourceVersion, first[1])
         assert version is not None
         store.objects[version.object_key] = ObjectStat(10, "application/pdf", "a" * 64)
-    with knowledge_client(knowledge_settings(test_database_url), database, actor, store) as client:
+    with knowledge_client(
+        knowledge_settings(test_database_url, download_url_ttl_seconds=137),
+        database,
+        actor,
+        store,
+    ) as client:
         page_one = client.get(
             f"/api/v1/projects/{project_id}/knowledge/resources",
             params={"limit": 1},
@@ -190,6 +197,7 @@ def test_resource_list_cursor_capability_detail_context_and_download(
     assert context.json()["after"]["ordinal"] == 2
     assert download.status_code == 307
     assert download.headers["location"].startswith("https://objects.example/")
+    assert store.presigned_get_ttls == [timedelta(seconds=137)]
     assert invalid_cursor.status_code == invalid_limit.status_code == 422
     assert invalid_cursor.json() == {
         "message": "分页游标无效",
@@ -634,9 +642,12 @@ def test_resource_routes_require_session_and_mutation_csrf(
 
 
 @pytest.mark.integration
-def test_resource_reads_recheck_acl_after_revocation(
+@pytest.mark.parametrize("entry_point", ["batch", "detail", "context", "download"])
+def test_resource_reads_conceal_acl_revoked_between_check_and_protected_query(
+    entry_point: str,
     database: Database,
     test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     owner = seed_actor(database, MembershipRole.OWNER)
     project_id = seed_project(database, owner, permission=None)
@@ -659,30 +670,80 @@ def test_resource_reads_recheck_acl_after_revocation(
         title="撤权.pdf",
         created_at=datetime.now(UTC),
     )
+    with database.session_factory.begin() as session:
+        batch = repository.create_batch(
+            session,
+            org_id=owner.organization_id,
+            project_id=project_id,
+            created_by=owner.user_id,
+            item_count=0,
+        )
+        batch_id = batch.id
+
+    original_require = AuthorizationPolicy.require_project
+    revoked = False
+
+    def require_then_revoke(
+        policy: AuthorizationPolicy,
+        identity: IdentityContextResponse,
+        requested_project_id: UUID,
+        required: ProjectPermission,
+        *,
+        for_update: bool = False,
+    ) -> Project:
+        nonlocal revoked
+        project = original_require(
+            policy,
+            identity,
+            requested_project_id,
+            required,
+            for_update=for_update,
+        )
+        if not revoked:
+            with database.session_factory.begin() as session:
+                entry = session.scalar(
+                    select(ResourceAclEntry).where(ResourceAclEntry.id == acl.id)
+                )
+                assert entry is not None
+                entry.revoked_at = datetime.now(UTC)
+                entry.revoked_by_type = "system"
+            revoked = True
+        return project
+
+    monkeypatch.setattr(
+        AuthorizationPolicy,
+        "require_project",
+        require_then_revoke,
+    )
+    path = {
+        "batch": f"/api/v1/projects/{project_id}/knowledge/batches/{batch_id}",
+        "detail": f"/api/v1/projects/{project_id}/knowledge/resources/{resource_id}",
+        "context": (
+            f"/api/v1/projects/{project_id}/knowledge/resources/{resource_id}/chunks/"
+            f"{chunk_ids[1]}"
+        ),
+        "download": (
+            f"/api/v1/projects/{project_id}/knowledge/resources/{resource_id}/download"
+        ),
+    }[entry_point]
+    trace_id = f"req-acl-race-{entry_point}"
     with knowledge_client(
         knowledge_settings(test_database_url), database, reader, MemoryObjectStore()
     ) as client:
-        before = client.get(f"/api/v1/projects/{project_id}/knowledge/resources/{resource_id}")
-        with database.session_factory.begin() as session:
-            entry = session.scalar(select(ResourceAclEntry).where(ResourceAclEntry.id == acl.id))
-            assert entry is not None
-            entry.revoked_at = datetime.now(UTC)
-            entry.revoked_by_type = "system"
-        after = [
-            client.get(f"/api/v1/projects/{project_id}/knowledge/resources"),
-            client.get(f"/api/v1/projects/{project_id}/knowledge/resources/{resource_id}"),
-            client.get(
-                f"/api/v1/projects/{project_id}/knowledge/resources/{resource_id}/chunks/"
-                f"{chunk_ids[1]}"
-            ),
-            client.get(
-                f"/api/v1/projects/{project_id}/knowledge/resources/{resource_id}/download",
-                follow_redirects=False,
-            ),
-        ]
+        response = client.get(
+            path,
+            headers={"X-Request-ID": trace_id},
+            follow_redirects=False,
+        )
 
-    assert before.status_code == 200
-    assert {response.status_code for response in after} == {404}
+    assert response.status_code == 404
+    assert response.json() == {
+        "message": "资源不存在",
+        "code": "not_found",
+        "traceId": trace_id,
+    }
+    assert response.headers["x-request-id"] == trace_id
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5500"
 
 
 @pytest.mark.integration
@@ -815,6 +876,110 @@ def test_upload_cleanup_expires_pending_and_preserves_completed_or_referenced_ob
         assert refreshed_batch is not None
         assert refreshed_batch.status == IngestionBatchStatus.FAILED
         assert refreshed_batch.failed_count == 1
+        audits = list(
+            session.scalars(
+                select(AuditLog).where(AuditLog.action == "knowledge.upload_expired")
+            )
+        )
+        events = list(
+            session.scalars(
+                select(OutboxEvent).where(
+                    OutboxEvent.event_type == "knowledge.upload_expired"
+                )
+            )
+        )
+        assert len(audits) == len(events) == 1
+        assert audits[0].actor_type == "system"
+        assert audits[0].actor_id is None
+        assert audits[0].resource_id == expired.upload.id
+        assert events[0].aggregate_id == project_id
+
+    repeated = run_upload_cleanup(
+        database=database,
+        object_store=store,
+        now=lambda: now,
+        limit=10,
+    )
+    assert repeated.uploads_expired == 0
+    with database.session_factory() as session:
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(AuditLog)
+                .where(AuditLog.action == "knowledge.upload_expired")
+            )
+            == 1
+        )
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(OutboxEvent)
+                .where(OutboxEvent.event_type == "knowledge.upload_expired")
+            )
+            == 1
+        )
+
+
+@pytest.mark.integration
+def test_upload_expiry_rolls_back_state_and_audit_when_outbox_write_fails(
+    database: Database,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    actor = seed_actor(database, MembershipRole.OWNER)
+    project_id = seed_project(database, actor, permission=None)
+    now = datetime(2026, 8, 13, 15, 30, tzinfo=UTC)
+    with database.session_factory.begin() as session:
+        batch = repository.create_batch(
+            session,
+            org_id=actor.organization_id,
+            project_id=project_id,
+            created_by=actor.user_id,
+            item_count=1,
+        )
+        record = repository.create_upload_session(
+            session,
+            org_id=actor.organization_id,
+            project_id=project_id,
+            batch_id=batch.id,
+            file_name="rollback.pdf",
+            normalized_path="rollback.pdf",
+            media_type="application/pdf",
+            size_bytes=1,
+            sha256="d" * 64,
+            object_key="uploads/rollback",
+            expires_at=now - timedelta(minutes=1),
+        )
+        upload_id = record.upload.id
+        item_id = record.item.id
+        batch_id = batch.id
+
+    monkeypatch.setattr(
+        repository,
+        "add_project_outbox_event",
+        Mock(side_effect=RuntimeError("outbox unavailable")),
+    )
+    with pytest.raises(RuntimeError, match="outbox unavailable"):
+        run_upload_cleanup(
+            database=database,
+            object_store=MemoryObjectStore(now=now),
+            now=lambda: now,
+        )
+
+    with database.session_factory() as session:
+        upload = session.get(UploadSession, upload_id)
+        item = session.get(IngestionItem, item_id)
+        batch = session.get(IngestionBatch, batch_id)
+        assert upload is not None and upload.abandoned_at is None
+        assert item is not None and item.status == IngestionItemStatus.AWAITING_UPLOAD
+        assert batch is not None and batch.status == IngestionBatchStatus.PENDING
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(AuditLog)
+                .where(AuditLog.action == "knowledge.upload_expired")
+            )
+            == 0
+        )
 
 
 @pytest.mark.integration

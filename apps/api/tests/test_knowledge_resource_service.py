@@ -11,6 +11,7 @@ from cairn_api.authorization.types import MembershipRole, ProjectPermission
 from cairn_api.errors import ApiProblem
 from cairn_api.knowledge import repository
 from cairn_api.knowledge.models import (
+    IngestionBatch,
     IngestionJob,
     IngestionJobAttempt,
     IngestionJobStatus,
@@ -271,7 +272,72 @@ def test_retry_rejects_non_retryable_or_non_failed_versions(
     queue_attempt.assert_not_called()
 
 
-def test_download_reauthorizes_audits_and_returns_five_minute_attachment_url(
+@pytest.mark.parametrize(
+    ("method_name", "repository_name", "filter_column", "arguments"),
+    [
+        ("get_batch", "get_batch_detail", IngestionBatch.project_id, {"batch_id": uuid4()}),
+        (
+            "get_resource",
+            "get_resource_observation",
+            KnowledgeResource.project_id,
+            {"resource_id": uuid4()},
+        ),
+        (
+            "create_download",
+            "get_active_resource",
+            KnowledgeResource.project_id,
+            {"resource_id": uuid4(), "audit": AUDIT},
+        ),
+        (
+            "get_chunk_context",
+            "get_chunk_context",
+            KnowledgeResource.project_id,
+            {"resource_id": uuid4(), "chunk_id": uuid4()},
+        ),
+    ],
+)
+def test_protected_read_applies_live_acl_filter_after_initial_authorization(
+    method_name: str,
+    repository_name: str,
+    filter_column: object,
+    arguments: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = MagicMock(spec=Session)
+    policy = MagicMock(spec=AuthorizationPolicy)
+    identity = _identity()
+    project_id = uuid4()
+    access_filter = Mock(name="live_acl_filter")
+    policy.project_filter.return_value = access_filter
+    protected_query = Mock(return_value=None)
+    monkeypatch.setattr(repository, repository_name, protected_query)
+
+    with pytest.raises(ApiProblem) as caught:
+        getattr(
+            KnowledgeResourceService(session, Mock(spec=ObjectStore), policy=policy),
+            method_name,
+        )(
+            identity=identity,
+            project_id=project_id,
+            **arguments,
+        )
+
+    assert caught.value.status_code == 404
+    assert caught.value.code == "not_found"
+    policy.require_project.assert_called_once_with(
+        identity,
+        project_id,
+        ProjectPermission.READ,
+    )
+    policy.project_filter.assert_called_once_with(
+        identity,
+        ProjectPermission.READ,
+        filter_column,
+    )
+    assert protected_query.call_args.kwargs["access_filter"] is access_filter
+
+
+def test_download_reauthorizes_audits_and_uses_configured_attachment_ttl(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = MagicMock(spec=Session)
@@ -281,7 +347,10 @@ def test_download_reauthorizes_audits_and_returns_five_minute_attachment_url(
     project_id = uuid4()
     resource = _resource(identity.organization.id, project_id)
     version = _version(resource)
-    monkeypatch.setattr(repository, "get_active_resource", Mock(return_value=(resource, version)))
+    access_filter = Mock()
+    policy.project_filter.return_value = access_filter
+    get_active_resource = Mock(return_value=(resource, version))
+    monkeypatch.setattr(repository, "get_active_resource", get_active_resource)
     object_store.presign_get.return_value = "https://objects.example/download"
 
     url = KnowledgeResourceService(
@@ -289,6 +358,7 @@ def test_download_reauthorizes_audits_and_returns_five_minute_attachment_url(
         object_store,
         policy=policy,
         now=lambda: NOW,
+        download_ttl=timedelta(seconds=137),
     ).create_download(
         identity=identity,
         project_id=project_id,
@@ -301,10 +371,17 @@ def test_download_reauthorizes_audits_and_returns_five_minute_attachment_url(
         project_id,
         ProjectPermission.READ,
     )
+    get_active_resource.assert_called_once_with(
+        session,
+        org_id=identity.organization.id,
+        project_id=project_id,
+        resource_id=resource.id,
+        access_filter=access_filter,
+    )
     object_store.presign_get.assert_called_once_with(
         object_key=version.object_key,
         download_name=resource.title,
-        expires_in=timedelta(minutes=5),
+        expires_in=timedelta(seconds=137),
     )
     assert url == "https://objects.example/download"
     audits = [

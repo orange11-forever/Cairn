@@ -272,11 +272,11 @@ def delete_knowledge_resource(
     response_class=RedirectResponse,
     responses={
         307: {
-            "description": "重定向到短期附件下载地址",
+            "description": "重定向到配置的短期附件下载地址",
             "headers": {
                 **REQUEST_ID_HEADER,
                 "Location": {
-                    "description": "五分钟有效的附件下载地址",
+                    "description": "按服务配置过期的附件下载地址",
                     "schema": {"type": "string", "format": "uri"},
                 },
             },
@@ -291,8 +291,13 @@ def download_knowledge_resource(
     session: SessionDependency,
     object_store: ObjectStoreDependency,
     audit: AuditContext,
+    settings: SettingsDependency,
 ) -> RedirectResponse:
-    url = KnowledgeResourceService(session, object_store).create_download(
+    url = KnowledgeResourceService(
+        session,
+        object_store,
+        download_ttl=timedelta(seconds=settings.download_url_ttl_seconds),
+    ).create_download(
         identity=identity,
         project_id=project_id,
         resource_id=resource_id,

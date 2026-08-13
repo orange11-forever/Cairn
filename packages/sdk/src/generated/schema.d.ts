@@ -2372,10 +2372,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 重定向到短期附件下载地址 */
+            /** @description 重定向到配置的短期附件下载地址 */
             307: {
                 headers: {
-                    /** @description 五分钟有效的附件下载地址 */
+                    /** @description 按服务配置过期的附件下载地址 */
                     Location?: string;
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;

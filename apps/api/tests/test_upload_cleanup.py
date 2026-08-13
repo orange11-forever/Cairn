@@ -5,11 +5,13 @@ from unittest.mock import MagicMock, Mock
 from uuid import uuid4
 
 import pytest
+from cairn_api.audit.models import AuditLog
 from cairn_api.db.session import Database
 from cairn_api.knowledge.models import IngestionItem, IngestionItemStatus, UploadSession
 from cairn_api.knowledge.object_store import ObjectNotFound, ObjectStore, ObjectStoreUnavailable
 from cairn_api.maintenance import upload_cleanup
 from cairn_api.maintenance.upload_cleanup import run_upload_cleanup
+from cairn_api.projects.models import OutboxEvent
 from sqlalchemy.orm import Session
 
 NOW = datetime(2026, 8, 13, 10, 0, tzinfo=UTC)
@@ -78,6 +80,66 @@ def test_cleanup_marks_expired_upload_failed_and_deletes_unreferenced_object(
     store.delete_object.assert_called_once_with(object_key=upload.object_key)
     assert result.uploads_expired == 1
     assert result.objects_deleted == 1
+
+
+def test_cleanup_records_system_audit_and_project_event_with_expiry_transition(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_factory = MagicMock()
+    database = cast(Database, SimpleNamespace(session_factory=session_factory))
+    session = MagicMock()
+    session_factory.return_value.__enter__.return_value = session
+    upload = Mock(
+        id=uuid4(),
+        org_id=uuid4(),
+        project_id=uuid4(),
+        batch_id=uuid4(),
+        item_id=uuid4(),
+        object_key="uploads/expired",
+    )
+    item = Mock(id=upload.item_id)
+    monkeypatch.setattr(upload_cleanup, "claim_expired_uploads", Mock(return_value=[(upload, item)]))
+    monkeypatch.setattr(upload_cleanup, "mark_expired_upload", Mock())
+    monkeypatch.setattr(upload_cleanup, "refresh_expired_batch", Mock())
+    monkeypatch.setattr(upload_cleanup, "find_orphan_upload_objects", Mock(return_value=[]))
+
+    result = run_upload_cleanup(
+        database=database,
+        object_store=Mock(spec=ObjectStore),
+        now=lambda: NOW,
+    )
+
+    assert result.uploads_expired == 1
+    audits = [
+        call.args[0] for call in session.add.call_args_list if isinstance(call.args[0], AuditLog)
+    ]
+    events = [
+        call.args[0] for call in session.add.call_args_list if isinstance(call.args[0], OutboxEvent)
+    ]
+    assert len(audits) == len(events) == 1
+    assert audits[0].actor_type == "system"
+    assert audits[0].actor_id is None
+    assert audits[0].action == "knowledge.upload_expired"
+    assert audits[0].resource_type == "upload_session"
+    assert audits[0].resource_id == upload.id
+    assert audits[0].trace_id == f"upload-cleanup:{upload.id}"
+    assert audits[0].details == {
+        "projectId": str(upload.project_id),
+        "batchId": str(upload.batch_id),
+        "itemId": str(upload.item_id),
+        "errorCode": "upload_expired",
+    }
+    assert events[0].event_type == "knowledge.upload_expired"
+    assert events[0].aggregate_type == "project"
+    assert events[0].aggregate_id == upload.project_id
+    assert events[0].payload == {
+        "projectId": str(upload.project_id),
+        "batchId": str(upload.batch_id),
+        "uploadId": str(upload.id),
+        "itemId": str(upload.item_id),
+        "status": "failed",
+        "errorCode": "upload_expired",
+    }
 
 
 def test_cleanup_preserves_referenced_objects_and_tolerates_missing_objects(

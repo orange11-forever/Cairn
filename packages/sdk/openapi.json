@@ -3638,10 +3638,10 @@
         ],
         "responses": {
           "307": {
-            "description": "重定向到短期附件下载地址",
+            "description": "重定向到配置的短期附件下载地址",
             "headers": {
               "Location": {
-                "description": "五分钟有效的附件下载地址",
+                "description": "按服务配置过期的附件下载地址",
                 "schema": {
                   "format": "uri",
                   "type": "string"

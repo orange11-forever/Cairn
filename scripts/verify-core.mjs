@@ -280,6 +280,63 @@ export function createStageRunner(config, processManager) {
   };
 }
 
+export function createShutdownController({
+  processManager,
+  compose,
+  projectName,
+  reportError = console.error,
+}) {
+  let resolveTermination;
+  let requested = false;
+  let shutdownPromise;
+  const termination = new Promise((resolvePromise) => {
+    resolveTermination = resolvePromise;
+  });
+
+  return {
+    termination,
+    request(signal) {
+      if (requested) return;
+      requested = true;
+      resolveTermination({ requested: true, signal });
+    },
+    shutdown(api) {
+      shutdownPromise ??= (async () => {
+        let exitCode = 0;
+        if (api !== null) {
+          try {
+            await api.stop();
+          } catch (error) {
+            reportError(`Failed to stop verification API: ${String(error)}`);
+            exitCode = 1;
+          }
+        }
+        try {
+          await processManager.stopAll();
+        } catch (error) {
+          reportError(`Failed to stop verification children: ${String(error)}`);
+          exitCode = 1;
+        }
+        try {
+          const cleanupCode = await compose([
+            "-p",
+            projectName,
+            "down",
+            "--volumes",
+            "--remove-orphans",
+          ]);
+          if (cleanupCode !== 0) exitCode = cleanupCode;
+        } catch (error) {
+          reportError(`Failed to clean verification Compose project: ${String(error)}`);
+          exitCode = 1;
+        }
+        return exitCode;
+      })();
+      return shutdownPromise;
+    },
+  };
+}
+
 async function waitForManagedApi(api, readyUrl, waitForUrl) {
   const result = await Promise.race([
     waitForUrl(readyUrl).then(() => ({ ready: true })),
@@ -301,7 +358,14 @@ export async function runCoreVerification(options = {}) {
   const run = options.run ?? createStageRunner(config, processManager);
   const waitForUrl = options.waitForUrl ?? waitForServer;
   const reportError = options.reportError ?? console.error;
-  const termination = options.termination ?? NEVER;
+  const shutdown = options.shutdown ?? createShutdownController({
+    processManager,
+    compose,
+    projectName: config.projectName,
+    reportError,
+  });
+  const termination = options.termination ?? shutdown.termination ?? NEVER;
+  const signals = options.handleSignals ? installSignalHandlers(shutdown) : null;
   let api = null;
   let exitCode = 0;
 
@@ -339,47 +403,20 @@ export async function runCoreVerification(options = {}) {
     reportError(error instanceof Error ? error.message : String(error));
     exitCode = 1;
   } finally {
-    if (api !== null) {
-      try {
-        await api.stop();
-      } catch (error) {
-        reportError(`Failed to stop verification API: ${String(error)}`);
-        exitCode = 1;
-      }
-    }
-    await processManager.stopAll();
-    const cleanupCode = await compose([
-      "-p",
-      config.projectName,
-      "down",
-      "--volumes",
-      "--remove-orphans",
-    ]);
+    const cleanupCode = await shutdown.shutdown(api);
     if (cleanupCode !== 0) exitCode = cleanupCode;
+    signals?.dispose();
   }
 
   return exitCode;
 }
 
-function installSignalHandlers(processManager) {
-  let requested = false;
-  let resolveTermination;
-  const termination = new Promise((resolvePromise) => {
-    resolveTermination = resolvePromise;
-  });
-  const onSignal = (signal) => {
-    if (requested) return;
-    requested = true;
-    void processManager.stopAll().finally(() => {
-      resolveTermination({ requested: true, signal });
-    });
-  };
-  const onInterrupt = () => onSignal("SIGINT");
-  const onTerminate = () => onSignal("SIGTERM");
+function installSignalHandlers(shutdown) {
+  const onInterrupt = () => shutdown.request("SIGINT");
+  const onTerminate = () => shutdown.request("SIGTERM");
   process.on("SIGINT", onInterrupt);
   process.on("SIGTERM", onTerminate);
   return {
-    termination,
     dispose() {
       process.removeListener("SIGINT", onInterrupt);
       process.removeListener("SIGTERM", onTerminate);
@@ -392,10 +429,8 @@ const isMain = entryPath !== undefined && resolve(entryPath) === fileURLToPath(i
 
 if (isMain) {
   const processManager = createProcessManager();
-  const signals = installSignalHandlers(processManager);
   process.exitCode = await runCoreVerification({
     processManager,
-    termination: signals.termination,
+    handleSignals: true,
   });
-  signals.dispose();
 }

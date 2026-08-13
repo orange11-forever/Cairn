@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { resolveDockerCommand, runCompose } from "../../../../scripts/docker-command.mjs";
+import {
+  DockerClientNotFoundError,
+  DockerEngineUnavailableError,
+  resolveDockerCommand,
+  runCompose,
+} from "../../../../scripts/docker-command.mjs";
 import { runInfra } from "../../../../scripts/infra.mjs";
 
 test("falls back to docker.exe when the WSL docker shim cannot reach an engine", async () => {
@@ -28,6 +33,45 @@ test("honors an explicit CAIRN_DOCKER_COMMAND before platform defaults", async (
     probe: async (candidate) => candidate === "/opt/docker-client",
   });
   assert.equal(command, "/opt/docker-client");
+});
+
+test("reports an absent Docker client separately when every candidate is missing", async () => {
+  await assert.rejects(
+    resolveDockerCommand({
+      platform: "linux",
+      env: {},
+      probe: async () => ({ clientFound: false, engineReachable: false }),
+    }),
+    DockerClientNotFoundError,
+  );
+});
+
+test("fails as engine unavailable when an installed client cannot reach its daemon", async () => {
+  await assert.rejects(
+    resolveDockerCommand({
+      platform: "linux",
+      env: {},
+      probe: async (candidate) => ({
+        clientFound: candidate === "docker",
+        engineReachable: false,
+      }),
+    }),
+    DockerEngineUnavailableError,
+  );
+});
+
+test("fails as engine unavailable when an installed client probe errors", async () => {
+  await assert.rejects(
+    resolveDockerCommand({
+      platform: "linux",
+      env: {},
+      probe: async (candidate) => {
+        if (candidate === "docker") throw new Error("probe crashed");
+        return { clientFound: false, engineReachable: false };
+      },
+    }),
+    DockerEngineUnavailableError,
+  );
 });
 
 test("bridges Compose interpolation variables to docker.exe from WSL", async (context) => {

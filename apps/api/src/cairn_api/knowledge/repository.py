@@ -3,7 +3,7 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 from sqlalchemy.sql.elements import ColumnElement
 
 from cairn_api.knowledge.models import (
@@ -65,27 +65,28 @@ def get_batch_detail(
     org_id: UUID,
     project_id: UUID,
     batch_id: UUID,
+    access_filter: ColumnElement[bool],
 ) -> tuple[IngestionBatch, list[IngestionItem]] | None:
-    batch = session.scalar(
-        select(IngestionBatch).where(
+    rows = session.execute(
+        select(IngestionBatch, IngestionItem)
+        .outerjoin(
+            IngestionItem,
+            (IngestionItem.org_id == IngestionBatch.org_id)
+            & (IngestionItem.project_id == IngestionBatch.project_id)
+            & (IngestionItem.batch_id == IngestionBatch.id),
+        )
+        .where(
             IngestionBatch.org_id == org_id,
             IngestionBatch.project_id == project_id,
             IngestionBatch.id == batch_id,
+            access_filter,
         )
-    )
-    if batch is None:
+        .order_by(IngestionItem.created_at, IngestionItem.id)
+    ).all()
+    if not rows:
         return None
-    items = list(
-        session.scalars(
-            select(IngestionItem)
-            .where(
-                IngestionItem.org_id == org_id,
-                IngestionItem.project_id == project_id,
-                IngestionItem.batch_id == batch_id,
-            )
-            .order_by(IngestionItem.created_at, IngestionItem.id)
-        )
-    )
+    batch = rows[0][0]
+    items = [item for _batch, item in rows if item is not None]
     return batch, items
 
 
@@ -142,6 +143,7 @@ def get_active_resource(
     org_id: UUID,
     project_id: UUID,
     resource_id: UUID,
+    access_filter: ColumnElement[bool],
 ) -> ResourceWithVersion | None:
     row = session.execute(
         select(KnowledgeResource, KnowledgeResourceVersion)
@@ -157,6 +159,7 @@ def get_active_resource(
             KnowledgeResource.project_id == project_id,
             KnowledgeResource.id == resource_id,
             KnowledgeResource.deleted_at.is_(None),
+            access_filter,
         )
     ).one_or_none()
     if row is None:
@@ -171,6 +174,7 @@ def get_resource_observation(
     org_id: UUID,
     project_id: UUID,
     resource_id: UUID,
+    access_filter: ColumnElement[bool],
 ) -> ResourceWithVersion | None:
     row = session.execute(
         select(KnowledgeResource, KnowledgeResourceVersion)
@@ -186,6 +190,7 @@ def get_resource_observation(
             KnowledgeResource.project_id == project_id,
             KnowledgeResource.id == resource_id,
             KnowledgeResource.deleted_at.is_(None),
+            access_filter,
         )
     ).one_or_none()
     if row is None:
@@ -312,45 +317,61 @@ def get_chunk_context(
     project_id: UUID,
     resource_id: UUID,
     chunk_id: UUID,
+    access_filter: ColumnElement[bool],
 ) -> (
     tuple[KnowledgeResourceVersion, KnowledgeChunk, KnowledgeChunk | None, KnowledgeChunk | None]
     | None
 ):
-    active = get_active_resource(
-        session,
-        org_id=org_id,
-        project_id=project_id,
-        resource_id=resource_id,
-    )
-    if active is None:
-        return None
-    _resource, version = active
-    if version is None or version.status != ResourceVersionStatus.READY:
-        return None
-    hit = session.scalar(
-        select(KnowledgeChunk).where(
-            KnowledgeChunk.org_id == org_id,
-            KnowledgeChunk.project_id == project_id,
-            KnowledgeChunk.resource_id == resource_id,
-            KnowledgeChunk.resource_version_id == version.id,
-            KnowledgeChunk.id == chunk_id,
+    hit = aliased(KnowledgeChunk)
+    before = aliased(KnowledgeChunk)
+    after = aliased(KnowledgeChunk)
+    row = session.execute(
+        select(KnowledgeResourceVersion, hit, before, after)
+        .select_from(KnowledgeResource)
+        .join(
+            KnowledgeResourceVersion,
+            (KnowledgeResourceVersion.org_id == KnowledgeResource.org_id)
+            & (KnowledgeResourceVersion.project_id == KnowledgeResource.project_id)
+            & (KnowledgeResourceVersion.resource_id == KnowledgeResource.id)
+            & (KnowledgeResourceVersion.id == KnowledgeResource.current_version_id),
         )
-    )
-    if hit is None:
-        return None
-    adjacent = {
-        chunk.ordinal: chunk
-        for chunk in session.scalars(
-            select(KnowledgeChunk).where(
-                KnowledgeChunk.org_id == org_id,
-                KnowledgeChunk.project_id == project_id,
-                KnowledgeChunk.resource_id == resource_id,
-                KnowledgeChunk.resource_version_id == version.id,
-                KnowledgeChunk.ordinal.in_([hit.ordinal - 1, hit.ordinal + 1]),
-            )
+        .join(
+            hit,
+            (hit.org_id == KnowledgeResource.org_id)
+            & (hit.project_id == KnowledgeResource.project_id)
+            & (hit.resource_id == KnowledgeResource.id)
+            & (hit.resource_version_id == KnowledgeResourceVersion.id)
+            & (hit.id == chunk_id),
         )
-    }
-    return version, hit, adjacent.get(hit.ordinal - 1), adjacent.get(hit.ordinal + 1)
+        .outerjoin(
+            before,
+            (before.org_id == hit.org_id)
+            & (before.project_id == hit.project_id)
+            & (before.resource_id == hit.resource_id)
+            & (before.resource_version_id == hit.resource_version_id)
+            & (before.ordinal == hit.ordinal - 1),
+        )
+        .outerjoin(
+            after,
+            (after.org_id == hit.org_id)
+            & (after.project_id == hit.project_id)
+            & (after.resource_id == hit.resource_id)
+            & (after.resource_version_id == hit.resource_version_id)
+            & (after.ordinal == hit.ordinal + 1),
+        )
+        .where(
+            KnowledgeResource.org_id == org_id,
+            KnowledgeResource.project_id == project_id,
+            KnowledgeResource.id == resource_id,
+            KnowledgeResource.deleted_at.is_(None),
+            KnowledgeResourceVersion.status == ResourceVersionStatus.READY,
+            access_filter,
+        )
+    ).one_or_none()
+    if row is None:
+        return None
+    version, hit_chunk, before_chunk, after_chunk = row
+    return version, hit_chunk, before_chunk, after_chunk
 
 
 def create_batch(
