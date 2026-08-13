@@ -20,7 +20,11 @@ from cairn_api.knowledge.schemas import (
 )
 
 from cairn_worker.errors import WorkerFailure
-from cairn_worker.parsers.limits import MAX_PARSED_BLOCKS, PARSER_SOURCE_MAX_BYTES
+from cairn_worker.parsers.limits import (
+    MAX_PARSED_BLOCKS,
+    PARSER_READ_CHUNK_BYTES,
+    PARSER_SOURCE_MAX_BYTES,
+)
 
 
 class BlockKind(StrEnum):
@@ -71,15 +75,23 @@ def decode_utf8_text(content: bytes) -> str:
 
 
 def read_parser_source(source: BinaryIO) -> bytes:
-    try:
-        content = cast(object, source.read(PARSER_SOURCE_MAX_BYTES + 1))
-    except (ObjectStoreUnavailable, OSError):
-        raise WorkerFailure.for_code("object_store_unavailable", "") from None
-    if not isinstance(content, bytes):
-        raise TypeError("parser source returned non-bytes content")
-    if len(content) > PARSER_SOURCE_MAX_BYTES:
-        raise WorkerFailure.for_code("file_too_large", "")
-    return content
+    chunks: list[bytes] = []
+    total_bytes = 0
+    while True:
+        remaining_with_sentinel = PARSER_SOURCE_MAX_BYTES - total_bytes + 1
+        requested_bytes = min(PARSER_READ_CHUNK_BYTES, remaining_with_sentinel)
+        try:
+            chunk = cast(object, source.read(requested_bytes))
+        except (ObjectStoreUnavailable, OSError):
+            raise WorkerFailure.for_code("object_store_unavailable", "") from None
+        if not isinstance(chunk, bytes):
+            raise TypeError("parser source returned non-bytes content")
+        if not chunk:
+            return b"".join(chunks)
+        total_bytes += len(chunk)
+        if total_bytes > PARSER_SOURCE_MAX_BYTES:
+            raise WorkerFailure.for_code("file_too_large", "")
+        chunks.append(chunk)
 
 
 def _validated_metadata(metadata: object) -> dict[str, ScalarMetadata]:

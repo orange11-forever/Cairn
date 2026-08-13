@@ -22,6 +22,7 @@ from cairn_worker.parsers import (
     DocumentParser,
     ParsedBlock,
     ParserRegistry,
+    read_parser_source,
 )
 
 from apps.worker.tests.fixture_factory import (
@@ -237,25 +238,111 @@ def test_parser_rejects_malformed_locator_and_metadata_without_leaking_values(
 
 
 class _OversizedSource(BytesIO):
-    def __init__(self) -> None:
+    def __init__(self, chunks: list[bytes]) -> None:
         super().__init__()
-        self.requested_size: int | None = None
+        self._chunks = chunks
+        self.read_calls = 0
+        self.requested_sizes: list[int | None] = []
 
     def read(self, size: int | None = -1) -> bytes:
-        self.requested_size = size
-        return b"x" * (50 * 1024 * 1024 + 1)
+        self.read_calls += 1
+        self.requested_sizes.append(size)
+        if not self._chunks:
+            return b""
+        return self._chunks.pop(0)
 
 
-def test_parser_enforces_the_normal_file_limit_with_one_bounded_read() -> None:
-    """Break caught: parsers must not trust upstream size metadata or read without a ceiling."""
-    source = _OversizedSource()
+class _ShortReadSource(BytesIO):
+    def __init__(self, content: bytes, maximum_chunk: int) -> None:
+        super().__init__(content)
+        self.maximum_chunk = maximum_chunk
+        self.read_calls = 0
+
+    def read(self, size: int | None = -1) -> bytes:
+        self.read_calls += 1
+        bounded_size = self.maximum_chunk if size is None or size < 0 else min(
+            size, self.maximum_chunk
+        )
+        return super().read(bounded_size)
+
+
+class _ShortThenFailSource(BytesIO):
+    def __init__(self, failure: Exception) -> None:
+        super().__init__()
+        self._failure = failure
+        self.read_calls = 0
+
+    def read(self, size: int | None = -1) -> bytes:
+        del size
+        self.read_calls += 1
+        if self.read_calls == 1:
+            return b"x"
+        raise self._failure
+
+
+@pytest.mark.parametrize("fixture", parser_contract_fixtures())
+def test_registered_parsers_consume_short_reads_to_true_eof(
+    fixture: ParserFixture,
+) -> None:
+    """Break caught: a short nonempty BinaryIO read must not silently truncate content."""
+    source = _ShortReadSource(fixture.content, maximum_chunk=2)
+
+    blocks = ParserRegistry().for_media_type(fixture.media_type).parse(source)
+
+    assert source.tell() == len(fixture.content)
+    assert source.read_calls > 2
+    assert [block.kind.value for block in blocks] == list(fixture.expected_kinds)
+
+
+def test_parser_source_accepts_exact_limit_aggregated_across_short_reads() -> None:
+    """Break caught: exact 50 MiB input must not be rejected or truncated at a chunk edge."""
+    one_mebibyte = b"x" * (1024 * 1024)
+    source = _OversizedSource([one_mebibyte] * 50)
+
+    content = read_parser_source(source)
+
+    assert len(content) == 50 * 1024 * 1024
+    assert source.read_calls == 51
+    assert all(size is not None and 0 < size <= 1024 * 1024 for size in source.requested_sizes)
+
+
+def test_parser_rejects_aggregate_overflow_split_across_short_reads() -> None:
+    """Break caught: bytes after an initial short read must count toward the 50 MiB limit."""
+    one_mebibyte = b"x" * (1024 * 1024)
+    source = _OversizedSource([*([one_mebibyte] * 50), b"x"])
 
     with pytest.raises(WorkerFailure) as caught:
         ParserRegistry().for_media_type("text/plain").parse(source)
 
-    assert source.requested_size == 50 * 1024 * 1024 + 1
+    assert source.read_calls == 51
     assert caught.value.code == "file_too_large"
     assert caught.value.retryable is False
+
+
+@pytest.mark.parametrize("fixture", parser_contract_fixtures())
+@pytest.mark.parametrize(
+    "failure",
+    [
+        ObjectStoreUnavailable("private later object-store failure"),
+        OSError("private later source failure"),
+    ],
+    ids=("object-store-unavailable", "source-os-error"),
+)
+def test_registered_parsers_translate_a_failure_after_a_short_read(
+    fixture: ParserFixture,
+    failure: Exception,
+) -> None:
+    """Break caught: source failures after partial data must remain retryable and bounded."""
+    source = _ShortThenFailSource(failure)
+
+    with pytest.raises(WorkerFailure) as caught:
+        ParserRegistry().for_media_type(fixture.media_type).parse(source)
+
+    assert source.read_calls == 2
+    assert caught.value.code == "object_store_unavailable"
+    assert caught.value.retryable is True
+    assert caught.value.safe_detail == "object storage is unavailable"
+    assert "private" not in caught.value.safe_detail
 
 
 def test_one_megabyte_plain_text_has_bounded_peak_memory() -> None:
