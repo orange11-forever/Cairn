@@ -164,10 +164,18 @@ class DocumentParser(ABC):
 class ParserRegistry:
     def __init__(self) -> None:
         from cairn_worker.parsers.csv import CsvParser
+        from cairn_worker.parsers.docx import DocxParser
         from cairn_worker.parsers.html import HtmlParser
+        from cairn_worker.parsers.pdf import PdfParser
+        from cairn_worker.parsers.pptx import PptxParser
         from cairn_worker.parsers.text import MarkdownParser, TextParser
+        from cairn_worker.parsers.xlsx import XlsxParser
 
         self._parsers: Mapping[str, DocumentParser] = {
+            SupportedMediaType.PDF.value: PdfParser(),
+            SupportedMediaType.DOCX.value: DocxParser(),
+            SupportedMediaType.PPTX.value: PptxParser(),
+            SupportedMediaType.XLSX.value: XlsxParser(),
             SupportedMediaType.TEXT.value: TextParser(),
             SupportedMediaType.MARKDOWN.value: MarkdownParser(),
             SupportedMediaType.CSV.value: CsvParser(),
