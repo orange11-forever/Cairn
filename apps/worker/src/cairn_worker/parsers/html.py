@@ -37,20 +37,18 @@ def _update_heading_path(path: list[str], level: int, title: str) -> list[str]:
     return [*path[: level - 1], title]
 
 
-def _block_strings(element: Tag) -> list[str]:
-    strings: list[str] = []
+def _inline_text(element: Tag) -> str:
+    parts: list[str] = []
     for child in element.children:
         if isinstance(child, NavigableString):
-            text = str(child).strip()
-            if text:
-                strings.append(text)
+            parts.append(str(child))
         elif isinstance(child, Tag) and child.name not in _BLOCK_DESCENDANTS:
-            strings.extend(_block_strings(child))
-    return strings
+            parts.append(_inline_text(child))
+    return "".join(parts)
 
 
 def _plain_text(element: Tag) -> str:
-    return normalize_parser_text(" ".join(_block_strings(element))).strip()
+    return normalize_parser_text(_inline_text(element)).strip()
 
 
 def _table_text(table: Tag) -> str:
@@ -67,20 +65,20 @@ def _table_text(table: Tag) -> str:
     return "\n".join(rows)
 
 
-def _count_tag_openers(content: bytes) -> int:
+def _count_tag_openers(content: str) -> int:
     count = 0
     index = 0
     while index < len(content):
-        index = content.find(b"<", index)
+        index = content.find("<", index)
         if index < 0:
             break
         candidate = index + 1
-        while candidate < len(content) and content[candidate] in b" \t\r\n":
+        while candidate < len(content) and content[candidate] in " \t\n":
             candidate += 1
         if candidate < len(content) and (
-            content[candidate] in b"!?"
-            or 65 <= content[candidate] <= 90
-            or 97 <= content[candidate] <= 122
+            content[candidate] in "!?"
+            or "A" <= content[candidate] <= "Z"
+            or "a" <= content[candidate] <= "z"
         ):
             count += 1
             if count > MAX_HTML_TAG_OPENERS:
@@ -102,8 +100,9 @@ def _is_hidden(element: Tag) -> bool:
 class HtmlParser(DocumentParser):
     def _parse(self, source: BinaryIO) -> list[ParsedBlock]:
         content = read_parser_source(source)
-        _count_tag_openers(content)
-        soup = BeautifulSoup(decode_utf8_text(content), "html.parser")
+        text = decode_utf8_text(content)
+        _count_tag_openers(text)
+        soup = BeautifulSoup(text, "html.parser")
         for element in reversed(soup.find_all(True)):
             if element.name in _NONVISIBLE_ELEMENTS or _is_hidden(element):
                 element.decompose()
@@ -114,7 +113,9 @@ class HtmlParser(DocumentParser):
             name = element.name
             if name in {"p", "li", "pre", "code"} and element.find_parent("table") is not None:
                 continue
-            if name == "code" and element.find_parent(("pre", "p", "li")) is not None:
+            if name == "code" and element.find_parent(
+                ("pre", "p", "li", "h1", "h2", "h3", "h4", "h5", "h6")
+            ) is not None:
                 continue
 
             if name.startswith("h") and len(name) == 2 and name[1].isdigit():

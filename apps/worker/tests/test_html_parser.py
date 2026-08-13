@@ -85,6 +85,39 @@ def test_html_parser_preserves_inline_code_and_removes_common_hidden_subtrees() 
     ]
 
 
+@pytest.mark.parametrize(
+    ("html", "expected"),
+    [
+        (b"<p>pre<strong>fix</strong></p>", "prefix"),
+        (b"<p>Hello,<em>world</em>!</p>", "Hello,world!"),
+        ("<p>中<em>文</em>内容</p>".encode(), "中文内容"),
+    ],
+    ids=("english-word", "punctuation", "chinese"),
+)
+def test_html_parser_preserves_source_adjacency_across_inline_markup(
+    html: bytes,
+    expected: str,
+) -> None:
+    """Break caught: inline markup must not inject visible separator characters."""
+    blocks = ParserRegistry().for_media_type("text/html").parse(BytesIO(html))
+
+    assert [(block.kind, block.text) for block in blocks] == [
+        (BlockKind.PARAGRAPH, expected),
+    ]
+
+
+@pytest.mark.parametrize("level", range(1, 7), ids=lambda level: f"h{level}")
+def test_html_heading_owns_nested_inline_code(level: int) -> None:
+    """Break caught: heading code must not produce a second weighted content block."""
+    html = f"<h{level}>Use <code>x()</code> now</h{level}>".encode()
+
+    blocks = ParserRegistry().for_media_type("text/html").parse(BytesIO(html))
+
+    assert [(block.kind, block.text) for block in blocks] == [
+        (BlockKind.HEADING, "Use x() now"),
+    ]
+
+
 def test_html_parser_assigns_nested_tables_to_one_deterministic_owner() -> None:
     """Break caught: nested table text must not duplicate through outer and inner blocks."""
     html = b"""
@@ -122,3 +155,19 @@ def test_html_tag_bomb_is_rejected_before_dom_construction(node: bytes) -> None:
     assert caught.value.code == "parser_failed"
     assert caught.value.retryable is False
     assert peak < 16 * 1024 * 1024
+
+
+def test_html_normalized_tag_bomb_is_rejected_before_dom_construction() -> None:
+    """Break caught: stripped controls must not hide a DOM-amplifying tag bomb."""
+    content = (b"<\x0cp>x</p>" + b"a" * 100) * 100_001
+    tracemalloc.start()
+    try:
+        with pytest.raises(WorkerFailure) as caught:
+            ParserRegistry().for_media_type("text/html").parse(BytesIO(content))
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+
+    assert caught.value.code == "parser_failed"
+    assert caught.value.retryable is False
+    assert peak < 64 * 1024 * 1024

@@ -18,6 +18,7 @@ from cairn_api.knowledge.schemas import (
     TextLocator,
     XlsxLocator,
 )
+from pydantic import TypeAdapter
 
 from cairn_worker.errors import WorkerFailure
 from cairn_worker.parsers.limits import (
@@ -61,6 +62,7 @@ _LOCATOR_TYPES = (
     HtmlLocator,
     TextLocator,
 )
+_LOCATOR_ADAPTER: TypeAdapter[KnowledgeLocator] = TypeAdapter(KnowledgeLocator)
 
 _DISALLOWED_CONTROLS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")
 
@@ -108,6 +110,19 @@ def _validated_metadata(metadata: object) -> dict[str, ScalarMetadata]:
     return validated
 
 
+def _validated_locator(locator: object) -> KnowledgeLocator:
+    if not isinstance(locator, _LOCATOR_TYPES):
+        raise TypeError("parser returned an invalid locator")
+    validated = _LOCATOR_ADAPTER.validate_python(
+        locator.model_dump(by_alias=True, warnings="none")
+    )
+    if isinstance(validated, TextLocator) and validated.line_start > validated.line_end:
+        raise ValueError("parser returned a reversed text range")
+    if isinstance(validated, CsvLocator) and validated.row_start > validated.row_end:
+        raise ValueError("parser returned a reversed CSV range")
+    return validated
+
+
 class DocumentParser(ABC):
     def parse(self, source: BinaryIO) -> list[ParsedBlock]:
         try:
@@ -121,9 +136,7 @@ class DocumentParser(ABC):
                 kind = cast(object, candidate.kind)
                 if not isinstance(kind, BlockKind):
                     raise TypeError("parser returned an invalid block kind")
-                locator = cast(object, candidate.locator)
-                if not isinstance(locator, _LOCATOR_TYPES):
-                    raise TypeError("parser returned an invalid locator")
+                locator = _validated_locator(cast(object, candidate.locator))
                 metadata = _validated_metadata(candidate.metadata)
                 text = normalize_parser_text(candidate.text).strip("\n")
                 if text.strip():
@@ -131,7 +144,7 @@ class DocumentParser(ABC):
                         ParsedBlock(
                             kind=kind,
                             text=text,
-                            locator=candidate.locator,
+                            locator=locator,
                             metadata=metadata,
                         )
                     )

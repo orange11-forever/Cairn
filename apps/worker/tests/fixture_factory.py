@@ -12,7 +12,7 @@ def parser_contract_fixtures() -> tuple[ParserFixture, ...]:
     return (
         ParserFixture(
             media_type="text/plain",
-            content="Hello\r\n世界\x00\x01".encode(),
+            content="Hello\r\n世界\x00\x01\x7f\x80\x9f".encode(),
             expected_kinds=("text",),
         ),
         ParserFixture(

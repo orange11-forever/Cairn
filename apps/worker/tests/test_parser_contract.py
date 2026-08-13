@@ -237,6 +237,62 @@ def test_parser_rejects_malformed_locator_and_metadata_without_leaking_values(
     assert "private" not in caught.value.safe_detail
 
 
+@pytest.mark.parametrize(
+    "locator",
+    [
+        TextLocator.model_construct(
+            type="private-discriminator",
+            heading_path=[],
+            line_start=1,
+            line_end=1,
+        ),
+        TextLocator.model_construct(
+            type="text",
+            heading_path=[],
+            line_start="private-scalar",
+            line_end=1,
+        ),
+        TextLocator.model_construct(
+            type="text",
+            heading_path=[],
+            line_start=0,
+            line_end=1,
+        ),
+        TextLocator.model_construct(
+            type="text",
+            heading_path=[],
+            line_start=2,
+            line_end=1,
+        ),
+        CsvLocator.model_construct(type="csv", row_start=2, row_end=1),
+    ],
+    ids=(
+        "discriminator",
+        "scalar-type",
+        "lower-bound",
+        "text-reversed-range",
+        "csv-reversed-range",
+    ),
+)
+def test_parser_revalidates_complete_locator_data_without_leaking_values(
+    locator: TextLocator | CsvLocator,
+) -> None:
+    """Break caught: mutated locator models must not bypass the public API contract."""
+    block = ParsedBlock(
+        kind=BlockKind.TEXT,
+        text="visible",
+        locator=locator,
+    )
+
+    with pytest.raises(WorkerFailure) as caught:
+        _MalformedBlockParser(block).parse(BytesIO(b"ignored"))
+
+    assert caught.value.code == "parser_failed"
+    assert caught.value.retryable is False
+    assert caught.value.safe_detail == "worker handler or parser failed"
+    assert "private" not in caught.value.safe_detail
+
+
 class _OversizedSource(BytesIO):
     def __init__(self, chunks: list[bytes]) -> None:
         super().__init__()
