@@ -267,10 +267,18 @@ def test_openapi_knowledge_resource_lifecycle_is_bounded_secured_and_traced() ->
             code for code in ("200", "204", "307") if code in operation["responses"]
         )
         assert "X-Request-ID" in operation["responses"][success_status]["headers"]
+        assert operation["responses"][success_status]["headers"]["Cache-Control"] == {
+            "description": "防止受保护知识响应被浏览器或中间缓存保存",
+            "schema": {"type": "string", "const": "private, no-store"},
+        }
         for error_status in ("401", "404", "422", "500", "503"):
             response = operation["responses"][error_status]
             assert response["content"]["application/json"]["schema"]["$ref"].endswith("/ErrorBody")
             assert "X-Request-ID" in response["headers"]
+            assert response["headers"]["Cache-Control"] == {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {"type": "string", "const": "private, no-store"},
+            }
 
     for operation in (retry, detail_path["delete"]):
         csrf = next(
@@ -297,6 +305,21 @@ def test_openapi_knowledge_resource_lifecycle_is_bounded_secured_and_traced() ->
     ]
     assert "latestVersion" in resource_properties
     assert "currentVersion" not in resource_properties
+
+
+def test_openapi_every_knowledge_response_declares_private_no_store() -> None:
+    paths = create_app().openapi()["paths"]
+    for path, path_item in paths.items():
+        if "/knowledge/" not in path:
+            continue
+        for method, operation in path_item.items():
+            if method not in {"get", "post", "delete"}:
+                continue
+            for response in operation["responses"].values():
+                assert response["headers"]["Cache-Control"] == {
+                    "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                    "schema": {"type": "string", "const": "private, no-store"},
+                }
 
 
 def test_openapi_project_events_declares_bounded_sse_read_contract() -> None:
@@ -708,7 +731,37 @@ def test_internal_error_applies_configured_cors_and_preserves_request_id() -> No
     }
     assert response.headers["x-request-id"] == "req-cors-error-500"
     assert response.headers["access-control-allow-origin"] == origin
+    assert response.headers["access-control-expose-headers"].lower() == "x-request-id"
+    assert "location" not in response.headers["access-control-expose-headers"].lower()
     assert response.headers["access-control-allow-credentials"] == "true"
+
+
+@pytest.mark.parametrize(
+    ("path", "status_code"),
+    [
+        ("/_test/not-knowledge", 200),
+        ("/api/v1/projects/not-a-uuid/knowledge/resources", 401),
+        ("/api/v1/projects/not-a-uuid/knowledge/missing", 404),
+    ],
+)
+def test_only_knowledge_api_responses_are_forced_private_no_store(
+    path: str,
+    status_code: int,
+) -> None:
+    app = create_app()
+
+    @app.get("/_test/not-knowledge", include_in_schema=False)
+    def _public_probe() -> dict[str, bool]:  # pyright: ignore[reportUnusedFunction]
+        return {"ok": True}
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get(path)
+
+    assert response.status_code == status_code
+    if "/knowledge/" in path:
+        assert response.headers["cache-control"] == "private, no-store"
+    else:
+        assert "cache-control" not in response.headers
 
 
 def test_configured_cors_origin_handles_credentialed_preflight(

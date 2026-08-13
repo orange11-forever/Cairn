@@ -1960,6 +1960,8 @@ export interface operations {
             /** @description 知识导入批次详情 */
             200: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -1971,6 +1973,8 @@ export interface operations {
             /** @description 会话无效 */
             401: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -1982,6 +1986,8 @@ export interface operations {
             /** @description 项目或知识资源不存在 */
             404: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -1993,6 +1999,8 @@ export interface operations {
             /** @description 请求参数无效 */
             422: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2004,6 +2012,8 @@ export interface operations {
             /** @description 服务器内部错误 */
             500: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2015,6 +2025,8 @@ export interface operations {
             /** @description 数据库或对象存储暂时不可用 */
             503: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2042,6 +2054,8 @@ export interface operations {
             /** @description 知识资源分页 */
             200: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2053,6 +2067,8 @@ export interface operations {
             /** @description 会话无效 */
             401: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2064,6 +2080,8 @@ export interface operations {
             /** @description 项目或知识资源不存在 */
             404: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2075,6 +2093,8 @@ export interface operations {
             /** @description 请求参数无效 */
             422: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2086,6 +2106,8 @@ export interface operations {
             /** @description 服务器内部错误 */
             500: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2097,6 +2119,8 @@ export interface operations {
             /** @description 数据库或对象存储暂时不可用 */
             503: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2122,6 +2146,8 @@ export interface operations {
             /** @description 知识资源详情 */
             200: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2133,6 +2159,8 @@ export interface operations {
             /** @description 会话无效 */
             401: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2144,6 +2172,8 @@ export interface operations {
             /** @description 项目或知识资源不存在 */
             404: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2155,6 +2185,8 @@ export interface operations {
             /** @description 请求参数无效 */
             422: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2166,6 +2198,8 @@ export interface operations {
             /** @description 服务器内部错误 */
             500: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2177,6 +2211,8 @@ export interface operations {
             /** @description 数据库或对象存储暂时不可用 */
             503: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2205,6 +2241,8 @@ export interface operations {
             /** @description 知识资源已删除 */
             204: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2214,6 +2252,8 @@ export interface operations {
             /** @description 会话无效 */
             401: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2225,6 +2265,8 @@ export interface operations {
             /** @description 请求来源或 CSRF 令牌无效 */
             403: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2236,6 +2278,8 @@ export interface operations {
             /** @description 项目或知识资源不存在 */
             404: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2247,6 +2291,8 @@ export interface operations {
             /** @description 请求参数无效 */
             422: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2258,6 +2304,8 @@ export interface operations {
             /** @description 服务器内部错误 */
             500: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2269,6 +2317,8 @@ export interface operations {
             /** @description 数据库或对象存储暂时不可用 */
             503: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2295,6 +2345,8 @@ export interface operations {
             /** @description 知识片段引用上下文 */
             200: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2306,6 +2358,8 @@ export interface operations {
             /** @description 会话无效 */
             401: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2317,6 +2371,8 @@ export interface operations {
             /** @description 项目或知识资源不存在 */
             404: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2328,6 +2384,8 @@ export interface operations {
             /** @description 请求参数无效 */
             422: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2339,6 +2397,8 @@ export interface operations {
             /** @description 服务器内部错误 */
             500: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2350,6 +2410,8 @@ export interface operations {
             /** @description 数据库或对象存储暂时不可用 */
             503: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2375,6 +2437,8 @@ export interface operations {
             /** @description 重定向到配置的短期附件下载地址 */
             307: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 按服务配置过期的附件下载地址 */
                     Location?: string;
                     /** @description 请求追踪标识 */
@@ -2386,6 +2450,8 @@ export interface operations {
             /** @description 会话无效 */
             401: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2397,6 +2463,8 @@ export interface operations {
             /** @description 项目或知识资源不存在 */
             404: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2408,6 +2476,8 @@ export interface operations {
             /** @description 请求参数无效 */
             422: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2419,6 +2489,8 @@ export interface operations {
             /** @description 服务器内部错误 */
             500: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2430,6 +2502,8 @@ export interface operations {
             /** @description 数据库或对象存储暂时不可用 */
             503: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2459,6 +2533,8 @@ export interface operations {
             /** @description 知识资源版本已重新排队 */
             200: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2470,6 +2546,8 @@ export interface operations {
             /** @description 会话无效 */
             401: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2481,6 +2559,8 @@ export interface operations {
             /** @description 请求来源或 CSRF 令牌无效 */
             403: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2492,6 +2572,8 @@ export interface operations {
             /** @description 项目或知识资源不存在 */
             404: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2503,6 +2585,8 @@ export interface operations {
             /** @description 知识资源状态不允许该操作 */
             409: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2514,6 +2598,8 @@ export interface operations {
             /** @description 请求参数无效 */
             422: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2525,6 +2611,8 @@ export interface operations {
             /** @description 服务器内部错误 */
             500: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2536,6 +2624,8 @@ export interface operations {
             /** @description 数据库或对象存储暂时不可用 */
             503: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2567,6 +2657,8 @@ export interface operations {
             /** @description 上传会话已创建 */
             201: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2578,6 +2670,8 @@ export interface operations {
             /** @description 会话无效 */
             401: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2589,6 +2683,8 @@ export interface operations {
             /** @description 请求来源或 CSRF 令牌无效 */
             403: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2600,6 +2696,8 @@ export interface operations {
             /** @description 项目或上传会话不存在 */
             404: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2611,6 +2709,8 @@ export interface operations {
             /** @description 上传对象缺失或与声明不一致 */
             409: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2622,6 +2722,8 @@ export interface operations {
             /** @description 上传会话已过期 */
             410: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2633,6 +2735,8 @@ export interface operations {
             /** @description 请求参数或文件意图无效 */
             422: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2644,6 +2748,8 @@ export interface operations {
             /** @description 服务器内部错误 */
             500: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2655,6 +2761,8 @@ export interface operations {
             /** @description 数据库或对象存储暂时不可用 */
             503: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2683,6 +2791,8 @@ export interface operations {
             /** @description 上传已确认 */
             200: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2694,6 +2804,8 @@ export interface operations {
             /** @description 会话无效 */
             401: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2705,6 +2817,8 @@ export interface operations {
             /** @description 请求来源或 CSRF 令牌无效 */
             403: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2716,6 +2830,8 @@ export interface operations {
             /** @description 项目或上传会话不存在 */
             404: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2727,6 +2843,8 @@ export interface operations {
             /** @description 上传对象缺失或与声明不一致 */
             409: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2738,6 +2856,8 @@ export interface operations {
             /** @description 上传会话已过期 */
             410: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2749,6 +2869,8 @@ export interface operations {
             /** @description 请求参数或文件意图无效 */
             422: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2760,6 +2882,8 @@ export interface operations {
             /** @description 服务器内部错误 */
             500: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;
@@ -2771,6 +2895,8 @@ export interface operations {
             /** @description 数据库或对象存储暂时不可用 */
             503: {
                 headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;

@@ -63,6 +63,7 @@ class CairnFastAPI(FastAPI):
                     "X-CSRF-Token",
                     "X-Request-ID",
                 ],
+                expose_headers=["X-Request-ID"],
             )
         return RequestIdMiddleware(application)
 

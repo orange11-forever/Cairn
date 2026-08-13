@@ -2894,6 +2894,13 @@
             },
             "description": "知识导入批次详情",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -2912,6 +2919,13 @@
             },
             "description": "会话无效",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -2930,6 +2944,13 @@
             },
             "description": "项目或知识资源不存在",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -2948,6 +2969,13 @@
             },
             "description": "请求参数无效",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -2966,6 +2994,13 @@
             },
             "description": "服务器内部错误",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -2984,6 +3019,13 @@
             },
             "description": "数据库或对象存储暂时不可用",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3054,6 +3096,13 @@
             },
             "description": "知识资源分页",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3072,6 +3121,13 @@
             },
             "description": "会话无效",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3090,6 +3146,13 @@
             },
             "description": "项目或知识资源不存在",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3108,6 +3171,13 @@
             },
             "description": "请求参数无效",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3126,6 +3196,13 @@
             },
             "description": "服务器内部错误",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3144,6 +3221,13 @@
             },
             "description": "数据库或对象存储暂时不可用",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3198,6 +3282,13 @@
           "204": {
             "description": "知识资源已删除",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3216,6 +3307,13 @@
             },
             "description": "会话无效",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3234,6 +3332,13 @@
             },
             "description": "请求来源或 CSRF 令牌无效",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3252,6 +3357,13 @@
             },
             "description": "项目或知识资源不存在",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3270,6 +3382,13 @@
             },
             "description": "请求参数无效",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3288,6 +3407,13 @@
             },
             "description": "服务器内部错误",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3306,6 +3432,13 @@
             },
             "description": "数据库或对象存储暂时不可用",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3355,6 +3488,13 @@
             },
             "description": "知识资源详情",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3373,6 +3513,13 @@
             },
             "description": "会话无效",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3391,6 +3538,13 @@
             },
             "description": "项目或知识资源不存在",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3409,6 +3563,13 @@
             },
             "description": "请求参数无效",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3427,6 +3588,13 @@
             },
             "description": "服务器内部错误",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3445,6 +3613,13 @@
             },
             "description": "数据库或对象存储暂时不可用",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3506,6 +3681,13 @@
             },
             "description": "知识片段引用上下文",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3524,6 +3706,13 @@
             },
             "description": "会话无效",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3542,6 +3731,13 @@
             },
             "description": "项目或知识资源不存在",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3560,6 +3756,13 @@
             },
             "description": "请求参数无效",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3578,6 +3781,13 @@
             },
             "description": "服务器内部错误",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3596,6 +3806,13 @@
             },
             "description": "数据库或对象存储暂时不可用",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3640,6 +3857,13 @@
           "307": {
             "description": "重定向到配置的短期附件下载地址",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "Location": {
                 "description": "按服务配置过期的附件下载地址",
                 "schema": {
@@ -3665,6 +3889,13 @@
             },
             "description": "会话无效",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3683,6 +3914,13 @@
             },
             "description": "项目或知识资源不存在",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3701,6 +3939,13 @@
             },
             "description": "请求参数无效",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3719,6 +3964,13 @@
             },
             "description": "服务器内部错误",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3737,6 +3989,13 @@
             },
             "description": "数据库或对象存储暂时不可用",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3808,6 +4067,13 @@
             },
             "description": "知识资源版本已重新排队",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3826,6 +4092,13 @@
             },
             "description": "会话无效",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3844,6 +4117,13 @@
             },
             "description": "请求来源或 CSRF 令牌无效",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3862,6 +4142,13 @@
             },
             "description": "项目或知识资源不存在",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3880,6 +4167,13 @@
             },
             "description": "知识资源状态不允许该操作",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3898,6 +4192,13 @@
             },
             "description": "请求参数无效",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3916,6 +4217,13 @@
             },
             "description": "服务器内部错误",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3934,6 +4242,13 @@
             },
             "description": "数据库或对象存储暂时不可用",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -3995,6 +4310,13 @@
             },
             "description": "上传会话已创建",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -4013,6 +4335,13 @@
             },
             "description": "会话无效",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -4031,6 +4360,13 @@
             },
             "description": "请求来源或 CSRF 令牌无效",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -4049,6 +4385,13 @@
             },
             "description": "项目或上传会话不存在",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -4067,6 +4410,13 @@
             },
             "description": "上传对象缺失或与声明不一致",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -4085,6 +4435,13 @@
             },
             "description": "上传会话已过期",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -4103,6 +4460,13 @@
             },
             "description": "请求参数或文件意图无效",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -4121,6 +4485,13 @@
             },
             "description": "服务器内部错误",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -4139,6 +4510,13 @@
             },
             "description": "数据库或对象存储暂时不可用",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -4200,6 +4578,13 @@
             },
             "description": "上传已确认",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -4218,6 +4603,13 @@
             },
             "description": "会话无效",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -4236,6 +4628,13 @@
             },
             "description": "请求来源或 CSRF 令牌无效",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -4254,6 +4653,13 @@
             },
             "description": "项目或上传会话不存在",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -4272,6 +4678,13 @@
             },
             "description": "上传对象缺失或与声明不一致",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -4290,6 +4703,13 @@
             },
             "description": "上传会话已过期",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -4308,6 +4728,13 @@
             },
             "description": "请求参数或文件意图无效",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -4326,6 +4753,13 @@
             },
             "description": "服务器内部错误",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {
@@ -4344,6 +4778,13 @@
             },
             "description": "数据库或对象存储暂时不可用",
             "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
               "X-Request-ID": {
                 "description": "请求追踪标识",
                 "schema": {

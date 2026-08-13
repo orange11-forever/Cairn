@@ -198,6 +198,8 @@ def test_resource_list_cursor_capability_detail_context_and_download(
     assert download.status_code == 307
     assert download.headers["location"].startswith("https://objects.example/")
     assert store.presigned_get_ttls == [timedelta(seconds=137)]
+    for response in (page_one, page_two, detail, context, download):
+        assert response.headers["cache-control"] == "private, no-store"
     assert invalid_cursor.status_code == invalid_limit.status_code == 422
     assert invalid_cursor.json() == {
         "message": "分页游标无效",
@@ -205,6 +207,8 @@ def test_resource_list_cursor_capability_detail_context_and_download(
         "traceId": "req-resource-invalid-cursor",
     }
     assert invalid_limit.json()["traceId"] == "req-resource-invalid-limit"
+    assert invalid_cursor.headers["cache-control"] == "private, no-store"
+    assert invalid_limit.headers["cache-control"] == "private, no-store"
     with database.session_factory() as session:
         assert (
             session.scalar(
@@ -744,6 +748,7 @@ def test_resource_reads_conceal_acl_revoked_between_check_and_protected_query(
     }
     assert response.headers["x-request-id"] == trace_id
     assert response.headers["access-control-allow-origin"] == "http://localhost:5500"
+    assert response.headers["cache-control"] == "private, no-store"
 
 
 @pytest.mark.integration
@@ -1101,6 +1106,7 @@ def test_download_maps_object_store_outage_without_audit_side_effect(
         "traceId": "req-download-store-down",
     }
     assert response.headers["x-request-id"] == "req-download-store-down"
+    assert response.headers["cache-control"] == "private, no-store"
     with database.session_factory() as session:
         assert (
             session.scalar(
@@ -1147,6 +1153,7 @@ def test_delete_unexpected_audit_failure_rolls_back_and_returns_traced_500(
         "traceId": "req-delete-audit-failure",
     }
     assert response.headers["x-request-id"] == "req-delete-audit-failure"
+    assert response.headers["cache-control"] == "private, no-store"
     with database.session_factory() as session:
         resource = session.get(KnowledgeResource, resource_id)
         assert resource is not None and resource.deleted_at is None

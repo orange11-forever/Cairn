@@ -1029,6 +1029,10 @@ def test_upload_openapi_is_json_only_and_declares_protected_error_contracts(
                 "$ref"
             ].endswith("/ErrorBody")
             assert "X-Request-ID" in operation["responses"][status_code]["headers"]
+            assert operation["responses"][status_code]["headers"]["Cache-Control"] == {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {"type": "string", "const": "private, no-store"},
+            }
 
 
 @pytest.mark.integration

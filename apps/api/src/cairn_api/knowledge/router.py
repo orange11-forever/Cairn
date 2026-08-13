@@ -43,7 +43,11 @@ REQUEST_ID_HEADER = {
     "X-Request-ID": {
         "description": "请求追踪标识",
         "schema": {"type": "string"},
-    }
+    },
+    "Cache-Control": {
+        "description": "防止受保护知识响应被浏览器或中间缓存保存",
+        "schema": {"type": "string", "const": "private, no-store"},
+    },
 }
 
 
