@@ -122,6 +122,34 @@ def _cyclic_page_tree() -> bytes:
     return _write_pdf(writer)
 
 
+def _nested_wide_page_tree(*, branch_count: int, pages_per_branch: int) -> bytes:
+    writer = _blank_pdf_writer(branch_count * pages_per_branch)
+    root_reference, root = _page_tree_root(writer)
+    page_references = list(root.raw_get("/Kids"))
+    branch_references: list[IndirectObject] = []
+    for branch_index in range(branch_count):
+        start = branch_index * pages_per_branch
+        branch_pages = page_references[start : start + pages_per_branch]
+        branch = DictionaryObject(
+            {
+                NameObject("/Type"): NameObject("/Pages"),
+                NameObject("/Parent"): root_reference,
+                NameObject("/Kids"): ArrayObject(branch_pages),
+                NameObject("/Count"): NumberObject(pages_per_branch),
+            }
+        )
+        branch_reference = writer._add_object(branch)  # pyright: ignore[reportPrivateUsage]
+        branch_references.append(branch_reference)
+        for page_reference in branch_pages:
+            assert isinstance(page_reference, IndirectObject)
+            page = page_reference.get_object()
+            assert isinstance(page, DictionaryObject)
+            page[NameObject("/Parent")] = branch_reference
+    root[NameObject("/Kids")] = ArrayObject(branch_references)
+    root[NameObject("/Count")] = NumberObject(branch_count * pages_per_branch)
+    return _write_pdf(writer)
+
+
 def _encrypted_malformed_page_tree() -> bytes:
     writer = _blank_pdf_writer()
     _, root = _page_tree_root(writer)
@@ -299,6 +327,41 @@ def test_pdf_parser_rejects_an_oversized_kids_array_before_per_child_work(
     assert caught.value.code == "parser_failed"
     assert caught.value.retryable is False
     assert reference_checks[0] <= 4
+
+
+def test_pdf_parser_does_not_queue_nested_wide_tree_beyond_global_node_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Break caught: sibling reservations at several levels must share one node budget."""
+    from cairn_worker.parsers import pdf as pdf_parser
+
+    monkeypatch.setattr(pdf_parser, "PDF_MAX_PAGE_TREE_NODES", 6)
+    monkeypatch.setattr(pdf_parser, "PDF_MAX_PAGES", 100)
+    referenced_nodes: set[tuple[int, int]] = set()
+    max_referenced_nodes = [0]
+    original_reference_key = pdf_parser._reference_key  # pyright: ignore[reportPrivateUsage]
+
+    def tracking_reference_key(reference: IndirectObject, reader: PdfReader) -> tuple[int, int]:
+        key = original_reference_key(reference, reader)
+        referenced_nodes.add(key)
+        max_referenced_nodes[0] = max(max_referenced_nodes[0], len(referenced_nodes))
+        return key
+
+    flattened = [False]
+
+    def tracking_flatten(self: PdfReader, *args: object, **kwargs: object) -> None:
+        flattened[0] = True
+
+    monkeypatch.setattr(pdf_parser, "_reference_key", tracking_reference_key)
+    monkeypatch.setattr(PdfReader, "_flatten", tracking_flatten)
+
+    with pytest.raises(WorkerFailure) as caught:
+        PdfParser().parse(BytesIO(_nested_wide_page_tree(branch_count=3, pages_per_branch=4)))
+
+    assert caught.value.code == "parser_failed"
+    assert caught.value.retryable is False
+    assert max_referenced_nodes[0] <= pdf_parser.PDF_MAX_PAGE_TREE_NODES
+    assert flattened[0] is False
 
 
 @pytest.mark.parametrize("target", ["leaf", "intermediate"])

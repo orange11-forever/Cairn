@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from io import BytesIO
 from threading import RLock
 from typing import BinaryIO
@@ -23,6 +24,16 @@ _PAGE = NameObject("/Page")
 _PAGES = NameObject("/Pages")
 
 type _PageTreeKey = tuple[int, int]
+
+
+@dataclass(slots=True)
+class _PagesFrame:
+    key: _PageTreeKey
+    kids: ArrayObject
+    declared_count: int
+    depth: int
+    next_child_index: int = 0
+    actual_count: int = 0
 
 
 def _reference_key(reference: IndirectObject, reader: PdfReader) -> _PageTreeKey:
@@ -59,35 +70,59 @@ def _preflight_page_tree(reader: PdfReader) -> int:
     if not isinstance(root_reference, IndirectObject):
         raise TypeError("catalog /Pages must be an indirect reference")
 
-    # The exit frame makes subtree /Count verification post-order without recursion.
-    stack: list[tuple[bool, IndirectObject, int, _PageTreeKey | None]] = [
-        (False, root_reference, 1, None)
-    ]
+    # Keep only one unvisited child and one frame per active ancestor. Unlike a DFS that queues
+    # every sibling, this makes pending traversal state O(depth) even for nested wide trees.
+    current: tuple[IndirectObject, int, _PageTreeKey | None] | None = (
+        root_reference,
+        1,
+        None,
+    )
+    frames: list[_PagesFrame] = []
     seen: set[_PageTreeKey] = set()
-    subtree_pages: dict[_PageTreeKey, int] = {}
-    child_keys: dict[_PageTreeKey, tuple[_PageTreeKey, ...]] = {}
-    declared_counts: dict[_PageTreeKey, int] = {}
     node_count = 0
     page_count = 0
+    completed_pages: int | None = None
 
-    while stack:
-        exiting, reference, depth, expected_parent = stack.pop()
-        key = _reference_key(reference, reader)
-        if exiting:
-            actual_count = sum(subtree_pages[child] for child in child_keys[key])
-            if actual_count != declared_counts[key]:
+    while current is not None or frames:
+        if current is None:
+            if completed_pages is None:
+                raise ValueError("page-tree traversal lost its completed subtree")
+            frame = frames[-1]
+            frame.actual_count += completed_pages
+            if frame.actual_count > frame.declared_count:
                 raise ValueError("page-tree /Count does not match its leaf pages")
-            subtree_pages[key] = actual_count
+            if frame.next_child_index < len(frame.kids):
+                # The sole unvisited enter slot shares the global node budget with visited
+                # nodes. Reject before even fetching or storing another child reference.
+                if node_count >= PDF_MAX_PAGE_TREE_NODES:
+                    raise ValueError("PDF page tree exceeds node limit")
+                child = frame.kids[frame.next_child_index]
+                frame.next_child_index += 1
+                if not isinstance(child, IndirectObject):
+                    raise TypeError("page-tree child must be an indirect reference")
+                current = (child, frame.depth + 1, frame.key)
+                completed_pages = None
+                continue
+            if frame.actual_count != frame.declared_count:
+                raise ValueError("page-tree /Count does not match its leaf pages")
+            completed_pages = frame.actual_count
+            frames.pop()
             continue
 
+        reference, depth, expected_parent = current
+        current = None
+        completed_pages = None
         if depth > PDF_MAX_PAGE_TREE_DEPTH:
             raise ValueError("PDF page tree exceeds depth limit")
+        # Reject before deriving or resolving another node identity. This keeps both visited
+        # nodes and the sole pending enter reference within the same global work ceiling.
+        if node_count >= PDF_MAX_PAGE_TREE_NODES:
+            raise ValueError("PDF page tree exceeds node limit")
+        key = _reference_key(reference, reader)
         if key in seen:
             raise ValueError("PDF page tree contains a cycle or repeated node")
         seen.add(key)
         node_count += 1
-        if node_count > PDF_MAX_PAGE_TREE_NODES:
-            raise ValueError("PDF page tree exceeds node limit")
 
         resolved = reference.get_object()
         if not isinstance(resolved, DictionaryObject):
@@ -103,7 +138,7 @@ def _preflight_page_tree(reader: PdfReader) -> int:
             page_count += 1
             if page_count > PDF_MAX_PAGES:
                 raise ValueError("PDF page count exceeds parser work limit")
-            subtree_pages[key] = 1
+            completed_pages = 1
             continue
 
         declared_count = _required_raw_value(resolved, "/Count")
@@ -123,23 +158,24 @@ def _preflight_page_tree(reader: PdfReader) -> int:
             raise ValueError("non-root page-tree node cannot be empty")
         if len(kids) > declared_count:
             raise ValueError("page-tree /Kids is implausible for its /Count")
-        references: list[IndirectObject] = []
-        keys: list[_PageTreeKey] = []
-        for child in kids:
-            if not isinstance(child, IndirectObject):
-                raise TypeError("page-tree child must be an indirect reference")
-            references.append(child)
-            keys.append(_reference_key(child, reader))
-        child_keys[key] = tuple(keys)
-        declared_counts[key] = int(declared_count)
-        stack.append((True, reference, depth, expected_parent))
-        stack.extend(
-            (False, child, depth + 1, key)
-            for child in reversed(references)
+        if not kids:
+            completed_pages = 0
+            continue
+        first_child = kids[0]
+        if not isinstance(first_child, IndirectObject):
+            raise TypeError("page-tree child must be an indirect reference")
+        frames.append(
+            _PagesFrame(
+                key=key,
+                kids=kids,
+                declared_count=int(declared_count),
+                depth=depth,
+                next_child_index=1,
+            )
         )
+        current = (first_child, depth + 1, key)
 
-    root_key = _reference_key(root_reference, reader)
-    if subtree_pages.get(root_key) != page_count:
+    if completed_pages != page_count:
         raise ValueError("page-tree traversal produced an inconsistent page total")
     return page_count
 
