@@ -108,6 +108,10 @@ def _failure(code: str) -> WorkerFailure:
     return WorkerFailure.for_code(code, "")
 
 
+def _malformed_archive_failure() -> WorkerFailure:
+    return WorkerFailure("parser_failed", "", retryable=False)
+
+
 def _normalize_path(zip_name: str) -> tuple[str, bool]:
     normalized = unicodedata.normalize("NFKC", zip_name)
     if "\x00" in normalized:
@@ -287,7 +291,7 @@ def _prepare_entries(archive_source: BinaryIO) -> list[_PreparedEntry]:
                             digest.update(chunk)
                             target.write(chunk)
                     if size_bytes != info.file_size:
-                        raise _failure("parser_failed")
+                        raise _malformed_archive_failure()
                     target.seek(0)
                     prepared = _PreparedEntry(
                         plan=plan,
@@ -309,7 +313,7 @@ def _prepare_entries(archive_source: BinaryIO) -> list[_PreparedEntry]:
     except (BadZipFile, LargeZipFile, OSError, EOFError, RuntimeError, ValueError):
         for prepared in prepared_entries:
             prepared.source.close()
-        raise _failure("parser_failed") from None
+        raise _malformed_archive_failure() from None
 
 
 def inspect_archive(source: BinaryIO) -> list[ArchiveEntryPlan]:

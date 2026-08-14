@@ -221,6 +221,7 @@ def test_rejects_crc_mismatch_instead_of_returning_valid_looking_siblings() -> N
         inspect_archive(BytesIO(payload))
 
     assert raised.value.code == "parser_failed"
+    assert raised.value.retryable is False
 
 
 def test_rejects_read_size_mismatch() -> None:
@@ -231,6 +232,7 @@ def test_rejects_read_size_mismatch() -> None:
         inspect_archive(BytesIO(payload))
 
     assert raised.value.code == "parser_failed"
+    assert raised.value.retryable is False
 
 
 def test_rejects_a_corrupt_central_directory_with_a_bounded_failure() -> None:
@@ -244,6 +246,7 @@ def test_rejects_a_corrupt_central_directory_with_a_bounded_failure() -> None:
         "parser_failed",
         "worker handler or parser failed",
     )
+    assert raised.value.retryable is False
 
 
 def test_accepts_and_nfkc_normalizes_a_unicode_directory_tree() -> None:

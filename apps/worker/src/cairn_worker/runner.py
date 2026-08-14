@@ -368,9 +368,28 @@ def register_handler(job_kind: JobKind, handler: JobHandler) -> None:
     HANDLERS[job_kind] = handler
 
 
-def build_runtime() -> WorkerRuntime:
+def _pending_index_handler(
+    _session: Any, _claim: ClaimedJob, _heartbeat: Heartbeat
+) -> None:
+    raise WorkerFailure("parser_failed", "index handler is pending", retryable=True)
+
+
+def build_runtime_handlers(
+    *, object_store: ObjectStore, session_factory: SessionFactory
+) -> dict[JobKind, JobHandler]:
     from cairn_worker.archive import build_archive_handler
 
+    handlers = dict(HANDLERS)
+    handlers.setdefault(JobKind.INDEX_RESOURCE_VERSION, _pending_index_handler)
+    handlers[JobKind.EXPAND_ARCHIVE] = build_archive_handler(
+        object_store=object_store,
+        session_factory=session_factory,
+    )
+    ensure_complete_handlers(handlers)
+    return handlers
+
+
+def build_runtime() -> WorkerRuntime:
     settings = Settings()
     database = Database(settings.database_url)
     try:
@@ -378,8 +397,7 @@ def build_runtime() -> WorkerRuntime:
     except Exception:
         database.dispose()
         raise
-    handlers = dict(HANDLERS)
-    handlers[JobKind.EXPAND_ARCHIVE] = build_archive_handler(
+    handlers = build_runtime_handlers(
         object_store=object_store,
         session_factory=database.session_factory,
     )
@@ -422,6 +440,7 @@ __all__ = [
     "Runtime",
     "WorkerRuntime",
     "build_runtime",
+    "build_runtime_handlers",
     "check_embedding_ready",
     "ensure_complete_handlers",
     "main",

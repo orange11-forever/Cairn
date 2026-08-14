@@ -2,7 +2,7 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
-from typing import BinaryIO
+from typing import BinaryIO, Self
 from uuid import UUID, uuid4
 from zipfile import ZipFile
 
@@ -15,6 +15,8 @@ from cairn_api.knowledge.models import (
     IngestionItem,
     IngestionItemStatus,
     IngestionJob,
+    IngestionJobAttempt,
+    IngestionJobAttemptStatus,
     IngestionJobStatus,
     JobKind,
     KnowledgeResource,
@@ -25,16 +27,31 @@ from cairn_api.knowledge.models import (
 from cairn_api.knowledge.object_store import ObjectNotFound, ObjectStat, ObjectStoreUnavailable
 from cairn_api.organizations.models import Organization
 from cairn_api.projects.models import OutboxEvent, Project
-from cairn_worker.archive import WorkerContext, handle_expand_archive
+from cairn_worker.archive import WorkerContext, build_archive_handler, handle_expand_archive
 from cairn_worker.errors import WorkerFailure
 from cairn_worker.leases import claim_next_job, fail_job
+from cairn_worker.runner import run_once
 from sqlalchemy import Engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 
 class _Heartbeat:
+    def __init__(self, *_args: object) -> None:
+        return None
+
+    def __enter__(self) -> Self:
+        return self
+
     def ensure_owned(self) -> None:
         return None
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: object,
+    ) -> None:
+        del exc_type, exc_value, traceback
 
 
 class _Store:
@@ -230,6 +247,7 @@ def test_partial_success_creates_supported_children_and_keeps_unsupported_entry_
         assert session.scalar(select(func.count(OutboxEvent.id))) == 1
 
     with Session(migrated_engine) as session, session.begin():
+        finished_at = datetime.now(UTC) + timedelta(minutes=1)
         supported = list(
             session.scalars(
                 select(IngestionItem).where(
@@ -240,19 +258,19 @@ def test_partial_success_creates_supported_children_and_keeps_unsupported_entry_
         )
         for item in supported:
             item.status = IngestionItemStatus.READY
-            item.completed_at = now + timedelta(minutes=1)
+            item.completed_at = finished_at
             assert item.resource_version_id is not None
             version = session.get(KnowledgeResourceVersion, item.resource_version_id)
             assert version is not None
             version.status = ResourceVersionStatus.READY
-            version.processing_started_at = now + timedelta(seconds=2)
-            version.ready_at = now + timedelta(minutes=1)
+            version.processing_started_at = version.created_at + timedelta(seconds=1)
+            version.ready_at = finished_at
         batch = repository.refresh_batch_summary(
             session,
             org_id=org_id,
             project_id=project_id,
             batch_id=batch_id,
-            now=now + timedelta(minutes=1),
+            now=finished_at,
         )
         assert batch.status == IngestionBatchStatus.COMPLETED_WITH_ERRORS
 
@@ -316,3 +334,55 @@ def test_retry_after_partial_object_writes_is_idempotent_even_when_cleanup_fails
         assert session.scalar(select(func.count(OutboxEvent.id))) == 1
         job = session.get(IngestionJob, job_id)
         assert job is not None and job.status == IngestionJobStatus.COMPLETED
+
+
+@pytest.mark.integration
+def test_malformed_archive_is_terminal_without_child_publication(
+    migrated_engine: Engine,
+) -> None:
+    """Break caught: PostgreSQL publication must reject corrupt ZIP bytes on attempt one."""
+    now = datetime(2026, 8, 14, 10, tzinfo=UTC)
+    payload = b"not a zip"
+    store = _Store()
+    job_id, _org_id, _project_id, _batch_id, _source_key = _seed_archive(
+        migrated_engine, store, payload, now=now
+    )
+    factory = sessionmaker(bind=migrated_engine, expire_on_commit=False)
+
+    def wrong_handler(*_args: object) -> None:
+        raise AssertionError("index handler must not run")
+
+    assert run_once(
+        session_factory=factory,
+        worker_id="archive-a:1",
+        handlers={
+            JobKind.EXPAND_ARCHIVE: build_archive_handler(
+                object_store=store,
+                session_factory=factory,
+                now=lambda: now,
+            ),
+            JobKind.INDEX_RESOURCE_VERSION: wrong_handler,
+        },
+        now=lambda: now,
+        heartbeat_factory=_Heartbeat,
+    )
+
+    with Session(migrated_engine) as session:
+        job = session.get(IngestionJob, job_id)
+        attempt = session.scalar(
+            select(IngestionJobAttempt).where(IngestionJobAttempt.job_id == job_id)
+        )
+        assert job is not None and job.status == IngestionJobStatus.FAILED
+        assert job.attempt == 1 and job.last_error_code == "parser_failed"
+        assert attempt is not None and attempt.status == IngestionJobAttemptStatus.FAILED
+        assert attempt.error_code == "parser_failed"
+        assert session.scalar(select(func.count(KnowledgeResource.id))) == 0
+        assert session.scalar(select(func.count(KnowledgeResourceVersion.id))) == 0
+        assert (
+            session.scalar(
+                select(func.count(IngestionItem.id)).where(IngestionItem.parent_item_id.is_not(None))
+            )
+            == 0
+        )
+        assert session.scalar(select(func.count(AuditLog.id))) == 1
+        assert session.scalar(select(func.count(OutboxEvent.id))) == 1

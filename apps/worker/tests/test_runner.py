@@ -5,11 +5,12 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from http.client import HTTPMessage
 from io import BytesIO
-from typing import Self, cast
+from typing import Any, Self, cast
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, Request
 from uuid import uuid4
 
+import cairn_worker.runner as runner_module
 import pytest
 from cairn_api.db.session import Database
 from cairn_api.knowledge.models import (
@@ -324,6 +325,37 @@ def test_preflight_checks_database_store_profile_and_embedding_readiness() -> No
     _runtime_with_profile(_active_profile(), events).preflight()
 
     assert events == ["database", "object-store", "embedding"]
+
+
+def test_runtime_handler_assembly_keeps_preflight_runnable_before_indexing_is_implemented() -> None:
+    """Break caught: Task 9 runtime assembly must cover both durable job kinds."""
+    events: list[str] = []
+    database = _DatabaseProbe([_active_profile()], events)
+    object_store = _ObjectStoreProbe(events)
+    handlers = runner_module.build_runtime_handlers(
+        object_store=cast(ObjectStore, object_store),
+        session_factory=database.session_factory,
+    )
+    runtime = WorkerRuntime(
+        settings=Settings(),
+        database=cast(Database, database),
+        object_store=cast(ObjectStore, object_store),
+        handlers=handlers,
+        worker_id="worker-a:1",
+        embedding_readiness=lambda _settings: events.append("embedding"),
+    )
+
+    runtime.preflight()
+
+    assert set(handlers) == REQUIRED_JOB_KINDS
+    assert events == ["database", "object-store", "embedding"]
+    with pytest.raises(WorkerFailure) as raised:
+        handlers[JobKind.INDEX_RESOURCE_VERSION](object(), _claim(), cast(Any, object()))
+    assert (raised.value.code, raised.value.safe_detail, raised.value.retryable) == (
+        "parser_failed",
+        "worker handler or parser failed",
+        True,
+    )
 
 
 @pytest.mark.parametrize(
