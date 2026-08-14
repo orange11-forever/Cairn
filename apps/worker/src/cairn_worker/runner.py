@@ -47,6 +47,15 @@ def _transaction(session_factory: SessionFactory) -> Generator[Any]:
     try:
         with session.begin():
             yield session
+    except BaseException:
+        session_info = getattr(session, "info", {})
+        callbacks = session_info.pop("cairn_rollback_cleanup", [])
+        for callback in callbacks:
+            try:
+                callback()
+            except Exception as cleanup_error:  # noqa: BLE001 -- cleanup is best-effort.
+                del cleanup_error
+        raise
     finally:
         close = getattr(session, "close", None)
         if callable(close):
@@ -360,6 +369,8 @@ def register_handler(job_kind: JobKind, handler: JobHandler) -> None:
 
 
 def build_runtime() -> WorkerRuntime:
+    from cairn_worker.archive import build_archive_handler
+
     settings = Settings()
     database = Database(settings.database_url)
     try:
@@ -367,11 +378,16 @@ def build_runtime() -> WorkerRuntime:
     except Exception:
         database.dispose()
         raise
+    handlers = dict(HANDLERS)
+    handlers[JobKind.EXPAND_ARCHIVE] = build_archive_handler(
+        object_store=object_store,
+        session_factory=database.session_factory,
+    )
     return WorkerRuntime(
         settings=settings,
         database=database,
         object_store=object_store,
-        handlers=HANDLERS,
+        handlers=handlers,
         worker_id=f"{socket.gethostname()}:{os.getpid()}",
     )
 
