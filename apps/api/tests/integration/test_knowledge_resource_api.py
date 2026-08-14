@@ -757,7 +757,7 @@ def test_upload_cleanup_expires_pending_and_preserves_completed_or_referenced_ob
 ) -> None:
     actor = seed_actor(database, MembershipRole.OWNER)
     project_id = seed_project(database, actor, permission=None)
-    now = datetime(2026, 8, 13, 15, 0, tzinfo=UTC)
+    now = datetime.now(UTC) + timedelta(hours=1)
     store = MemoryObjectStore(now=now)
     with database.session_factory.begin() as session:
         expired_batch = repository.create_batch(
@@ -778,7 +778,7 @@ def test_upload_cleanup_expires_pending_and_preserves_completed_or_referenced_ob
             size_bytes=1,
             sha256="a" * 64,
             object_key="uploads/expired",
-            expires_at=now.replace(hour=14),
+            expires_at=now - timedelta(minutes=1),
         )
         completed_batch = repository.create_batch(
             session,
@@ -798,7 +798,7 @@ def test_upload_cleanup_expires_pending_and_preserves_completed_or_referenced_ob
             size_bytes=1,
             sha256="b" * 64,
             object_key="uploads/completed",
-            expires_at=now.replace(hour=14),
+            expires_at=now - timedelta(minutes=1),
         )
         completed.upload.completed_at = now
         completed.item.status = IngestionItemStatus.READY
@@ -828,7 +828,7 @@ def test_upload_cleanup_expires_pending_and_preserves_completed_or_referenced_ob
             size_bytes=1,
             sha256="c" * 64,
             object_key="uploads/referenced",
-            expires_at=now.replace(hour=14),
+            expires_at=now - timedelta(minutes=1),
         )
         repository.mark_item_failed(
             session,
@@ -932,7 +932,7 @@ def test_upload_expiry_rolls_back_state_and_audit_when_outbox_write_fails(
 ) -> None:
     actor = seed_actor(database, MembershipRole.OWNER)
     project_id = seed_project(database, actor, permission=None)
-    now = datetime(2026, 8, 13, 15, 30, tzinfo=UTC)
+    now = datetime.now(UTC) + timedelta(hours=1)
     with database.session_factory.begin() as session:
         batch = repository.create_batch(
             session,
@@ -993,7 +993,7 @@ def test_upload_cleanup_advances_past_each_bounded_orphan_window(
 ) -> None:
     actor = seed_actor(database, MembershipRole.OWNER)
     project_id = seed_project(database, actor, permission=None)
-    now = datetime(2026, 8, 13, 16, 0, tzinfo=UTC)
+    now = datetime.now(UTC) + timedelta(hours=1)
     store = MemoryObjectStore(now=now)
     upload_ids: list[UUID] = []
     with database.session_factory.begin() as session:

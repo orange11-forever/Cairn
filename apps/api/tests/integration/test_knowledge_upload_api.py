@@ -128,7 +128,7 @@ def test_upload_creation_persists_batch_items_sessions_audit_and_outbox(
 ) -> None:
     actor = seed_actor(database, MembershipRole.MEMBER)
     project_id = seed_project(database, actor, permission="write")
-    store = MemoryObjectStore(now=datetime(2026, 8, 13, 3, 0, tzinfo=UTC))
+    store = MemoryObjectStore()
     files = [
         _intent(),
         _intent(
