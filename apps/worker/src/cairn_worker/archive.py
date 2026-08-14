@@ -25,6 +25,8 @@ from cairn_api.knowledge.models import (
     IngestionItem,
     IngestionItemStatus,
     IngestionJob,
+    IngestionJobAttempt,
+    IngestionJobAttemptStatus,
     IngestionJobStatus,
     JobKind,
     KnowledgeResource,
@@ -52,6 +54,8 @@ MAX_COMPRESSION_RATIO = 100.0
 _ARCHIVE_SOURCE_MAX_BYTES = 100 * 1024 * 1024
 _COPY_CHUNK_BYTES = 1024 * 1024
 _ENTRY_SPOOL_BYTES = 8 * 1024 * 1024
+_NORMALIZED_PATH_MAX_LENGTH = 1024
+_RESOURCE_TITLE_MAX_LENGTH = 512
 _WINDOWS_DRIVE = re.compile(r"[A-Za-z]:")
 _ZIP_SIGNATURES = (b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08")
 _OPC_MEDIA_TYPES = frozenset(
@@ -97,6 +101,41 @@ class _PreparedEntry:
     object_key: str | None = None
 
 
+class _RetryableEntrySpool:
+    def __init__(self, source: BinaryIO) -> None:
+        self._source = source
+
+    def _call(self, method: str, *args: object) -> Any:
+        try:
+            return getattr(self._source, method)(*args)
+        except OSError:
+            raise _spool_io_failure() from None
+
+    def read(self, size: int = -1) -> bytes:
+        return cast(bytes, self._call("read", size))
+
+    def write(self, payload: bytes) -> int:
+        return cast(int, self._call("write", payload))
+
+    def seek(self, offset: int, whence: int = 0) -> int:
+        return cast(int, self._call("seek", offset, whence))
+
+    def tell(self) -> int:
+        return cast(int, self._call("tell"))
+
+    def seekable(self) -> bool:
+        return cast(bool, self._call("seekable"))
+
+    def readable(self) -> bool:
+        return cast(bool, self._call("readable"))
+
+    def writable(self) -> bool:
+        return cast(bool, self._call("writable"))
+
+    def close(self) -> None:
+        self._call("close")
+
+
 @dataclass(frozen=True)
 class _ArchiveTarget:
     upload: UploadSession
@@ -110,6 +149,10 @@ def _failure(code: str) -> WorkerFailure:
 
 def _malformed_archive_failure() -> WorkerFailure:
     return WorkerFailure("parser_failed", "", retryable=False)
+
+
+def _spool_io_failure() -> WorkerFailure:
+    return WorkerFailure("parser_failed", "", retryable=True)
 
 
 def _normalize_path(zip_name: str) -> tuple[str, bool]:
@@ -164,6 +207,11 @@ def _metadata_plans(archive: ZipFile) -> list[tuple[ZipInfo, ArchiveEntryPlan]]:
     for info in archive.infolist():
         normalized_path, path_is_directory = _normalize_path(info.orig_filename)
         is_directory = info.is_dir() or path_is_directory
+        if len(normalized_path) > _NORMALIZED_PATH_MAX_LENGTH or (
+            not is_directory
+            and len(PurePosixPath(normalized_path).name) > _RESOURCE_TITLE_MAX_LENGTH
+        ):
+            raise _failure("archive_path_unsafe")
         if info.flag_bits & 0x1:
             raise _failure("archive_encrypted")
         if _is_symlink(info):
@@ -248,7 +296,9 @@ def _verify_signature(prepared: _PreparedEntry, prefix: bytes) -> None:
             prepared.source.seek(0)
             with ZipFile(prepared.source) as opc:
                 opc_members = tuple(opc.namelist())
-        except (BadZipFile, LargeZipFile, OSError, EOFError):
+        except OSError:
+            raise _spool_io_failure() from None
+        except (BadZipFile, LargeZipFile, EOFError):
             raise _failure("upload_media_type_mismatch") from None
     try:
         prepared.source.seek(0)
@@ -266,8 +316,13 @@ def _prepare_entries(archive_source: BinaryIO) -> list[_PreparedEntry]:
             for info, plan in plans:
                 target = cast(
                     BinaryIO,
-                    SpooledTemporaryFile(  # noqa: SIM115 -- prepared entry owns this spool.
-                        max_size=_ENTRY_SPOOL_BYTES, mode="w+b"
+                    _RetryableEntrySpool(
+                        cast(
+                            BinaryIO,
+                            SpooledTemporaryFile(  # noqa: SIM115
+                                max_size=_ENTRY_SPOOL_BYTES, mode="w+b"
+                            ),
+                        )
                     ),
                 )
                 try:
@@ -310,7 +365,11 @@ def _prepare_entries(archive_source: BinaryIO) -> list[_PreparedEntry]:
         for prepared in prepared_entries:
             prepared.source.close()
         raise
-    except (BadZipFile, LargeZipFile, OSError, EOFError, RuntimeError, ValueError):
+    except OSError:
+        for prepared in prepared_entries:
+            prepared.source.close()
+        raise _spool_io_failure() from None
+    except (BadZipFile, LargeZipFile, EOFError, RuntimeError, ValueError):
         for prepared in prepared_entries:
             prepared.source.close()
         raise _malformed_archive_failure() from None
@@ -424,28 +483,74 @@ def _put_entry(store: ObjectStore, entry: _PreparedEntry, object_key: str) -> bo
 
 
 def _cleanup_object(
-    session_factory: SessionFactory, store: ObjectStore, object_key: str
+    session_factory: SessionFactory,
+    store: ObjectStore,
+    object_key: str,
+    claim: ClaimedJob,
+    now: datetime,
 ) -> None:
     try:
-        with session_factory() as session:
+        with session_factory() as session, session.begin():
+            job = session.scalar(
+                select(IngestionJob)
+                .where(
+                    IngestionJob.id == claim.job_id,
+                    IngestionJob.org_id == claim.org_id,
+                    IngestionJob.project_id == claim.project_id,
+                    IngestionJob.job_kind == claim.job_kind,
+                    IngestionJob.target_id == claim.target_id,
+                )
+                .with_for_update()
+            )
+            attempt = session.scalar(
+                select(IngestionJobAttempt)
+                .where(
+                    IngestionJobAttempt.id == claim.attempt_id,
+                    IngestionJobAttempt.job_id == claim.job_id,
+                    IngestionJobAttempt.org_id == claim.org_id,
+                    IngestionJobAttempt.project_id == claim.project_id,
+                )
+                .with_for_update()
+            )
+            if (
+                job is None
+                or attempt is None
+                or job.status != IngestionJobStatus.RUNNING
+                or job.lease_owner != claim.lease_owner
+                or job.lease_expires_at is None
+                or job.lease_expires_at <= now
+                or attempt.status != IngestionJobAttemptStatus.RUNNING
+            ):
+                return
             references = session.scalar(
                 select(func.count(KnowledgeResourceVersion.id)).where(
-                    KnowledgeResourceVersion.object_key == object_key
+                    KnowledgeResourceVersion.org_id == claim.org_id,
+                    KnowledgeResourceVersion.project_id == claim.project_id,
+                    KnowledgeResourceVersion.object_key == object_key,
                 )
             )
-        if int(references or 0) == 0:
-            store.delete_object(object_key=object_key)
+            if int(references or 0) == 0:
+                store.delete_object(object_key=object_key)
     except Exception:  # noqa: BLE001 -- rollback cleanup is deliberately best-effort.
         return
 
 
 def _register_rollback_cleanup(
-    context: WorkerContext, store: ObjectStore, object_key: str
+    context: WorkerContext,
+    store: ObjectStore,
+    object_key: str,
+    claim: ClaimedJob,
 ) -> None:
     session = cast(Session, context.session)
     callbacks = session.info.setdefault("cairn_rollback_cleanup", [])
     callbacks.append(
-        lambda: _cleanup_object(cast(SessionFactory, context.session_factory), store, object_key)
+        lambda: _cleanup_object(
+            cast(SessionFactory, context.session_factory),
+            store,
+            object_key,
+            claim,
+            context.now(),
+        )
     )
 
 
@@ -666,7 +771,6 @@ def handle_expand_archive(claim: ClaimedJob, context: WorkerContext) -> None:
         archive_source.close()
         raise _failure("upload_checksum_mismatch")
     prepared: list[_PreparedEntry] = []
-    created_keys: list[str] = []
     try:
         prepared = _prepare_entries(archive_source)
         for entry in prepared:
@@ -676,19 +780,13 @@ def handle_expand_archive(claim: ClaimedJob, context: WorkerContext) -> None:
             object_key = _object_key(claim, target.upload.id, entry)
             entry.object_key = object_key
             if _put_entry(cast(ObjectStore, context.object_store), entry, object_key):
-                created_keys.append(object_key)
                 _register_rollback_cleanup(
-                    context, cast(ObjectStore, context.object_store), object_key
+                    context,
+                    cast(ObjectStore, context.object_store),
+                    object_key,
+                    claim,
                 )
         _publish(claim, context, prepared)
-    except BaseException:
-        for object_key in created_keys:
-            _cleanup_object(
-                cast(SessionFactory, context.session_factory),
-                cast(ObjectStore, context.object_store),
-                object_key,
-            )
-        raise
     finally:
         for entry in prepared:
             entry.source.close()

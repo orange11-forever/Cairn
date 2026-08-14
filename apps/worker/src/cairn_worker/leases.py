@@ -1,3 +1,4 @@
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import UUID
@@ -83,8 +84,16 @@ def _next_attempt(session: Session, *, job: IngestionJob, now: datetime) -> Inge
     return queued
 
 
-def claim_next_job(session: Session, *, worker_id: str, now: datetime) -> ClaimedJob | None:
-    job = session.scalar(
+def claim_next_job(
+    session: Session,
+    *,
+    worker_id: str,
+    now: datetime,
+    job_kinds: Collection[JobKind] | None = None,
+) -> ClaimedJob | None:
+    if job_kinds is not None and not job_kinds:
+        return None
+    statement = (
         select(IngestionJob)
         .where(
             or_(
@@ -102,6 +111,9 @@ def claim_next_job(session: Session, *, worker_id: str, now: datetime) -> Claime
         .limit(1)
         .with_for_update(skip_locked=True)
     )
+    if job_kinds is not None:
+        statement = statement.where(IngestionJob.job_kind.in_(job_kinds))
+    job = session.scalar(statement)
     if job is None:
         return None
 

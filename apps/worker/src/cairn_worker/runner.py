@@ -180,8 +180,16 @@ def run_once(
     ensure_complete_handlers(handlers)
     owner = validate_worker_id(worker_id)
     current_time = now or (lambda: datetime.now(UTC))
+    claimable_job_kinds = frozenset(
+        job_kind for job_kind, handler in handlers.items() if handler is not _pending_index_handler
+    )
     with _transaction(session_factory) as session:
-        claim = claim_next_job(session, worker_id=owner, now=current_time())
+        claim = claim_next_job(
+            session,
+            worker_id=owner,
+            now=current_time(),
+            job_kinds=claimable_job_kinds,
+        )
     if claim is None:
         return False
 

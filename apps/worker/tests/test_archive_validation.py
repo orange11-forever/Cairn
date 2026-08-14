@@ -267,3 +267,34 @@ def test_accepts_and_nfkc_normalizes_a_unicode_directory_tree() -> None:
     ]
     assert plans[0].media is not None and plans[0].media.media_type == "text/plain"
     assert plans[1].media is None
+
+
+def test_accepts_paths_and_titles_at_the_persistence_limits() -> None:
+    """Break caught: exact model-boundary names must remain valid archive members."""
+    title = f"{'a' * 508}.txt"
+    normalized_path = f"{'d' * 511}/{title}"
+
+    plans = inspect_archive(BytesIO(_archive([(normalized_path, b"safe text")])))
+
+    assert len(normalized_path) == 1024
+    assert len(title) == 512
+    assert plans[0].normalized_path == normalized_path
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        f"{'d' * 512}/{'a' * 508}.txt",
+        f"{'a' * 509}.txt",
+    ],
+    ids=["normalized-path", "resource-title"],
+)
+def test_rejects_paths_and_titles_above_persistence_limits_before_extraction(
+    name: str,
+) -> None:
+    """Break caught: oversized model fields must fail before any entry object is written."""
+    with pytest.raises(WorkerFailure) as raised:
+        inspect_archive(BytesIO(_archive([(name, b"safe text")])))
+
+    assert (raised.value.code, raised.value.retryable) == ("archive_path_unsafe", False)
+    assert len(raised.value.safe_detail) <= 256

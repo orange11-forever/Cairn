@@ -358,6 +358,29 @@ def test_runtime_handler_assembly_keeps_preflight_runnable_before_indexing_is_im
     )
 
 
+def test_runtime_claims_only_job_kinds_with_production_handlers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Break caught: the Task 11 placeholder must never consume a durable index attempt."""
+    observed_job_kinds: list[frozenset[JobKind]] = []
+    handlers = runner_module.build_runtime_handlers(
+        object_store=cast(ObjectStore, object()),
+        session_factory=lambda: _Session([]),
+    )
+
+    def no_claim(*_args: object, job_kinds: frozenset[JobKind], **_kwargs: object) -> None:
+        observed_job_kinds.append(job_kinds)
+
+    monkeypatch.setattr(runner_module, "claim_next_job", no_claim)
+
+    assert not run_once(
+        session_factory=lambda: _Session([]),
+        worker_id="worker-a:1",
+        handlers=handlers,
+    )
+    assert observed_job_kinds == [frozenset({JobKind.EXPAND_ARCHIVE})]
+
+
 @pytest.mark.parametrize(
     "profile",
     [_active_profile(dimensions=3), _active_profile(provider_key="unconfigured")],

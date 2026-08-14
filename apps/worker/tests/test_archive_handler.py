@@ -1,8 +1,11 @@
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
+from tempfile import SpooledTemporaryFile as RealSpooledTemporaryFile
 from typing import Any, Self
 from uuid import uuid4
+from zipfile import ZipFile
 
+import cairn_worker.archive as archive_module
 import pytest
 from cairn_api.audit.models import AuditLog
 from cairn_api.knowledge.models import (
@@ -222,3 +225,149 @@ def test_malformed_archive_is_terminal_through_runner_lease_classification(
         JobKind.EXPAND_ARCHIVE,
         JobKind.INDEX_RESOURCE_VERSION,
     }
+
+
+class _FailingEntrySpool:
+    def __init__(self, operation: str) -> None:
+        self._operation = operation
+        self._source = RealSpooledTemporaryFile(  # noqa: SIM115 -- close() owns cleanup.
+            max_size=1024, mode="w+b"
+        )
+
+    def write(self, payload: bytes) -> int:
+        if self._operation == "write":
+            raise OSError("/private/spool/write-secret")
+        return self._source.write(payload)
+
+    def seek(self, offset: int, whence: int = 0) -> int:
+        if self._operation == "seek":
+            raise OSError("/private/spool/seek-secret")
+        return self._source.seek(offset, whence)
+
+    def read(self, size: int = -1) -> bytes:
+        if self._operation == "read":
+            raise OSError("/private/spool/read-secret")
+        return self._source.read(size)
+
+    def tell(self) -> int:
+        return self._source.tell()
+
+    def seekable(self) -> bool:
+        return True
+
+    def readable(self) -> bool:
+        return True
+
+    def writable(self) -> bool:
+        return True
+
+    def close(self) -> None:
+        self._source.close()
+
+
+def _opc_payload() -> bytes:
+    target = BytesIO()
+    with ZipFile(target, "w") as archive:
+        archive.writestr("[Content_Types].xml", b"types")
+        archive.writestr("word/document.xml", b"document")
+    return target.getvalue()
+
+
+def _outer_archive(name: str, payload: bytes) -> bytes:
+    target = BytesIO()
+    with ZipFile(target, "w") as archive:
+        archive.writestr(name, payload)
+    return target.getvalue()
+
+
+@pytest.mark.parametrize("operation", ["write", "seek", "read"])
+def test_entry_spool_io_failure_is_a_bounded_retry_through_run_once(
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
+    """Break caught: local spool outages must retry without publishing terminal facts."""
+    now = datetime(2026, 8, 14, 11, tzinfo=UTC)
+    claim = ClaimedJob(
+        job_id=uuid4(),
+        attempt_id=uuid4(),
+        org_id=uuid4(),
+        project_id=uuid4(),
+        job_kind=JobKind.EXPAND_ARCHIVE,
+        target_id=uuid4(),
+        lease_owner="archive-a:1",
+        lease_expires_at=now + timedelta(minutes=5),
+    )
+    job = IngestionJob(
+        id=claim.job_id,
+        org_id=claim.org_id,
+        project_id=claim.project_id,
+        job_kind=claim.job_kind,
+        target_id=claim.target_id,
+        status=IngestionJobStatus.RUNNING,
+        attempt=1,
+        max_attempts=5,
+        next_attempt_at=now,
+        lease_owner=claim.lease_owner,
+        lease_expires_at=claim.lease_expires_at,
+        heartbeat_at=now,
+    )
+    attempt = IngestionJobAttempt(
+        id=claim.attempt_id,
+        org_id=claim.org_id,
+        project_id=claim.project_id,
+        job_id=claim.job_id,
+        ordinal=1,
+        trigger=JobAttemptTrigger.AUTOMATIC,
+        status=IngestionJobAttemptStatus.RUNNING,
+        queued_at=now,
+        started_at=now,
+    )
+    claim_session = _LeaseSession()
+    handler_session = _LeaseSession()
+    failure_session = _LeaseSession([job, attempt])
+    sessions = iter([claim_session, handler_session, failure_session])
+    factory_calls = 0
+
+    def spool_factory(*_args: object, **_kwargs: object) -> object:
+        nonlocal factory_calls
+        factory_calls += 1
+        if factory_calls == 1:
+            return RealSpooledTemporaryFile(max_size=1024, mode="w+b")
+        return _FailingEntrySpool(operation)
+
+    monkeypatch.setattr(archive_module, "SpooledTemporaryFile", spool_factory)
+
+    def claimed(*_args: object, **_kwargs: object) -> ClaimedJob:
+        return claim
+
+    monkeypatch.setattr("cairn_worker.runner.claim_next_job", claimed)
+    payload = _outer_archive(
+        "report.docx" if operation == "read" else "report.txt",
+        _opc_payload() if operation == "read" else b"safe text",
+    )
+
+    def failing_handler(*_args: object) -> None:
+        inspect_archive(BytesIO(payload))
+
+    assert run_once(
+        session_factory=lambda: next(sessions),
+        worker_id=claim.lease_owner,
+        handlers={kind: failing_handler for kind in REQUIRED_JOB_KINDS},
+        now=lambda: now,
+        heartbeat_factory=_NoopHeartbeat,
+    )
+
+    assert job.status == IngestionJobStatus.QUEUED
+    assert job.last_error_code == "parser_failed"
+    assert attempt.status == IngestionJobAttemptStatus.FAILED
+    assert (attempt.error_code, attempt.safe_detail) == (
+        "parser_failed",
+        "worker handler or parser failed",
+    )
+    assert "/private/" not in (attempt.safe_detail or "")
+    assert not any(isinstance(fact, (AuditLog, OutboxEvent)) for fact in failure_session.added)
+    assert not any(
+        isinstance(fact, (KnowledgeResource, KnowledgeResourceVersion, IngestionItem))
+        for session in (claim_session, handler_session, failure_session)
+        for fact in session.added
+    )
