@@ -20,6 +20,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+  "boto3-stubs[s3]>=1.35,<2",
   "httpx2>=2,<3",
   "pyright>=1.1.390,<2",
   "pytest>=8.3,<9",

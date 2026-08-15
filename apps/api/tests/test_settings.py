@@ -10,9 +10,67 @@ PRODUCTION_SETTINGS: dict[str, object] = {
     "auth_rate_limit_secret": "production-only-rate-limit-secret-with-at-least-32-bytes",
     "object_store_access_key": "production-object-store-access-key",
     "object_store_secret_key": "production-object-store-secret-key",
+    "object_store_public_endpoint_url": "https://objects.cairn.example",
     "embedding_api_key": "production-embedding-api-key",
     "search_audit_secret": "production-search-audit-secret-at-least-32-bytes",
 }
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://objects.example.com",
+        "http://127.0.0.1:9000",
+        "http://[::1]:9000",
+        "http://localhost:9000",
+    ],
+)
+def test_production_requires_https_public_object_store_url(url: str) -> None:
+    with pytest.raises(ValidationError, match="HTTPS.*public object-store"):
+        production_settings(object_store_public_endpoint_url=url)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://objects.example.com",
+        "https://127.0.0.1:9000",
+    ],
+)
+def test_production_accepts_https_public_object_store_url(url: str) -> None:
+    settings = production_settings(object_store_public_endpoint_url=url)
+
+    assert str(settings.object_store_public_endpoint_url).startswith("https://")
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://127.0.0.1:58081/v1",
+        "http://127.0.0.2:58081/v1",
+        "http://[::1]:58081/v1",
+        "http://localhost:58081/v1",
+        "https://embedding.example.com/v1",
+    ],
+)
+def test_production_accepts_https_or_strict_loopback_embedding_url(url: str) -> None:
+    settings = production_settings(embedding_base_url=url)
+
+    assert str(settings.embedding_base_url).startswith(("http://", "https://"))
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://embedding.example.com/v1",
+        "http://10.0.0.5:58081/v1",
+        "http://192.168.1.5:58081/v1",
+        "http://embedding.localhost.example/v1",
+    ],
+)
+def test_production_rejects_non_loopback_http_embedding_url(url: str) -> None:
+    with pytest.raises(ValidationError, match="HTTPS.*loopback"):
+        production_settings(embedding_base_url=url)
 
 
 def production_settings(**overrides: object) -> Settings:

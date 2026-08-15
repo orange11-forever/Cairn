@@ -89,6 +89,7 @@ def test_demo_seed_rejects_production(
         auth_rate_limit_secret="production-only-auth-rate-limit-secret-with-at-least-32-bytes",
         object_store_access_key="production-object-store-access-key",
         object_store_secret_key="production-object-store-secret-key",
+        object_store_public_endpoint_url="https://objects.example.com",
         embedding_api_key="production-embedding-api-key",
         search_audit_secret="production-search-audit-secret-at-least-32-bytes",
         _env_file=None,  # pyright: ignore[reportCallIssue]

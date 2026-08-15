@@ -58,6 +58,7 @@ export function resolveAuthProxyConfig(
       CAIRN_ENVIRONMENT: "production",
       CAIRN_HTTP_PORT: String(apiPort),
       CAIRN_OBJECT_STORE_ACCESS_KEY: "proxy-verification-object-store-access",
+      CAIRN_OBJECT_STORE_PUBLIC_ENDPOINT_URL: "https://objects.cairn.invalid",
       CAIRN_OBJECT_STORE_SECRET_KEY: "proxy-verification-object-store-secret",
       CAIRN_SEARCH_AUDIT_SECRET: "proxy-verification-search-audit-secret-at-least-32-bytes",
       CAIRN_SESSION_COOKIE_SECURE: "true",

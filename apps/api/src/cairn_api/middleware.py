@@ -33,4 +33,6 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
             extra={"request_id": request_id},
         )
         response.headers["X-Request-ID"] = request_id
+        if request.url.path.startswith("/api/v1/projects/") and "/knowledge/" in request.url.path:
+            response.headers["Cache-Control"] = "private, no-store"
         return response

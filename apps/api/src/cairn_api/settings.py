@@ -1,4 +1,4 @@
-from ipaddress import IPv4Network, IPv6Network
+from ipaddress import IPv4Network, IPv6Network, ip_address
 from typing import Annotated, Literal, cast
 
 from pydantic import AnyHttpUrl, Field, SecretStr, TypeAdapter, field_validator, model_validator
@@ -163,6 +163,17 @@ class Settings(BaseSettings):
             raise ValueError("production requires HTTPS APP_URL")
         if any(not origin.lower().startswith("https://") for origin in self.cors_origins):
             raise ValueError("production requires HTTPS CORS origins")
+        if self.object_store_public_endpoint_url.scheme != "https":
+            raise ValueError("production requires HTTPS public object-store URL")
+        embedding_host = (self.embedding_base_url.host or "").removeprefix("[").removesuffix("]")
+        embedding_is_loopback = embedding_host.lower() == "localhost"
+        if not embedding_is_loopback:
+            try:
+                embedding_is_loopback = ip_address(embedding_host).is_loopback
+            except ValueError:
+                embedding_is_loopback = False
+        if self.embedding_base_url.scheme != "https" and not embedding_is_loopback:
+            raise ValueError("production Embedding URL requires HTTPS or a loopback-only host")
         if len(self.auth_rate_limit_secret.encode("utf-8")) < 32:
             raise ValueError("production requires an auth rate-limit secret of at least 32 bytes")
         if self.auth_rate_limit_secret in {

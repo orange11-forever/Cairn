@@ -4,7 +4,11 @@ import { dirname, resolve } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
-import { dockerEnvironment, resolveDockerCommand } from "./docker-command.mjs";
+import {
+  DockerClientNotFoundError,
+  dockerEnvironment,
+  resolveDockerCommand,
+} from "./docker-command.mjs";
 
 const execFile = promisify(execFileCallback);
 const REPOSITORY_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -30,9 +34,31 @@ function parsePublishedPort(output) {
 }
 
 function verifyReleaseVersion(output) {
-  const expected = `minio version ${MINIO_RELEASE}`;
-  if (!output.includes(expected) || output.includes("DEVELOPMENT.GOGET")) {
+  const release = output.match(/(?:^|\n)minio version ([^\s]+)/)?.[1];
+  if (release !== MINIO_RELEASE || output.includes("DEVELOPMENT.GOGET")) {
     throw new Error(`expected MinIO release ${MINIO_RELEASE}, received: ${output.trim()}`);
+  }
+}
+
+export async function runMinioSmokeCli({
+  resolveDocker = resolveDockerCommand,
+  smoke = runMinioSmoke,
+  log = console.log,
+  reportError = console.error,
+} = {}) {
+  try {
+    const dockerCommand = await resolveDocker();
+    await smoke({ dockerCommand });
+    log(`MinIO smoke passed for ${MINIO_RELEASE}`);
+    return 0;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (error instanceof DockerClientNotFoundError) {
+      log(`SKIP: MinIO smoke unavailable: ${message}`);
+      return 0;
+    }
+    reportError(message);
+    return 1;
   }
 }
 
@@ -127,17 +153,5 @@ const entryPath = process.argv[1];
 const isMain = entryPath !== undefined && resolve(entryPath) === fileURLToPath(import.meta.url);
 
 if (isMain) {
-  try {
-    const dockerCommand = await resolveDockerCommand();
-    await runMinioSmoke({ dockerCommand });
-    console.log(`MinIO smoke passed for ${MINIO_RELEASE}`);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (message.startsWith("Unable to reach a Docker engine.")) {
-      console.log(`SKIP: MinIO smoke unavailable: ${message}`);
-    } else {
-      console.error(message);
-      process.exitCode = 1;
-    }
-  }
+  process.exitCode = await runMinioSmokeCli();
 }

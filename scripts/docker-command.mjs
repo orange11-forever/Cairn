@@ -6,6 +6,7 @@ const COMPOSE_INTERPOLATION_VARIABLES = [
   "POSTGRES_DB",
   "POSTGRES_USER",
   "POSTGRES_PASSWORD",
+  "CORS_ORIGINS",
   "CAIRN_MINIO_PORT",
   "CAIRN_MINIO_CONSOLE_PORT",
   "CAIRN_OBJECT_STORE_ACCESS_KEY",
@@ -35,9 +36,38 @@ function probeDocker(command, env) {
       shell: false,
       stdio: "ignore",
     });
-    child.once("error", () => resolve(false));
-    child.once("exit", (code) => resolve(code === 0));
+    child.once("error", (error) => {
+      if (error?.code === "ENOENT") {
+        resolve({ clientFound: false, engineReachable: false });
+        return;
+      }
+      resolve({ clientFound: true, engineReachable: false, error });
+    });
+    child.once("exit", (code) => {
+      resolve({ clientFound: true, engineReachable: code === 0 });
+    });
   });
+}
+
+export class DockerClientNotFoundError extends Error {
+  constructor(attempts) {
+    super(
+      `Docker client not found. Tried: ${attempts.join(", ")}. ` +
+        "Install Docker or set CAIRN_DOCKER_COMMAND to a Docker client.",
+    );
+    this.name = "DockerClientNotFoundError";
+  }
+}
+
+export class DockerEngineUnavailableError extends Error {
+  constructor(attempts, options = {}) {
+    super(
+      `Unable to reach a Docker engine. Tried: ${attempts.join(", ")}. ` +
+        "Start the Docker service or set CAIRN_DOCKER_COMMAND to a working Docker client.",
+      options,
+    );
+    this.name = "DockerEngineUnavailableError";
+  }
 }
 
 export async function resolveDockerCommand({
@@ -49,14 +79,24 @@ export async function resolveDockerCommand({
   const candidates = [env.CAIRN_DOCKER_COMMAND, native, "docker.exe"].filter(Boolean);
   const unique = [...new Set(candidates)];
   const attempts = [];
+  let clientFound = false;
+  let probeFailure;
   for (const candidate of unique) {
     attempts.push(candidate);
-    if (await probe(candidate)) return candidate;
+    try {
+      const outcome = await probe(candidate);
+      if (outcome === true) return candidate;
+      if (outcome === false) continue;
+      clientFound ||= outcome.clientFound;
+      if (outcome.engineReachable) return candidate;
+      probeFailure ??= outcome.error;
+    } catch (error) {
+      clientFound = true;
+      probeFailure ??= error;
+    }
   }
-  throw new Error(
-    `Unable to reach a Docker engine. Tried: ${attempts.join(", ")}. ` +
-      "Set CAIRN_DOCKER_COMMAND to a working Docker client.",
-  );
+  if (!clientFound) throw new DockerClientNotFoundError(attempts);
+  throw new DockerEngineUnavailableError(attempts, { cause: probeFailure });
 }
 
 export function dockerEnvironment({

@@ -8,6 +8,7 @@ from unittest.mock import Mock
 import pytest
 from cairn_api.app import create_app
 from cairn_api.db.session import Database
+from cairn_api.knowledge.object_store import ObjectStore, ObjectStoreUnavailable
 from cairn_api.logging import configure_app_logging
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -36,6 +37,36 @@ def test_uvicorn_leaves_proxy_headers_for_the_application_to_validate(
         log_level="info",
         proxy_headers=False,
     )
+
+
+def test_object_store_bootstrap_cli_uses_settings_origins_and_closes_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from cairn_api import __main__
+
+    store = Mock()
+    bootstrap = Mock(return_value=store)
+    settings = SimpleNamespace(cors_origins=["https://web.example"])
+    monkeypatch.setattr(__main__, "Settings", lambda: settings)
+    monkeypatch.setattr(__main__, "bootstrap_object_store", bootstrap)
+    monkeypatch.setattr(sys, "argv", ["cairn-api", "object-store-bootstrap"])
+
+    assert __main__.main() == 0
+    bootstrap.assert_called_once_with(settings, allowed_origins=settings.cors_origins)
+    store.close.assert_called_once_with()
+
+
+def test_upload_cleanup_cli_dispatches_maintenance_command(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from cairn_api import __main__
+
+    cleanup = Mock(return_value=0)
+    monkeypatch.setattr(__main__, "run_upload_cleanup_command", cleanup)
+    monkeypatch.setattr(sys, "argv", ["cairn-api", "upload-cleanup"])
+
+    assert __main__.main() == 0
+    cleanup.assert_called_once_with()
 
 
 @pytest.fixture
@@ -77,10 +108,33 @@ def test_openapi_contains_only_approved_paths(client: TestClient) -> None:
         "/api/v1/projects/{project_id}/acl",
         "/api/v1/projects/{project_id}/acl/{principal_type}/{principal_id}",
         "/api/v1/projects/{project_id}/events",
+        "/api/v1/projects/{project_id}/knowledge/uploads",
+        "/api/v1/projects/{project_id}/knowledge/uploads/{upload_id}/complete",
+        "/api/v1/projects/{project_id}/knowledge/batches/{batch_id}",
+        "/api/v1/projects/{project_id}/knowledge/resources",
+        "/api/v1/projects/{project_id}/knowledge/resources/{resource_id}",
+        "/api/v1/projects/{project_id}/knowledge/resources/{resource_id}/versions/{version_id}/retry",
+        "/api/v1/projects/{project_id}/knowledge/resources/{resource_id}/download",
+        "/api/v1/projects/{project_id}/knowledge/resources/{resource_id}/chunks/{chunk_id}",
         "/api/v1/projects/{project_id}/tasks",
         "/api/v1/tasks/{task_id}/status",
         "/api/v1/tasks/{task_id}/dependencies",
     }
+
+
+def test_openapi_ready_declares_success_and_dependency_failure_contracts() -> None:
+    operation = create_app().openapi()["paths"]["/ready"]["get"]
+
+    assert set(operation["responses"]) == {"200", "503"}
+    assert operation["responses"]["200"]["content"]["application/json"]["schema"][
+        "$ref"
+    ].endswith("/ReadyResponse")
+    assert operation["responses"]["503"]["content"]["application/json"]["schema"][
+        "$ref"
+    ].endswith("/ErrorBody")
+    for status_code in ("200", "503"):
+        request_id = operation["responses"][status_code]["headers"]["X-Request-ID"]
+        assert request_id["schema"] == {"type": "string"}
 
 
 def test_openapi_project_requests_forbid_identity_fields_and_bound_values() -> None:
@@ -129,6 +183,143 @@ def test_openapi_project_requests_forbid_identity_fields_and_bound_values() -> N
         assert operation["responses"]["403"]["content"]["application/json"]["schema"][
             "$ref"
         ].endswith("/ErrorBody")
+
+
+def test_openapi_knowledge_uploads_are_json_only_bounded_and_traced() -> None:
+    schema = create_app().openapi()
+    components = schema["components"]["schemas"]
+    request_schema = components["UploadBatchCreateRequest"]
+    intent_schema = components["UploadFileIntent"]
+    paths = schema["paths"]
+    create = paths["/api/v1/projects/{project_id}/knowledge/uploads"]["post"]
+    complete_path = paths["/api/v1/projects/{project_id}/knowledge/uploads/{upload_id}/complete"]
+
+    assert request_schema["additionalProperties"] is False
+    assert request_schema["properties"]["files"]["minItems"] == 1
+    assert request_schema["properties"]["files"]["maxItems"] == 20
+    assert intent_schema["additionalProperties"] is False
+    assert set(intent_schema["properties"]) == {
+        "fileName",
+        "mediaType",
+        "sizeBytes",
+        "sha256",
+    }
+    assert intent_schema["properties"]["fileName"]["maxLength"] == 255
+    assert intent_schema["properties"]["mediaType"]["maxLength"] == 127
+    assert intent_schema["properties"]["sizeBytes"]["exclusiveMinimum"] == 0
+    assert intent_schema["properties"]["sha256"]["pattern"] == "^[0-9a-f]{64}$"
+    assert set(create["requestBody"]["content"]) == {"application/json"}
+    assert set(complete_path) == {"post"}
+
+    for operation, success_status in ((create, "201"), (complete_path["post"], "200")):
+        csrf = next(
+            parameter
+            for parameter in operation["parameters"]
+            if parameter["name"] == "X-CSRF-Token"
+        )
+        assert csrf["required"] is True
+        assert "X-Request-ID" in operation["responses"][success_status]["headers"]
+        for error_status in ("401", "403", "404", "409", "410", "422", "500", "503"):
+            response = operation["responses"][error_status]
+            assert response["content"]["application/json"]["schema"]["$ref"].endswith("/ErrorBody")
+            assert "X-Request-ID" in response["headers"]
+
+
+def test_openapi_knowledge_resource_lifecycle_is_bounded_secured_and_traced() -> None:
+    schema = create_app().openapi()
+    paths = schema["paths"]
+    resources = paths["/api/v1/projects/{project_id}/knowledge/resources"]["get"]
+    detail_path = paths["/api/v1/projects/{project_id}/knowledge/resources/{resource_id}"]
+    retry = paths[
+        "/api/v1/projects/{project_id}/knowledge/resources/{resource_id}/versions/"
+        "{version_id}/retry"
+    ]["post"]
+    download = paths["/api/v1/projects/{project_id}/knowledge/resources/{resource_id}/download"][
+        "get"
+    ]
+
+    parameters = {parameter["name"]: parameter for parameter in resources["parameters"]}
+    assert parameters["cursor"]["schema"]["anyOf"][0] == {
+        "type": "string",
+        "maxLength": 2048,
+    }
+    assert parameters["limit"]["schema"] == {
+        "type": "integer",
+        "maximum": 100,
+        "minimum": 1,
+        "default": 50,
+        "title": "Limit",
+    }
+
+    operations = [
+        paths["/api/v1/projects/{project_id}/knowledge/batches/{batch_id}"]["get"],
+        resources,
+        detail_path["get"],
+        retry,
+        detail_path["delete"],
+        download,
+        paths["/api/v1/projects/{project_id}/knowledge/resources/{resource_id}/chunks/{chunk_id}"][
+            "get"
+        ],
+    ]
+    for operation in operations:
+        success_status = next(
+            code for code in ("200", "204", "307") if code in operation["responses"]
+        )
+        assert "X-Request-ID" in operation["responses"][success_status]["headers"]
+        assert operation["responses"][success_status]["headers"]["Cache-Control"] == {
+            "description": "防止受保护知识响应被浏览器或中间缓存保存",
+            "schema": {"type": "string", "const": "private, no-store"},
+        }
+        for error_status in ("401", "404", "422", "500", "503"):
+            response = operation["responses"][error_status]
+            assert response["content"]["application/json"]["schema"]["$ref"].endswith("/ErrorBody")
+            assert "X-Request-ID" in response["headers"]
+            assert response["headers"]["Cache-Control"] == {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {"type": "string", "const": "private, no-store"},
+            }
+
+    for operation in (retry, detail_path["delete"]):
+        csrf = next(
+            parameter
+            for parameter in operation["parameters"]
+            if parameter["name"] == "X-CSRF-Token"
+        )
+        assert csrf["required"] is True
+        assert "403" in operation["responses"]
+    assert "409" in retry["responses"]
+    assert "409" not in detail_path["delete"]["responses"]
+    for operation in (resources, detail_path["get"], download):
+        assert all(parameter["name"] != "X-CSRF-Token" for parameter in operation["parameters"])
+
+    assert download["responses"]["307"]["headers"]["Location"]["schema"] == {
+        "type": "string",
+        "format": "uri",
+    }
+    assert (
+        "objectKey" not in schema["components"]["schemas"]["KnowledgeVersionResponse"]["properties"]
+    )
+    resource_properties = schema["components"]["schemas"]["KnowledgeResourceResponse"][
+        "properties"
+    ]
+    assert "latestVersion" in resource_properties
+    assert "currentVersion" not in resource_properties
+
+
+def test_openapi_every_knowledge_response_declares_private_no_store() -> None:
+    paths = create_app().openapi()["paths"]
+    for path, path_item in paths.items():
+        if "/knowledge/" not in path:
+            continue
+        for method, operation in path_item.items():
+            if method not in {"get", "post", "delete"}:
+                continue
+            for response in operation["responses"].values():
+                assert response["headers"]["Cache-Control"] == {
+                    "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                    "schema": {"type": "string", "const": "private, no-store"},
+                }
 
 
 def test_openapi_project_events_declares_bounded_sse_read_contract() -> None:
@@ -245,30 +436,38 @@ def test_openapi_declares_logout_csrf_header() -> None:
 
 def test_health_does_not_touch_database() -> None:
     database = Mock(spec=Database)
+    object_store = Mock(spec=ObjectStore)
 
-    with TestClient(create_app(database=database)) as client:
+    with TestClient(create_app(database=database, object_store=object_store)) as client:
         response = client.get("/health")
 
     assert response.status_code == 200
     database.check_ready.assert_not_called()
+    object_store.check_ready.assert_not_called()
 
 
 def test_ready_reports_database_success() -> None:
     database = Mock(spec=Database)
+    object_store = Mock(spec=ObjectStore)
 
-    with TestClient(create_app(database=database)) as client:
+    with TestClient(create_app(database=database, object_store=object_store)) as client:
         response = client.get("/ready")
 
     assert response.status_code == 200
     assert response.json() == {"status": "ready"}
     database.check_ready.assert_called_once_with()
+    object_store.check_ready.assert_called_once_with()
 
 
 def test_ready_reports_database_failure_with_trace_id() -> None:
     database = Mock(spec=Database)
+    object_store = Mock(spec=ObjectStore)
     database.check_ready.side_effect = OperationalError("SELECT 1", {}, Exception("down"))
 
-    with TestClient(create_app(database=database), raise_server_exceptions=False) as client:
+    with TestClient(
+        create_app(database=database, object_store=object_store),
+        raise_server_exceptions=False,
+    ) as client:
         response = client.get("/ready")
 
     assert response.status_code == 503
@@ -277,13 +476,38 @@ def test_ready_reports_database_failure_with_trace_id() -> None:
     assert response.json()["traceId"] == response.headers["x-request-id"]
     assert "SELECT 1" not in response.text
     assert "down" not in response.text
+    object_store.check_ready.assert_not_called()
+
+
+def test_ready_reports_object_store_failure_with_trace_id() -> None:
+    database = Mock(spec=Database)
+    object_store = Mock(spec=ObjectStore)
+    object_store.check_ready.side_effect = ObjectStoreUnavailable()
+
+    with TestClient(
+        create_app(database=database, object_store=object_store),
+        raise_server_exceptions=False,
+    ) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "code": "object_store_unavailable",
+        "message": "对象存储暂时不可用",
+        "traceId": response.headers["x-request-id"],
+    }
+    database.check_ready.assert_called_once_with()
 
 
 def test_ready_does_not_normalize_programming_errors() -> None:
     database = Mock(spec=Database)
+    object_store = Mock(spec=ObjectStore)
     database.check_ready.side_effect = RuntimeError("programming mistake")
 
-    with TestClient(create_app(database=database), raise_server_exceptions=False) as client:
+    with TestClient(
+        create_app(database=database, object_store=object_store),
+        raise_server_exceptions=False,
+    ) as client:
         response = client.get("/ready")
 
     assert response.status_code == 500
@@ -292,11 +516,36 @@ def test_ready_does_not_normalize_programming_errors() -> None:
 
 def test_app_lifespan_disposes_database() -> None:
     database = Mock(spec=Database)
+    object_store = Mock(spec=ObjectStore)
 
-    with TestClient(create_app(database=database)):
+    with TestClient(create_app(database=database, object_store=object_store)):
         database.dispose.assert_not_called()
+        object_store.close.assert_not_called()
 
     database.dispose.assert_called_once_with()
+    object_store.close.assert_called_once_with()
+
+
+def test_app_lifespan_closes_object_store_when_database_disposal_fails() -> None:
+    database = Mock(spec=Database)
+    database.dispose.side_effect = RuntimeError("database dispose failed")
+    object_store = Mock(spec=ObjectStore)
+
+    with (
+        pytest.raises(RuntimeError, match="database dispose failed"),
+        TestClient(create_app(database=database, object_store=object_store)),
+    ):
+        pass
+
+    object_store.close.assert_called_once_with()
+
+
+def test_app_exposes_the_injected_object_store() -> None:
+    object_store = Mock(spec=ObjectStore)
+
+    application = create_app(object_store=object_store)
+
+    assert application.state.object_store is object_store
 
 
 def test_unknown_route_has_normalized_error_and_generated_request_id(
@@ -482,7 +731,37 @@ def test_internal_error_applies_configured_cors_and_preserves_request_id() -> No
     }
     assert response.headers["x-request-id"] == "req-cors-error-500"
     assert response.headers["access-control-allow-origin"] == origin
+    assert response.headers["access-control-expose-headers"].lower() == "x-request-id"
+    assert "location" not in response.headers["access-control-expose-headers"].lower()
     assert response.headers["access-control-allow-credentials"] == "true"
+
+
+@pytest.mark.parametrize(
+    ("path", "status_code"),
+    [
+        ("/_test/not-knowledge", 200),
+        ("/api/v1/projects/not-a-uuid/knowledge/resources", 401),
+        ("/api/v1/projects/not-a-uuid/knowledge/missing", 404),
+    ],
+)
+def test_only_knowledge_api_responses_are_forced_private_no_store(
+    path: str,
+    status_code: int,
+) -> None:
+    app = create_app()
+
+    @app.get("/_test/not-knowledge", include_in_schema=False)
+    def _public_probe() -> dict[str, bool]:  # pyright: ignore[reportUnusedFunction]
+        return {"ok": True}
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get(path)
+
+    assert response.status_code == status_code
+    if "/knowledge/" in path:
+        assert response.headers["cache-control"] == "private, no-store"
+    else:
+        assert "cache-control" not in response.headers
 
 
 def test_configured_cors_origin_handles_credentialed_preflight(
