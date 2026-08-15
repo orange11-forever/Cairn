@@ -127,6 +127,202 @@ export const componentSchemas = {
     "title": "ApiVersionResponse",
     "type": "object"
   },
+  "BatchDetailResponse": {
+    "properties": {
+      "completedAt": {
+        "anyOf": [
+          {
+            "format": "date-time",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Completedat"
+      },
+      "createdAt": {
+        "format": "date-time",
+        "title": "Createdat",
+        "type": "string"
+      },
+      "failedCount": {
+        "title": "Failedcount",
+        "type": "integer"
+      },
+      "id": {
+        "format": "uuid",
+        "title": "Id",
+        "type": "string"
+      },
+      "itemCount": {
+        "title": "Itemcount",
+        "type": "integer"
+      },
+      "items": {
+        "items": {
+          "$ref": "#/components/schemas/IngestionItemResponse"
+        },
+        "title": "Items",
+        "type": "array"
+      },
+      "readyCount": {
+        "title": "Readycount",
+        "type": "integer"
+      },
+      "status": {
+        "$ref": "#/components/schemas/IngestionBatchStatus"
+      }
+    },
+    "required": [
+      "id",
+      "status",
+      "itemCount",
+      "readyCount",
+      "failedCount",
+      "createdAt",
+      "completedAt",
+      "items"
+    ],
+    "title": "BatchDetailResponse",
+    "type": "object"
+  },
+  "ChunkContextResponse": {
+    "properties": {
+      "after": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ChunkResponse"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "before": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ChunkResponse"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "hit": {
+        "$ref": "#/components/schemas/ChunkResponse"
+      },
+      "resourceId": {
+        "format": "uuid",
+        "title": "Resourceid",
+        "type": "string"
+      },
+      "resourceVersionId": {
+        "format": "uuid",
+        "title": "Resourceversionid",
+        "type": "string"
+      }
+    },
+    "required": [
+      "resourceId",
+      "resourceVersionId",
+      "hit",
+      "before",
+      "after"
+    ],
+    "title": "ChunkContextResponse",
+    "type": "object"
+  },
+  "ChunkResponse": {
+    "properties": {
+      "id": {
+        "format": "uuid",
+        "title": "Id",
+        "type": "string"
+      },
+      "locator": {
+        "discriminator": {
+          "mapping": {
+            "csv": "#/components/schemas/CsvLocator",
+            "docx": "#/components/schemas/DocxLocator",
+            "html": "#/components/schemas/HtmlLocator",
+            "markdown": "#/components/schemas/TextLocator",
+            "pdf": "#/components/schemas/PdfLocator",
+            "pptx": "#/components/schemas/PptxLocator",
+            "text": "#/components/schemas/TextLocator",
+            "xlsx": "#/components/schemas/XlsxLocator"
+          },
+          "propertyName": "type"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/PdfLocator"
+          },
+          {
+            "$ref": "#/components/schemas/DocxLocator"
+          },
+          {
+            "$ref": "#/components/schemas/PptxLocator"
+          },
+          {
+            "$ref": "#/components/schemas/XlsxLocator"
+          },
+          {
+            "$ref": "#/components/schemas/CsvLocator"
+          },
+          {
+            "$ref": "#/components/schemas/HtmlLocator"
+          },
+          {
+            "$ref": "#/components/schemas/TextLocator"
+          }
+        ],
+        "title": "Locator"
+      },
+      "ordinal": {
+        "title": "Ordinal",
+        "type": "integer"
+      },
+      "text": {
+        "title": "Text",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "ordinal",
+      "text",
+      "locator"
+    ],
+    "title": "ChunkResponse",
+    "type": "object"
+  },
+  "CsvLocator": {
+    "properties": {
+      "rowEnd": {
+        "minimum": 1,
+        "title": "Rowend",
+        "type": "integer"
+      },
+      "rowStart": {
+        "minimum": 1,
+        "title": "Rowstart",
+        "type": "integer"
+      },
+      "type": {
+        "const": "csv",
+        "default": "csv",
+        "title": "Type",
+        "type": "string"
+      }
+    },
+    "required": [
+      "rowStart",
+      "rowEnd"
+    ],
+    "title": "CsvLocator",
+    "type": "object"
+  },
   "DependencyResponse": {
     "properties": {
       "createdAt": {
@@ -157,6 +353,52 @@ export const componentSchemas = {
       "createdAt"
     ],
     "title": "DependencyResponse",
+    "type": "object"
+  },
+  "DocxLocator": {
+    "properties": {
+      "headingPath": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Headingpath",
+        "type": "array"
+      },
+      "paragraph": {
+        "anyOf": [
+          {
+            "minimum": 1,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Paragraph"
+      },
+      "table": {
+        "anyOf": [
+          {
+            "minimum": 1,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Table"
+      },
+      "type": {
+        "const": "docx",
+        "default": "docx",
+        "title": "Type",
+        "type": "string"
+      }
+    },
+    "required": [
+      "headingPath"
+    ],
+    "title": "DocxLocator",
     "type": "object"
   },
   "ErrorBody": {
@@ -207,6 +449,34 @@ export const componentSchemas = {
     "title": "HealthResponse",
     "type": "object"
   },
+  "HtmlLocator": {
+    "properties": {
+      "block": {
+        "minimum": 1,
+        "title": "Block",
+        "type": "integer"
+      },
+      "headingPath": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Headingpath",
+        "type": "array"
+      },
+      "type": {
+        "const": "html",
+        "default": "html",
+        "title": "Type",
+        "type": "string"
+      }
+    },
+    "required": [
+      "headingPath",
+      "block"
+    ],
+    "title": "HtmlLocator",
+    "type": "object"
+  },
   "IdentityContextResponse": {
     "properties": {
       "csrfToken": {
@@ -230,6 +500,322 @@ export const componentSchemas = {
       "csrfToken"
     ],
     "title": "IdentityContextResponse",
+    "type": "object"
+  },
+  "IngestionBatchStatus": {
+    "enum": [
+      "pending",
+      "processing",
+      "completed",
+      "completed_with_errors",
+      "failed"
+    ],
+    "title": "IngestionBatchStatus",
+    "type": "string"
+  },
+  "IngestionItemResponse": {
+    "properties": {
+      "completedAt": {
+        "anyOf": [
+          {
+            "format": "date-time",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Completedat"
+      },
+      "createdAt": {
+        "format": "date-time",
+        "title": "Createdat",
+        "type": "string"
+      },
+      "errorCode": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Errorcode"
+      },
+      "errorDetail": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Errordetail"
+      },
+      "id": {
+        "format": "uuid",
+        "title": "Id",
+        "type": "string"
+      },
+      "mediaType": {
+        "title": "Mediatype",
+        "type": "string"
+      },
+      "normalizedPath": {
+        "title": "Normalizedpath",
+        "type": "string"
+      },
+      "parentItemId": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Parentitemid"
+      },
+      "resourceId": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Resourceid"
+      },
+      "resourceVersionId": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Resourceversionid"
+      },
+      "sizeBytes": {
+        "title": "Sizebytes",
+        "type": "integer"
+      },
+      "status": {
+        "$ref": "#/components/schemas/IngestionItemStatus"
+      }
+    },
+    "required": [
+      "id",
+      "parentItemId",
+      "normalizedPath",
+      "mediaType",
+      "sizeBytes",
+      "status",
+      "errorCode",
+      "errorDetail",
+      "resourceId",
+      "resourceVersionId",
+      "createdAt",
+      "completedAt"
+    ],
+    "title": "IngestionItemResponse",
+    "type": "object"
+  },
+  "IngestionItemStatus": {
+    "enum": [
+      "awaiting_upload",
+      "queued",
+      "processing",
+      "ready",
+      "failed"
+    ],
+    "title": "IngestionItemStatus",
+    "type": "string"
+  },
+  "KnowledgeCapabilities": {
+    "properties": {
+      "canWrite": {
+        "title": "Canwrite",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "canWrite"
+    ],
+    "title": "KnowledgeCapabilities",
+    "type": "object"
+  },
+  "KnowledgeResourcePage": {
+    "properties": {
+      "capabilities": {
+        "$ref": "#/components/schemas/KnowledgeCapabilities"
+      },
+      "items": {
+        "items": {
+          "$ref": "#/components/schemas/KnowledgeResourceResponse"
+        },
+        "title": "Items",
+        "type": "array"
+      },
+      "nextCursor": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Nextcursor"
+      }
+    },
+    "required": [
+      "items",
+      "nextCursor",
+      "capabilities"
+    ],
+    "title": "KnowledgeResourcePage",
+    "type": "object"
+  },
+  "KnowledgeResourceResponse": {
+    "properties": {
+      "createdAt": {
+        "format": "date-time",
+        "title": "Createdat",
+        "type": "string"
+      },
+      "id": {
+        "format": "uuid",
+        "title": "Id",
+        "type": "string"
+      },
+      "latestVersion": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/KnowledgeVersionResponse"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "sourceType": {
+        "title": "Sourcetype",
+        "type": "string"
+      },
+      "title": {
+        "title": "Title",
+        "type": "string"
+      },
+      "updatedAt": {
+        "format": "date-time",
+        "title": "Updatedat",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "title",
+      "sourceType",
+      "createdAt",
+      "updatedAt",
+      "latestVersion"
+    ],
+    "title": "KnowledgeResourceResponse",
+    "type": "object"
+  },
+  "KnowledgeVersionResponse": {
+    "properties": {
+      "createdAt": {
+        "format": "date-time",
+        "title": "Createdat",
+        "type": "string"
+      },
+      "errorCode": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Errorcode"
+      },
+      "id": {
+        "format": "uuid",
+        "title": "Id",
+        "type": "string"
+      },
+      "mediaType": {
+        "title": "Mediatype",
+        "type": "string"
+      },
+      "processingStartedAt": {
+        "anyOf": [
+          {
+            "format": "date-time",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Processingstartedat"
+      },
+      "readyAt": {
+        "anyOf": [
+          {
+            "format": "date-time",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Readyat"
+      },
+      "retryable": {
+        "default": false,
+        "title": "Retryable",
+        "type": "boolean"
+      },
+      "sha256": {
+        "title": "Sha256",
+        "type": "string"
+      },
+      "sizeBytes": {
+        "title": "Sizebytes",
+        "type": "integer"
+      },
+      "sourceType": {
+        "title": "Sourcetype",
+        "type": "string"
+      },
+      "status": {
+        "$ref": "#/components/schemas/ResourceVersionStatus"
+      }
+    },
+    "required": [
+      "id",
+      "sourceType",
+      "mediaType",
+      "sizeBytes",
+      "sha256",
+      "status",
+      "errorCode",
+      "createdAt",
+      "processingStartedAt",
+      "readyAt"
+    ],
+    "title": "KnowledgeVersionResponse",
     "type": "object"
   },
   "LoginRequest": {
@@ -386,6 +972,55 @@ export const componentSchemas = {
     "title": "OrganizationResponse",
     "type": "object"
   },
+  "PdfLocator": {
+    "properties": {
+      "page": {
+        "minimum": 1,
+        "title": "Page",
+        "type": "integer"
+      },
+      "type": {
+        "const": "pdf",
+        "default": "pdf",
+        "title": "Type",
+        "type": "string"
+      }
+    },
+    "required": [
+      "page"
+    ],
+    "title": "PdfLocator",
+    "type": "object"
+  },
+  "PptxLocator": {
+    "properties": {
+      "area": {
+        "enum": [
+          "body",
+          "notes"
+        ],
+        "title": "Area",
+        "type": "string"
+      },
+      "slide": {
+        "minimum": 1,
+        "title": "Slide",
+        "type": "integer"
+      },
+      "type": {
+        "const": "pptx",
+        "default": "pptx",
+        "title": "Type",
+        "type": "string"
+      }
+    },
+    "required": [
+      "slide",
+      "area"
+    ],
+    "title": "PptxLocator",
+    "type": "object"
+  },
   "PrincipalType": {
     "enum": [
       "org",
@@ -524,6 +1159,16 @@ export const componentSchemas = {
       "project"
     ],
     "title": "ResourceType",
+    "type": "string"
+  },
+  "ResourceVersionStatus": {
+    "enum": [
+      "queued",
+      "processing",
+      "ready",
+      "failed"
+    ],
+    "title": "ResourceVersionStatus",
     "type": "string"
   },
   "TaskCreateRequest": {
@@ -772,6 +1417,219 @@ export const componentSchemas = {
     "title": "TaskStatusUpdateRequest",
     "type": "object"
   },
+  "TextLocator": {
+    "properties": {
+      "headingPath": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Headingpath",
+        "type": "array"
+      },
+      "lineEnd": {
+        "minimum": 1,
+        "title": "Lineend",
+        "type": "integer"
+      },
+      "lineStart": {
+        "minimum": 1,
+        "title": "Linestart",
+        "type": "integer"
+      },
+      "type": {
+        "enum": [
+          "text",
+          "markdown"
+        ],
+        "title": "Type",
+        "type": "string"
+      }
+    },
+    "required": [
+      "type",
+      "lineStart",
+      "lineEnd"
+    ],
+    "title": "TextLocator",
+    "type": "object"
+  },
+  "UploadBatchCreateRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "files": {
+        "items": {
+          "$ref": "#/components/schemas/UploadFileIntent"
+        },
+        "maxItems": 20,
+        "minItems": 1,
+        "title": "Files",
+        "type": "array"
+      }
+    },
+    "required": [
+      "files"
+    ],
+    "title": "UploadBatchCreateRequest",
+    "type": "object"
+  },
+  "UploadBatchCreateResponse": {
+    "properties": {
+      "batchId": {
+        "format": "uuid",
+        "title": "Batchid",
+        "type": "string"
+      },
+      "uploads": {
+        "items": {
+          "$ref": "#/components/schemas/UploadInstruction"
+        },
+        "title": "Uploads",
+        "type": "array"
+      }
+    },
+    "required": [
+      "batchId",
+      "uploads"
+    ],
+    "title": "UploadBatchCreateResponse",
+    "type": "object"
+  },
+  "UploadCompleteResponse": {
+    "properties": {
+      "batchId": {
+        "format": "uuid",
+        "title": "Batchid",
+        "type": "string"
+      },
+      "itemId": {
+        "format": "uuid",
+        "title": "Itemid",
+        "type": "string"
+      },
+      "resourceId": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Resourceid"
+      },
+      "resourceVersionId": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Resourceversionid"
+      },
+      "status": {
+        "$ref": "#/components/schemas/IngestionItemStatus"
+      },
+      "uploadId": {
+        "format": "uuid",
+        "title": "Uploadid",
+        "type": "string"
+      }
+    },
+    "required": [
+      "uploadId",
+      "batchId",
+      "itemId",
+      "resourceId",
+      "resourceVersionId",
+      "status"
+    ],
+    "title": "UploadCompleteResponse",
+    "type": "object"
+  },
+  "UploadFileIntent": {
+    "additionalProperties": false,
+    "properties": {
+      "fileName": {
+        "maxLength": 255,
+        "minLength": 1,
+        "title": "Filename",
+        "type": "string"
+      },
+      "mediaType": {
+        "maxLength": 127,
+        "minLength": 1,
+        "title": "Mediatype",
+        "type": "string"
+      },
+      "sha256": {
+        "pattern": "^[0-9a-f]{64}$",
+        "title": "Sha256",
+        "type": "string"
+      },
+      "sizeBytes": {
+        "exclusiveMinimum": 0,
+        "title": "Sizebytes",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "fileName",
+      "mediaType",
+      "sizeBytes",
+      "sha256"
+    ],
+    "title": "UploadFileIntent",
+    "type": "object"
+  },
+  "UploadInstruction": {
+    "properties": {
+      "expiresAt": {
+        "format": "date-time",
+        "title": "Expiresat",
+        "type": "string"
+      },
+      "headers": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "title": "Headers",
+        "type": "object"
+      },
+      "itemId": {
+        "format": "uuid",
+        "title": "Itemid",
+        "type": "string"
+      },
+      "method": {
+        "const": "PUT",
+        "default": "PUT",
+        "title": "Method",
+        "type": "string"
+      },
+      "uploadId": {
+        "format": "uuid",
+        "title": "Uploadid",
+        "type": "string"
+      },
+      "url": {
+        "title": "Url",
+        "type": "string"
+      }
+    },
+    "required": [
+      "uploadId",
+      "itemId",
+      "url",
+      "headers",
+      "expiresAt"
+    ],
+    "title": "UploadInstruction",
+    "type": "object"
+  },
   "UserResponse": {
     "properties": {
       "displayName": {
@@ -801,6 +1659,30 @@ export const componentSchemas = {
       "displayName"
     ],
     "title": "UserResponse",
+    "type": "object"
+  },
+  "XlsxLocator": {
+    "properties": {
+      "cellRange": {
+        "title": "Cellrange",
+        "type": "string"
+      },
+      "sheet": {
+        "title": "Sheet",
+        "type": "string"
+      },
+      "type": {
+        "const": "xlsx",
+        "default": "xlsx",
+        "title": "Type",
+        "type": "string"
+      }
+    },
+    "required": [
+      "sheet",
+      "cellRange"
+    ],
+    "title": "XlsxLocator",
     "type": "object"
   }
 } as const;

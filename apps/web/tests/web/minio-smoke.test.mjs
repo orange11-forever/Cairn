@@ -3,8 +3,13 @@ import test from "node:test";
 
 import {
   MINIO_RELEASE,
+  runMinioSmokeCli,
   runMinioSmoke,
 } from "../../../../scripts/minio-smoke.mjs";
+import {
+  DockerClientNotFoundError,
+  DockerEngineUnavailableError,
+} from "../../../../scripts/docker-command.mjs";
 
 function commandResult(stdout = "") {
   return { stdout, stderr: "" };
@@ -140,3 +145,53 @@ test("MinIO smoke rejects a binary with development version metadata and cleans 
     "--remove-orphans",
   ]);
 });
+
+for (const version of [`${MINIO_RELEASE}-suffix`, `${MINIO_RELEASE.slice(0, -1)}X`]) {
+  test(`MinIO smoke rejects the near-match release token ${version}`, async () => {
+    const runCommand = async (_command, args) => {
+      if (args.includes("--version")) return commandResult(`minio version ${version}\n`);
+      return commandResult();
+    };
+
+    await assert.rejects(
+      runMinioSmoke({
+        projectName: "cairn-minio-smoke-near-match",
+        runCommand,
+      }),
+      /expected MinIO release/,
+    );
+  });
+}
+
+test("MinIO CLI skips only when no Docker client is installed", async () => {
+  const logs = [];
+  const exitCode = await runMinioSmokeCli({
+    resolveDocker: async () => {
+      throw new DockerClientNotFoundError(["docker", "docker.exe"]);
+    },
+    log: (message) => logs.push(message),
+    reportError: () => assert.fail("absent client must not report a failure"),
+  });
+
+  assert.equal(exitCode, 0);
+  assert.match(logs[0], /^SKIP: MinIO smoke unavailable:/);
+});
+
+for (const error of [
+  new DockerEngineUnavailableError(["docker"]),
+  new Error("Docker client probe failed: permission denied"),
+]) {
+  test(`MinIO CLI fails when Docker is present but unavailable: ${error.constructor.name}`, async () => {
+    const failures = [];
+    const exitCode = await runMinioSmokeCli({
+      resolveDocker: async () => {
+        throw error;
+      },
+      log: () => assert.fail("daemon/probe failure must not skip"),
+      reportError: (message) => failures.push(message),
+    });
+
+    assert.equal(exitCode, 1);
+    assert.deepEqual(failures, [error.message]);
+  });
+}

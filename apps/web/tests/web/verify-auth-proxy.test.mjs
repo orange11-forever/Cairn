@@ -19,6 +19,8 @@ test("production verification config uses HTTPS origins and a trusted loopback p
     CAIRN_VERIFY_API_PORT: "58099",
     CAIRN_VERIFY_WEB_PORT: "55099",
     CAIRN_VERIFY_PROXY_PORT: "58499",
+    CAIRN_OBJECT_STORE_ENDPOINT_URL: "http://127.0.0.1:59000",
+    CAIRN_OBJECT_STORE_PUBLIC_ENDPOINT_URL: "http://127.0.0.1:59000",
   }, { projectName: "cairn-verify-fixed-deadbeef" });
 
   assert.equal(config.proxyOrigin, "https://localhost:58499");
@@ -34,6 +36,14 @@ test("production verification config uses HTTPS origins and a trusted loopback p
   assert.equal(
     config.environment.CAIRN_OBJECT_STORE_SECRET_KEY,
     "proxy-verification-object-store-secret",
+  );
+  assert.equal(
+    config.environment.CAIRN_OBJECT_STORE_ENDPOINT_URL,
+    "http://127.0.0.1:59000",
+  );
+  assert.equal(
+    config.environment.CAIRN_OBJECT_STORE_PUBLIC_ENDPOINT_URL,
+    "https://objects.cairn.invalid",
   );
   assert.equal(config.environment.EMBEDDING_API_KEY, "proxy-verification-embedding-key");
   assert.ok(Buffer.byteLength(config.environment.CAIRN_SEARCH_AUDIT_SECRET, "utf8") >= 32);

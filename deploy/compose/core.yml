@@ -33,6 +33,7 @@ services:
     environment:
       MINIO_ROOT_USER: "${CAIRN_OBJECT_STORE_ACCESS_KEY:-cairn-local}"
       MINIO_ROOT_PASSWORD: "${CAIRN_OBJECT_STORE_SECRET_KEY:-cairn-local-only-change-before-deploying}"
+      MINIO_API_CORS_ALLOW_ORIGIN: "${CORS_ORIGINS:-http://localhost:5500}"
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://127.0.0.1:9000/minio/health/live"]
       interval: 2s

@@ -37,12 +37,37 @@ const TASKS = Object.freeze({
     ["run", "--package", "cairn-api", "alembic", "-c", "apps/api/alembic.ini", "upgrade", "head"],
   ],
   "db:seed": [UV, ["run", "--package", "cairn-api", "python", "-m", "cairn_api.seed"]],
+  "dev:worker": ["uv", ["run", "--package", "cairn-worker", "cairn-worker", "serve"]],
+  "worker:once": ["uv", ["run", "--package", "cairn-worker", "cairn-worker", "--once"]],
+  "worker:preflight": [
+    "uv",
+    ["run", "--package", "cairn-worker", "cairn-worker", "preflight"],
+  ],
+  "test:worker": [
+    "uv",
+    ["run", "--package", "cairn-worker", "pytest", "apps/worker/tests", "-q"],
+  ],
+  "lint:worker": [
+    "uv",
+    ["run", "--package", "cairn-worker", "ruff", "check", "apps/worker/src", "apps/worker/tests"],
+  ],
+  "typecheck:worker": ["uv", ["run", "--package", "cairn-worker", "pyright"]],
   "infra:up": [process.execPath, ["scripts/infra.mjs", "up"]],
   "verify:core": [process.execPath, ["scripts/verify-core.mjs"]],
 });
 
-export function runTask(taskName) {
+export function taskInvocation(taskName, platform = process.platform) {
   const task = TASKS[taskName];
+  if (task === undefined) return undefined;
+  const [command, args] = task;
+  if (command === "uv" || command === "uv.exe") {
+    return [platform === "win32" ? "uv.exe" : "uv", [...args]];
+  }
+  return [command, [...args]];
+}
+
+export function runTask(taskName) {
+  const task = taskInvocation(taskName);
   if (task === undefined) {
     console.error(`Unknown task: ${taskName}`);
     return Promise.resolve(2);

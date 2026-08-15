@@ -12,6 +12,7 @@ const COMPOSE_FILE = resolve(REPOSITORY_ROOT, "deploy/compose/core.yml");
 const UV = process.platform === "win32" ? "uv.exe" : "uv";
 const NEVER = new Promise(() => undefined);
 const STAGES = Object.freeze([
+  "object-store-bootstrap",
   "minio",
   "migrate",
   "integration",
@@ -47,12 +48,19 @@ export function resolveVerificationConfig(
     throw new Error("verification project must match ^cairn-(verify|test)-[a-z0-9-]+$");
   }
   const databasePort = readPort(environment, "CAIRN_VERIFY_POSTGRES_PORT", 55436);
+  const minioPort = readPort(environment, "CAIRN_VERIFY_MINIO_PORT", 59000);
+  const minioConsolePort = readPort(
+    environment,
+    "CAIRN_VERIFY_MINIO_CONSOLE_PORT",
+    59001,
+  );
   const apiPort = readPort(environment, "CAIRN_VERIFY_API_PORT", 58080);
   const webPort = readPort(environment, "CAIRN_VERIFY_WEB_PORT", 55500);
   const mockPort = readPort(environment, "CAIRN_VERIFY_MOCK_PORT", 58787);
   const proxyPort = readPort(environment, "CAIRN_VERIFY_PROXY_PORT", 58443);
   const databaseUrl =
     `postgresql+psycopg://cairn:cairn-local-only@127.0.0.1:${databasePort}/cairn_test`;
+  const objectStoreEndpoint = `http://127.0.0.1:${minioPort}`;
   const apiOrigin = `http://localhost:${apiPort}`;
   const webOrigin = `http://localhost:${webPort}`;
   const mockOrigin = `http://localhost:${mockPort}`;
@@ -66,6 +74,8 @@ export function resolveVerificationConfig(
     CAIRN_CSRF_SECRET: "proxy-verification-csrf-secret-at-least-32-bytes",
     CAIRN_ENVIRONMENT: "production",
     CAIRN_OBJECT_STORE_ACCESS_KEY: "proxy-verification-object-store-access",
+    CAIRN_OBJECT_STORE_ENDPOINT_URL: objectStoreEndpoint,
+    CAIRN_OBJECT_STORE_PUBLIC_ENDPOINT_URL: objectStoreEndpoint,
     CAIRN_OBJECT_STORE_SECRET_KEY: "proxy-verification-object-store-secret",
     CAIRN_SEARCH_AUDIT_SECRET: "proxy-verification-search-audit-secret-at-least-32-bytes",
     CAIRN_SESSION_COOKIE_SECURE: "true",
@@ -78,6 +88,8 @@ export function resolveVerificationConfig(
   return {
     projectName,
     databasePort,
+    minioPort,
+    minioConsolePort,
     apiPort,
     webPort,
     mockPort,
@@ -96,14 +108,24 @@ export function resolveVerificationConfig(
       CAIRN_CSRF_SECRET: "test-only-csrf-secret-with-at-least-32-bytes",
       CAIRN_ENVIRONMENT: "test",
       CAIRN_HTTP_PORT: String(apiPort),
+      CAIRN_MINIO_CONSOLE_PORT: String(minioConsolePort),
+      CAIRN_MINIO_PORT: String(minioPort),
+      CAIRN_OBJECT_STORE_ACCESS_KEY: "proxy-verification-object-store-access",
+      CAIRN_OBJECT_STORE_ENDPOINT_URL: objectStoreEndpoint,
+      CAIRN_OBJECT_STORE_PUBLIC_ENDPOINT_URL: objectStoreEndpoint,
+      CAIRN_OBJECT_STORE_SECRET_KEY: "proxy-verification-object-store-secret",
       CAIRN_POSTGRES_PORT: String(databasePort),
       CAIRN_SESSION_COOKIE_SECURE: "false",
       CAIRN_TEST_DATABASE_URL: databaseUrl,
+      CAIRN_TEST_CORS_ORIGIN: webOrigin,
+      CAIRN_TEST_S3_ENDPOINT_URL: objectStoreEndpoint,
       CAIRN_VERIFY_API_PORT: String(apiPort),
       CAIRN_VERIFY_IDENTITY_ORIGIN: apiOrigin,
       CAIRN_VERIFY_MOCK_PORT: String(mockPort),
       CAIRN_VERIFY_PROXY_PORT: String(proxyPort),
       CAIRN_VERIFY_POSTGRES_PORT: String(databasePort),
+      CAIRN_VERIFY_MINIO_CONSOLE_PORT: String(minioConsolePort),
+      CAIRN_VERIFY_MINIO_PORT: String(minioPort),
       CAIRN_VERIFY_WEB_PORT: String(webPort),
       CORS_ORIGINS: webOrigin,
       DATABASE_URL: databaseUrl,
@@ -191,6 +213,13 @@ export function createStageRunner(config, processManager) {
     );
 
   return async (stage) => {
+    if (stage === "object-store-bootstrap") {
+      return processManager.run(
+        UV,
+        ["run", "--package", "cairn-api", "cairn-api", "object-store-bootstrap"],
+        { env: config.environment },
+      );
+    }
     if (stage === "minio") {
       return processManager.run(
         process.execPath,
@@ -251,6 +280,63 @@ export function createStageRunner(config, processManager) {
   };
 }
 
+export function createShutdownController({
+  processManager,
+  compose,
+  projectName,
+  reportError = console.error,
+}) {
+  let resolveTermination;
+  let requested = false;
+  let shutdownPromise;
+  const termination = new Promise((resolvePromise) => {
+    resolveTermination = resolvePromise;
+  });
+
+  return {
+    termination,
+    request(signal) {
+      if (requested) return;
+      requested = true;
+      resolveTermination({ requested: true, signal });
+    },
+    shutdown(api) {
+      shutdownPromise ??= (async () => {
+        let exitCode = 0;
+        if (api !== null) {
+          try {
+            await api.stop();
+          } catch (error) {
+            reportError(`Failed to stop verification API: ${String(error)}`);
+            exitCode = 1;
+          }
+        }
+        try {
+          await processManager.stopAll();
+        } catch (error) {
+          reportError(`Failed to stop verification children: ${String(error)}`);
+          exitCode = 1;
+        }
+        try {
+          const cleanupCode = await compose([
+            "-p",
+            projectName,
+            "down",
+            "--volumes",
+            "--remove-orphans",
+          ]);
+          if (cleanupCode !== 0) exitCode = cleanupCode;
+        } catch (error) {
+          reportError(`Failed to clean verification Compose project: ${String(error)}`);
+          exitCode = 1;
+        }
+        return exitCode;
+      })();
+      return shutdownPromise;
+    },
+  };
+}
+
 async function waitForManagedApi(api, readyUrl, waitForUrl) {
   const result = await Promise.race([
     waitForUrl(readyUrl).then(() => ({ ready: true })),
@@ -272,7 +358,14 @@ export async function runCoreVerification(options = {}) {
   const run = options.run ?? createStageRunner(config, processManager);
   const waitForUrl = options.waitForUrl ?? waitForServer;
   const reportError = options.reportError ?? console.error;
-  const termination = options.termination ?? NEVER;
+  const shutdown = options.shutdown ?? createShutdownController({
+    processManager,
+    compose,
+    projectName: config.projectName,
+    reportError,
+  });
+  const termination = options.termination ?? shutdown.termination ?? NEVER;
+  const signals = options.handleSignals ? installSignalHandlers(shutdown) : null;
   let api = null;
   let exitCode = 0;
 
@@ -282,8 +375,10 @@ export async function runCoreVerification(options = {}) {
       config.projectName,
       "up",
       "-d",
+      "--build",
       "--wait",
       "postgres",
+      "minio",
     ]);
     if (exitCode === 0) {
       for (const stage of STAGES) {
@@ -308,47 +403,20 @@ export async function runCoreVerification(options = {}) {
     reportError(error instanceof Error ? error.message : String(error));
     exitCode = 1;
   } finally {
-    if (api !== null) {
-      try {
-        await api.stop();
-      } catch (error) {
-        reportError(`Failed to stop verification API: ${String(error)}`);
-        exitCode = 1;
-      }
-    }
-    await processManager.stopAll();
-    const cleanupCode = await compose([
-      "-p",
-      config.projectName,
-      "down",
-      "--volumes",
-      "--remove-orphans",
-    ]);
+    const cleanupCode = await shutdown.shutdown(api);
     if (cleanupCode !== 0) exitCode = cleanupCode;
+    signals?.dispose();
   }
 
   return exitCode;
 }
 
-function installSignalHandlers(processManager) {
-  let requested = false;
-  let resolveTermination;
-  const termination = new Promise((resolvePromise) => {
-    resolveTermination = resolvePromise;
-  });
-  const onSignal = (signal) => {
-    if (requested) return;
-    requested = true;
-    void processManager.stopAll().finally(() => {
-      resolveTermination({ requested: true, signal });
-    });
-  };
-  const onInterrupt = () => onSignal("SIGINT");
-  const onTerminate = () => onSignal("SIGTERM");
+function installSignalHandlers(shutdown) {
+  const onInterrupt = () => shutdown.request("SIGINT");
+  const onTerminate = () => shutdown.request("SIGTERM");
   process.on("SIGINT", onInterrupt);
   process.on("SIGTERM", onTerminate);
   return {
-    termination,
     dispose() {
       process.removeListener("SIGINT", onInterrupt);
       process.removeListener("SIGTERM", onTerminate);
@@ -361,10 +429,8 @@ const isMain = entryPath !== undefined && resolve(entryPath) === fileURLToPath(i
 
 if (isMain) {
   const processManager = createProcessManager();
-  const signals = installSignalHandlers(processManager);
   process.exitCode = await runCoreVerification({
     processManager,
-    termination: signals.termination,
+    handleSignals: true,
   });
-  signals.dispose();
 }

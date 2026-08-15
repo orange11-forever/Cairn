@@ -5,6 +5,19 @@ from cairn_api.audit.models import AuditLog
 from cairn_api.auth.models import AuthSession, User
 from cairn_api.authorization.models import ResourceAclEntry
 from cairn_api.db.base import Base
+from cairn_api.knowledge.models import (
+    ChunkEmbedding,
+    EmbeddingProfile,
+    IngestionBatch,
+    IngestionItem,
+    IngestionJob,
+    IngestionJobAttempt,
+    KnowledgeChunk,
+    KnowledgeResource,
+    KnowledgeResourceVersion,
+    SearchRateLimitBucket,
+    UploadSession,
+)
 from cairn_api.organizations.models import Membership, Organization
 from cairn_api.projects.models import (
     Milestone,
@@ -28,6 +41,15 @@ target_metadata = Base.metadata
 _MAPPED_TYPES = (
     AuditLog,
     AuthSession,
+    ChunkEmbedding,
+    EmbeddingProfile,
+    IngestionBatch,
+    IngestionItem,
+    IngestionJob,
+    IngestionJobAttempt,
+    KnowledgeChunk,
+    KnowledgeResource,
+    KnowledgeResourceVersion,
     Membership,
     Milestone,
     Organization,
@@ -35,9 +57,11 @@ _MAPPED_TYPES = (
     Project,
     ProjectStage,
     ResourceAclEntry,
+    SearchRateLimitBucket,
     Task,
     TaskDependency,
     User,
+    UploadSession,
 )
 
 
