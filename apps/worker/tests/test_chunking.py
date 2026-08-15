@@ -292,13 +292,43 @@ def test_repeated_chunking_is_equal_with_sequential_zero_based_ordinals() -> Non
     assert [chunk.ordinal for chunk in first] == [0, 1]
 
 
-def test_chunk_output_limit_raises_a_permanent_bounded_failure(
+def test_chunk_output_limit_allows_exactly_the_configured_number_of_drafts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Break caught: adversarial overlap must not create unbounded indexing work."""
+    """Break caught: the safety limit must remain an inclusive output boundary."""
     monkeypatch.setattr(chunking_module, "MAX_CHUNKS_PER_DOCUMENT", 2)
     locator = TextLocator(type="text", headingPath=[], lineStart=1, lineEnd=1)
-    source_text = "secretxy"
+
+    chunks = build_chunks(
+        [ParsedBlock(kind=BlockKind.TEXT, text="abcdef", locator=locator)],
+        ChunkingConfig(max_codepoints=3, overlap_codepoints=0),
+    )
+
+    assert chunks == [
+        ChunkDraft(
+            ordinal=0,
+            kind=BlockKind.TEXT,
+            text="abc",
+            normalized_text="abc",
+            locator=locator,
+        ),
+        ChunkDraft(
+            ordinal=1,
+            kind=BlockKind.TEXT,
+            text="def",
+            normalized_text="def",
+            locator=locator,
+        ),
+    ]
+
+
+def test_chunk_output_limit_rejects_the_next_draft_with_permanent_bounded_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Break caught: a third draft must become a bounded permanent failure."""
+    monkeypatch.setattr(chunking_module, "MAX_CHUNKS_PER_DOCUMENT", 2)
+    locator = TextLocator(type="text", headingPath=[], lineStart=1, lineEnd=1)
+    source_text = "secretx"
 
     with pytest.raises(WorkerFailure) as caught:
         build_chunks(
