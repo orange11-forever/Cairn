@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from cairn_api.settings import Settings
 
 MAX_EMBEDDING_RESPONSE_BYTES = 2 * 1024 * 1024
+_MAX_RETRY_AFTER_SECONDS = str(timedelta.max.days * 86_400 + timedelta.max.seconds)
 
 
 class EmbeddingClient(Protocol):
@@ -34,11 +35,12 @@ def _retry_after(error: HTTPError) -> timedelta | None:
     value = error.headers.get("Retry-After")
     if value is None or not value.isascii() or not value.isdecimal():
         return None
-    seconds = int(value)
-    try:
-        return timedelta(seconds=seconds)
-    except OverflowError:
+    normalized = value.lstrip("0") or "0"
+    if len(normalized) > len(_MAX_RETRY_AFTER_SECONDS) or (
+        len(normalized) == len(_MAX_RETRY_AFTER_SECONDS) and normalized > _MAX_RETRY_AFTER_SECONDS
+    ):
         return timedelta.max
+    return timedelta(seconds=int(normalized))
 
 
 def _parse_vector(value: object, dimensions: int) -> list[float]:

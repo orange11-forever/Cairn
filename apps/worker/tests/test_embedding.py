@@ -212,11 +212,17 @@ def test_embed_translates_transport_failures_without_secrets(error: Exception) -
 @pytest.mark.parametrize(
     ("header", "expected"),
     [
-        ("17", timedelta(seconds=17)),
-        ("0", timedelta(0)),
-        ("-1", None),
-        ("tomorrow", None),
-        ("9" * 100, timedelta.max),
+        pytest.param("17", timedelta(seconds=17), id="seconds"),
+        pytest.param("0", timedelta(0), id="zero"),
+        pytest.param("-1", None, id="negative"),
+        pytest.param("tomorrow", None, id="date-token"),
+        pytest.param("9" * 100, timedelta.max, id="over-timedelta-100-digits"),
+        pytest.param("9" * 5000, timedelta.max, id="over-python-int-limit"),
+        pytest.param(
+            "0" * 5000 + "17",
+            timedelta(seconds=17),
+            id="long-leading-zero-small-value",
+        ),
     ],
 )
 def test_embed_honors_only_nonnegative_delta_retry_after(
@@ -237,7 +243,11 @@ def test_embed_honors_only_nonnegative_delta_retry_after(
     with pytest.raises(WorkerFailure) as raised:
         client.embed(["private source text"])
 
-    assert raised.value.retry_after == expected
+    assert (raised.value.code, raised.value.retryable, raised.value.retry_after) == (
+        "embedding_unavailable",
+        True,
+        expected,
+    )
     assert "provider-secret-token" not in repr(raised.value)
     assert "private source text" not in repr(raised.value)
 
