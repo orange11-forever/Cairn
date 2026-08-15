@@ -2,7 +2,7 @@ import hashlib
 import json
 from collections.abc import Generator, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any, BinaryIO, Self, cast
 from uuid import UUID, uuid4
@@ -38,9 +38,9 @@ from cairn_worker.indexing import (
     build_index_handler,
     handle_index_resource_version,
 )
-from cairn_worker.leases import ClaimedJob
+from cairn_worker.leases import ClaimedJob, claim_next_job
 from cairn_worker.runner import run_once
-from sqlalchemy import Engine, func, select
+from sqlalchemy import Engine, delete, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from .conftest import seed_job
@@ -426,6 +426,289 @@ def test_success_atomically_replaces_target_facts_and_publishes_exact_version(
 
 
 @pytest.mark.integration
+def test_matching_chunks_are_reused_without_deleting_another_profile_embeddings(
+    migrated_engine: Engine,
+) -> None:
+    """Break caught: refreshing one Profile must preserve another Profile's vector facts."""
+    seed = _seed(migrated_engine)
+    chunk_ids = [uuid4(), uuid4(), uuid4()]
+    other_profile_id = uuid4()
+    other_embedding_ids = [uuid4(), uuid4(), uuid4()]
+    locator: dict[str, object] = {
+        "type": "text",
+        "headingPath": [],
+        "lineStart": 1,
+        "lineEnd": 1,
+    }
+    with Session(migrated_engine) as session, session.begin():
+        active_profile = session.get(EmbeddingProfile, seed.profile_id)
+        assert active_profile is not None
+        session.execute(
+            delete(KnowledgeChunk).where(
+                KnowledgeChunk.resource_version_id == seed.target_version_id
+            )
+        )
+        other_profile = EmbeddingProfile(
+            id=other_profile_id,
+            org_id=seed.org_id,
+            provider_key="historical-provider",
+            model="historical-model",
+            dimensions=1024,
+            distance_metric="cosine",
+            chunking_config={"maxCodepoints": 8, "overlapCodepoints": 0},
+            index_config={"strategy": "exact", "candidateLimit": 50},
+            version="historical-v1",
+            status=EmbeddingProfileStatus.INACTIVE,
+        )
+        session.add(other_profile)
+        chunks = [
+            KnowledgeChunk(
+                id=chunk_id,
+                org_id=seed.org_id,
+                project_id=seed.project_id,
+                resource_id=seed.resource_id,
+                resource_version_id=seed.target_version_id,
+                ordinal=ordinal,
+                kind="text",
+                text=text,
+                normalized_text=text.lower(),
+                locator=locator,
+            )
+            for ordinal, (chunk_id, text) in enumerate(
+                zip(chunk_ids, ["Alpha", "beta", "gamma"], strict=True)
+            )
+        ]
+        session.add_all(chunks)
+        session.flush()
+        for ordinal, chunk in enumerate(chunks):
+            session.add_all(
+                [
+                    ChunkEmbedding(
+                        org_id=seed.org_id,
+                        project_id=seed.project_id,
+                        resource_id=seed.resource_id,
+                        resource_version_id=seed.target_version_id,
+                        chunk_id=chunk.id,
+                        embedding_profile_scope_org_id=active_profile.scope_org_id,
+                        embedding_profile_id=active_profile.id,
+                        embedding=[8.0] * 1024,
+                    ),
+                    ChunkEmbedding(
+                        id=other_embedding_ids[ordinal],
+                        org_id=seed.org_id,
+                        project_id=seed.project_id,
+                        resource_id=seed.resource_id,
+                        resource_version_id=seed.target_version_id,
+                        chunk_id=chunk.id,
+                        embedding_profile_scope_org_id=other_profile.scope_org_id,
+                        embedding_profile_id=other_profile.id,
+                        embedding=[7.0] * 1024,
+                    ),
+                ]
+            )
+
+    assert _run(migrated_engine, seed, _Store(), _Embedding())
+
+    with Session(migrated_engine) as session:
+        chunks = list(
+            session.scalars(
+                select(KnowledgeChunk)
+                .where(KnowledgeChunk.resource_version_id == seed.target_version_id)
+                .order_by(KnowledgeChunk.ordinal)
+            )
+        )
+        active_vectors = list(
+            session.scalars(
+                select(ChunkEmbedding).where(
+                    ChunkEmbedding.resource_version_id == seed.target_version_id,
+                    ChunkEmbedding.embedding_profile_id == seed.profile_id,
+                )
+            )
+        )
+        historical_vectors = list(
+            session.scalars(
+                select(ChunkEmbedding).where(
+                    ChunkEmbedding.resource_version_id == seed.target_version_id,
+                    ChunkEmbedding.embedding_profile_id == other_profile_id,
+                )
+            )
+        )
+        assert [chunk.id for chunk in chunks] == chunk_ids
+        assert len(active_vectors) == 3
+        assert {vector.id for vector in historical_vectors} == set(other_embedding_ids)
+        assert all(vector.embedding == [7.0] * 1024 for vector in historical_vectors)
+
+
+@pytest.mark.integration
+def test_changed_chunks_reject_without_deleting_another_profile_embeddings(
+    migrated_engine: Engine,
+) -> None:
+    """Break caught: incompatible re-chunking must not cascade-delete historical vectors."""
+    seed = _seed(migrated_engine)
+    other_profile_id = uuid4()
+    other_embedding_id = uuid4()
+    with Session(migrated_engine) as session, session.begin():
+        session.add(
+            EmbeddingProfile(
+                id=other_profile_id,
+                org_id=seed.org_id,
+                provider_key="historical-provider",
+                model="historical-model",
+                dimensions=1024,
+                distance_metric="cosine",
+                chunking_config={"maxCodepoints": 16, "overlapCodepoints": 0},
+                index_config={"strategy": "exact", "candidateLimit": 50},
+                version="historical-v1",
+                status=EmbeddingProfileStatus.INACTIVE,
+            )
+        )
+        session.flush()
+        historical = session.get(EmbeddingProfile, other_profile_id)
+        assert historical is not None
+        session.add(
+            ChunkEmbedding(
+                id=other_embedding_id,
+                org_id=seed.org_id,
+                project_id=seed.project_id,
+                resource_id=seed.resource_id,
+                resource_version_id=seed.target_version_id,
+                chunk_id=seed.stale_chunk_id,
+                embedding_profile_scope_org_id=historical.scope_org_id,
+                embedding_profile_id=historical.id,
+                embedding=[7.0] * 1024,
+            )
+        )
+    embedding = _Embedding()
+
+    assert _run(migrated_engine, seed, _Store(), embedding)
+
+    with Session(migrated_engine) as session:
+        resource = session.get(KnowledgeResource, seed.resource_id)
+        version = session.get(KnowledgeResourceVersion, seed.target_version_id)
+        item = session.get(IngestionItem, seed.item_id)
+        job = session.get(IngestionJob, seed.job_id)
+        historical = session.get(ChunkEmbedding, other_embedding_id)
+        assert resource is not None and resource.current_version_id == seed.old_version_id
+        assert version is not None and version.status == ResourceVersionStatus.FAILED
+        assert version.error_code == "parser_failed"
+        assert item is not None and item.status == IngestionItemStatus.FAILED
+        assert job is not None and job.status == IngestionJobStatus.FAILED
+        assert job.attempt == 1 and job.last_error_code == "parser_failed"
+        assert session.get(KnowledgeChunk, seed.stale_chunk_id) is not None
+        assert historical is not None and historical.embedding == [7.0] * 1024
+        assert embedding.calls == []
+        assert session.scalar(select(func.count(AuditLog.id))) == 1
+        assert session.scalar(select(func.count(OutboxEvent.id))) == 1
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("invalid_boundary", ["org", "project", "target", "profile"])
+def test_claim_boundary_mismatch_fails_before_external_work(
+    migrated_engine: Engine,
+    invalid_boundary: str,
+) -> None:
+    """Break caught: claim and Profile scope must be exact before object or Provider calls."""
+    seed = _seed(migrated_engine)
+    claim = ClaimedJob(
+        job_id=seed.job_id,
+        attempt_id=uuid4(),
+        org_id=seed.org_id,
+        project_id=seed.project_id,
+        job_kind=JobKind.INDEX_RESOURCE_VERSION,
+        target_id=seed.target_version_id,
+        lease_owner="worker-a:1",
+        lease_expires_at=seed.now + timedelta(minutes=5),
+    )
+    if invalid_boundary == "org":
+        claim = replace(claim, org_id=uuid4())
+    elif invalid_boundary == "project":
+        claim = replace(claim, project_id=uuid4())
+    elif invalid_boundary == "target":
+        claim = replace(claim, target_id=uuid4())
+    else:
+        with Session(migrated_engine) as session, session.begin():
+            job = session.get(IngestionJob, seed.job_id)
+            assert job is not None
+            job.profile_version = "wrong-profile"
+    store = _Store()
+    embedding = _Embedding()
+
+    with Session(migrated_engine) as session, pytest.raises(WorkerFailure) as raised:
+        handle_index_resource_version(
+            claim,
+            IndexingContext(
+                session=session,
+                heartbeat=_Heartbeat(),
+                object_store=store,
+                embedding_client=embedding,
+                now=lambda: seed.now,
+            ),
+        )
+
+    assert raised.value.code == "parser_failed"
+    assert store.opens == 0
+    assert embedding.calls == []
+
+
+@pytest.mark.integration
+def test_expired_index_lease_is_reclaimed_and_publishes_once(
+    migrated_engine: Engine,
+) -> None:
+    """Break caught: reclaim must finish one exact index without duplicate publication facts."""
+    seed = _seed(migrated_engine)
+    factory = sessionmaker(migrated_engine, expire_on_commit=False)
+    with Session(migrated_engine) as session, session.begin():
+        first = claim_next_job(session, worker_id="worker-stale:1", now=seed.now)
+    assert first is not None and first.job_id == seed.job_id
+    reclaim_at = seed.now + timedelta(minutes=5)
+    embedding = _Embedding()
+    index_handler = build_index_handler(_Store(), embedding, lambda: reclaim_at)
+
+    assert run_once(
+        session_factory=factory,
+        worker_id="worker-reclaimer:1",
+        handlers={
+            JobKind.INDEX_RESOURCE_VERSION: index_handler,
+            JobKind.EXPAND_ARCHIVE: lambda _session, _claim, _heartbeat: None,
+        },
+        now=lambda: reclaim_at,
+        heartbeat_factory=_Heartbeat,
+    )
+
+    with Session(migrated_engine) as session:
+        chunks = list(
+            session.scalars(
+                select(KnowledgeChunk)
+                .where(KnowledgeChunk.resource_version_id == seed.target_version_id)
+                .order_by(KnowledgeChunk.ordinal)
+            )
+        )
+        vectors = list(
+            session.scalars(
+                select(ChunkEmbedding).where(
+                    ChunkEmbedding.resource_version_id == seed.target_version_id
+                )
+            )
+        )
+        attempts = list(
+            session.scalars(
+                select(IngestionJobAttempt)
+                .where(IngestionJobAttempt.job_id == seed.job_id)
+                .order_by(IngestionJobAttempt.ordinal)
+            )
+        )
+        assert [chunk.text for chunk in chunks] == ["Alpha", "beta", "gamma"]
+        assert len(vectors) == 3
+        assert [attempt.status for attempt in attempts] == [
+            IngestionJobAttemptStatus.FAILED,
+            IngestionJobAttemptStatus.SUCCEEDED,
+        ]
+        assert attempts[0].error_code == "lease_lost"
+        assert session.scalar(select(func.count(AuditLog.id))) == 1
+        assert session.scalar(select(func.count(OutboxEvent.id))) == 1
+
+
+@pytest.mark.integration
 def test_global_active_profile_is_used_only_when_organization_has_no_active_profile(
     migrated_engine: Engine,
 ) -> None:
@@ -435,6 +718,11 @@ def test_global_active_profile_is_used_only_when_organization_has_no_active_prof
         organization_profile = session.get(EmbeddingProfile, seed.profile_id)
         assert organization_profile is not None
         organization_profile.status = EmbeddingProfileStatus.INACTIVE
+        session.execute(
+            delete(KnowledgeChunk).where(
+                KnowledgeChunk.resource_version_id == seed.target_version_id
+            )
+        )
         session.add(
             EmbeddingProfile(
                 org_id=None,

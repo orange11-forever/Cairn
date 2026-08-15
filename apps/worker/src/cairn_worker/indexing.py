@@ -287,6 +287,53 @@ def _replace_chunks(
     target: _IndexTarget,
     drafts: Sequence[ChunkDraft],
 ) -> list[KnowledgeChunk]:
+    existing = list(
+        session.scalars(
+            select(KnowledgeChunk)
+            .where(
+                KnowledgeChunk.org_id == claim.org_id,
+                KnowledgeChunk.project_id == claim.project_id,
+                KnowledgeChunk.resource_id == target.resource.id,
+                KnowledgeChunk.resource_version_id == target.version.id,
+            )
+            .order_by(KnowledgeChunk.ordinal)
+            .with_for_update()
+        )
+    )
+    matching = len(existing) == len(drafts) and all(
+        chunk.ordinal == draft.ordinal
+        and chunk.kind == draft.kind.value
+        and chunk.text == draft.text
+        and chunk.normalized_text == draft.normalized_text
+        and chunk.locator == draft.locator.model_dump(by_alias=True, mode="json")
+        for chunk, draft in zip(existing, drafts, strict=True)
+    )
+    if matching:
+        session.execute(
+            delete(ChunkEmbedding).where(
+                ChunkEmbedding.org_id == claim.org_id,
+                ChunkEmbedding.project_id == claim.project_id,
+                ChunkEmbedding.resource_id == target.resource.id,
+                ChunkEmbedding.resource_version_id == target.version.id,
+                ChunkEmbedding.embedding_profile_id == target.profile.id,
+            )
+        )
+        session.flush()
+        return existing
+    other_profile_embedding = session.scalar(
+        select(ChunkEmbedding.id)
+        .where(
+            ChunkEmbedding.org_id == claim.org_id,
+            ChunkEmbedding.project_id == claim.project_id,
+            ChunkEmbedding.resource_id == target.resource.id,
+            ChunkEmbedding.resource_version_id == target.version.id,
+            ChunkEmbedding.embedding_profile_id != target.profile.id,
+        )
+        .limit(1)
+        .with_for_update()
+    )
+    if other_profile_embedding is not None:
+        raise WorkerFailure("parser_failed", "", retryable=False)
     session.execute(
         delete(KnowledgeChunk).where(
             KnowledgeChunk.org_id == claim.org_id,
