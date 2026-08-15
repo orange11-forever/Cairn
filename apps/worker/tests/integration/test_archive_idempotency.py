@@ -1,4 +1,4 @@
-from collections.abc import Generator
+from collections.abc import Generator, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
@@ -12,6 +12,9 @@ import pytest
 from cairn_api.audit.models import AuditLog
 from cairn_api.knowledge import repository
 from cairn_api.knowledge.models import (
+    ChunkEmbedding,
+    EmbeddingProfile,
+    EmbeddingProfileStatus,
     IngestionBatch,
     IngestionBatchStatus,
     IngestionItem,
@@ -21,6 +24,7 @@ from cairn_api.knowledge.models import (
     IngestionJobAttemptStatus,
     IngestionJobStatus,
     JobKind,
+    KnowledgeChunk,
     KnowledgeResource,
     KnowledgeResourceVersion,
     ResourceSourceType,
@@ -35,6 +39,7 @@ from cairn_api.knowledge.object_store import (
 )
 from cairn_api.organizations.models import Organization
 from cairn_api.projects.models import OutboxEvent, Project
+from cairn_api.settings import Settings
 from cairn_worker.archive import WorkerContext, build_archive_handler, handle_expand_archive
 from cairn_worker.errors import WorkerFailure
 from cairn_worker.leases import ClaimedJob, claim_next_job, fail_job
@@ -390,7 +395,9 @@ def test_malformed_archive_is_terminal_without_child_publication(
         assert session.scalar(select(func.count(KnowledgeResourceVersion.id))) == 0
         assert (
             session.scalar(
-                select(func.count(IngestionItem.id)).where(IngestionItem.parent_item_id.is_not(None))
+                select(func.count(IngestionItem.id)).where(
+                    IngestionItem.parent_item_id.is_not(None)
+                )
             )
             == 0
         )
@@ -479,12 +486,12 @@ def test_stale_cleanup_waits_for_reclaim_and_cannot_delete_uncommitted_adoption(
 
 
 @pytest.mark.integration
-def test_runtime_parks_index_jobs_without_mutating_publication_facts(
+def test_runtime_processes_archive_child_index_job_once_without_duplicate_facts(
     migrated_engine: Engine,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Break caught: Task 9 workers must leave Task 11 jobs queued and fact-neutral."""
-    now = datetime(2026, 8, 14, 13, tzinfo=UTC)
+    """Break caught: runtime assembly must publish a ZIP child once with bounded index facts."""
+    now = datetime.now(UTC) + timedelta(minutes=1)
     store = _Store()
     _job_id, _org_id, _project_id, _batch_id, _source_key = _seed_archive(
         migrated_engine, store, _zip([("entry.txt", b"entry")]), now=now
@@ -507,10 +514,61 @@ def test_runtime_parks_index_jobs_without_mutating_publication_facts(
         now=lambda: now,
         heartbeat_factory=_Heartbeat,
     )
+    with Session(migrated_engine) as session, session.begin():
+        child_job = session.scalar(
+            select(IngestionJob).where(IngestionJob.job_kind == JobKind.INDEX_RESOURCE_VERSION)
+        )
+        assert child_job is not None
+        session.add(
+            EmbeddingProfile(
+                org_id=child_job.org_id,
+                provider_key="test-provider",
+                model="test-model",
+                dimensions=1024,
+                distance_metric="cosine",
+                chunking_config={"maxCodepoints": 1800, "overlapCodepoints": 180},
+                index_config={"strategy": "exact", "candidateLimit": 50},
+                version="default-v1",
+                status=EmbeddingProfileStatus.ACTIVE,
+            )
+        )
+
+    class Embedding:
+        provider_key = "test-provider"
+        model = "test-model"
+        dimensions = 1024
+        maximum_batch_size = 10
+
+        def embed(self, inputs: Sequence[str]) -> list[list[float]]:
+            return [[float(index)] + [0.0] * 1023 for index, _value in enumerate(inputs)]
+
+    def embedding_from_settings(_settings: Settings) -> Embedding:
+        return Embedding()
+
     monkeypatch.setattr("cairn_worker.runner.HANDLERS", {})
-    runtime_handlers = build_runtime_handlers(
-        object_store=cast(ObjectStore, store), session_factory=factory
+    monkeypatch.setattr(
+        "cairn_worker.runner.OpenAIEmbeddingClient.from_settings",
+        embedding_from_settings,
     )
+    runtime_handlers = build_runtime_handlers(
+        settings=Settings(
+            embedding_provider_key="test-provider",
+            embedding_model="test-model",
+        ),
+        object_store=cast(ObjectStore, store),
+        session_factory=factory,
+    )
+    index_handler = runtime_handlers[JobKind.INDEX_RESOURCE_VERSION]
+    captured_errors: list[BaseException] = []
+
+    def observed_index_handler(session: Any, claim: ClaimedJob, heartbeat: Any) -> None:
+        try:
+            index_handler(session, claim, heartbeat)
+        except BaseException as error:
+            captured_errors.append(error)
+            raise
+
+    runtime_handlers[JobKind.INDEX_RESOURCE_VERSION] = observed_index_handler
     with Session(migrated_engine) as session:
         parked = session.scalar(
             select(IngestionJob).where(IngestionJob.job_kind == JobKind.INDEX_RESOURCE_VERSION)
@@ -523,19 +581,11 @@ def test_runtime_parks_index_jobs_without_mutating_publication_facts(
         assert (
             parked is not None and version is not None and child is not None and batch is not None
         )
-        before = (
-            parked.status,
-            parked.attempt,
-            parked.last_error_code,
-            version.status,
-            child.status,
-            batch.status,
-            session.scalar(select(func.count(IngestionJobAttempt.id))),
-            session.scalar(select(func.count(AuditLog.id))),
-            session.scalar(select(func.count(OutboxEvent.id))),
-        )
+        assert parked.status == IngestionJobStatus.QUEUED
+        assert version.status == ResourceVersionStatus.QUEUED
+        assert child.status == IngestionItemStatus.QUEUED
 
-    assert not run_once(
+    assert run_once(
         session_factory=factory,
         worker_id="archive-a:1",
         handlers=runtime_handlers,
@@ -562,19 +612,19 @@ def test_runtime_parks_index_jobs_without_mutating_publication_facts(
         assert (
             parked is not None and version is not None and child is not None and batch is not None
         )
-        after = (
-            parked.status,
-            parked.attempt,
-            parked.last_error_code,
-            version.status,
-            child.status,
-            batch.status,
-            session.scalar(select(func.count(IngestionJobAttempt.id))),
-            session.scalar(select(func.count(AuditLog.id))),
-            session.scalar(select(func.count(OutboxEvent.id))),
-        )
-    assert after == before
-    assert parked.status == IngestionJobStatus.QUEUED and parked.attempt == 0
+        resource = session.get(KnowledgeResource, version.resource_id)
+        assert captured_errors == []
+        assert parked.last_error_code is None
+        assert parked.status == IngestionJobStatus.COMPLETED and parked.attempt == 1
+        assert version.status == ResourceVersionStatus.READY
+        assert resource is not None and resource.current_version_id == version.id
+        assert child.status == IngestionItemStatus.READY
+        assert batch.status == IngestionBatchStatus.COMPLETED
+        assert session.scalar(select(func.count(KnowledgeChunk.id))) == 1
+        assert session.scalar(select(func.count(ChunkEmbedding.id))) == 1
+        assert session.scalar(select(func.count(IngestionJobAttempt.id))) == 2
+        assert session.scalar(select(func.count(AuditLog.id))) == 2
+        assert session.scalar(select(func.count(OutboxEvent.id))) == 2
 
 
 @pytest.mark.integration

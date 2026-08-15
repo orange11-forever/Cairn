@@ -84,6 +84,50 @@ def _next_attempt(session: Session, *, job: IngestionJob, now: datetime) -> Inge
     return queued
 
 
+def _mark_index_target_processing(session: Session, *, job: IngestionJob, now: datetime) -> None:
+    if JobKind(job.job_kind) != JobKind.INDEX_RESOURCE_VERSION:
+        return
+    version = session.scalar(
+        select(KnowledgeResourceVersion)
+        .where(
+            KnowledgeResourceVersion.id == job.target_id,
+            KnowledgeResourceVersion.org_id == job.org_id,
+            KnowledgeResourceVersion.project_id == job.project_id,
+        )
+        .with_for_update()
+    )
+    if version is None or version.status == ResourceVersionStatus.READY:
+        return
+    version.status = ResourceVersionStatus.PROCESSING
+    version.error_code = None
+    version.ready_at = None
+    if version.processing_started_at is None:
+        version.processing_started_at = max(now, version.created_at)
+    item = session.scalar(
+        select(IngestionItem)
+        .where(
+            IngestionItem.org_id == job.org_id,
+            IngestionItem.project_id == job.project_id,
+            IngestionItem.resource_id == version.resource_id,
+            IngestionItem.resource_version_id == version.id,
+        )
+        .with_for_update()
+    )
+    if item is None:
+        return
+    item.status = IngestionItemStatus.PROCESSING
+    item.error_code = None
+    item.error_detail = None
+    item.completed_at = None
+    repository.refresh_batch_summary(
+        session,
+        org_id=job.org_id,
+        project_id=job.project_id,
+        batch_id=item.batch_id,
+        now=now,
+    )
+
+
 def claim_next_job(
     session: Session,
     *,
@@ -169,6 +213,7 @@ def claim_next_job(
     lease_expires_at = now + LEASE_DURATION
     job.lease_expires_at = lease_expires_at
     job.completed_at = None
+    _mark_index_target_processing(session, job=job, now=now)
     session.flush()
     return ClaimedJob(
         job_id=job.id,
@@ -344,7 +389,34 @@ def _terminalize_target(
     version.status = ResourceVersionStatus.FAILED
     version.error_code = error_code
     version.ready_at = None
-    return {"resourceId": str(version.resource_id), "versionId": str(version.id)}
+    target_details: dict[str, object] = {
+        "resourceId": str(version.resource_id),
+        "versionId": str(version.id),
+    }
+    item = session.scalar(
+        select(IngestionItem)
+        .where(
+            IngestionItem.org_id == job.org_id,
+            IngestionItem.project_id == job.project_id,
+            IngestionItem.resource_id == version.resource_id,
+            IngestionItem.resource_version_id == version.id,
+        )
+        .with_for_update()
+    )
+    if item is not None:
+        item.status = IngestionItemStatus.FAILED
+        item.error_code = error_code
+        item.error_detail = safe_detail
+        item.completed_at = now
+        repository.refresh_batch_summary(
+            session,
+            org_id=job.org_id,
+            project_id=job.project_id,
+            batch_id=item.batch_id,
+            now=now,
+        )
+        target_details.update({"batchId": str(item.batch_id), "itemId": str(item.id)})
+    return target_details
 
 
 def _emit_terminal_failure(
@@ -407,9 +479,7 @@ def fail_job(
     assert job is not None and attempt is not None
 
     terminal = not failure.retryable or job.attempt >= job.max_attempts
-    effective_code = (
-        "ingestion_retry_exhausted" if terminal and failure.retryable else failure.code
-    )
+    effective_code = "ingestion_retry_exhausted" if terminal and failure.retryable else failure.code
     effective_detail = (
         safe_detail_for(effective_code) if terminal and failure.retryable else failure.safe_detail
     )

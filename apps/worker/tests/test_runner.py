@@ -59,7 +59,7 @@ def test_embedding_readiness_accepts_a_valid_2xx_response(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Break caught: redirect protection must preserve the normal authenticated readiness probe."""
-    response = json.dumps({"data": [{"embedding": [0.1] * 1024}]}).encode()
+    response = json.dumps({"data": [{"index": 0, "embedding": [0.1] * 1024}]}).encode()
     opener = _EmbeddingOpener(BytesIO(response))
     handlers: list[HTTPRedirectHandler] = []
 
@@ -193,6 +193,7 @@ def test_worker_id_validation_accepts_host_process_style_ids() -> None:
 
 def test_complete_handler_mapping_is_required_before_any_claim() -> None:
     """Break caught: a worker must refuse startup rather than claim an unhandled job kind."""
+
     def handler(*_: object) -> None:
         return None
 
@@ -217,7 +218,11 @@ class _RuntimeProbe(Runtime):
 
 @pytest.mark.parametrize(
     ("argv", "expected"),
-    [(["serve"], ["preflight", "serve"]), (["--once"], ["preflight", "once"]), (["preflight"], ["preflight"])],
+    [
+        (["serve"], ["preflight", "serve"]),
+        (["--once"], ["preflight", "once"]),
+        (["preflight"], ["preflight"]),
+    ],
 )
 def test_cli_dispatches_each_lifecycle_mode(argv: list[str], expected: list[str]) -> None:
     """Break caught: lifecycle flags must dispatch to the requested worker operation."""
@@ -233,6 +238,7 @@ def test_cli_returns_one_for_configuration_or_preflight_failure(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Break caught: supervisors must observe startup refusal as a nonzero exit."""
+
     class BrokenRuntime(_RuntimeProbe):
         def preflight(self) -> None:
             raise failure
@@ -327,12 +333,15 @@ def test_preflight_checks_database_store_profile_and_embedding_readiness() -> No
     assert events == ["database", "object-store", "embedding"]
 
 
-def test_runtime_handler_assembly_keeps_preflight_runnable_before_indexing_is_implemented() -> None:
-    """Break caught: Task 9 runtime assembly must cover both durable job kinds."""
+def test_runtime_handler_assembly_registers_the_production_index_handler(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Break caught: runtime assembly must replace the placeholder with runner-owned indexing."""
     events: list[str] = []
     database = _DatabaseProbe([_active_profile()], events)
     object_store = _ObjectStoreProbe(events)
     handlers = runner_module.build_runtime_handlers(
+        settings=Settings(),
         object_store=cast(ObjectStore, object_store),
         session_factory=database.session_factory,
     )
@@ -349,21 +358,27 @@ def test_runtime_handler_assembly_keeps_preflight_runnable_before_indexing_is_im
 
     assert set(handlers) == REQUIRED_JOB_KINDS
     assert events == ["database", "object-store", "embedding"]
-    with pytest.raises(WorkerFailure) as raised:
-        handlers[JobKind.INDEX_RESOURCE_VERSION](object(), _claim(), cast(Any, object()))
-    assert (raised.value.code, raised.value.safe_detail, raised.value.retryable) == (
-        "parser_failed",
-        "worker handler or parser failed",
-        True,
+    observed: list[ClaimedJob] = []
+
+    def observe_index(claim: ClaimedJob, _context: object) -> None:
+        observed.append(claim)
+
+    monkeypatch.setattr(
+        "cairn_worker.indexing.handle_index_resource_version",
+        observe_index,
     )
+    claim = _claim()
+    handlers[JobKind.INDEX_RESOURCE_VERSION](object(), claim, cast(Any, object()))
+    assert observed == [claim]
 
 
-def test_runtime_claims_only_job_kinds_with_production_handlers(
+def test_runtime_claims_all_job_kinds_with_production_handlers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Break caught: the Task 11 placeholder must never consume a durable index attempt."""
+    """Break caught: production indexing must be included in the durable claim filter."""
     observed_job_kinds: list[frozenset[JobKind]] = []
     handlers = runner_module.build_runtime_handlers(
+        settings=Settings(),
         object_store=cast(ObjectStore, object()),
         session_factory=lambda: _Session([]),
     )
@@ -378,7 +393,7 @@ def test_runtime_claims_only_job_kinds_with_production_handlers(
         worker_id="worker-a:1",
         handlers=handlers,
     )
-    assert observed_job_kinds == [frozenset({JobKind.EXPAND_ARCHIVE})]
+    assert observed_job_kinds == [REQUIRED_JOB_KINDS]
 
 
 @pytest.mark.parametrize(
@@ -414,6 +429,7 @@ class _Session:
 
     def begin(self) -> _Transaction:
         return _Transaction(self.events)
+
 
 class _Heartbeat:
     def __init__(self, *_: object, events: list[str], **__: object) -> None:
@@ -516,7 +532,11 @@ def test_run_once_records_classified_handler_failure_after_rollback(
         now=lambda: datetime(2026, 8, 13, tzinfo=UTC),
         heartbeat_factory=_heartbeat_factory(events),
     )
-    assert events.index("rollback") < events.index("fail-job") < events[-1:].index("commit") + len(events) - 1
+    assert (
+        events.index("rollback")
+        < events.index("fail-job")
+        < events[-1:].index("commit") + len(events) - 1
+    )
 
 
 def test_run_once_records_a_bounded_failure_for_unexpected_handler_exception(

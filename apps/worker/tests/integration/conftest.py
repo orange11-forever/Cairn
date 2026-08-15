@@ -45,7 +45,7 @@ def clean_worker_facts(migrated_engine: Engine) -> Generator[None, None, None]:
     with migrated_engine.begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE TABLE chunk_embeddings, knowledge_chunks, "
+                "TRUNCATE TABLE chunk_embeddings, knowledge_chunks, embedding_profiles, "
                 "ingestion_job_attempts, ingestion_jobs, upload_sessions, ingestion_items, "
                 "knowledge_resource_versions, knowledge_resources, ingestion_batches, "
                 "outbox_events, audit_logs, projects, organizations CASCADE"

@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from threading import Event, Lock, Thread, current_thread, main_thread
 from types import FrameType
-from typing import Any, Protocol, Self, cast
+from typing import Any, Protocol, Self
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
@@ -19,6 +19,7 @@ from cairn_api.knowledge.object_store import Boto3ObjectStore, ObjectStore
 from cairn_api.settings import Settings
 from sqlalchemy import select
 
+from cairn_worker.embedding import OpenAIEmbeddingClient, parse_embedding_response
 from cairn_worker.errors import WorkerFailure
 from cairn_worker.leases import (
     HEARTBEAT_INTERVAL,
@@ -148,7 +149,9 @@ class HeartbeatController:
                 return
             if not owned:
                 self._set_failure(
-                    WorkerFailure("lease_lost", "worker no longer owns the job lease", retryable=True)
+                    WorkerFailure(
+                        "lease_lost", "worker no longer owns the job lease", retryable=True
+                    )
                 )
                 return
 
@@ -180,9 +183,7 @@ def run_once(
     ensure_complete_handlers(handlers)
     owner = validate_worker_id(worker_id)
     current_time = now or (lambda: datetime.now(UTC))
-    claimable_job_kinds = frozenset(
-        job_kind for job_kind, handler in handlers.items() if handler is not _pending_index_handler
-    )
+    claimable_job_kinds = frozenset(handlers)
     with _transaction(session_factory) as session:
         claim = claim_next_job(
             session,
@@ -264,23 +265,14 @@ def check_embedding_ready(settings: Settings) -> None:
             body: object = json.load(response)
     except (HTTPError, URLError, OSError, TimeoutError, ValueError, TypeError):
         raise RuntimeError("embedding provider is not ready") from None
-    if not isinstance(body, dict):
-        raise RuntimeError(  # noqa: TRY004 -- malformed provider response is runtime failure.
-            "embedding provider returned an invalid readiness response"
+    try:
+        parse_embedding_response(
+            body,
+            expected_count=1,
+            dimensions=settings.embedding_dimensions,
         )
-    body_values = cast(dict[str, object], body)
-    data = body_values.get("data")
-    if not isinstance(data, list) or not data or not isinstance(data[0], dict):
-        raise RuntimeError("embedding provider returned an invalid readiness response")
-    first_record = cast(dict[str, object], data[0])
-    vector = first_record.get("embedding")
-    if not isinstance(vector, list):
-        raise RuntimeError(  # noqa: TRY004 -- malformed provider response is runtime failure.
-            "embedding provider returned an invalid readiness dimension"
-        )
-    vector_values = cast(list[object], vector)
-    if len(vector_values) != settings.embedding_dimensions:
-        raise RuntimeError("embedding provider returned an invalid readiness dimension")
+    except WorkerFailure:
+        raise RuntimeError("embedding provider returned an invalid readiness response") from None
 
 
 class Runtime:
@@ -376,19 +368,21 @@ def register_handler(job_kind: JobKind, handler: JobHandler) -> None:
     HANDLERS[job_kind] = handler
 
 
-def _pending_index_handler(
-    _session: Any, _claim: ClaimedJob, _heartbeat: Heartbeat
-) -> None:
-    raise WorkerFailure("parser_failed", "index handler is pending", retryable=True)
-
-
 def build_runtime_handlers(
-    *, object_store: ObjectStore, session_factory: SessionFactory
+    *,
+    object_store: ObjectStore,
+    session_factory: SessionFactory,
+    settings: Settings | None = None,
 ) -> dict[JobKind, JobHandler]:
     from cairn_worker.archive import build_archive_handler
+    from cairn_worker.indexing import build_index_handler
 
+    configured = settings or Settings()
     handlers = dict(HANDLERS)
-    handlers.setdefault(JobKind.INDEX_RESOURCE_VERSION, _pending_index_handler)
+    handlers.setdefault(
+        JobKind.INDEX_RESOURCE_VERSION,
+        build_index_handler(object_store, OpenAIEmbeddingClient.from_settings(configured)),
+    )
     handlers[JobKind.EXPAND_ARCHIVE] = build_archive_handler(
         object_store=object_store,
         session_factory=session_factory,
@@ -406,6 +400,7 @@ def build_runtime() -> WorkerRuntime:
         database.dispose()
         raise
     handlers = build_runtime_handlers(
+        settings=settings,
         object_store=object_store,
         session_factory=database.session_factory,
     )

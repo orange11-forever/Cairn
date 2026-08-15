@@ -8,6 +8,7 @@ import pytest
 from cairn_api.audit.models import AuditLog
 from cairn_api.knowledge.models import (
     IngestionBatch,
+    IngestionBatchStatus,
     IngestionItem,
     IngestionItemStatus,
     IngestionJob,
@@ -50,7 +51,86 @@ class _NoopHeartbeat:
 
 
 @pytest.mark.integration
-def test_claim_heartbeat_finish_and_duplicate_finish_are_owner_safe(migrated_engine: Engine) -> None:
+def test_claim_marks_existing_index_version_item_and_batch_processing(
+    migrated_engine: Engine,
+) -> None:
+    """Break caught: a committed index claim must expose processing state to observers."""
+    now = datetime.now(UTC) + timedelta(minutes=1)
+    resource_id, version_id, batch_id, item_id = uuid4(), uuid4(), uuid4(), uuid4()
+    _job_id, org_id, project_id = seed_job(
+        migrated_engine,
+        job_kind=JobKind.INDEX_RESOURCE_VERSION,
+        target_id=version_id,
+        now=now,
+    )
+    with Session(migrated_engine) as session, session.begin():
+        session.add(IngestionBatch(id=batch_id, org_id=org_id, project_id=project_id, item_count=1))
+        session.add(
+            KnowledgeResource(
+                id=resource_id,
+                org_id=org_id,
+                project_id=project_id,
+                title="queued.txt",
+                source_type=ResourceSourceType.UPLOAD,
+                source_id="upload-processing",
+                external_id="queued.txt",
+            )
+        )
+        session.flush()
+        session.add(
+            KnowledgeResourceVersion(
+                id=version_id,
+                org_id=org_id,
+                project_id=project_id,
+                resource_id=resource_id,
+                source_type=ResourceSourceType.UPLOAD,
+                source_id="upload-processing",
+                external_id="queued.txt",
+                source_version="v1",
+                object_key=f"orgs/{org_id}/queued.txt",
+                media_type="text/plain",
+                size_bytes=10,
+                sha256="a" * 64,
+                parser_profile="default-v1",
+                chunking_profile="default-v1",
+            )
+        )
+        session.flush()
+        session.add(
+            IngestionItem(
+                id=item_id,
+                org_id=org_id,
+                project_id=project_id,
+                batch_id=batch_id,
+                normalized_path="queued.txt",
+                media_type="text/plain",
+                size_bytes=10,
+                sha256="a" * 64,
+                status=IngestionItemStatus.QUEUED,
+                resource_id=resource_id,
+                resource_version_id=version_id,
+            )
+        )
+
+    with Session(migrated_engine) as session, session.begin():
+        claim = claim_next_job(session, worker_id="worker-a:1", now=now)
+    assert claim is not None
+
+    with Session(migrated_engine) as session:
+        version = session.get(KnowledgeResourceVersion, version_id)
+        item = session.get(IngestionItem, item_id)
+        batch = session.get(IngestionBatch, batch_id)
+        assert version is not None and version.status == ResourceVersionStatus.PROCESSING
+        assert version.processing_started_at == now
+        assert item is not None and item.status == IngestionItemStatus.PROCESSING
+        assert item.error_code is None and item.completed_at is None
+        assert batch is not None and batch.status == IngestionBatchStatus.PROCESSING
+
+
+@pytest.mark.integration
+def test_claim_heartbeat_finish_and_duplicate_finish_are_owner_safe(
+    migrated_engine: Engine,
+) -> None:
     """Break caught: only the live owner may renew/finish, and finish must be idempotent."""
     now = datetime(2026, 8, 13, 8, tzinfo=UTC)
     job_id, _org_id, _project_id = seed_job(migrated_engine, now=now)
@@ -81,7 +161,9 @@ def test_claim_heartbeat_finish_and_duplicate_finish_are_owner_safe(migrated_eng
 
     with Session(migrated_engine) as session:
         job = session.get(IngestionJob, job_id)
-        attempts = list(session.scalars(select(IngestionJobAttempt).where(IngestionJobAttempt.job_id == job_id)))
+        attempts = list(
+            session.scalars(select(IngestionJobAttempt).where(IngestionJobAttempt.job_id == job_id))
+        )
         assert job is not None and job.status == IngestionJobStatus.COMPLETED
         assert len(attempts) == 1
         assert attempts[0].status == IngestionJobAttemptStatus.SUCCEEDED
@@ -89,7 +171,9 @@ def test_claim_heartbeat_finish_and_duplicate_finish_are_owner_safe(migrated_eng
 
 
 @pytest.mark.integration
-def test_live_lease_cannot_be_stolen_but_expired_lease_is_reclaimed(migrated_engine: Engine) -> None:
+def test_live_lease_cannot_be_stolen_but_expired_lease_is_reclaimed(
+    migrated_engine: Engine,
+) -> None:
     """Break caught: recovery must wait for expiry and preserve each durable attempt fact."""
     now = datetime(2026, 8, 13, 8, tzinfo=UTC)
     job_id, _org_id, _project_id = seed_job(migrated_engine, now=now)
@@ -97,7 +181,9 @@ def test_live_lease_cannot_be_stolen_but_expired_lease_is_reclaimed(migrated_eng
         first = claim_next_job(session, worker_id="worker-a:1", now=now)
     assert first is not None
     with Session(migrated_engine) as session, session.begin():
-        assert claim_next_job(session, worker_id="worker-b:1", now=now + timedelta(minutes=4)) is None
+        assert (
+            claim_next_job(session, worker_id="worker-b:1", now=now + timedelta(minutes=4)) is None
+        )
     with Session(migrated_engine) as session, session.begin():
         second = claim_next_job(session, worker_id="worker-b:1", now=now + timedelta(minutes=5))
     assert second is not None and second.job_id == job_id and second.attempt_id != first.attempt_id
@@ -127,12 +213,15 @@ def test_expired_owner_cannot_renew_finish_or_fail(migrated_engine: Engine) -> N
 
     expired_at = now + timedelta(minutes=5)
     with Session(migrated_engine) as session, session.begin():
-        assert renew_lease(
-            session,
-            job_id=job_id,
-            worker_id=claim.lease_owner,
-            now=expired_at,
-        ) is False
+        assert (
+            renew_lease(
+                session,
+                job_id=job_id,
+                worker_id=claim.lease_owner,
+                now=expired_at,
+            )
+            is False
+        )
         with pytest.raises(WorkerFailure) as finish_error:
             finish_job(session, claim=claim, now=expired_at)
         assert finish_error.value.code == "lease_lost"
@@ -353,8 +442,7 @@ def test_expired_final_attempt_terminalizes_instead_of_exceeding_max_attempts(
         assert claim_next_job(session, worker_id="worker-a:1", now=now) is not None
     with Session(migrated_engine) as session, session.begin():
         assert (
-            claim_next_job(session, worker_id="worker-b:1", now=now + timedelta(minutes=5))
-            is None
+            claim_next_job(session, worker_id="worker-b:1", now=now + timedelta(minutes=5)) is None
         )
 
     with Session(migrated_engine) as session:
@@ -374,7 +462,9 @@ def test_expired_final_attempt_terminalizes_instead_of_exceeding_max_attempts(
 
 
 @pytest.mark.integration
-def test_retry_then_fifth_failure_marks_archive_item_and_emits_once(migrated_engine: Engine) -> None:
+def test_retry_then_fifth_failure_marks_archive_item_and_emits_once(
+    migrated_engine: Engine,
+) -> None:
     """Break caught: retry exhaustion must atomically terminalize target, batch, audit, and event once."""
     now = datetime(2026, 8, 13, 8, tzinfo=UTC)
     batch_id, item_id = uuid4(), uuid4()
@@ -412,12 +502,16 @@ def test_retry_then_fifth_failure_marks_archive_item_and_emits_once(migrated_eng
             assert job is not None
             if ordinal < 5:
                 assert job.status == IngestionJobStatus.QUEUED
-                assert job.next_attempt_at == claim_at + (
-                    timedelta(seconds=5),
-                    timedelta(seconds=30),
-                    timedelta(minutes=2),
-                    timedelta(minutes=10),
-                )[ordinal - 1]
+                assert (
+                    job.next_attempt_at
+                    == claim_at
+                    + (
+                        timedelta(seconds=5),
+                        timedelta(seconds=30),
+                        timedelta(minutes=2),
+                        timedelta(minutes=10),
+                    )[ordinal - 1]
+                )
 
     with Session(migrated_engine) as session:
         job = session.get(IngestionJob, job_id)
@@ -591,7 +685,7 @@ def test_permanent_failure_terminalizes_resource_version_and_emits_once(
 ) -> None:
     """Break caught: index failures must terminalize the version and emit facts idempotently."""
     now = datetime.now(UTC) + timedelta(minutes=1)
-    resource_id, version_id = uuid4(), uuid4()
+    resource_id, version_id, batch_id, item_id = uuid4(), uuid4(), uuid4(), uuid4()
     job_id, org_id, project_id = seed_job(
         migrated_engine,
         job_kind=JobKind.INDEX_RESOURCE_VERSION,
@@ -599,6 +693,7 @@ def test_permanent_failure_terminalizes_resource_version_and_emits_once(
         now=now,
     )
     with Session(migrated_engine) as session, session.begin():
+        session.add(IngestionBatch(id=batch_id, org_id=org_id, project_id=project_id, item_count=1))
         session.add(
             KnowledgeResource(
                 id=resource_id,
@@ -631,6 +726,22 @@ def test_permanent_failure_terminalizes_resource_version_and_emits_once(
                 processing_started_at=now,
             )
         )
+        session.flush()
+        session.add(
+            IngestionItem(
+                id=item_id,
+                org_id=org_id,
+                project_id=project_id,
+                batch_id=batch_id,
+                normalized_path="failed.pdf",
+                media_type="application/pdf",
+                size_bytes=10,
+                sha256="c" * 64,
+                status=IngestionItemStatus.PROCESSING,
+                resource_id=resource_id,
+                resource_version_id=version_id,
+            )
+        )
 
     with Session(migrated_engine) as session, session.begin():
         claim = claim_next_job(session, worker_id="worker-a:1", now=now)
@@ -643,10 +754,15 @@ def test_permanent_failure_terminalizes_resource_version_and_emits_once(
     with Session(migrated_engine) as session:
         job = session.get(IngestionJob, job_id)
         version = session.get(KnowledgeResourceVersion, version_id)
+        item = session.get(IngestionItem, item_id)
+        batch = session.get(IngestionBatch, batch_id)
         assert job is not None and job.status == IngestionJobStatus.FAILED
         assert job.last_error_code == "no_extractable_text"
         assert version is not None and version.status == ResourceVersionStatus.FAILED
         assert version.error_code == "no_extractable_text"
+        assert item is not None and item.status == IngestionItemStatus.FAILED
+        assert item.error_code == "no_extractable_text"
+        assert batch is not None and batch.status == IngestionBatchStatus.FAILED
         assert session.scalar(select(func.count(IngestionJobAttempt.id))) == 1
         assert session.scalar(select(func.count(AuditLog.id))) == 1
         assert session.scalar(select(func.count(OutboxEvent.id))) == 1
