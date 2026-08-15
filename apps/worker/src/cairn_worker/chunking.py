@@ -8,6 +8,7 @@ from cairn_worker.errors import WorkerFailure
 from cairn_worker.parsers import BlockKind, ParsedBlock
 
 MAX_CHUNKS_PER_DOCUMENT = 50_000
+MAX_CHUNKING_WORK_CODEPOINTS = 100_000_000
 
 
 def _required_int(value: object) -> int:
@@ -65,9 +66,11 @@ def _rightmost_boundary(text: str, start: int, hard_end: int, overlap: int) -> i
     return hard_end
 
 
-def _split_block_text(text: str, config: ChunkingConfig) -> Iterator[str]:
+def _split_block_text(
+    text: str, config: ChunkingConfig
+) -> Iterator[tuple[str | None, int]]:
     if len(text) <= config.max_codepoints:
-        yield text
+        yield text, len(text)
         return
 
     start = 0
@@ -83,11 +86,24 @@ def _split_block_text(text: str, config: ChunkingConfig) -> Iterator[str]:
                 config.overlap_codepoints,
             )
         chunk_text = text[start:end].strip()
-        if chunk_text:
-            yield chunk_text
+        yield (chunk_text or None), hard_end - start
         if end == len(text):
             return
-        start = max(previous_start + 1, end - config.overlap_codepoints)
+        next_start = max(previous_start + 1, end - config.overlap_codepoints)
+        if not chunk_text:
+            next_non_whitespace = end
+            while (
+                next_non_whitespace < len(text)
+                and text[next_non_whitespace].isspace()
+            ):
+                next_non_whitespace += 1
+            if next_non_whitespace == len(text):
+                return
+            next_start = max(
+                next_start,
+                next_non_whitespace - config.max_codepoints + 1,
+            )
+        start = next_start
 
 
 def build_chunks(
@@ -95,8 +111,18 @@ def build_chunks(
 ) -> list[ChunkDraft]:
     _validate_config(config)
     drafts: list[ChunkDraft] = []
+    work_codepoints = 0
     for block in blocks:
-        for chunk_text in _split_block_text(block.text, config):
+        for chunk_text, window_codepoints in _split_block_text(block.text, config):
+            work_codepoints += window_codepoints
+            if work_codepoints > MAX_CHUNKING_WORK_CODEPOINTS:
+                raise WorkerFailure(
+                    "parser_failed",
+                    "chunk output exceeds safety limit",
+                    retryable=False,
+                )
+            if chunk_text is None:
+                continue
             if len(drafts) >= MAX_CHUNKS_PER_DOCUMENT:
                 raise WorkerFailure(
                     "parser_failed",
@@ -116,6 +142,7 @@ def build_chunks(
 
 
 __all__ = [
+    "MAX_CHUNKING_WORK_CODEPOINTS",
     "MAX_CHUNKS_PER_DOCUMENT",
     "ChunkDraft",
     "ChunkingConfig",

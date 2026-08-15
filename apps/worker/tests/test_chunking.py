@@ -1,4 +1,5 @@
 import random
+from io import BytesIO
 from typing import cast
 
 import cairn_worker.chunking as chunking_module
@@ -11,7 +12,7 @@ from cairn_worker.chunking import (
     normalize_chunk_text,
 )
 from cairn_worker.errors import WorkerFailure
-from cairn_worker.parsers import BlockKind, ParsedBlock
+from cairn_worker.parsers import BlockKind, ParsedBlock, ParserRegistry
 
 
 def test_chunking_config_reads_the_active_profile_contract() -> None:
@@ -341,6 +342,64 @@ def test_chunk_output_limit_rejects_the_next_draft_with_permanent_bounded_failur
     assert caught.value.safe_detail == "worker handler or parser failed"
     assert source_text not in caught.value.safe_detail
     assert "3" not in caught.value.safe_detail
+
+
+def test_high_overlap_skips_a_text_parser_whitespace_tail_within_work_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Break caught: empty overlap windows must not amplify trailing whitespace work."""
+    source_text = "visible" + " " * 64
+    blocks = ParserRegistry().for_media_type("text/plain").parse(
+        BytesIO(source_text.encode())
+    )
+    monkeypatch.setattr(
+        chunking_module,
+        "MAX_CHUNKING_WORK_CODEPOINTS",
+        64,
+    )
+
+    chunks = build_chunks(
+        blocks,
+        ChunkingConfig(max_codepoints=8, overlap_codepoints=7),
+    )
+
+    assert blocks[0].text == source_text
+    assert [chunk.text for chunk in chunks] == [
+        "visible",
+        "isible",
+        "sible",
+        "ible",
+        "ble",
+        "le",
+        "e",
+    ]
+    assert [chunk.ordinal for chunk in chunks] == list(range(7))
+    assert all(chunk.locator is blocks[0].locator for chunk in chunks)
+
+
+def test_high_overlap_non_whitespace_fails_at_the_work_codepoint_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Break caught: repeated nonblank windows must not amplify output without bound."""
+    source_text = "abcdefghijkl"
+    locator = TextLocator(type="text", headingPath=[], lineStart=1, lineEnd=1)
+    monkeypatch.setattr(
+        chunking_module,
+        "MAX_CHUNKING_WORK_CODEPOINTS",
+        24,
+    )
+
+    with pytest.raises(WorkerFailure) as caught:
+        build_chunks(
+            [ParsedBlock(kind=BlockKind.TEXT, text=source_text, locator=locator)],
+            ChunkingConfig(max_codepoints=8, overlap_codepoints=7),
+        )
+
+    assert caught.value.code == "parser_failed"
+    assert caught.value.retryable is False
+    assert caught.value.safe_detail == "worker handler or parser failed"
+    assert source_text not in caught.value.safe_detail
+    assert "24" not in caught.value.safe_detail
 
 
 def test_fixed_seed_mixed_text_always_produces_stable_bounded_drafts() -> None:
