@@ -11,11 +11,11 @@
 </p>
 
 > [!IMPORTANT]
-> Cairn 已完成阶段 2.5A：当前核心链路使用真实 PostgreSQL 16，FastAPI API 已对组织角色实施 RBAC，并以项目 ACL 约束项目、任务与事件访问。知识摄取与搜索是下一阶段；文档、上传和问答仍由 Node mock 承载。
+> Cairn 当前已交付 Stage 3A Task 1–11：在已完成的阶段 2 与 2.5A 授权基础上，真实 PostgreSQL 16/pgvector、S3 兼容 MinIO 对象存储和独立 Worker 已进入知识摄取核心链路。Task 12 混合搜索与真实 Web 知识工作区尚未交付，现有文档、上传和问答 UI 仍由 Node mock 承载。
 
-## 阶段 2 与 2.5A 已完成边界
+## 阶段 2、2.5A 与 Stage 3A Task 1–11 已交付边界
 
-共享 API 契约、响应式 Web 与真实身份基础已经完成。阶段 2 已交付项目、任务、依赖、状态机、事务性 Outbox 和有界 SSE 查询；阶段 2.5A 已交付组织角色、项目 ACL 与成员角色管理 API。
+共享 API 契约、响应式 Web 与真实身份基础已经完成。阶段 2 已完成并交付项目、任务、依赖、状态机、事务性 Outbox 和有界 SSE 查询；Cairn 已完成阶段 2.5A，交付组织角色、项目 ACL 与成员角色管理 API；Stage 3A Task 1–11 已交付文件摄取和可发布索引基础。
 
 - `@cairn/contracts` 统一现有登录、文档、问答、上传和错误响应契约；
 - Web 保留本地容错、请求取消、查询缓存和 UI 状态边界；
@@ -25,7 +25,9 @@
 - 项目、任务、依赖、审计行和 Outbox 事件写入 PostgreSQL；每次已接受的命令在同一事务中提交业务变更、审计记录和事件；
 - 项目读取和写入在数据库查询中同时应用组织边界、成员角色与规范化 ACL，不先取回无权资源再隐藏；
 - Web 项目页把 `viewer` 的任务视图呈现为只读；服务端始终是授权权威；
-- 文档、上传和问答仍连接 Node mock API，不代表知识系统已经完成。
+- 项目可以一次创建 1–20 个文件的上传批次，客户端通过绑定 SHA-256 校验和的 S3/MinIO 预签名 `PUT` 直传对象；
+- 独立 Worker 从 PostgreSQL 租用持久化任务，执行受限 ZIP 展开、支持文档解析、结构化切分、OpenAI 兼容的 1024 维 Embedding 和原子索引发布；
+- 现有 Web 文档、上传和问答 UI 仍连接 Node mock API，不代表真实知识工作区已经完成。
 
 ## 项目与任务 API
 
@@ -65,12 +67,28 @@
 
 Cookie 会话下的成员 `PATCH` 与 ACL `PUT`/`DELETE` 都要求合法 Origin 和会话绑定的 `X-CSRF-Token`。实际角色或 ACL 变化会把业务变更、追加式审计记录和 Outbox 事件放在同一事务提交；重复设置相同值和撤销不存在的 ACL 是无副作用的幂等成功，不新增审计或 Outbox 事件。
 
-显式延后：
+## 知识摄取与资源 API
+
+Stage 3A Task 1–11 在项目授权边界内提供上传批次状态、资源列表/详情、失败版本重试、软删除、下载重定向和切片引用上下文。知识资源的不存在、跨组织和权限不足统一使用不泄露的 `404 not_found`；所有变更端点在 Cookie 会话下都要求合法 Origin 和 `X-CSRF-Token`。下载会重新授权，然后返回指向短时效对象 URL 的 `307`。
+
+| 操作 | 端点 |
+|---|---|
+| 创建上传批次 | `POST /api/v1/projects/{project_id}/knowledge/uploads` |
+| 确认单个直传对象 | `POST /api/v1/projects/{project_id}/knowledge/uploads/{upload_id}/complete` |
+| 查询批次处理状态 | `GET /api/v1/projects/{project_id}/knowledge/batches/{batch_id}` |
+| 分页列出知识资源 | `GET /api/v1/projects/{project_id}/knowledge/resources` |
+| 读取资源与最新版本 | `GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}` |
+| 重试可重试的失败版本 | `POST /api/v1/projects/{project_id}/knowledge/resources/{resource_id}/versions/{version_id}/retry` |
+| 软删除资源 | `DELETE /api/v1/projects/{project_id}/knowledge/resources/{resource_id}` |
+| 重新授权并下载 | `GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}/download` |
+| 读取命中切片及前后文 | `GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}/chunks/{chunk_id}` |
+
+## 显式延后
 
 - 完整阶段/里程碑编辑 UI、React Flow/ELK 图编辑、拖拽 Kanban 和时间线可视化延后；
 - Outbox worker 发布、长连接重连 SSE、Redis fan-out、评论、通知和任务执行延后；
 - 群组、邀请和成员移除未实现；ACL 管理 UI 与成员管理 UI 未实现；
-- Bearer/OIDC、知识摄取与搜索未实现；Agent 执行和模型 Provider 延后。
+- Bearer/OIDC 延后；知识摄取基础已完成，但知识摄取后的 Task 12 项目范围混合搜索未实现；真实 Web 知识工作区、连接器、Agent 执行和完整模型 Provider 策略层尚未交付。
 
 ## 核心能力
 
@@ -116,9 +134,10 @@ Cookie 会话下的成员 `PATCH` 与 ACL `PUT`/`DELETE` 都要求合法 Origin 
 | 桌面与移动 | Tauri、React Native、Expo | 规划 |
 | API | Python 3.12、FastAPI、Pydantic Settings、Uvicorn | 当前已使用 |
 | API 数据访问 | SQLAlchemy 2、Alembic | 当前已使用 |
-| 数据与文件 | PostgreSQL、pgvector、Redis、S3/MinIO | PostgreSQL 16 当前已使用；其余规划 |
+| 数据与文件 | PostgreSQL、pgvector、Redis、S3/MinIO | PostgreSQL 16/pgvector 与 S3 兼容 MinIO 当前已使用；Redis 规划 |
+| 后台摄取 | Python Worker、PostgreSQL 持久化任务、结构化解析与切分 | 当前已使用 |
 | 工作流与 Agent | Temporal、LangGraph、AgentRunner | 规划 |
-| 模型接入 | LiteLLM Gateway 与 Cairn 模型策略层 | 规划 |
+| 模型接入 | OpenAI 兼容 Embedding；LiteLLM Gateway 与 Cairn 模型策略层 | 1024 维 Embedding 当前已使用；完整策略层规划 |
 | 实时与可观测 | Transactional Outbox、SSE、OpenTelemetry | Outbox 与有界 SSE 查询当前已使用；OpenTelemetry 规划 |
 | 部署 | Local Web、Docker Compose、Kubernetes/Helm | Docker Compose 当前用于核心开发；正式部署规划 |
 | 测试与工具 | pnpm、Vitest、Testing Library、Playwright；uv、pytest、Ruff、Pyright | 当前已使用 |
@@ -143,12 +162,12 @@ Carin
 │   │   ├── src/              # 页面、组件、查询、会话与数据契约
 │   │   ├── styles/           # 全局样式
 │   │   └── tests/            # Node 契约测试与 React 组件测试
-│   └── worker/               # 后续 Outbox/异步任务 Worker 的预留边界
+│   └── worker/               # 知识摄取 Worker、解析器、切分、Embedding 与索引
 ├── packages/
 │   ├── contracts/            # 共享运行时契约（文档原型）
-│   └── sdk/                  # 从 FastAPI OpenAPI 生成的身份与项目任务客户端
+│   └── sdk/                  # 从 FastAPI OpenAPI 生成的身份、项目任务与知识客户端
 ├── assets/brand/             # Cairn 品牌图片
-├── deploy/compose/           # PostgreSQL 核心开发基础设施
+├── deploy/compose/           # PostgreSQL/pgvector 与 MinIO 核心开发基础设施
 ├── scripts/                  # 跨 package 的任务编排与进程工具
 ├── package.json              # 根命令与 Node.js 工程约束
 ├── pnpm-workspace.yaml       # pnpm workspace 定义
@@ -158,7 +177,7 @@ Carin
 
 ## 最终部署形式
 
-正式 Local Web、单服务器私有部署和 Kubernetes 私有部署将共享同一套 API、数据库迁移和应用镜像。当前核心开发链路已有真实 API、PostgreSQL 和 Web，文档类操作暂由 Node mock 承载；正式部署能力仍在建设中。
+正式 Local Web、单服务器私有部署和 Kubernetes 私有部署将共享同一套 API、数据库迁移和应用镜像。当前核心开发链路已有真实 API、PostgreSQL/pgvector、MinIO、独立 Worker 和 Web；现有 Web 文档类操作仍由 Node mock 承载，正式部署能力仍在建设中。
 
 | 形式 | 默认入口 | 定位 |
 |---|---|---|
@@ -180,12 +199,21 @@ pnpm infra:up
 pnpm dev:core
 ```
 
+`pnpm infra:up` 启动 PostgreSQL 16/pgvector 和 MinIO，并幂等初始化对象存储 bucket 与 CORS。需要处理摄取任务时，在另一终端启动独立 Worker：
+
+```bash
+pnpm worker:preflight
+pnpm dev:worker
+```
+
+`pnpm worker:preflight` 只校验数据库、对象存储和当前 Embedding Profile/Provider 依赖；`pnpm dev:worker` 持续处理任务。调试一个当前可租用任务时使用 `pnpm worker:once`。
+
 - 登录：`http://localhost:5500`
 - Web：`http://localhost:5500`
 - Identity API：`http://127.0.0.1:8080`
 - Mock API：`http://localhost:8787`
 
-`pnpm dev:core` 会先执行迁移和幂等演示种子，再托管 API、Mock 与 Web 三个进程。演示身份只允许在开发或测试环境写入；生产环境会拒绝演示种子、示例 CSRF 密钥和不安全 Cookie。按 `Ctrl+C` 停止该命令只终止 API、Mock 与 Web，不删除 PostgreSQL 开发卷；再次启动会复用已有数据。`pnpm dev:web` 与 `pnpm mock:web` 仍可用于底层调试，但原来的双终端 mock-only 流程不再是核心开发路径。
+`pnpm dev:core` 会先执行迁移和幂等演示种子，再托管 API、Mock 与 Web 三个进程；Worker 依然是独立进程。演示身份只允许在开发或测试环境写入；生产环境会拒绝演示种子、示例 CSRF 密钥和不安全 Cookie。按 `Ctrl+C` 停止该命令只终止 API、Mock 与 Web，不删除 PostgreSQL 或 MinIO 开发卷；再次启动会复用已有数据。`pnpm dev:web` 与 `pnpm mock:web` 仍可用于底层调试，但原来的双终端 mock-only 流程不再是核心开发路径。
 
 若本机 5432 已被其他 PostgreSQL 占用，可让 `CAIRN_POSTGRES_PORT` 与 `DATABASE_URL` 同时改用同一个空闲端口；不要只改其中一项。
 
@@ -207,9 +235,9 @@ pnpm dev:api
 - 版本探针：`http://127.0.0.1:8080/api/v1`
 - OpenAPI：`http://127.0.0.1:8080/docs`
 
-API 现已提供 PostgreSQL readiness、登录、会话恢复、注销、当前组织、项目任务、成员角色与项目 ACL 接口。登录失败限制由 PostgreSQL 持久化：同一规范化邮箱在 15 分钟窗口内最多失败 5 次，同一来源 IP 最多失败 30 次，达到阈值后阻止 15 分钟；表中仅保存使用 `CAIRN_AUTH_RATE_LIMIT_SECRET` 生成的 HMAC 摘要，不保存明文邮箱或 IP。文档、上传和问答仍由 Node mock 提供。
+API 现已提供 PostgreSQL 与对象存储 readiness、登录、会话恢复、注销、当前组织、项目任务、成员角色、项目 ACL 与上述知识资源接口。登录失败限制由 PostgreSQL 持久化：同一规范化邮箱在 15 分钟窗口内最多失败 5 次，同一来源 IP 最多失败 30 次，达到阈值后阻止 15 分钟；表中仅保存使用 `CAIRN_AUTH_RATE_LIMIT_SECRET` 生成的 HMAC 摘要，不保存明文邮箱或 IP。现有文档、上传和问答 Web UI 仍由 Node mock 提供。
 
-当前切片不包含 Bearer/OIDC、群组、邀请、成员移除、ACL/成员管理 UI、知识摄取与搜索、任务执行或 AI Provider。AI Provider 与外部 Agent 接入必须建立在组织、权限、审计、项目和知识基础完成之后，不能绕过这些边界提前扩展。
+当前切片不包含 Bearer/OIDC、群组、邀请、成员移除、ACL/成员管理 UI、Task 12 混合搜索、真实 Web 知识工作区、连接器、Agent 任务执行或完整 AI Provider 策略层。AI Provider 与外部 Agent 接入必须建立在组织、权限、审计、项目和知识基础完成之后，不能绕过这些边界提前扩展。
 
 可按需清理过期或已撤销的认证状态：
 
@@ -225,15 +253,18 @@ pnpm auth:cleanup
 pnpm typecheck
 pnpm test
 pnpm build
+pnpm test:worker
+pnpm lint:worker
+pnpm typecheck:worker
 pnpm verify:core
 pnpm verify
 ```
 
-`pnpm verify:core` 会创建独立 PostgreSQL project 和临时卷，执行迁移、真实身份集成测试、SDK 漂移检查、生产构建与 Chromium 登录闭环。最后一段验收会用 OpenSSL 生成仅供本次运行使用的 localhost 证书，在 HTTPS 反向代理后启动生产配置 API，并验证 CORS、Secure/HttpOnly/SameSite Cookie、会话恢复、CSRF 注销和可信来源 IP。临时证书、进程及 Compose project 会在成功、失败或信号中断后清理；该命令不会接触开发数据库和卷。
+`pnpm verify:core` 会创建独立 Compose project 和临时 PostgreSQL/MinIO 卷，执行对象存储初始化与往返、迁移、真实 API 集成测试、SDK 漂移检查、生产构建与 Chromium 登录闭环。最后一段验收会用 OpenSSL 生成仅供本次运行使用的 localhost 证书，在 HTTPS 反向代理后启动生产配置 API，并验证 CORS、Secure/HttpOnly/SameSite Cookie、会话恢复、CSRF 注销和可信来源 IP。临时证书、进程及 Compose project 会在成功、失败或信号中断后清理；该命令不会接触开发数据库和卷。
 
-`pnpm verify` 是完整的跨 package 门禁：它覆盖共享契约、SDK、Web、API、Ruff、Pyright、发行包构建与最后的真实核心验证。浏览器部分覆盖错误密码、登录、刷新恢复、组织显示、注销、360/768/1280 像素布局、主题、路由保护、会话隔离、并发取消、文档状态、筛选、上传、提问和自动滚动；生产构建还会检查开发凭据和 Mock 场景控件没有进入产物。
+`pnpm verify` 是完整的跨 package 门禁：它覆盖共享契约、OpenAPI 生成 SDK 测试与漂移检查、Web、API、Worker、Ruff、Pyright、发行包构建与最后的真实核心验证。浏览器部分覆盖错误密码、登录、刷新恢复、组织显示、注销、360/768/1280 像素布局、主题、路由保护、会话隔离、并发取消、文档状态、筛选、上传、提问和自动滚动；这些 Web 知识交互仍验证 Node mock UI，不代表 Task 12 已交付。Worker package 测试覆盖租约、归档、解析、切分、Embedding 与原子索引语义；真实核心验证覆盖 pgvector、MinIO 对象往返和知识 API/SDK 一致性。
 
-也可以使用 `pnpm test:contracts`、`pnpm typecheck:contracts`、`pnpm test:web`、`pnpm test:api`、`pnpm typecheck:web`、`pnpm typecheck:api`、`pnpm build:web` 和 `pnpm build:api` 分别检查单个 package。
+也可以使用 `pnpm test:contracts`、`pnpm typecheck:contracts`、`pnpm test:sdk`、`pnpm typecheck:sdk`、`pnpm check:sdk`、`pnpm test:web`、`pnpm test:api`、`pnpm typecheck:web`、`pnpm typecheck:api`、`pnpm test:worker`、`pnpm lint:worker`、`pnpm typecheck:worker`、`pnpm build:web` 和 `pnpm build:api` 分别检查单个 package 或生成契约。
 
 ## 开源许可证
 
