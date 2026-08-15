@@ -8,9 +8,22 @@ from urllib.request import HTTPRedirectHandler, Request
 
 import pytest
 from cairn_api.settings import Settings
-from cairn_worker.embedding import OpenAIEmbeddingClient
+from cairn_worker.embedding import OpenAIEmbeddingClient, load_embedding_response
 from cairn_worker.errors import WorkerFailure
 from pydantic import AnyHttpUrl, SecretStr
+
+MAX_EMBEDDING_RESPONSE_BYTES = 2 * 1024 * 1024
+
+
+class _RecordingResponse(BytesIO):
+    def __init__(self, value: bytes, reads: list[int]) -> None:
+        super().__init__(value)
+        self._reads = reads
+
+    def read(self, size: int | None = -1) -> bytes:
+        assert size is not None
+        self._reads.append(size)
+        return super().read(size)
 
 
 class _Opener:
@@ -18,13 +31,14 @@ class _Opener:
         self.response = response
         self.requests: list[Request] = []
         self.timeouts: list[float] = []
+        self.read_sizes: list[int] = []
 
     def open(self, request: Request, *, timeout: float) -> BytesIO:
         self.requests.append(request)
         self.timeouts.append(timeout)
         if isinstance(self.response, Exception):
             raise self.response
-        return BytesIO(self.response)
+        return _RecordingResponse(self.response, self.read_sizes)
 
 
 def _client(
@@ -144,6 +158,34 @@ def test_embed_dimension_mismatch_is_permanent() -> None:
         "embedding_dimension_mismatch",
         False,
     )
+
+
+def test_embed_reads_at_most_one_bounded_response_body() -> None:
+    """Break caught: a Provider response must never be accumulated with an unbounded read."""
+    oversized = b"{" + b" " * MAX_EMBEDDING_RESPONSE_BYTES
+    client, opener, _handlers = _client(oversized)
+
+    with pytest.raises(WorkerFailure) as raised:
+        client.embed(["one"])
+
+    assert raised.value.code == "embedding_unavailable"
+    assert opener.read_sizes == [MAX_EMBEDDING_RESPONSE_BYTES + 1]
+    assert -1 not in opener.read_sizes
+
+
+@pytest.mark.parametrize("payload", [b"{", "not-bytes"])
+def test_bounded_loader_rejects_invalid_json_and_nonbyte_reads(payload: object) -> None:
+    """Break caught: bounded reads must still reject malformed transport results safely."""
+
+    class Response:
+        def read(self, size: int) -> object:
+            assert size == MAX_EMBEDDING_RESPONSE_BYTES + 1
+            return payload
+
+    with pytest.raises(WorkerFailure) as raised:
+        load_embedding_response(Response())
+
+    assert raised.value.code == "embedding_unavailable"
 
 
 @pytest.mark.parametrize(

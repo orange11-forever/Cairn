@@ -19,7 +19,11 @@ from cairn_api.knowledge.object_store import Boto3ObjectStore, ObjectStore
 from cairn_api.settings import Settings
 from sqlalchemy import select
 
-from cairn_worker.embedding import OpenAIEmbeddingClient, parse_embedding_response
+from cairn_worker.embedding import (
+    OpenAIEmbeddingClient,
+    load_embedding_response,
+    parse_embedding_response,
+)
 from cairn_worker.errors import WorkerFailure
 from cairn_worker.leases import (
     HEARTBEAT_INTERVAL,
@@ -262,7 +266,9 @@ def check_embedding_ready(settings: Settings) -> None:
     try:
         opener = build_opener(_RejectRedirects())
         with opener.open(request, timeout=settings.embedding_timeout_seconds) as response:
-            body: object = json.load(response)
+            body = load_embedding_response(response)
+    except WorkerFailure:
+        raise RuntimeError("embedding provider returned an invalid readiness response") from None
     except (HTTPError, URLError, OSError, TimeoutError, ValueError, TypeError):
         raise RuntimeError("embedding provider is not ready") from None
     try:

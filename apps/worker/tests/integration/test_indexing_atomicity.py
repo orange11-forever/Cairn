@@ -4,6 +4,7 @@ from collections.abc import Generator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
+from threading import Event, Thread
 from typing import Any, BinaryIO, Self, cast
 from uuid import UUID, uuid4
 
@@ -40,7 +41,7 @@ from cairn_worker.indexing import (
 )
 from cairn_worker.leases import ClaimedJob, claim_next_job
 from cairn_worker.runner import run_once
-from sqlalchemy import Engine, delete, func, select
+from sqlalchemy import Engine, delete, event, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from .conftest import seed_job
@@ -709,6 +710,122 @@ def test_expired_index_lease_is_reclaimed_and_publishes_once(
 
 
 @pytest.mark.integration
+def test_embedding_vectors_are_flushed_and_released_one_provider_batch_at_a_time(
+    migrated_engine: Engine,
+) -> None:
+    """Break caught: indexing must not retain every high-dimensional vector until publication."""
+    seed = _seed(migrated_engine)
+    flushed_batch_sizes: list[int] = []
+    detached_embedding_ids: list[UUID] = []
+
+    def record_flush(session: Session, _context: object, _instances: object) -> None:
+        batch_size = sum(isinstance(value, ChunkEmbedding) for value in session.new)
+        if batch_size:
+            flushed_batch_sizes.append(batch_size)
+
+    def record_detach(_session: Session, instance: object) -> None:
+        if isinstance(instance, ChunkEmbedding):
+            detached_embedding_ids.append(instance.id)
+
+    event.listen(Session, "before_flush", record_flush)
+    event.listen(Session, "persistent_to_detached", record_detach)
+    try:
+        assert _run(migrated_engine, seed, _Store(), _Embedding(maximum_batch_size=2))
+    finally:
+        event.remove(Session, "before_flush", record_flush)
+        event.remove(Session, "persistent_to_detached", record_detach)
+
+    assert flushed_batch_sizes == [2, 1]
+    assert len(detached_embedding_ids) == 3
+    with Session(migrated_engine) as session:
+        assert (
+            session.scalar(
+                select(func.count(ChunkEmbedding.id)).where(
+                    ChunkEmbedding.resource_version_id == seed.target_version_id
+                )
+            )
+            == 3
+        )
+
+
+@pytest.mark.integration
+def test_later_embedding_batch_failure_rolls_back_an_already_flushed_batch(
+    migrated_engine: Engine,
+) -> None:
+    """Break caught: batch-local flushes are provisional until atomic publication commits."""
+    seed = _seed(migrated_engine)
+    flushed_batch_sizes: list[int] = []
+
+    def record_flush(session: Session, _context: object, _instances: object) -> None:
+        batch_size = sum(isinstance(value, ChunkEmbedding) for value in session.new)
+        if batch_size:
+            flushed_batch_sizes.append(batch_size)
+
+    class FailSecondBatch(_Embedding):
+        def embed(self, inputs: Sequence[str]) -> list[list[float]]:
+            if self.calls:
+                raise WorkerFailure.for_code("embedding_unavailable", "private provider")
+            return super().embed(inputs)
+
+    event.listen(Session, "before_flush", record_flush)
+    try:
+        assert _run(
+            migrated_engine,
+            seed,
+            _Store(),
+            FailSecondBatch(maximum_batch_size=2),
+        )
+    finally:
+        event.remove(Session, "before_flush", record_flush)
+
+    assert flushed_batch_sizes == [2]
+    with Session(migrated_engine) as session:
+        job = session.get(IngestionJob, seed.job_id)
+        assert job is not None and job.status == IngestionJobStatus.QUEUED
+        assert job.last_error_code == "embedding_unavailable"
+        assert session.get(KnowledgeChunk, seed.stale_chunk_id) is not None
+        assert (
+            session.scalar(
+                select(func.count(ChunkEmbedding.id)).where(
+                    ChunkEmbedding.resource_version_id == seed.target_version_id
+                )
+            )
+            == 1
+        )
+
+
+@pytest.mark.integration
+def test_huge_provider_retry_after_is_bounded_by_end_to_end_rescheduling(
+    migrated_engine: Engine,
+) -> None:
+    """Break caught: run_once must queue a failure whose raw delay would overflow datetime."""
+    seed = _seed(migrated_engine)
+    failure = WorkerFailure(
+        "embedding_unavailable",
+        "private provider",
+        retryable=True,
+        retry_after=timedelta(seconds=86_399_999_913_600),
+    )
+
+    assert _run(
+        migrated_engine,
+        seed,
+        _Store(),
+        _Embedding(failure=failure),
+    )
+
+    with Session(migrated_engine) as session:
+        job = session.get(IngestionJob, seed.job_id)
+        attempt = session.scalar(
+            select(IngestionJobAttempt).where(IngestionJobAttempt.job_id == seed.job_id)
+        )
+        assert job is not None and job.status == IngestionJobStatus.QUEUED
+        assert job.next_attempt_at == seed.now + timedelta(days=1)
+        assert attempt is not None and attempt.status == IngestionJobAttemptStatus.FAILED
+        assert attempt.error_code == "embedding_unavailable"
+
+
+@pytest.mark.integration
 def test_global_active_profile_is_used_only_when_organization_has_no_active_profile(
     migrated_engine: Engine,
 ) -> None:
@@ -766,6 +883,134 @@ def test_global_active_profile_is_used_only_when_organization_has_no_active_prof
             )
         )
         assert profile_ids == {global_profile_id}
+
+
+@pytest.mark.integration
+def test_global_publication_serializes_a_concurrent_organization_profile_activation(
+    migrated_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Break caught: an org Profile activation cannot commit inside global publication."""
+    seed = _seed(migrated_engine)
+    with Session(migrated_engine) as session, session.begin():
+        organization_profile = session.get(EmbeddingProfile, seed.profile_id)
+        assert organization_profile is not None
+        organization_profile.status = EmbeddingProfileStatus.INACTIVE
+        session.execute(
+            delete(KnowledgeChunk).where(
+                KnowledgeChunk.resource_version_id == seed.target_version_id
+            )
+        )
+        session.add(
+            EmbeddingProfile(
+                org_id=None,
+                provider_key="test-provider",
+                model="test-model",
+                dimensions=1024,
+                distance_metric="cosine",
+                chunking_config={"maxCodepoints": 8, "overlapCodepoints": 0},
+                index_config={"strategy": "exact", "candidateLimit": 50},
+                version="default-v1",
+                status=EmbeddingProfileStatus.ACTIVE,
+            )
+        )
+
+    activation_allowed = Event()
+    activation_committed = Event()
+    activation_errors: list[BaseException] = []
+
+    def activate_organization_profile() -> None:
+        try:
+            assert activation_allowed.wait(timeout=5)
+            with Session(migrated_engine) as session, session.begin():
+                organization_profile = session.get(EmbeddingProfile, seed.profile_id)
+                assert organization_profile is not None
+                organization_profile.status = EmbeddingProfileStatus.ACTIVE
+            activation_committed.set()
+        except Exception as error:  # noqa: BLE001 -- thread failures are asserted in the parent.
+            activation_errors.append(error)
+
+    thread = Thread(target=activate_organization_profile)
+    thread.start()
+    original_active_profile = indexing_module._active_profile  # pyright: ignore[reportPrivateUsage]
+    committed_before_selection_returned: list[bool] = []
+
+    def observe_final_selection(
+        session: Session,
+        *,
+        org_id: UUID,
+        lock: bool,
+    ) -> EmbeddingProfile | None:
+        profile = original_active_profile(session, org_id=org_id, lock=lock)
+        if lock:
+            activation_allowed.set()
+            committed_before_selection_returned.append(activation_committed.wait(timeout=0.5))
+        return profile
+
+    monkeypatch.setattr(indexing_module, "_active_profile", observe_final_selection)
+
+    assert _run(migrated_engine, seed, _Store(), _Embedding())
+    thread.join(timeout=5)
+
+    assert not thread.is_alive()
+    assert activation_errors == []
+    assert committed_before_selection_returned == [False]
+    assert activation_committed.is_set()
+    with Session(migrated_engine) as session:
+        job = session.get(IngestionJob, seed.job_id)
+        assert job is not None and job.status == IngestionJobStatus.COMPLETED
+
+
+@pytest.mark.integration
+def test_global_publication_rolls_back_when_org_activation_commits_before_final_lock(
+    migrated_engine: Engine,
+) -> None:
+    """Break caught: a pre-lock org Profile activation invalidates global vectors."""
+    seed = _seed(migrated_engine)
+    with Session(migrated_engine) as session, session.begin():
+        organization_profile = session.get(EmbeddingProfile, seed.profile_id)
+        assert organization_profile is not None
+        organization_profile.status = EmbeddingProfileStatus.INACTIVE
+        session.execute(
+            delete(KnowledgeChunk).where(
+                KnowledgeChunk.resource_version_id == seed.target_version_id
+            )
+        )
+        session.add(
+            EmbeddingProfile(
+                org_id=None,
+                provider_key="test-provider",
+                model="test-model",
+                dimensions=1024,
+                distance_metric="cosine",
+                chunking_config={"maxCodepoints": 8, "overlapCodepoints": 0},
+                index_config={"strategy": "exact", "candidateLimit": 50},
+                version="default-v1",
+                status=EmbeddingProfileStatus.ACTIVE,
+            )
+        )
+
+    def activate_before_lock() -> None:
+        with Session(migrated_engine) as session, session.begin():
+            organization_profile = session.get(EmbeddingProfile, seed.profile_id)
+            assert organization_profile is not None
+            organization_profile.status = EmbeddingProfileStatus.ACTIVE
+
+    assert _run(
+        migrated_engine,
+        seed,
+        _Store(),
+        _Embedding(after_call=activate_before_lock),
+    )
+
+    with Session(migrated_engine) as session:
+        resource = session.get(KnowledgeResource, seed.resource_id)
+        job = session.get(IngestionJob, seed.job_id)
+        assert resource is not None and resource.current_version_id == seed.old_version_id
+        assert job is not None and job.status == IngestionJobStatus.QUEUED
+        assert job.last_error_code == "parser_failed"
+        assert session.scalar(select(func.count(AuditLog.id))) == 0
+        assert session.scalar(select(func.count(OutboxEvent.id))) == 0
 
 
 @pytest.mark.integration
@@ -867,7 +1112,7 @@ def test_publication_fact_or_constraint_failure_rolls_back_everything(
     else:
         original = cast(
             Any,
-            indexing_module._persist_embeddings,  # pyright: ignore[reportPrivateUsage]
+            indexing_module._persist_embedding_batches,  # pyright: ignore[reportPrivateUsage]
         )
 
         def violate(*args: object, **kwargs: object) -> None:
@@ -889,7 +1134,7 @@ def test_publication_fact_or_constraint_failure_rolls_back_everything(
             )
             session.flush()
 
-        monkeypatch.setattr(indexing_module, "_persist_embeddings", violate)
+        monkeypatch.setattr(indexing_module, "_persist_embedding_batches", violate)
 
     assert _run(migrated_engine, seed, _Store(), _Embedding())
 

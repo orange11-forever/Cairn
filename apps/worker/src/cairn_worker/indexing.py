@@ -1,6 +1,6 @@
 import hashlib
 import math
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from tempfile import SpooledTemporaryFile
@@ -24,7 +24,7 @@ from cairn_api.knowledge.models import (
     ResourceVersionStatus,
 )
 from cairn_api.knowledge.object_store import ObjectNotFound, ObjectStoreUnavailable
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 from sqlalchemy.orm import Session
 
 from cairn_worker.chunking import ChunkDraft, ChunkingConfig, build_chunks
@@ -119,6 +119,10 @@ def _active_profile(
     if lock:
         global_profile = global_profile.with_for_update()
     return session.scalar(global_profile)
+
+
+def _lock_embedding_profiles(session: Session) -> None:
+    session.execute(text("LOCK TABLE embedding_profiles IN SHARE MODE"))
 
 
 def _target(
@@ -249,15 +253,14 @@ def _prepare_document(
         source.close()
 
 
-def _embed_drafts(
+def _embedding_batches(
     drafts: Sequence[ChunkDraft],
     client: EmbeddingClient,
     heartbeat: Any,
-) -> list[list[float]]:
+) -> Iterator[tuple[int, list[list[float]]]]:
     batch_size = _profile_value(client, "maximum_batch_size")
     if isinstance(batch_size, bool) or not isinstance(batch_size, int) or not 1 <= batch_size <= 10:
         raise _failure("parser_failed")
-    vectors: list[list[float]] = []
     for offset in range(0, len(drafts), batch_size):
         heartbeat.ensure_owned()
         batch = drafts[offset : offset + batch_size]
@@ -265,6 +268,7 @@ def _embed_drafts(
         heartbeat.ensure_owned()
         if len(produced) != len(batch):
             raise _failure("embedding_unavailable")
+        vectors: list[list[float]] = []
         for vector in produced:
             values = cast(Sequence[object], vector)
             if len(values) != _profile_value(client, "dimensions"):
@@ -277,7 +281,7 @@ def _embed_drafts(
             ):
                 raise _failure("embedding_unavailable")
             vectors.append([float(cast(int | float, value)) for value in values])
-    return vectors
+        yield offset, vectors
 
 
 def _replace_chunks(
@@ -361,17 +365,21 @@ def _replace_chunks(
     return chunks
 
 
-def _persist_embeddings(
+def _persist_embedding_batches(
     session: Session,
     *,
     claim: ClaimedJob,
     target: _IndexTarget,
     chunks: Sequence[KnowledgeChunk],
-    vectors: Sequence[Sequence[float]],
+    drafts: Sequence[ChunkDraft],
+    client: EmbeddingClient,
+    heartbeat: Any,
 ) -> None:
-    for chunk, vector in zip(chunks, vectors, strict=True):
-        session.add(
-            ChunkEmbedding(
+    for offset, vectors in _embedding_batches(drafts, client, heartbeat):
+        facts: list[ChunkEmbedding] = []
+        batch_chunks = chunks[offset : offset + len(vectors)]
+        for chunk, vector in zip(batch_chunks, vectors, strict=True):
+            fact = ChunkEmbedding(
                 org_id=claim.org_id,
                 project_id=claim.project_id,
                 resource_id=target.resource.id,
@@ -381,8 +389,11 @@ def _persist_embeddings(
                 embedding_profile_id=target.profile.id,
                 embedding=list(vector),
             )
-        )
-    session.flush()
+            session.add(fact)
+            facts.append(fact)
+        session.flush()
+        for fact in facts:
+            session.expunge(fact)
 
 
 def _publish(
@@ -460,20 +471,22 @@ def handle_index_resource_version(claim: ClaimedJob, context: IndexingContext) -
         target=target,
         drafts=drafts,
     )
-    vectors = _embed_drafts(drafts, context.embedding_client, context.heartbeat)
+    _persist_embedding_batches(
+        session,
+        claim=claim,
+        target=target,
+        chunks=chunks,
+        drafts=drafts,
+        client=context.embedding_client,
+        heartbeat=context.heartbeat,
+    )
     context.heartbeat.ensure_owned()
+    _lock_embedding_profiles(session)
     locked = _target(session, claim, context.embedding_client, lock=True)
     if locked.completed:
         return
     if locked.profile.id != target.profile.id:
         raise _failure("parser_failed")
-    _persist_embeddings(
-        session,
-        claim=claim,
-        target=locked,
-        chunks=chunks,
-        vectors=vectors,
-    )
     context.heartbeat.ensure_owned()
     publication_time = context.now()
     for boundary in (locked.version.processing_started_at, locked.job.heartbeat_at):

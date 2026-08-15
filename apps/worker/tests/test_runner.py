@@ -34,6 +34,19 @@ from cairn_worker.runner import (
 )
 from pydantic import AnyHttpUrl, SecretStr
 
+MAX_EMBEDDING_RESPONSE_BYTES = 2 * 1024 * 1024
+
+
+class _RecordingEmbeddingResponse(BytesIO):
+    def __init__(self, value: bytes) -> None:
+        super().__init__(value)
+        self.read_sizes: list[int] = []
+
+    def read(self, size: int | None = -1) -> bytes:
+        assert size is not None
+        self.read_sizes.append(size)
+        return super().read(size)
+
 
 class _EmbeddingOpener:
     def __init__(self, response: BytesIO | Exception) -> None:
@@ -76,6 +89,25 @@ def test_embedding_readiness_accepts_a_valid_2xx_response(
     request = opener.requests[0]
     assert request.full_url == "https://embedding.example/v1/embeddings"
     assert request.get_header("Authorization") == "Bearer quality-fix-secret-token"
+
+
+def test_embedding_readiness_rejects_an_oversized_body_without_unbounded_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Break caught: readiness must share the task response-size boundary."""
+    response = _RecordingEmbeddingResponse(b"{" + b" " * MAX_EMBEDDING_RESPONSE_BYTES)
+    opener = _EmbeddingOpener(response)
+
+    def build(*_handlers: HTTPRedirectHandler) -> _EmbeddingOpener:
+        return opener
+
+    monkeypatch.setattr("cairn_worker.runner.build_opener", build)
+
+    with pytest.raises(RuntimeError):
+        check_embedding_ready(_embedding_settings())
+
+    assert response.read_sizes == [MAX_EMBEDDING_RESPONSE_BYTES + 1]
+    assert -1 not in response.read_sizes
 
 
 @pytest.mark.parametrize(

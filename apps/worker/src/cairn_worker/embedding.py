@@ -11,6 +11,8 @@ from cairn_worker.errors import WorkerFailure
 if TYPE_CHECKING:
     from cairn_api.settings import Settings
 
+MAX_EMBEDDING_RESPONSE_BYTES = 2 * 1024 * 1024
+
 
 class EmbeddingClient(Protocol):
     def embed(self, inputs: Sequence[str]) -> list[list[float]]: ...
@@ -57,6 +59,19 @@ def _parse_vector(value: object, dimensions: int) -> list[float]:
             raise _unavailable()
         vector.append(number)
     return vector
+
+
+def load_embedding_response(response: Any) -> object:
+    try:
+        payload = response.read(MAX_EMBEDDING_RESPONSE_BYTES + 1)
+    except (OSError, TimeoutError):
+        raise _unavailable() from None
+    if not isinstance(payload, bytes) or len(payload) > MAX_EMBEDDING_RESPONSE_BYTES:
+        raise _unavailable()
+    try:
+        return json.loads(payload)
+    except (RecursionError, TypeError, UnicodeError, ValueError):
+        raise _unavailable() from None
 
 
 def parse_embedding_response(
@@ -161,7 +176,7 @@ class OpenAIEmbeddingClient:
         try:
             opener = self._opener_factory(_RejectRedirects())
             with opener.open(request, timeout=self._timeout_seconds) as response:
-                body: object = json.load(response)
+                body = load_embedding_response(response)
         except HTTPError as error:
             raise _unavailable(retry_after=_retry_after(error)) from None
         except (URLError, OSError, TimeoutError, UnicodeError, ValueError, TypeError):
@@ -173,4 +188,10 @@ class OpenAIEmbeddingClient:
         )
 
 
-__all__ = ["EmbeddingClient", "OpenAIEmbeddingClient", "parse_embedding_response"]
+__all__ = [
+    "MAX_EMBEDDING_RESPONSE_BYTES",
+    "EmbeddingClient",
+    "OpenAIEmbeddingClient",
+    "load_embedding_response",
+    "parse_embedding_response",
+]

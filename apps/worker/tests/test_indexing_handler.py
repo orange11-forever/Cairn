@@ -226,11 +226,15 @@ def test_embedding_batches_are_bounded_ordered_and_heartbeat_checked() -> None:
         for index in range(5)
     ]
 
-    vectors = indexing_module._embed_drafts(  # pyright: ignore[reportPrivateUsage]
-        drafts, client, heartbeat
+    batches = list(
+        indexing_module._embedding_batches(  # pyright: ignore[reportPrivateUsage]
+            drafts, client, heartbeat
+        )
     )
 
     assert client.calls == [["source-0", "source-1"], ["source-2", "source-3"], ["source-4"]]
+    assert [offset for offset, _vectors in batches] == [0, 2, 4]
+    vectors = [vector for _offset, batch in batches for vector in batch]
     assert [vector[0] for vector in vectors] == [1.0, 2.0, 2.0, 3.0, 3.0]
     assert heartbeat.checks == 6
 
@@ -251,8 +255,10 @@ def test_provider_failure_propagates_without_source_or_secret_echo() -> None:
     ]
 
     with pytest.raises(WorkerFailure) as raised:
-        indexing_module._embed_drafts(  # pyright: ignore[reportPrivateUsage]
-            drafts, client, heartbeat
+        list(
+            indexing_module._embedding_batches(  # pyright: ignore[reportPrivateUsage]
+                drafts, client, heartbeat
+            )
         )
 
     assert raised.value.code == "embedding_unavailable"
@@ -290,8 +296,10 @@ def test_orchestration_revalidates_vectors_from_any_embedding_client(
     ]
 
     with pytest.raises(WorkerFailure) as raised:
-        indexing_module._embed_drafts(  # pyright: ignore[reportPrivateUsage]
-            drafts, client, _Heartbeat()
+        list(
+            indexing_module._embedding_batches(  # pyright: ignore[reportPrivateUsage]
+                drafts, client, _Heartbeat()
+            )
         )
 
     assert (raised.value.code, raised.value.retryable) == (expected_code, retryable)
