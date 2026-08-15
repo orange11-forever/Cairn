@@ -38,7 +38,7 @@ def _retry_after(error: HTTPError) -> timedelta | None:
     try:
         return timedelta(seconds=seconds)
     except OverflowError:
-        return None
+        return timedelta.max
 
 
 def _parse_vector(value: object, dimensions: int) -> list[float]:

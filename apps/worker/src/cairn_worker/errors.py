@@ -4,7 +4,6 @@ from datetime import timedelta
 from cairn_api.knowledge.models import INGESTION_ERROR_CODES
 
 SAFE_DETAIL_MAX_LENGTH = 1024
-MAX_RETRY_DELAY = timedelta(days=1)
 
 SAFE_DETAIL_TEMPLATES = {
     "archive_duplicate_path": "archive contains a duplicate entry path",
@@ -99,11 +98,10 @@ def retry_delay(attempt: int, failure: WorkerFailure) -> timedelta:
     delay = RETRY_DELAYS[attempt - 1]
     if failure.retry_after is not None:
         delay = max(delay, failure.retry_after)
-    return min(delay, MAX_RETRY_DELAY)
+    return delay
 
 
 __all__ = [
-    "MAX_RETRY_DELAY",
     "PERMANENT_ERROR_CODES",
     "RETRY_DELAYS",
     "SAFE_DETAIL_MAX_LENGTH",

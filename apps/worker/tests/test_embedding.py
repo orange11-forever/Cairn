@@ -216,7 +216,7 @@ def test_embed_translates_transport_failures_without_secrets(error: Exception) -
         ("0", timedelta(0)),
         ("-1", None),
         ("tomorrow", None),
-        ("9" * 100, None),
+        ("9" * 100, timedelta.max),
     ],
 )
 def test_embed_honors_only_nonnegative_delta_retry_after(

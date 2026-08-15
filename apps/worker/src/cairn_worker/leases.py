@@ -306,6 +306,13 @@ def _clear_lease(job: IngestionJob) -> None:
     job.heartbeat_at = None
 
 
+def _retry_at(now: datetime, delay: timedelta) -> datetime:
+    try:
+        return now + delay
+    except OverflowError:
+        return datetime.max.replace(tzinfo=now.tzinfo)
+
+
 def finish_job(session: Session, *, claim: ClaimedJob, now: datetime) -> None:
     job, attempt = _claim_records(session, claim)
     if (
@@ -489,7 +496,7 @@ def fail_job(
     attempt.completed_at = now
     if not terminal:
         job.status = IngestionJobStatus.QUEUED
-        job.next_attempt_at = now + retry_delay(job.attempt, failure)
+        job.next_attempt_at = _retry_at(now, retry_delay(job.attempt, failure))
         job.last_error_code = failure.code
         job.completed_at = None
         _clear_lease(job)

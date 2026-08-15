@@ -4,8 +4,11 @@ from collections.abc import Generator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
+from http.client import HTTPMessage
+from io import BytesIO
 from threading import Event, Thread
 from typing import Any, BinaryIO, Self, cast
+from urllib.error import HTTPError
 from uuid import UUID, uuid4
 
 import cairn_worker.indexing as indexing_module
@@ -33,6 +36,7 @@ from cairn_api.knowledge.models import (
 )
 from cairn_api.knowledge.object_store import ObjectStoreUnavailable
 from cairn_api.projects.models import OutboxEvent
+from cairn_worker.embedding import OpenAIEmbeddingClient
 from cairn_worker.errors import WorkerFailure
 from cairn_worker.indexing import (
     IndexingContext,
@@ -795,23 +799,58 @@ def test_later_embedding_batch_failure_rolls_back_an_already_flushed_batch(
 
 
 @pytest.mark.integration
-def test_huge_provider_retry_after_is_bounded_by_end_to_end_rescheduling(
+@pytest.mark.parametrize(
+    ("retry_after", "expected_delay"),
+    [
+        ("172800", timedelta(days=2)),
+        ("86399999913600", None),
+        ("86400000000000", None),
+    ],
+    ids=["exact-two-days", "near-timedelta-max", "over-timedelta-max"],
+)
+def test_provider_retry_after_is_preserved_or_saturated_by_end_to_end_rescheduling(
     migrated_engine: Engine,
+    retry_after: str,
+    expected_delay: timedelta | None,
 ) -> None:
-    """Break caught: run_once must queue a failure whose raw delay would overflow datetime."""
+    """Break caught: scheduling preserves valid delays and saturates only datetime overflow."""
     seed = _seed(migrated_engine)
-    failure = WorkerFailure(
-        "embedding_unavailable",
-        "private provider",
-        retryable=True,
-        retry_after=timedelta(seconds=86_399_999_913_600),
+    headers = HTTPMessage()
+    headers["Retry-After"] = retry_after
+    provider_error = HTTPError(
+        "https://private-provider.example/embeddings",
+        429,
+        "private provider body",
+        headers,
+        BytesIO(b'{"private":"response"}'),
+    )
+
+    class RateLimitedOpener:
+        def open(self, _request: object, *, timeout: float) -> None:
+            assert timeout == 1.0
+            raise provider_error
+
+    opener = RateLimitedOpener()
+
+    def build_opener(*_handlers: object) -> RateLimitedOpener:
+        return opener
+
+    embedding = OpenAIEmbeddingClient(
+        base_url="https://private-provider.example",
+        api_key="private-provider-key",
+        provider_key="test-provider",
+        model="test-model",
+        dimensions=1024,
+        timeout_seconds=1.0,
+        maximum_batch_size=2,
+        opener_factory=build_opener,
     )
 
     assert _run(
         migrated_engine,
         seed,
         _Store(),
-        _Embedding(failure=failure),
+        cast(Any, embedding),
     )
 
     with Session(migrated_engine) as session:
@@ -820,7 +859,12 @@ def test_huge_provider_retry_after_is_bounded_by_end_to_end_rescheduling(
             select(IngestionJobAttempt).where(IngestionJobAttempt.job_id == seed.job_id)
         )
         assert job is not None and job.status == IngestionJobStatus.QUEUED
-        assert job.next_attempt_at == seed.now + timedelta(days=1)
+        expected = (
+            seed.now + expected_delay
+            if expected_delay is not None
+            else datetime.max.replace(tzinfo=seed.now.tzinfo)
+        )
+        assert job.next_attempt_at == expected
         assert attempt is not None and attempt.status == IngestionJobAttemptStatus.FAILED
         assert attempt.error_code == "embedding_unavailable"
 

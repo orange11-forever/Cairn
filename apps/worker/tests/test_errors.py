@@ -48,16 +48,16 @@ def test_retry_after_only_extends_the_automatic_backoff() -> None:
     assert retry_delay(1, long) == timedelta(seconds=45)
 
 
-def test_retry_delay_clamps_a_representable_but_unschedulable_provider_delay() -> None:
-    """Break caught: Provider input must not overflow durable datetime scheduling."""
+def test_retry_delay_preserves_a_multi_day_provider_contract_exactly() -> None:
+    """Break caught: overflow protection must not shorten valid Provider backpressure."""
     failure = WorkerFailure(
         "embedding_unavailable",
         "provider unavailable",
         retryable=True,
-        retry_after=timedelta(seconds=86_399_999_913_600),
+        retry_after=timedelta(days=2),
     )
 
-    assert retry_delay(1, failure) == timedelta(days=1)
+    assert retry_delay(1, failure) == timedelta(days=2)
 
 
 @pytest.mark.parametrize(
