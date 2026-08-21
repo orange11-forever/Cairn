@@ -503,13 +503,13 @@ export interface components {
              * @default cairn-api
              * @constant
              */
-            service?: "cairn-api";
+            service: "cairn-api";
             /**
              * Version
              * @default v1
              * @constant
              */
-            version?: "v1";
+            version: "v1";
         };
         /** BatchDetailResponse */
         BatchDetailResponse: {
@@ -630,13 +630,13 @@ export interface components {
              * @default cairn-api
              * @constant
              */
-            service?: "cairn-api";
+            service: "cairn-api";
             /**
              * Status
              * @default ok
              * @constant
              */
-            status?: "ok";
+            status: "ok";
             /** Version */
             version: string;
         };
@@ -768,10 +768,7 @@ export interface components {
         };
         /** KnowledgeSearchRequest */
         KnowledgeSearchRequest: {
-            /**
-             * Limit
-             * @default 10
-             */
+            /** Limit */
             limit?: number;
             /** Query */
             query: string;
@@ -810,7 +807,7 @@ export interface components {
              * Retryable
              * @default false
              */
-            retryable?: boolean;
+            retryable: boolean;
             /** Sha256 */
             sha256: string;
             /** Sizebytes */
@@ -970,7 +967,7 @@ export interface components {
              * @default ready
              * @constant
              */
-            status?: "ready";
+            status: "ready";
         };
         /**
          * ResourceType
@@ -990,7 +987,6 @@ export interface components {
             dueAt?: string | null;
             /** Parenttaskid */
             parentTaskId?: string | null;
-            /** @default medium */
             priority?: components["schemas"]["TaskPriority"];
             /** Stageid */
             stageId?: string | null;
@@ -1146,7 +1142,7 @@ export interface components {
              * @default PUT
              * @constant
              */
-            method?: "PUT";
+            method: "PUT";
             /**
              * Uploadid
              * Format: uuid
