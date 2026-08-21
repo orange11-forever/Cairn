@@ -653,6 +653,92 @@
         "title": "KnowledgeCapabilities",
         "type": "object"
       },
+      "KnowledgeCitation": {
+        "properties": {
+          "chunkId": {
+            "format": "uuid",
+            "title": "Chunkid",
+            "type": "string"
+          },
+          "excerpt": {
+            "title": "Excerpt",
+            "type": "string"
+          },
+          "locator": {
+            "discriminator": {
+              "mapping": {
+                "csv": "#/components/schemas/CsvLocator",
+                "docx": "#/components/schemas/DocxLocator",
+                "html": "#/components/schemas/HtmlLocator",
+                "markdown": "#/components/schemas/TextLocator",
+                "pdf": "#/components/schemas/PdfLocator",
+                "pptx": "#/components/schemas/PptxLocator",
+                "text": "#/components/schemas/TextLocator",
+                "xlsx": "#/components/schemas/XlsxLocator"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PdfLocator"
+              },
+              {
+                "$ref": "#/components/schemas/DocxLocator"
+              },
+              {
+                "$ref": "#/components/schemas/PptxLocator"
+              },
+              {
+                "$ref": "#/components/schemas/XlsxLocator"
+              },
+              {
+                "$ref": "#/components/schemas/CsvLocator"
+              },
+              {
+                "$ref": "#/components/schemas/HtmlLocator"
+              },
+              {
+                "$ref": "#/components/schemas/TextLocator"
+              }
+            ],
+            "title": "Locator"
+          },
+          "mediaType": {
+            "title": "Mediatype",
+            "type": "string"
+          },
+          "resourceId": {
+            "format": "uuid",
+            "title": "Resourceid",
+            "type": "string"
+          },
+          "resourceVersionId": {
+            "format": "uuid",
+            "title": "Resourceversionid",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "resourceId",
+          "resourceVersionId",
+          "chunkId",
+          "title",
+          "mediaType",
+          "excerpt",
+          "locator",
+          "score"
+        ],
+        "title": "KnowledgeCitation",
+        "type": "object"
+      },
       "KnowledgeResourcePage": {
         "properties": {
           "capabilities": {
@@ -730,6 +816,54 @@
           "latestVersion"
         ],
         "title": "KnowledgeResourceResponse",
+        "type": "object"
+      },
+      "KnowledgeSearchRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "default": 10,
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "query": {
+            "maxLength": 500,
+            "minLength": 3,
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "KnowledgeSearchRequest",
+        "type": "object"
+      },
+      "KnowledgeSearchResponse": {
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeCitation"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "retrievalMode": {
+            "enum": [
+              "hybrid",
+              "keyword_fallback"
+            ],
+            "title": "Retrievalmode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "retrievalMode",
+          "results"
+        ],
+        "title": "KnowledgeSearchResponse",
         "type": "object"
       },
       "KnowledgeVersionResponse": {
@@ -4259,6 +4393,256 @@
           }
         },
         "summary": "Retry Knowledge Resource Version",
+        "tags": [
+          "knowledge"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/knowledge/search": {
+      "post": {
+        "operationId": "search_knowledge_api_v1_projects__project_id__knowledge_search_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Session-bound CSRF token returned by login or session restore.",
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KnowledgeSearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeSearchResponse"
+                }
+              }
+            },
+            "description": "项目知识搜索结果",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "会话无效",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "请求来源或 CSRF 令牌无效",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "项目不存在或不可访问",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "搜索请求无效",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "搜索请求过于频繁",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "当前搜索限流窗口剩余秒数",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "服务器内部错误",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "数据库或 Embedding 服务暂时不可用",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Search Knowledge",
         "tags": [
           "knowledge"
         ]

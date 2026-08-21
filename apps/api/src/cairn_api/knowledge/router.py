@@ -15,7 +15,7 @@ from cairn_api.auth.dependencies import (
 from cairn_api.auth.service import RequestAuditContext
 from cairn_api.db.session import get_db
 from cairn_api.errors import ErrorBody
-from cairn_api.knowledge.dependencies import get_object_store
+from cairn_api.knowledge.dependencies import EmbeddingClientDependency, get_object_store
 from cairn_api.knowledge.object_store import ObjectStore
 from cairn_api.knowledge.resource_service import KnowledgeResourceService
 from cairn_api.knowledge.schemas import (
@@ -23,10 +23,13 @@ from cairn_api.knowledge.schemas import (
     ChunkContextResponse,
     KnowledgeResourcePage,
     KnowledgeResourceResponse,
+    KnowledgeSearchRequest,
+    KnowledgeSearchResponse,
     UploadBatchCreateRequest,
     UploadBatchCreateResponse,
     UploadCompleteResponse,
 )
+from cairn_api.knowledge.search_service import KnowledgeSearchService
 from cairn_api.knowledge.upload_service import KnowledgeUploadService
 from cairn_api.pagination import load_cursor_page
 from cairn_api.settings import Settings
@@ -85,6 +88,59 @@ RESOURCE_RETRY_ERRORS: dict[int | str, dict[str, Any]] = {
     **RESOURCE_MUTATION_ERRORS,
     409: _error("知识资源状态不允许该操作"),
 }
+SEARCH_ERRORS: dict[int | str, dict[str, Any]] = {
+    401: _error("会话无效"),
+    403: _error("请求来源或 CSRF 令牌无效"),
+    404: _error("项目不存在或不可访问"),
+    422: _error("搜索请求无效"),
+    429: {
+        **_error("搜索请求过于频繁"),
+        "headers": {
+            **REQUEST_ID_HEADER,
+            "Retry-After": {
+                "description": "当前搜索限流窗口剩余秒数",
+                "schema": {"type": "integer", "minimum": 1},
+            },
+        },
+    },
+    500: _error("服务器内部错误"),
+    503: _error("数据库或 Embedding 服务暂时不可用"),
+}
+
+
+@router.post(
+    "/projects/{project_id}/knowledge/search",
+    response_model=KnowledgeSearchResponse,
+    responses={
+        200: {"description": "项目知识搜索结果", "headers": REQUEST_ID_HEADER},
+        **SEARCH_ERRORS,
+    },
+    dependencies=[Depends(require_mutation_csrf)],
+    openapi_extra=CSRF_REQUIRED_OPENAPI,
+)
+def search_knowledge(
+    project_id: UUID,
+    payload: KnowledgeSearchRequest,
+    identity: CurrentIdentity,
+    session: SessionDependency,
+    embedding_client: EmbeddingClientDependency,
+    audit: AuditContext,
+    settings: SettingsDependency,
+) -> KnowledgeSearchResponse:
+    return KnowledgeSearchService(
+        session,
+        embedding_client,
+        user_limit=settings.search_user_limit_per_minute,
+        org_limit=settings.search_org_limit_per_minute,
+        audit_secret=settings.search_audit_secret.get_secret_value(),
+        expected_dimensions=settings.embedding_dimensions,
+    ).search(
+        identity=identity,
+        project_id=project_id,
+        query=payload.query,
+        limit=payload.limit,
+        audit=audit,
+    )
 
 
 @router.post(

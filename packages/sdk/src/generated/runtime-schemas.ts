@@ -652,6 +652,92 @@ export const componentSchemas = {
     "title": "KnowledgeCapabilities",
     "type": "object"
   },
+  "KnowledgeCitation": {
+    "properties": {
+      "chunkId": {
+        "format": "uuid",
+        "title": "Chunkid",
+        "type": "string"
+      },
+      "excerpt": {
+        "title": "Excerpt",
+        "type": "string"
+      },
+      "locator": {
+        "discriminator": {
+          "mapping": {
+            "csv": "#/components/schemas/CsvLocator",
+            "docx": "#/components/schemas/DocxLocator",
+            "html": "#/components/schemas/HtmlLocator",
+            "markdown": "#/components/schemas/TextLocator",
+            "pdf": "#/components/schemas/PdfLocator",
+            "pptx": "#/components/schemas/PptxLocator",
+            "text": "#/components/schemas/TextLocator",
+            "xlsx": "#/components/schemas/XlsxLocator"
+          },
+          "propertyName": "type"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/PdfLocator"
+          },
+          {
+            "$ref": "#/components/schemas/DocxLocator"
+          },
+          {
+            "$ref": "#/components/schemas/PptxLocator"
+          },
+          {
+            "$ref": "#/components/schemas/XlsxLocator"
+          },
+          {
+            "$ref": "#/components/schemas/CsvLocator"
+          },
+          {
+            "$ref": "#/components/schemas/HtmlLocator"
+          },
+          {
+            "$ref": "#/components/schemas/TextLocator"
+          }
+        ],
+        "title": "Locator"
+      },
+      "mediaType": {
+        "title": "Mediatype",
+        "type": "string"
+      },
+      "resourceId": {
+        "format": "uuid",
+        "title": "Resourceid",
+        "type": "string"
+      },
+      "resourceVersionId": {
+        "format": "uuid",
+        "title": "Resourceversionid",
+        "type": "string"
+      },
+      "score": {
+        "title": "Score",
+        "type": "number"
+      },
+      "title": {
+        "title": "Title",
+        "type": "string"
+      }
+    },
+    "required": [
+      "resourceId",
+      "resourceVersionId",
+      "chunkId",
+      "title",
+      "mediaType",
+      "excerpt",
+      "locator",
+      "score"
+    ],
+    "title": "KnowledgeCitation",
+    "type": "object"
+  },
   "KnowledgeResourcePage": {
     "properties": {
       "capabilities": {
@@ -729,6 +815,54 @@ export const componentSchemas = {
       "latestVersion"
     ],
     "title": "KnowledgeResourceResponse",
+    "type": "object"
+  },
+  "KnowledgeSearchRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "limit": {
+        "default": 10,
+        "maximum": 20,
+        "minimum": 1,
+        "title": "Limit",
+        "type": "integer"
+      },
+      "query": {
+        "maxLength": 500,
+        "minLength": 3,
+        "title": "Query",
+        "type": "string"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "title": "KnowledgeSearchRequest",
+    "type": "object"
+  },
+  "KnowledgeSearchResponse": {
+    "properties": {
+      "results": {
+        "items": {
+          "$ref": "#/components/schemas/KnowledgeCitation"
+        },
+        "title": "Results",
+        "type": "array"
+      },
+      "retrievalMode": {
+        "enum": [
+          "hybrid",
+          "keyword_fallback"
+        ],
+        "title": "Retrievalmode",
+        "type": "string"
+      }
+    },
+    "required": [
+      "retrievalMode",
+      "results"
+    ],
+    "title": "KnowledgeSearchResponse",
     "type": "object"
   },
   "KnowledgeVersionResponse": {

@@ -23,6 +23,7 @@ from cairn_api.knowledge.object_store import (
     ObjectStoreUnavailable,
 )
 from cairn_api.knowledge.router import router as knowledge_router
+from cairn_api.knowledge.search_service import SearchEmbeddingClient
 from cairn_api.logging import configure_app_logging
 from cairn_api.middleware import RequestIdMiddleware, new_request_id
 from cairn_api.organizations.router import router as organizations_router
@@ -77,6 +78,7 @@ def create_app(
     settings: Settings | None = None,
     database: Database | None = None,
     object_store: ObjectStore | None = None,
+    embedding_client: SearchEmbeddingClient | None = None,
 ) -> FastAPI:
     current_settings = settings or Settings()
     current_database = database or Database(current_settings.database_url)
@@ -91,13 +93,21 @@ def create_app(
             try:
                 current_database.dispose()
             finally:
-                current_object_store.close()
+                try:
+                    current_object_store.close()
+                finally:
+                    configured_embedding = getattr(_application.state, "embedding_client", None)
+                    if configured_embedding is not None:
+                        close = getattr(configured_embedding, "close", None)
+                        if callable(close):
+                            close()
 
     application = CairnFastAPI(title="Cairn API", version=__version__, lifespan=lifespan)
     application.cairn_cors_origins = tuple(current_settings.cors_origins)
     application.state.settings = current_settings
     application.state.database = current_database
     application.state.object_store = current_object_store
+    application.state.embedding_client = embedding_client
 
     @application.exception_handler(ApiProblem)
     async def api_problem_handler(  # pyright: ignore[reportUnusedFunction]

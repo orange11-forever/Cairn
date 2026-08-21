@@ -14,6 +14,7 @@ from cairn_api.knowledge.object_store import (
     ObjectStore,
     PresignedPut,
 )
+from cairn_api.knowledge.search_service import SearchEmbeddingClient
 from cairn_api.projects.models import Project
 from cairn_api.settings import Settings
 from fastapi.testclient import TestClient
@@ -148,9 +149,10 @@ def knowledge_client(
     database: Database,
     actor: SeededActor,
     object_store: ObjectStore,
+    embedding_client: SearchEmbeddingClient | None = None,
 ) -> Generator[TestClient, None, None]:
     with TestClient(
-        create_app(settings, database, object_store),
+        create_app(settings, database, object_store, embedding_client),
         raise_server_exceptions=False,
     ) as client:
         response = client.post(

@@ -1,7 +1,16 @@
 from typing import Annotated, Literal
+from unicodedata import normalize
 from uuid import UUID
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictInt, StrictStr
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictInt,
+    StrictStr,
+    field_validator,
+)
 
 from cairn_api.knowledge.models import (
     IngestionBatchStatus,
@@ -57,6 +66,46 @@ KnowledgeLocator = Annotated[
     PdfLocator | DocxLocator | PptxLocator | XlsxLocator | CsvLocator | HtmlLocator | TextLocator,
     Field(discriminator="type"),
 ]
+
+
+def normalize_search_query(value: str) -> str:
+    return normalize("NFKC", value).strip()
+
+
+class KnowledgeSearchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    query: str = Field(min_length=3, max_length=500)
+    limit: int = Field(default=10, ge=1, le=20)
+
+    @field_validator("query", mode="before")
+    @classmethod
+    def normalize_query(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        return normalize_search_query(value)
+
+
+class KnowledgeCitation(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    resource_id: UUID = Field(serialization_alias="resourceId")
+    resource_version_id: UUID = Field(serialization_alias="resourceVersionId")
+    chunk_id: UUID = Field(serialization_alias="chunkId")
+    title: str
+    media_type: str = Field(serialization_alias="mediaType")
+    excerpt: str
+    locator: KnowledgeLocator
+    score: float
+
+
+class KnowledgeSearchResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    retrieval_mode: Literal["hybrid", "keyword_fallback"] = Field(
+        serialization_alias="retrievalMode"
+    )
+    results: list[KnowledgeCitation]
 
 
 class UploadFileIntent(BaseModel):
@@ -202,9 +251,12 @@ __all__ = [
     "HtmlLocator",
     "IngestionItemResponse",
     "KnowledgeCapabilities",
+    "KnowledgeCitation",
     "KnowledgeLocator",
     "KnowledgeResourcePage",
     "KnowledgeResourceResponse",
+    "KnowledgeSearchRequest",
+    "KnowledgeSearchResponse",
     "KnowledgeVersionResponse",
     "PdfLocator",
     "PptxLocator",
@@ -215,4 +267,5 @@ __all__ = [
     "UploadFileIntent",
     "UploadInstruction",
     "XlsxLocator",
+    "normalize_search_query",
 ]

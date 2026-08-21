@@ -108,6 +108,7 @@ def test_openapi_contains_only_approved_paths(client: TestClient) -> None:
         "/api/v1/projects/{project_id}/acl",
         "/api/v1/projects/{project_id}/acl/{principal_type}/{principal_id}",
         "/api/v1/projects/{project_id}/events",
+        "/api/v1/projects/{project_id}/knowledge/search",
         "/api/v1/projects/{project_id}/knowledge/uploads",
         "/api/v1/projects/{project_id}/knowledge/uploads/{upload_id}/complete",
         "/api/v1/projects/{project_id}/knowledge/batches/{batch_id}",
@@ -119,7 +120,29 @@ def test_openapi_contains_only_approved_paths(client: TestClient) -> None:
         "/api/v1/projects/{project_id}/tasks",
         "/api/v1/tasks/{task_id}/status",
         "/api/v1/tasks/{task_id}/dependencies",
+}
+
+
+def test_openapi_search_declares_bounded_csrf_rate_limit_and_embedding_contract() -> None:
+    operation = create_app().openapi()["paths"][
+        "/api/v1/projects/{project_id}/knowledge/search"
+    ]["post"]
+    csrf = next(
+        parameter for parameter in operation["parameters"] if parameter["name"] == "X-CSRF-Token"
+    )
+
+    assert csrf["required"] is True
+    assert set(operation["responses"]) == {"200", "401", "403", "404", "422", "429", "500", "503"}
+    assert operation["responses"]["429"]["headers"]["Retry-After"]["schema"] == {
+        "type": "integer",
+        "minimum": 1,
     }
+    request_schema = operation["requestBody"]["content"]["application/json"]["schema"]["$ref"]
+    response_schema = operation["responses"]["200"]["content"]["application/json"]["schema"][
+        "$ref"
+    ]
+    assert request_schema.endswith("/KnowledgeSearchRequest")
+    assert response_schema.endswith("/KnowledgeSearchResponse")
 
 
 def test_openapi_ready_declares_success_and_dependency_failure_contracts() -> None:

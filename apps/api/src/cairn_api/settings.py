@@ -237,6 +237,13 @@ class Settings(BaseSettings):
             raise ValueError("Stage 3A requires exactly 1024 Embedding dimensions")
         return value
 
+    @field_validator("search_org_limit_per_minute")
+    @classmethod
+    def require_enabled_organization_search_limit(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("organization search rate limit must be at least 1")
+        return value
+
     @field_validator("app_url")
     @classmethod
     def require_app_origin(cls, value: AnyHttpUrl | None) -> AnyHttpUrl | None:
