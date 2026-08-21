@@ -100,7 +100,7 @@ class Settings(BaseSettings):
     )
     search_org_limit_per_minute: int = Field(
         default=300,
-        ge=0,
+        ge=1,
         validation_alias="CAIRN_SEARCH_ORG_LIMIT_PER_MINUTE",
     )
     search_audit_secret: SecretStr = Field(
@@ -202,8 +202,6 @@ class Settings(BaseSettings):
             "local-development-search-audit-secret-change-before-deploying-32-bytes"
         ):
             raise ValueError("production cannot use the example search audit secret")
-        if self.search_org_limit_per_minute < 1:
-            raise ValueError("production organization search rate limit must be at least 1")
         return self
 
     @field_validator(

@@ -1,6 +1,9 @@
-from fastapi import Request
+from typing import Annotated, cast
+
+from fastapi import Depends, Request
 
 from cairn_api.knowledge.object_store import ObjectStore
+from cairn_api.knowledge.search_service import SearchEmbeddingClient
 
 
 def get_object_store(request: Request) -> ObjectStore:
@@ -10,4 +13,14 @@ def get_object_store(request: Request) -> ObjectStore:
     return object_store
 
 
-__all__ = ["get_object_store"]
+def get_embedding_client(request: Request) -> SearchEmbeddingClient:
+    configured = getattr(request.app.state, "embedding_client", None)
+    if configured is None:
+        raise TypeError("embedding client is not configured")
+    return cast(SearchEmbeddingClient, configured)
+
+
+EmbeddingClientDependency = Annotated[SearchEmbeddingClient, Depends(get_embedding_client)]
+
+
+__all__ = ["EmbeddingClientDependency", "get_embedding_client", "get_object_store"]

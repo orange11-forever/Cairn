@@ -1,6 +1,8 @@
 import logging
 import sys
+import time
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from io import StringIO
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -8,9 +10,11 @@ from unittest.mock import Mock
 import pytest
 from cairn_api.app import create_app
 from cairn_api.db.session import Database
+from cairn_api.errors import ApiProblem
+from cairn_api.knowledge.dependencies import get_embedding_client
 from cairn_api.knowledge.object_store import ObjectStore, ObjectStoreUnavailable
 from cairn_api.logging import configure_app_logging
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
 
@@ -108,6 +112,7 @@ def test_openapi_contains_only_approved_paths(client: TestClient) -> None:
         "/api/v1/projects/{project_id}/acl",
         "/api/v1/projects/{project_id}/acl/{principal_type}/{principal_id}",
         "/api/v1/projects/{project_id}/events",
+        "/api/v1/projects/{project_id}/knowledge/search",
         "/api/v1/projects/{project_id}/knowledge/uploads",
         "/api/v1/projects/{project_id}/knowledge/uploads/{upload_id}/complete",
         "/api/v1/projects/{project_id}/knowledge/batches/{batch_id}",
@@ -119,7 +124,29 @@ def test_openapi_contains_only_approved_paths(client: TestClient) -> None:
         "/api/v1/projects/{project_id}/tasks",
         "/api/v1/tasks/{task_id}/status",
         "/api/v1/tasks/{task_id}/dependencies",
+}
+
+
+def test_openapi_search_declares_bounded_csrf_rate_limit_and_embedding_contract() -> None:
+    operation = create_app().openapi()["paths"][
+        "/api/v1/projects/{project_id}/knowledge/search"
+    ]["post"]
+    csrf = next(
+        parameter for parameter in operation["parameters"] if parameter["name"] == "X-CSRF-Token"
+    )
+
+    assert csrf["required"] is True
+    assert set(operation["responses"]) == {"200", "401", "403", "404", "422", "429", "500", "503"}
+    assert operation["responses"]["429"]["headers"]["Retry-After"]["schema"] == {
+        "type": "integer",
+        "minimum": 1,
     }
+    request_schema = operation["requestBody"]["content"]["application/json"]["schema"]["$ref"]
+    response_schema = operation["responses"]["200"]["content"]["application/json"]["schema"][
+        "$ref"
+    ]
+    assert request_schema.endswith("/KnowledgeSearchRequest")
+    assert response_schema.endswith("/KnowledgeSearchResponse")
 
 
 def test_openapi_ready_declares_success_and_dependency_failure_contracts() -> None:
@@ -540,6 +567,55 @@ def test_app_lifespan_closes_object_store_when_database_disposal_fails() -> None
     object_store.close.assert_called_once_with()
 
 
+def test_app_creates_one_owned_embedding_client_before_concurrent_requests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Break caught: concurrent first requests overwrite and leak lazily created clients."""
+    from cairn_api import app as app_module
+
+    database = Mock(spec=Database)
+    object_store = Mock(spec=ObjectStore)
+    owned_client = Mock()
+
+    def create_owned_client(**_kwargs: object) -> Mock:
+        time.sleep(0.02)
+        return owned_client
+
+    factory = Mock(side_effect=create_owned_client)
+    monkeypatch.setattr(app_module, "OpenAIQueryEmbeddingClient", factory, raising=False)
+    application = create_app(database=database, object_store=object_store)
+    request = Request({"type": "http", "app": application})
+
+    def resolve_client(_index: int) -> object:
+        return get_embedding_client(request)
+
+    with TestClient(application):
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            clients = list(executor.map(resolve_client, range(32)))
+
+        assert clients == [owned_client] * 32
+        owned_client.close.assert_not_called()
+
+    factory.assert_called_once()
+    owned_client.close.assert_called_once_with()
+
+
+def test_app_does_not_close_injected_embedding_client() -> None:
+    """Break caught: application shutdown treats caller-owned injected clients as app-owned."""
+    injected_client = Mock()
+
+    with TestClient(
+        create_app(
+            database=Mock(spec=Database),
+            object_store=Mock(spec=ObjectStore),
+            embedding_client=injected_client,
+        )
+    ):
+        pass
+
+    injected_client.close.assert_not_called()
+
+
 def test_app_exposes_the_injected_object_store() -> None:
     object_store = Mock(spec=ObjectStore)
 
@@ -731,9 +807,46 @@ def test_internal_error_applies_configured_cors_and_preserves_request_id() -> No
     }
     assert response.headers["x-request-id"] == "req-cors-error-500"
     assert response.headers["access-control-allow-origin"] == origin
-    assert response.headers["access-control-expose-headers"].lower() == "x-request-id"
+    assert {
+        value.strip().lower()
+        for value in response.headers["access-control-expose-headers"].split(",")
+    } == {"retry-after", "x-request-id"}
     assert "location" not in response.headers["access-control-expose-headers"].lower()
     assert response.headers["access-control-allow-credentials"] == "true"
+
+
+def test_cross_origin_rate_limit_exposes_retry_after_and_request_id() -> None:
+    """Break caught: browsers cannot read Retry-After from a cross-origin 429 response."""
+    from cairn_api.settings import Settings
+
+    origin = "http://localhost:5500"
+    app: FastAPI = create_app(
+        Settings(cors_origins=origin, _env_file=None)  # pyright: ignore[reportCallIssue]
+    )
+
+    @app.get("/_test/rate-limited", include_in_schema=False)
+    def _rate_limited() -> None:  # pyright: ignore[reportUnusedFunction]
+        raise ApiProblem(
+            status_code=429,
+            code="search_rate_limited",
+            message="搜索请求过于频繁",
+            headers={"Retry-After": "17"},
+        )
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/_test/rate-limited",
+            headers={"Origin": origin, "X-Request-ID": "req-cors-rate-limit"},
+        )
+
+    exposed = {
+        value.strip().lower()
+        for value in response.headers["access-control-expose-headers"].split(",")
+    }
+    assert response.status_code == 429
+    assert response.headers["retry-after"] == "17"
+    assert response.headers["x-request-id"] == "req-cors-rate-limit"
+    assert exposed == {"retry-after", "x-request-id"}
 
 
 @pytest.mark.parametrize(

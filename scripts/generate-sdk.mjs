@@ -15,6 +15,7 @@ const RUNTIME_SCHEMAS_PATH = join(
   REPOSITORY_ROOT,
   "packages/sdk/src/generated/runtime-schemas.ts",
 );
+const COMPONENT_SCHEMA_PREFIX = "#/components/schemas/";
 
 function run(command, args, env = process.env) {
   const invocation = spawnInvocation(command, args, { env });
@@ -56,9 +57,78 @@ async function generateRuntimeSchemas(openapiPath, outputPath) {
   await writeFile(outputPath, source, "utf8");
 }
 
+function collectComponentSchemas(schema, schemas, collected) {
+  if (schema === null || typeof schema !== "object") return;
+  if (Array.isArray(schema)) {
+    for (const item of schema) collectComponentSchemas(item, schemas, collected);
+    return;
+  }
+  if (typeof schema.$ref === "string" && schema.$ref.startsWith(COMPONENT_SCHEMA_PREFIX)) {
+    const name = schema.$ref.slice(COMPONENT_SCHEMA_PREFIX.length);
+    if (collected.has(name)) return;
+    collected.add(name);
+    collectComponentSchemas(schemas[name], schemas, collected);
+    return;
+  }
+  for (const value of Object.values(schema)) {
+    collectComponentSchemas(value, schemas, collected);
+  }
+}
+
+function stripOptionalDefaults(schema) {
+  if (schema === null || typeof schema !== "object" || Array.isArray(schema)) return;
+  const required = new Set(Array.isArray(schema.required) ? schema.required : []);
+  if (schema.properties !== null && typeof schema.properties === "object") {
+    for (const [name, property] of Object.entries(schema.properties)) {
+      if (
+        !required.has(name) &&
+        property !== null &&
+        typeof property === "object" &&
+        !Array.isArray(property)
+      ) {
+        delete property.default;
+      }
+      stripOptionalDefaults(property);
+    }
+  }
+  for (const keyword of ["items", "anyOf", "oneOf", "allOf"]) {
+    stripOptionalDefaults(schema[keyword]);
+  }
+}
+
+async function generateTypeInput(openapiPath, outputPath) {
+  const document = JSON.parse(await readFile(openapiPath, "utf8"));
+  const typeDocument = structuredClone(document);
+  const schemas = typeDocument?.components?.schemas;
+  if (schemas === null || typeof schemas !== "object" || Array.isArray(schemas)) {
+    throw new Error("OpenAPI document does not contain components.schemas");
+  }
+  const requestComponents = new Set();
+  const responseComponents = new Set();
+  for (const pathItem of Object.values(typeDocument.paths ?? {})) {
+    if (pathItem === null || typeof pathItem !== "object") continue;
+    for (const operation of Object.values(pathItem)) {
+      if (operation === null || typeof operation !== "object") continue;
+      for (const media of Object.values(operation.requestBody?.content ?? {})) {
+        collectComponentSchemas(media?.schema, schemas, requestComponents);
+      }
+      for (const response of Object.values(operation.responses ?? {})) {
+        for (const media of Object.values(response?.content ?? {})) {
+          collectComponentSchemas(media?.schema, schemas, responseComponents);
+        }
+      }
+    }
+  }
+  for (const name of requestComponents) {
+    if (!responseComponents.has(name)) stripOptionalDefaults(schemas[name]);
+  }
+  await writeFile(outputPath, `${JSON.stringify(typeDocument, null, 2)}\n`, "utf8");
+}
+
 const checkOnly = process.argv.slice(2).includes("--check");
 const temporaryRoot = await mkdtemp(join(tmpdir(), "cairn-sdk-"));
 const temporaryOpenapi = join(temporaryRoot, "openapi.json");
+const temporaryTypeInput = join(temporaryRoot, "type-input-openapi.json");
 const temporarySchema = join(temporaryRoot, "schema.d.ts");
 const temporaryRuntimeSchemas = join(temporaryRoot, "runtime-schemas.ts");
 
@@ -68,12 +138,13 @@ try {
     ["run", "--offline", "--package", "cairn-api", "python", "scripts/export-openapi.py", temporaryOpenapi],
     { ...process.env, UV_CACHE_DIR: join(temporaryRoot, "uv-cache") },
   );
+  await generateTypeInput(temporaryOpenapi, temporaryTypeInput);
   run(PNPM, [
     "--filter",
     "@cairn/sdk",
     "exec",
     "openapi-typescript",
-    temporaryOpenapi,
+    temporaryTypeInput,
     "--output",
     temporarySchema,
   ]);
