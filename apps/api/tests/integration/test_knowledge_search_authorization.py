@@ -4,7 +4,8 @@ from uuid import UUID, uuid4
 import pytest
 from cairn_api.auth.models import AuthSession
 from cairn_api.authorization.models import ResourceAclEntry
-from cairn_api.authorization.types import MembershipRole
+from cairn_api.authorization.repository import revoke_entry
+from cairn_api.authorization.types import ActorType, MembershipRole
 from cairn_api.db.session import Database
 from cairn_api.knowledge.models import KnowledgeResource
 from cairn_api.organizations.models import Membership
@@ -126,7 +127,12 @@ class RevokeAclOnEmbedding(SearchEmbedding):
         with self.database.session_factory.begin() as session:
             acl = session.get(ResourceAclEntry, self.acl_id)
             assert acl is not None
-            acl.revoked_at = datetime.now(UTC)
+            revoke_entry(
+                session,
+                entry=acl,
+                actor_type=ActorType.SYSTEM,
+                actor_id=None,
+            )
         return super().embed_query(query)
 
 
