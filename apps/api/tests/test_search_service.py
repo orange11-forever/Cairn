@@ -81,7 +81,7 @@ def test_search_request_defaults_to_ten_and_accepts_the_twenty_result_maximum() 
 class _Embedding:
     provider_key = "default"
     model = "text-embedding-v4"
-    dimensions = 3
+    dimensions = 1024
 
     def __init__(self, result: list[float] | Exception) -> None:
         self.result = result
@@ -106,6 +106,10 @@ def _citation(chunk_id: UUID) -> SearchCitationRecord:
     )
 
 
+def _stage_vector() -> list[float]:
+    return [0.1, 0.2, 0.3] + [0.0] * 1021
+
+
 def _service(
     monkeypatch: pytest.MonkeyPatch,
     embedding: _Embedding,
@@ -127,7 +131,7 @@ def _service(
             return_value=SimpleNamespace(
                 provider_key="default",
                 model="text-embedding-v4",
-                dimensions=3,
+                dimensions=1024,
                 distance_metric="cosine",
             )
         ),
@@ -170,7 +174,7 @@ def test_search_uses_query_embedding_fuses_results_and_audits_only_safe_query_fa
     """Break caught: search skips vector retrieval or stores raw query/audit extras."""
     lexical_id = uuid4()
     shared_id = uuid4()
-    embedding = _Embedding([0.1, 0.2, 0.3])
+    embedding = _Embedding(_stage_vector())
     service, session, identity, project_id = _service(
         monkeypatch,
         embedding,
@@ -206,7 +210,7 @@ def test_service_normalizes_query_before_provider_and_audit_when_called_directly
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Break caught: a non-HTTP caller bypasses canonicalization and fragments search/audit keys."""
-    embedding = _Embedding([0.1, 0.2, 0.3])
+    embedding = _Embedding(_stage_vector())
     service, session, identity, project_id = _service(monkeypatch, embedding)
 
     service.search(
@@ -253,7 +257,7 @@ def test_search_returns_an_empty_hybrid_result_list_without_fabricated_citations
     """Break caught: an empty authorized candidate set is treated as an error or placeholder hit."""
     service, _session, identity, project_id = _service(
         monkeypatch,
-        _Embedding([0.1, 0.2, 0.3]),
+        _Embedding(_stage_vector()),
     )
 
     response = service.search(
@@ -289,14 +293,19 @@ def test_permanent_embedding_configuration_failure_returns_503_without_fallback(
     assert raised.value.status_code == 503
     assert raised.value.code == "embedding_unavailable"
 
-
-def test_active_profile_dimension_mismatch_returns_503_before_provider_call(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Break caught: incompatible active profile is degraded or sent to the provider."""
     from cairn_api.knowledge import search_repository
 
-    embedding = _Embedding([0.1, 0.2, 0.3])
+    cast(Mock, search_repository.lexical_candidates).assert_not_called()
+
+
+def test_matching_non_stage_3a_profile_and_client_dimensions_return_503_before_provider_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Break caught: matching 768-dimensional runtime configuration bypasses Stage 3A binding."""
+    from cairn_api.knowledge import search_repository
+
+    embedding = _Embedding([0.0] * 768)
+    embedding.dimensions = 768
     service, _session, identity, project_id = _service(monkeypatch, embedding)
     monkeypatch.setattr(
         search_repository,
@@ -305,7 +314,43 @@ def test_active_profile_dimension_mismatch_returns_503_before_provider_call(
             return_value=SimpleNamespace(
                 provider_key="default",
                 model="text-embedding-v4",
-                dimensions=1024,
+                dimensions=768,
+                distance_metric="cosine",
+                index_config={"strategy": "exact", "candidateLimit": 50},
+            )
+        ),
+    )
+
+    with pytest.raises(ApiProblem) as raised:
+        service.search(
+            identity=identity,
+            project_id=project_id,
+            query="wrong dimensions",
+            limit=10,
+            audit=AUDIT,
+        )
+
+    assert raised.value.status_code == 503
+    assert raised.value.code == "embedding_unavailable"
+    assert embedding.queries == []
+
+
+def test_active_profile_dimension_mismatch_returns_503_before_provider_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Break caught: incompatible active profile is degraded or sent to the provider."""
+    from cairn_api.knowledge import search_repository
+
+    embedding = _Embedding(_stage_vector())
+    service, _session, identity, project_id = _service(monkeypatch, embedding)
+    monkeypatch.setattr(
+        search_repository,
+        "get_active_embedding_profile",
+        Mock(
+            return_value=SimpleNamespace(
+                provider_key="default",
+                model="text-embedding-v4",
+                dimensions=768,
                 distance_metric="cosine",
                 index_config={"strategy": "exact", "candidateLimit": 50},
             )
@@ -368,12 +413,24 @@ def test_candidate_sql_filters_tenant_project_current_ready_deleted_and_acl_befo
     assert "embedding_profiles.status" in vector_sql
 
 
-def test_query_embedding_rejects_nonfinite_provider_vectors() -> None:
-    """Break caught: NaN or infinity crosses the provider boundary and reaches pgvector."""
+@pytest.mark.parametrize(
+    "response_body",
+    [
+        b"[]",
+        b'{"data":{}}',
+        b'{"data":[null]}',
+        b'{"data":[{"index":false,"embedding":[0.0,0.0,1.0]}]}',
+        b'{"data":[{"index":0,"embedding":[NaN,0.0,1.0]}]}',
+    ],
+)
+def test_query_embedding_treats_malformed_success_payloads_as_permanent_failures(
+    response_body: bytes,
+) -> None:
+    """Break caught: malformed provider success payloads silently select keyword fallback."""
     transport = httpx.MockTransport(
         lambda _request: httpx.Response(
             200,
-            content=b'{"data":[{"index":0,"embedding":[NaN,0.0,1.0]}]}',
+            content=response_body,
             headers={"Content-Type": "application/json"},
         )
     )
@@ -387,8 +444,8 @@ def test_query_embedding_rejects_nonfinite_provider_vectors() -> None:
         client=httpx.Client(transport=transport),
     )
 
-    with pytest.raises(EmbeddingUnavailable):
-        client.embed_query("finite vectors only")
+    with pytest.raises(EmbeddingConfigurationError):
+        client.embed_query("strict provider contract")
 
 
 def test_query_embedding_treats_provider_authentication_failure_as_permanent_config() -> None:
@@ -406,25 +463,3 @@ def test_query_embedding_treats_provider_authentication_failure_as_permanent_con
 
     with pytest.raises(EmbeddingConfigurationError):
         client.embed_query("do not degrade configuration errors")
-
-
-def test_query_embedding_rejects_boolean_record_index() -> None:
-    """Break caught: JSON false compares equal to integer zero and accepts a malformed record."""
-    transport = httpx.MockTransport(
-        lambda _request: httpx.Response(
-            200,
-            json={"data": [{"index": False, "embedding": [0.0, 0.0, 1.0]}]},
-        )
-    )
-    client = OpenAIQueryEmbeddingClient(
-        base_url="https://embedding.example/v1",
-        api_key="secret",
-        provider_key="test",
-        model="test-model",
-        dimensions=3,
-        timeout_seconds=1,
-        client=httpx.Client(transport=transport),
-    )
-
-    with pytest.raises(EmbeddingUnavailable):
-        client.embed_query("strict record indices")

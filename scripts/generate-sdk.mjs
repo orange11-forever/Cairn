@@ -76,6 +76,8 @@ try {
     temporaryOpenapi,
     "--output",
     temporarySchema,
+    "--default-non-nullable",
+    "false",
   ]);
   await generateRuntimeSchemas(temporaryOpenapi, temporaryRuntimeSchemas);
 

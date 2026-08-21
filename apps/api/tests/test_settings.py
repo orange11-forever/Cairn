@@ -125,6 +125,25 @@ def test_knowledge_settings_have_bounded_local_defaults() -> None:
 
 
 @pytest.mark.parametrize(
+    ("field_name", "schema_name"),
+    [
+        ("search_user_limit_per_minute", "CAIRN_SEARCH_USER_LIMIT_PER_MINUTE"),
+        ("search_org_limit_per_minute", "CAIRN_SEARCH_ORG_LIMIT_PER_MINUTE"),
+    ],
+)
+def test_search_rate_limits_reject_zero_and_advertise_a_positive_configuration_contract(
+    field_name: str,
+    schema_name: str,
+) -> None:
+    """Break caught: configuration schema permits zero and defers failure until a request."""
+    with pytest.raises(ValidationError):
+        Settings(**{field_name: 0}, _env_file=None)  # pyright: ignore[reportCallIssue]
+
+    field_schema = Settings.model_json_schema()["properties"][schema_name]
+    assert field_schema["minimum"] == 1
+
+
+@pytest.mark.parametrize(
     ("field_name", "url"),
     [
         ("object_store_endpoint_url", "http://access:secret@127.0.0.1:9000"),
@@ -245,7 +264,7 @@ def test_production_rejects_blank_embedding_api_key() -> None:
 
 
 def test_production_requires_enabled_organization_search_limit() -> None:
-    with pytest.raises(ValidationError, match="organization search rate limit"):
+    with pytest.raises(ValidationError, match="greater than or equal to 1"):
         production_settings(search_org_limit_per_minute=0)
 
 

@@ -133,7 +133,6 @@ def search_knowledge(
         user_limit=settings.search_user_limit_per_minute,
         org_limit=settings.search_org_limit_per_minute,
         audit_secret=settings.search_audit_secret.get_secret_value(),
-        expected_dimensions=settings.embedding_dimensions,
     ).search(
         identity=identity,
         project_id=project_id,

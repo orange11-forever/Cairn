@@ -26,6 +26,8 @@ from cairn_api.knowledge.schemas import (
 from cairn_api.knowledge.search_rate_limit import SearchRateLimiter
 from cairn_api.knowledge.search_repository import RankedCandidate
 
+STAGE_3A_EMBEDDING_DIMENSIONS = 1024
+
 
 class EmbeddingUnavailable(Exception):
     pass
@@ -97,21 +99,23 @@ class OpenAIQueryEmbeddingClient:
             if status_code in {408, 429} or status_code >= 500:
                 raise EmbeddingUnavailable() from None
             raise EmbeddingConfigurationError() from None
-        except (httpx.HTTPError, UnicodeError, ValueError):
+        except httpx.HTTPError:
             raise EmbeddingUnavailable() from None
+        except (UnicodeError, ValueError):
+            raise EmbeddingConfigurationError() from None
         if not isinstance(payload, dict):
-            raise EmbeddingUnavailable()
+            raise EmbeddingConfigurationError()
         body = cast(dict[str, object], payload)
         data_value = body.get("data")
         if not isinstance(data_value, list):
-            raise EmbeddingUnavailable()
+            raise EmbeddingConfigurationError()
         data = cast(list[object], data_value)
         if len(data) != 1 or not isinstance(data[0], dict):
-            raise EmbeddingUnavailable()
+            raise EmbeddingConfigurationError()
         record = cast(dict[str, object], data[0])
         index = record.get("index")
         if isinstance(index, bool) or index != 0:
-            raise EmbeddingUnavailable()
+            raise EmbeddingConfigurationError()
         vector_value = record.get("embedding")
         if not isinstance(vector_value, list):
             raise EmbeddingConfigurationError()
@@ -124,7 +128,7 @@ class OpenAIQueryEmbeddingClient:
             or not math.isfinite(value)
             for value in vector
         ):
-            raise EmbeddingUnavailable()
+            raise EmbeddingConfigurationError()
         return [float(cast(int | float, value)) for value in vector]
 
     def close(self) -> None:
@@ -187,7 +191,6 @@ class KnowledgeSearchService:
         org_limit: int = 300,
         audit_secret: str | bytes,
         reserve_capacity: ReserveCapacity | None = None,
-        expected_dimensions: int | None = None,
     ) -> None:
         if user_limit < 1 or org_limit < 1:
             raise ValueError("search rate limits must be positive")
@@ -199,7 +202,6 @@ class KnowledgeSearchService:
         self._org_limit = org_limit
         self._audit_secret = audit_secret.encode() if isinstance(audit_secret, str) else audit_secret
         self._reserve_capacity = reserve_capacity
-        self._expected_dimensions = expected_dimensions
 
     def _reserve(self, *, org_id: UUID, user_id: UUID, now: datetime) -> None:
         if self._reserve_capacity is not None:
@@ -235,7 +237,7 @@ class KnowledgeSearchService:
             if error_code in {"embedding_unavailable", "embedding_dimension_mismatch"}:
                 raise _embedding_problem() from None
             raise
-        if self._expected_dimensions is not None and len(vector) != self._expected_dimensions:
+        if len(vector) != STAGE_3A_EMBEDDING_DIMENSIONS:
             raise _embedding_problem()
         return vector
 
@@ -249,9 +251,10 @@ class KnowledgeSearchService:
         }
         if (
             not compatible_provider
+            or getattr(self._embedding_client, "dimensions", None)
+            != STAGE_3A_EMBEDDING_DIMENSIONS
+            or getattr(profile, "dimensions", None) != STAGE_3A_EMBEDDING_DIMENSIONS
             or getattr(profile, "model", None) != getattr(self._embedding_client, "model", None)
-            or getattr(profile, "dimensions", None)
-            != getattr(self._embedding_client, "dimensions", None)
             or getattr(profile, "distance_metric", None) != "cosine"
         ):
             raise _embedding_problem()
@@ -376,6 +379,7 @@ class KnowledgeSearchService:
 
 
 __all__ = [
+    "STAGE_3A_EMBEDDING_DIMENSIONS",
     "BatchEmbeddingClient",
     "EmbeddingConfigurationError",
     "EmbeddingUnavailable",
