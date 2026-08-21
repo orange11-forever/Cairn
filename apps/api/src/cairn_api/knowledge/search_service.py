@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import json
 import math
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
@@ -15,6 +16,7 @@ from cairn_api.auth.schemas import IdentityContextResponse
 from cairn_api.auth.service import RequestAuditContext
 from cairn_api.authorization.policy import AuthorizationPolicy
 from cairn_api.authorization.types import ProjectPermission
+from cairn_api.db.errors import DATABASE_UNAVAILABLE_ERRORS
 from cairn_api.errors import ApiProblem
 from cairn_api.knowledge import search_repository
 from cairn_api.knowledge.models import KnowledgeResource
@@ -27,6 +29,7 @@ from cairn_api.knowledge.search_rate_limit import SearchRateLimiter
 from cairn_api.knowledge.search_repository import RankedCandidate
 
 STAGE_3A_EMBEDDING_DIMENSIONS = 1024
+MAX_EMBEDDING_RESPONSE_BYTES = 2 * 1024 * 1024
 
 
 class EmbeddingUnavailable(Exception):
@@ -78,12 +81,14 @@ class OpenAIQueryEmbeddingClient:
         self._client = client or httpx.Client(
             timeout=timeout_seconds,
             follow_redirects=False,
+            trust_env=False,
         )
         self._owns_client = client is None
 
     def embed_query(self, query: str) -> list[float]:
         try:
-            response = self._client.post(
+            with self._client.stream(
+                "POST",
                 self._endpoint,
                 headers={"Authorization": f"Bearer {self._api_key}"},
                 json={
@@ -91,9 +96,14 @@ class OpenAIQueryEmbeddingClient:
                     "model": self.model,
                     "dimensions": self.dimensions,
                 },
-            )
-            response.raise_for_status()
-            payload = cast(object, response.json())
+            ) as response:
+                response.raise_for_status()
+                content = bytearray()
+                for chunk in response.iter_bytes():
+                    if len(content) + len(chunk) > MAX_EMBEDDING_RESPONSE_BYTES:
+                        raise EmbeddingConfigurationError()
+                    content.extend(chunk)
+                payload = cast(object, json.loads(content))
         except httpx.HTTPStatusError as exc:
             status_code = exc.response.status_code
             if status_code in {408, 429} or status_code >= 500:
@@ -101,7 +111,7 @@ class OpenAIQueryEmbeddingClient:
             raise EmbeddingConfigurationError() from None
         except httpx.HTTPError:
             raise EmbeddingUnavailable() from None
-        except (UnicodeError, ValueError):
+        except (RecursionError, TypeError, UnicodeError, ValueError):
             raise EmbeddingConfigurationError() from None
         if not isinstance(payload, dict):
             raise EmbeddingConfigurationError()
@@ -214,18 +224,22 @@ class KnowledgeSearchService:
         ).reserve(org_id=org_id, user_id=user_id, now=now)
 
     def _embed_query(self, query: str) -> list[float] | None:
+        vector: object
         try:
             embed_query = getattr(self._embedding_client, "embed_query", None)
             if callable(embed_query):
-                vector = cast(list[float], embed_query(query))
+                vector = embed_query(query)
             else:
                 embed = getattr(self._embedding_client, "embed", None)
                 if not callable(embed):
                     raise EmbeddingConfigurationError()
-                vectors = cast(list[list[float]], embed([query]))
-                if len(vectors) != 1:
+                vectors: object = embed([query])
+                if not isinstance(vectors, list):
                     raise EmbeddingConfigurationError()
-                vector = vectors[0]
+                vector_list = cast(list[object], vectors)
+                if len(vector_list) != 1:
+                    raise EmbeddingConfigurationError()
+                vector = vector_list[0]
         except EmbeddingUnavailable:
             return None
         except EmbeddingConfigurationError:
@@ -237,12 +251,30 @@ class KnowledgeSearchService:
             if error_code in {"embedding_unavailable", "embedding_dimension_mismatch"}:
                 raise _embedding_problem() from None
             raise
-        if len(vector) != STAGE_3A_EMBEDDING_DIMENSIONS:
+        if not isinstance(vector, list):
             raise _embedding_problem()
-        return vector
+        vector_values = cast(list[object], vector)
+        if len(vector_values) != STAGE_3A_EMBEDDING_DIMENSIONS:
+            raise _embedding_problem()
+        normalized: list[float] = []
+        for value in vector_values:
+            if isinstance(value, bool) or not isinstance(value, int | float):
+                raise _embedding_problem()
+            try:
+                number = float(value)
+            except (OverflowError, ValueError):
+                raise _embedding_problem() from None
+            if not math.isfinite(number):
+                raise _embedding_problem()
+            normalized.append(number)
+        return normalized
 
-    def _validate_profile(self, profile: object | None) -> None:
+    def _validate_profile(self, profile: object | None) -> tuple[UUID, UUID]:
         if profile is None:
+            raise _embedding_problem()
+        profile_id = getattr(profile, "id", None)
+        profile_scope_org_id = getattr(profile, "scope_org_id", None)
+        if not isinstance(profile_id, UUID) or not isinstance(profile_scope_org_id, UUID):
             raise _embedding_problem()
         provider_key = getattr(self._embedding_client, "provider_key", None)
         compatible_provider = getattr(profile, "provider_key", None) in {
@@ -269,8 +301,38 @@ class KnowledgeSearchService:
                 != search_repository.SEARCH_CANDIDATE_LIMIT
             ):
                 raise _embedding_problem()
+        return profile_id, profile_scope_org_id
 
     def search(
+        self,
+        *,
+        identity: IdentityContextResponse,
+        project_id: UUID,
+        query: str,
+        limit: int,
+        audit: RequestAuditContext,
+    ) -> KnowledgeSearchResponse:
+        try:
+            return self._search(
+                identity=identity,
+                project_id=project_id,
+                query=query,
+                limit=limit,
+                audit=audit,
+            )
+        except ApiProblem:
+            raise
+        except DATABASE_UNAVAILABLE_ERRORS:
+            raise
+        # This trust boundary must discard provider/driver exception text and parameters.
+        except Exception:  # noqa: BLE001
+            raise ApiProblem(
+                status_code=500,
+                code="internal_error",
+                message="服务器内部错误",
+            ) from None
+
+    def _search(
         self,
         *,
         identity: IdentityContextResponse,
@@ -301,11 +363,17 @@ class KnowledgeSearchService:
                 self._session,
                 org_id=identity.organization.id,
             )
-            self._validate_profile(profile)
+            profile_id, profile_scope_org_id = self._validate_profile(profile)
 
         query_vector = self._embed_query(query)
         retrieval_mode = "hybrid" if query_vector is not None else "keyword_fallback"
         with self._session.begin():
+            self._policy.require_project(
+                identity,
+                project_id,
+                ProjectPermission.READ,
+                for_update=True,
+            )
             access_filter = self._policy.project_filter(
                 identity,
                 ProjectPermission.READ,
@@ -324,6 +392,8 @@ class KnowledgeSearchService:
                     org_id=identity.organization.id,
                     project_id=project_id,
                     query_vector=query_vector,
+                    embedding_profile_id=profile_id,
+                    embedding_profile_scope_org_id=profile_scope_org_id,
                     access_filter=access_filter,
                 )
                 if query_vector is not None
@@ -379,6 +449,7 @@ class KnowledgeSearchService:
 
 
 __all__ = [
+    "MAX_EMBEDDING_RESPONSE_BYTES",
     "STAGE_3A_EMBEDDING_DIMENSIONS",
     "BatchEmbeddingClient",
     "EmbeddingConfigurationError",

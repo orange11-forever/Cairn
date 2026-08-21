@@ -2,18 +2,21 @@ import hashlib
 import hmac
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 from unittest.mock import MagicMock, Mock
 from uuid import UUID, uuid4
 
 import httpx
 import pytest
+from cairn_api.app import create_app
 from cairn_api.audit.models import AuditLog
 from cairn_api.auth.schemas import IdentityContextResponse, UserResponse
 from cairn_api.auth.service import RequestAuditContext
 from cairn_api.authorization.policy import AuthorizationPolicy
 from cairn_api.authorization.types import MembershipRole
+from cairn_api.db.session import Database
 from cairn_api.errors import ApiProblem
+from cairn_api.knowledge.object_store import ObjectStore
 from cairn_api.knowledge.schemas import KnowledgeSearchRequest
 from cairn_api.knowledge.search_repository import (
     SearchCitationRecord,
@@ -28,13 +31,18 @@ from cairn_api.knowledge.search_service import (
     RankedCandidate,
 )
 from cairn_api.organizations.schemas import MembershipResponse, OrganizationResponse
+from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import column
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 NOW = datetime(2026, 8, 21, 7, 12, 34, tzinfo=UTC)
 AUDIT = RequestAuditContext("req-search", "198.51.100.9", "search-test")
+PROFILE_ID = UUID("00000000-0000-4000-8000-000000000201")
+PROFILE_SCOPE_ORG_ID = UUID("00000000-0000-4000-8000-000000000202")
+EXPECTED_MAX_EMBEDDING_RESPONSE_BYTES = 2 * 1024 * 1024
 
 
 def _identity() -> IdentityContextResponse:
@@ -129,6 +137,8 @@ def _service(
         "get_active_embedding_profile",
         Mock(
             return_value=SimpleNamespace(
+                id=PROFILE_ID,
+                scope_org_id=PROFILE_SCOPE_ORG_ID,
                 provider_key="default",
                 model="text-embedding-v4",
                 dimensions=1024,
@@ -168,10 +178,41 @@ def _service(
     return service, session, identity, project_id
 
 
+def _search_failure_response(
+    service: KnowledgeSearchService,
+    identity: IdentityContextResponse,
+    project_id: UUID,
+    query: str,
+) -> Any:
+    app = create_app(
+        database=Mock(spec=Database),
+        object_store=Mock(spec=ObjectStore),
+        embedding_client=Mock(),
+    )
+
+    @app.get("/_test/search-failure", include_in_schema=False)
+    def _fail_search() -> object:  # pyright: ignore[reportUnusedFunction]
+        return service.search(
+            identity=identity,
+            project_id=project_id,
+            query=query,
+            limit=10,
+            audit=AUDIT,
+        )
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        return client.get(
+            "/_test/search-failure",
+            headers={"X-Request-ID": "req-safe-search-failure"},
+        )
+
+
 def test_search_uses_query_embedding_fuses_results_and_audits_only_safe_query_facts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Break caught: search skips vector retrieval or stores raw query/audit extras."""
+    from cairn_api.knowledge import search_repository
+
     lexical_id = uuid4()
     shared_id = uuid4()
     embedding = _Embedding(_stage_vector())
@@ -193,6 +234,9 @@ def test_search_uses_query_embedding_fuses_results_and_audits_only_safe_query_fa
     assert response.retrieval_mode == "hybrid"
     assert [item.chunk_id for item in response.results] == [shared_id, lexical_id]
     assert embedding.queries == ["AI knowledge"]
+    vector_call = cast(Mock, search_repository.vector_candidates).call_args
+    assert vector_call.kwargs["embedding_profile_id"] == PROFILE_ID
+    assert vector_call.kwargs["embedding_profile_scope_org_id"] == PROFILE_SCOPE_ORG_ID
     audit_rows = [
         call.args[0] for call in session.add.call_args_list if isinstance(call.args[0], AuditLog)
     ]
@@ -251,6 +295,35 @@ def test_transient_embedding_unavailability_returns_explicit_keyword_fallback(
     assert [item.chunk_id for item in response.results] == [chunk_id]
 
 
+def test_search_reauthorizes_in_final_transaction_before_retrieval(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Break caught: provider I/O leaves final retrieval gated by stale request identity only."""
+    from cairn_api.knowledge import search_repository
+
+    embedding = _Embedding(_stage_vector())
+    service, _session, identity, project_id = _service(monkeypatch, embedding)
+    policy = cast(MagicMock, service.__dict__["_policy"])
+    policy.require_project.side_effect = [
+        Mock(),
+        ApiProblem(status_code=404, code="not_found", message="资源不存在"),
+    ]
+
+    with pytest.raises(ApiProblem) as raised:
+        service.search(
+            identity=identity,
+            project_id=project_id,
+            query="live authorization",
+            limit=10,
+            audit=AUDIT,
+        )
+
+    assert raised.value.status_code == 404
+    assert policy.require_project.call_count == 2
+    assert embedding.queries == ["live authorization"]
+    cast(Mock, search_repository.lexical_candidates).assert_not_called()
+
+
 def test_search_returns_an_empty_hybrid_result_list_without_fabricated_citations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -298,6 +371,79 @@ def test_permanent_embedding_configuration_failure_returns_503_without_fallback(
     cast(Mock, search_repository.lexical_candidates).assert_not_called()
 
 
+def test_unexpected_provider_failure_is_sanitized_before_global_logging(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Break caught: provider exception text can log the raw normalized search query."""
+    sentinel = "raw-query-provider-sentinel"
+    service, _session, identity, project_id = _service(
+        monkeypatch,
+        _Embedding(RuntimeError(f"provider failed for {sentinel}")),
+    )
+
+    response = _search_failure_response(service, identity, project_id, sentinel)
+    captured = capsys.readouterr()
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "message": "服务器内部错误",
+        "code": "internal_error",
+        "traceId": "req-safe-search-failure",
+    }
+    assert response.headers["x-request-id"] == "req-safe-search-failure"
+    assert sentinel not in captured.err
+    assert "provider failed" not in captured.err
+
+
+def test_unexpected_sql_failure_is_sanitized_before_global_logging(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Break caught: SQL statement parameters can log the raw normalized search query."""
+    from cairn_api.knowledge import search_repository
+
+    sentinel = "raw-query-sql-sentinel"
+    service, _session, identity, project_id = _service(monkeypatch, _Embedding(_stage_vector()))
+    cast(Mock, search_repository.lexical_candidates).side_effect = SQLAlchemyError(
+        f"statement params contain {sentinel}"
+    )
+
+    response = _search_failure_response(service, identity, project_id, sentinel)
+    captured = capsys.readouterr()
+
+    assert response.status_code == 500
+    assert response.json()["code"] == "internal_error"
+    assert response.json()["traceId"] == response.headers["x-request-id"]
+    assert sentinel not in captured.err
+    assert "statement params" not in captured.err
+
+
+def test_database_outage_keeps_traced_503_without_logging_query_parameters(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Break caught: search sanitization collapses database outages to 500 or logs parameters."""
+    from cairn_api.knowledge import search_repository
+
+    sentinel = "raw-query-db-outage-sentinel"
+    service, _session, identity, project_id = _service(monkeypatch, _Embedding(_stage_vector()))
+    cast(Mock, search_repository.lexical_candidates).side_effect = OperationalError(
+        "SELECT search(:query)",
+        {"query": sentinel},
+        Exception("database down"),
+    )
+
+    response = _search_failure_response(service, identity, project_id, sentinel)
+    captured = capsys.readouterr()
+
+    assert response.status_code == 503
+    assert response.json()["code"] == "database_unavailable"
+    assert response.json()["traceId"] == response.headers["x-request-id"]
+    assert sentinel not in captured.err
+    assert "SELECT search" not in captured.err
+
+
 def test_matching_non_stage_3a_profile_and_client_dimensions_return_503_before_provider_call(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -333,6 +479,35 @@ def test_matching_non_stage_3a_profile_and_client_dimensions_return_503_before_p
     assert raised.value.status_code == 503
     assert raised.value.code == "embedding_unavailable"
     assert embedding.queries == []
+
+
+@pytest.mark.parametrize(
+    "invalid_value",
+    [True, "1.0", float("nan"), 10**400],
+    ids=["bool", "nonnumeric", "nonfinite", "float-overflow"],
+)
+def test_service_rejects_malformed_protocol_vector_values_before_retrieval(
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_value: object,
+) -> None:
+    """Break caught: injected protocol clients bypass OpenAI vector value validation."""
+    from cairn_api.knowledge import search_repository
+
+    vector = cast(list[float], [invalid_value] + [0.0] * 1023)
+    service, _session, identity, project_id = _service(monkeypatch, _Embedding(vector))
+
+    with pytest.raises(ApiProblem) as raised:
+        service.search(
+            identity=identity,
+            project_id=project_id,
+            query="strict protocol vector",
+            limit=10,
+            audit=AUDIT,
+        )
+
+    assert raised.value.status_code == 503
+    assert raised.value.code == "embedding_unavailable"
+    cast(Mock, search_repository.lexical_candidates).assert_not_called()
 
 
 def test_active_profile_dimension_mismatch_returns_503_before_provider_call(
@@ -386,6 +561,8 @@ def test_candidate_sql_filters_tenant_project_current_ready_deleted_and_acl_befo
             org_id=org_id,
             project_id=project_id,
             query_vector=[0.0, 1.0, 0.0],
+            embedding_profile_id=PROFILE_ID,
+            embedding_profile_scope_org_id=PROFILE_SCOPE_ORG_ID,
             access_filter=access_filter,
         ),
     )
@@ -410,7 +587,8 @@ def test_candidate_sql_filters_tenant_project_current_ready_deleted_and_acl_befo
     assert "like" in lexical_sql
     vector_sql = str(statements[1].compile(dialect=postgresql.dialect())).lower()
     assert "<=>" in vector_sql
-    assert "embedding_profiles.status" in vector_sql
+    assert "chunk_embeddings.embedding_profile_id" in vector_sql
+    assert "chunk_embeddings.embedding_profile_scope_org_id" in vector_sql
 
 
 @pytest.mark.parametrize(
@@ -463,3 +641,64 @@ def test_query_embedding_treats_provider_authentication_failure_as_permanent_con
 
     with pytest.raises(EmbeddingConfigurationError):
         client.embed_query("do not degrade configuration errors")
+
+
+class _EndlessEmbeddingResponse(httpx.SyncByteStream):
+    def __init__(self) -> None:
+        self.chunks_read = 0
+        self.closed = False
+
+    def __iter__(self):  # type: ignore[no-untyped-def]
+        while True:
+            self.chunks_read += 1
+            if self.chunks_read > 4:
+                raise AssertionError("client continued consuming beyond the response cap")
+            yield b"x" * (EXPECTED_MAX_EMBEDDING_RESPONSE_BYTES // 2)
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def test_query_embedding_aborts_streamed_response_at_two_mebibytes() -> None:
+    """Break caught: a provider can force unbounded response buffering before JSON parsing."""
+    stream = _EndlessEmbeddingResponse()
+    transport = httpx.MockTransport(lambda _request: httpx.Response(200, stream=stream))
+    client = OpenAIQueryEmbeddingClient(
+        base_url="https://embedding.example/v1",
+        api_key="secret",
+        provider_key="test",
+        model="test-model",
+        dimensions=3,
+        timeout_seconds=1,
+        client=httpx.Client(transport=transport),
+    )
+
+    with pytest.raises(EmbeddingConfigurationError):
+        client.embed_query("bounded response")
+
+    assert stream.chunks_read == 3
+    assert stream.closed is True
+
+
+class _ChunkedEmbeddingResponse(httpx.SyncByteStream):
+    def __iter__(self):  # type: ignore[no-untyped-def]
+        body = b'{"data":[{"index":0,"embedding":[0.25,0.5,0.75]}]}'
+        yield from (body[:11], body[11:29], body[29:])
+
+
+def test_query_embedding_parses_valid_json_across_stream_chunks() -> None:
+    """Break caught: bounded streaming assumes one transport chunk contains one JSON document."""
+    transport = httpx.MockTransport(
+        lambda _request: httpx.Response(200, stream=_ChunkedEmbeddingResponse())
+    )
+    client = OpenAIQueryEmbeddingClient(
+        base_url="https://embedding.example/v1",
+        api_key="secret",
+        provider_key="test",
+        model="test-model",
+        dimensions=3,
+        timeout_seconds=1,
+        client=httpx.Client(transport=transport),
+    )
+
+    assert client.embed_query("chunked response") == [0.25, 0.5, 0.75]

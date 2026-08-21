@@ -6,6 +6,8 @@ from cairn_api.auth.models import AuthSession
 from cairn_api.authorization.models import ResourceAclEntry
 from cairn_api.authorization.types import MembershipRole
 from cairn_api.db.session import Database
+from cairn_api.knowledge.models import KnowledgeResource
+from cairn_api.organizations.models import Membership
 from sqlalchemy import delete, select
 
 from .authorization_helpers import seed_actor
@@ -128,6 +130,102 @@ class RevokeAclOnEmbedding(SearchEmbedding):
         return super().embed_query(query)
 
 
+class ChangeMembershipOnEmbedding(SearchEmbedding):
+    def __init__(self, database: Database, membership_id: UUID, *, remove: bool) -> None:
+        super().__init__()
+        self.database = database
+        self.membership_id = membership_id
+        self.remove = remove
+
+    def embed_query(self, query: str) -> list[float]:
+        with self.database.session_factory.begin() as session:
+            membership = session.get(Membership, self.membership_id)
+            assert membership is not None
+            if self.remove:
+                session.delete(membership)
+            else:
+                membership.role = MembershipRole.MEMBER.value
+        return super().embed_query(query)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("remove", [False, True])
+def test_search_rechecks_live_membership_after_provider_io(
+    database: Database,
+    test_database_url: str,
+    remove: bool,
+) -> None:
+    actor = seed_actor(database, MembershipRole.ADMIN)
+    project_id = seed_project(database, actor, permission=None)
+    seed_search_resource(
+        database,
+        org_id=actor.organization_id,
+        project_id=project_id,
+        title="Membership.pdf",
+        chunks=[(uuid4(), "membership sentinel", [1.0] + [0.0] * 1023)],
+    )
+    with knowledge_client(
+        knowledge_settings(test_database_url),
+        database,
+        actor,
+        MemoryObjectStore(),
+        ChangeMembershipOnEmbedding(database, actor.membership_id, remove=remove),
+    ) as client:
+        response = client.post(
+            f"/api/v1/projects/{project_id}/knowledge/search",
+            json={"query": "membership sentinel"},
+        )
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "not_found"
+
+
+class DeleteResourceOnEmbedding(SearchEmbedding):
+    def __init__(self, database: Database, resource_id: UUID, actor_id: UUID) -> None:
+        super().__init__()
+        self.database = database
+        self.resource_id = resource_id
+        self.actor_id = actor_id
+
+    def embed_query(self, query: str) -> list[float]:
+        with self.database.session_factory.begin() as session:
+            resource = session.get(KnowledgeResource, self.resource_id)
+            assert resource is not None
+            resource.deleted_at = datetime.now(UTC)
+            resource.deleted_by = self.actor_id
+        return super().embed_query(query)
+
+
+@pytest.mark.integration
+def test_resource_deleted_during_provider_io_is_concealed_from_final_retrieval(
+    database: Database,
+    test_database_url: str,
+) -> None:
+    actor = seed_actor(database, MembershipRole.MEMBER)
+    project_id = seed_project(database, actor, permission="read")
+    resource_id, _version_id = seed_search_resource(
+        database,
+        org_id=actor.organization_id,
+        project_id=project_id,
+        title="Deleted.pdf",
+        chunks=[(uuid4(), "deleted sentinel", [1.0] + [0.0] * 1023)],
+    )
+    with knowledge_client(
+        knowledge_settings(test_database_url),
+        database,
+        actor,
+        MemoryObjectStore(),
+        DeleteResourceOnEmbedding(database, resource_id, actor.user_id),
+    ) as client:
+        response = client.post(
+            f"/api/v1/projects/{project_id}/knowledge/search",
+            json={"query": "deleted sentinel"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["results"] == []
+
+
 @pytest.mark.integration
 def test_acl_revoked_after_initial_check_is_reapplied_inside_both_candidate_queries(
     database: Database,
@@ -163,5 +261,5 @@ def test_acl_revoked_after_initial_check_is_reapplied_inside_both_candidate_quer
             json={"query": "revocation sentinel"},
         )
 
-    assert response.status_code == 200
-    assert response.json()["results"] == []
+    assert response.status_code == 404
+    assert response.json()["code"] == "not_found"

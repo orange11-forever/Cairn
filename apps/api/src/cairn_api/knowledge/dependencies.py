@@ -3,11 +3,7 @@ from typing import Annotated, cast
 from fastapi import Depends, Request
 
 from cairn_api.knowledge.object_store import ObjectStore
-from cairn_api.knowledge.search_service import (
-    OpenAIQueryEmbeddingClient,
-    SearchEmbeddingClient,
-)
-from cairn_api.settings import Settings
+from cairn_api.knowledge.search_service import SearchEmbeddingClient
 
 
 def get_object_store(request: Request) -> ObjectStore:
@@ -20,16 +16,7 @@ def get_object_store(request: Request) -> ObjectStore:
 def get_embedding_client(request: Request) -> SearchEmbeddingClient:
     configured = getattr(request.app.state, "embedding_client", None)
     if configured is None:
-        settings = cast(Settings, request.app.state.settings)
-        configured = OpenAIQueryEmbeddingClient(
-            base_url=str(settings.embedding_base_url),
-            api_key=settings.embedding_api_key.get_secret_value(),
-            provider_key=settings.embedding_provider_key,
-            model=settings.embedding_model,
-            dimensions=settings.embedding_dimensions,
-            timeout_seconds=settings.embedding_timeout_seconds,
-        )
-        request.app.state.embedding_client = configured
+        raise TypeError("embedding client is not configured")
     return cast(SearchEmbeddingClient, configured)
 
 

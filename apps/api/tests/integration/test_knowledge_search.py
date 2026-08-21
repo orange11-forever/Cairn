@@ -10,6 +10,7 @@ from cairn_api.db.session import Database
 from cairn_api.knowledge.models import (
     ChunkEmbedding,
     EmbeddingProfile,
+    EmbeddingProfileStatus,
     KnowledgeChunk,
     KnowledgeResource,
     KnowledgeResourceVersion,
@@ -345,6 +346,89 @@ def test_search_provider_failure_classification_preserves_safe_http_contract(
         }
     else:
         assert response.json()["retrievalMode"] == retrieval_mode
+
+
+class SwitchProfileOnEmbedding(SearchEmbedding):
+    def __init__(self, database: Database, profile_id: UUID) -> None:
+        super().__init__([1.0] + [0.0] * 1023)
+        self.database = database
+        self.profile_id = profile_id
+
+    def embed_query(self, query: str) -> list[float]:
+        with self.database.session_factory.begin() as session:
+            profile = session.get(EmbeddingProfile, self.profile_id)
+            assert profile is not None
+            profile.status = EmbeddingProfileStatus.ACTIVE
+        return super().embed_query(query)
+
+
+@pytest.mark.integration
+def test_profile_switch_during_provider_io_keeps_vector_search_pinned_to_selected_profile(
+    database: Database,
+    test_database_url: str,
+) -> None:
+    actor = seed_actor(database, MembershipRole.MEMBER)
+    project_id = seed_project(database, actor, permission="read")
+    switched_id = UUID("00000000-0000-4000-8000-000000000041")
+    selected_id = UUID("00000000-0000-4000-8000-000000000042")
+    resource_id, version_id = seed_search_resource(
+        database,
+        org_id=actor.organization_id,
+        project_id=project_id,
+        title="Profile switch.pdf",
+        chunks=[
+            (selected_id, "selected vector content", [1.0] + [0.0] * 1023),
+            (switched_id, "unrelated semantic text", [0.0, 1.0] + [0.0] * 1022),
+        ],
+    )
+    new_profile_id = uuid4()
+    with database.session_factory.begin() as session:
+        new_profile = EmbeddingProfile(
+            id=new_profile_id,
+            org_id=actor.organization_id,
+            provider_key="local-fake",
+            model="text-embedding-v4",
+            dimensions=1024,
+            distance_metric="cosine",
+            chunking_config={},
+            index_config={"strategy": "exact", "candidateLimit": 50},
+            version="profile-switch-v2",
+            status=EmbeddingProfileStatus.INACTIVE,
+        )
+        session.add(new_profile)
+        session.flush()
+        for chunk_id, vector in (
+            (selected_id, [0.0, 1.0] + [0.0] * 1022),
+            (switched_id, [1.0] + [0.0] * 1023),
+        ):
+            session.add(
+                ChunkEmbedding(
+                    org_id=actor.organization_id,
+                    project_id=project_id,
+                    resource_id=resource_id,
+                    resource_version_id=version_id,
+                    chunk_id=chunk_id,
+                    embedding_profile_scope_org_id=new_profile.scope_org_id,
+                    embedding_profile_id=new_profile.id,
+                    embedding=vector,
+                )
+            )
+
+    with knowledge_client(
+        knowledge_settings(test_database_url),
+        database,
+        actor,
+        MemoryObjectStore(),
+        SwitchProfileOnEmbedding(database, new_profile_id),
+    ) as client:
+        response = client.post(
+            f"/api/v1/projects/{project_id}/knowledge/search",
+            json={"query": "profile switch sentinel", "limit": 2},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["retrievalMode"] == "hybrid"
+    assert response.json()["results"][0]["chunkId"] == str(selected_id)
 
 
 __all__ = ["SearchEmbedding", "seed_search_resource"]

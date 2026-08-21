@@ -149,27 +149,12 @@ def vector_statement(
     org_id: UUID,
     project_id: UUID,
     query_vector: list[float],
+    embedding_profile_id: UUID,
+    embedding_profile_scope_org_id: UUID,
     access_filter: ColumnElement[bool],
     candidate_limit: int = SEARCH_CANDIDATE_LIMIT,
 ) -> Select[tuple[UUID, float]]:
     distance = ChunkEmbedding.embedding.cosine_distance(query_vector).label("distance")
-    organization_profile_id = (
-        select(EmbeddingProfile.id)
-        .where(
-            EmbeddingProfile.org_id == org_id,
-            EmbeddingProfile.status == EmbeddingProfileStatus.ACTIVE,
-        )
-        .scalar_subquery()
-    )
-    global_profile_id = (
-        select(EmbeddingProfile.id)
-        .where(
-            EmbeddingProfile.org_id.is_(None),
-            EmbeddingProfile.status == EmbeddingProfileStatus.ACTIVE,
-        )
-        .scalar_subquery()
-    )
-    active_profile_id = func.coalesce(organization_profile_id, global_profile_id)
     return (
         select(KnowledgeChunk.id, distance)
         .select_from(KnowledgeChunk)
@@ -205,8 +190,8 @@ def vector_statement(
                 project_id=project_id,
                 access_filter=access_filter,
             ),
-            EmbeddingProfile.status == EmbeddingProfileStatus.ACTIVE,
-            EmbeddingProfile.id == active_profile_id,
+            ChunkEmbedding.embedding_profile_id == embedding_profile_id,
+            ChunkEmbedding.embedding_profile_scope_org_id == embedding_profile_scope_org_id,
         )
         .order_by(distance, KnowledgeChunk.id)
         .limit(candidate_limit)
@@ -219,6 +204,8 @@ def vector_candidates(
     org_id: UUID,
     project_id: UUID,
     query_vector: list[float],
+    embedding_profile_id: UUID,
+    embedding_profile_scope_org_id: UUID,
     access_filter: ColumnElement[bool],
     candidate_limit: int = SEARCH_CANDIDATE_LIMIT,
 ) -> list[RankedCandidate]:
@@ -227,6 +214,8 @@ def vector_candidates(
             org_id=org_id,
             project_id=project_id,
             query_vector=query_vector,
+            embedding_profile_id=embedding_profile_id,
+            embedding_profile_scope_org_id=embedding_profile_scope_org_id,
             access_filter=access_filter,
             candidate_limit=candidate_limit,
         )

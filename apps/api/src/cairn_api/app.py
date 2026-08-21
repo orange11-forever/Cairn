@@ -23,7 +23,7 @@ from cairn_api.knowledge.object_store import (
     ObjectStoreUnavailable,
 )
 from cairn_api.knowledge.router import router as knowledge_router
-from cairn_api.knowledge.search_service import SearchEmbeddingClient
+from cairn_api.knowledge.search_service import OpenAIQueryEmbeddingClient, SearchEmbeddingClient
 from cairn_api.logging import configure_app_logging
 from cairn_api.middleware import RequestIdMiddleware, new_request_id
 from cairn_api.organizations.router import router as organizations_router
@@ -64,7 +64,7 @@ class CairnFastAPI(FastAPI):
                     "X-CSRF-Token",
                     "X-Request-ID",
                 ],
-                expose_headers=["X-Request-ID"],
+                expose_headers=["X-Request-ID", "Retry-After"],
             )
         return RequestIdMiddleware(application)
 
@@ -87,7 +87,18 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_application: FastAPI) -> AsyncGenerator[None]:
+        owned_embedding: OpenAIQueryEmbeddingClient | None = None
         try:
+            if _application.state.embedding_client is None:
+                owned_embedding = OpenAIQueryEmbeddingClient(
+                    base_url=str(current_settings.embedding_base_url),
+                    api_key=current_settings.embedding_api_key.get_secret_value(),
+                    provider_key=current_settings.embedding_provider_key,
+                    model=current_settings.embedding_model,
+                    dimensions=current_settings.embedding_dimensions,
+                    timeout_seconds=current_settings.embedding_timeout_seconds,
+                )
+                _application.state.embedding_client = owned_embedding
             yield
         finally:
             try:
@@ -96,11 +107,8 @@ def create_app(
                 try:
                     current_object_store.close()
                 finally:
-                    configured_embedding = getattr(_application.state, "embedding_client", None)
-                    if configured_embedding is not None:
-                        close = getattr(configured_embedding, "close", None)
-                        if callable(close):
-                            close()
+                    if owned_embedding is not None:
+                        owned_embedding.close()
 
     application = CairnFastAPI(title="Cairn API", version=__version__, lifespan=lifespan)
     application.cairn_cors_origins = tuple(current_settings.cors_origins)
