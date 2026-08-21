@@ -11,11 +11,11 @@
 </p>
 
 > [!IMPORTANT]
-> Cairn 当前已交付 Stage 3A Task 1–11：在已完成的阶段 2 与 2.5A 授权基础上，真实 PostgreSQL 16/pgvector、S3 兼容 MinIO 对象存储和独立 Worker 已进入知识摄取核心链路。Task 12 混合搜索与真实 Web 知识工作区尚未交付，现有文档、上传和问答 UI 仍由 Node mock 承载。
+> Cairn 当前已交付 Stage 3A Task 1–12：在已完成的阶段 2 与 2.5A 授权基础上，真实 PostgreSQL 16/pgvector、S3 兼容 MinIO 对象存储和独立 Worker 已进入知识摄取核心链路。Task 12 混合搜索 API 已交付；真实 Web 知识工作区及其混合搜索体验尚未实现，现有文档、上传和问答 UI 仍由 Node mock 承载。
 
-## 阶段 2、2.5A 与 Stage 3A Task 1–11 已交付边界
+## 阶段 2、2.5A 与 Stage 3A Task 1–12 已交付边界
 
-共享 API 契约、响应式 Web 与真实身份基础已经完成。阶段 2 已完成并交付项目、任务、依赖、状态机、事务性 Outbox 和有界 SSE 查询；Cairn 已完成阶段 2.5A，交付组织角色、项目 ACL 与成员角色管理 API；Stage 3A Task 1–11 已交付文件摄取和可发布索引基础。
+共享 API 契约、响应式 Web 与真实身份基础已经完成。阶段 2 已完成并交付项目、任务、依赖、状态机、事务性 Outbox 和有界 SSE 查询；Cairn 已完成阶段 2.5A，交付组织角色、项目 ACL 与成员角色管理 API；Stage 3A Task 1–11 已交付文件摄取和可发布索引基础，Task 12 已交付项目范围混合搜索 API。
 
 - `@cairn/contracts` 统一现有登录、文档、问答、上传和错误响应契约；
 - Web 保留本地容错、请求取消、查询缓存和 UI 状态边界；
@@ -27,6 +27,7 @@
 - Web 项目页把 `viewer` 的任务视图呈现为只读；服务端始终是授权权威；
 - 项目可以一次创建 1–20 个文件的上传批次，客户端通过绑定 SHA-256 校验和的 S3/MinIO 预签名 `PUT` 直传对象；
 - 独立 Worker 从 PostgreSQL 租用持久化任务，执行受限 ZIP 展开、支持文档解析、结构化切分、OpenAI 兼容的 1024 维 Embedding 和原子索引发布；
+- 项目知识搜索在候选限制前应用组织、项目、当前版本、资源状态与 ACL 过滤，并以关键词和 pgvector 结果执行确定性混合排序；
 - 现有 Web 文档、上传和问答 UI 仍连接 Node mock API，不代表真实知识工作区已经完成。
 
 ## 项目与任务 API
@@ -67,9 +68,9 @@
 
 Cookie 会话下的成员 `PATCH` 与 ACL `PUT`/`DELETE` 都要求合法 Origin 和会话绑定的 `X-CSRF-Token`。实际角色或 ACL 变化会把业务变更、追加式审计记录和 Outbox 事件放在同一事务提交；重复设置相同值和撤销不存在的 ACL 是无副作用的幂等成功，不新增审计或 Outbox 事件。
 
-## 知识摄取与资源 API
+## 知识摄取、资源与搜索 API
 
-Stage 3A Task 1–11 在项目授权边界内提供上传批次状态、资源列表/详情、失败版本重试、软删除、下载重定向和切片引用上下文。知识资源的不存在、跨组织和权限不足统一使用不泄露的 `404 not_found`；所有变更端点在 Cookie 会话下都要求合法 Origin 和 `X-CSRF-Token`。下载会重新授权，然后返回指向短时效对象 URL 的 `307`。
+Stage 3A Task 1–12 在项目授权边界内提供上传批次状态、资源列表/详情、失败版本重试、软删除、下载重定向、切片引用上下文和项目范围混合搜索。知识资源的不存在、跨组织和权限不足统一使用不泄露的 `404 not_found`；所有变更端点和搜索 `POST` 在 Cookie 会话下都要求合法 Origin 和 `X-CSRF-Token`。下载会重新授权，然后返回指向短时效对象 URL 的 `307`。
 
 | 操作 | 端点 |
 |---|---|
@@ -82,13 +83,14 @@ Stage 3A Task 1–11 在项目授权边界内提供上传批次状态、资源�
 | 软删除资源 | `DELETE /api/v1/projects/{project_id}/knowledge/resources/{resource_id}` |
 | 重新授权并下载 | `GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}/download` |
 | 读取命中切片及前后文 | `GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}/chunks/{chunk_id}` |
+| 权限过滤的关键词/向量混合搜索 | `POST /api/v1/projects/{project_id}/knowledge/search` |
 
 ## 显式延后
 
 - 完整阶段/里程碑编辑 UI、React Flow/ELK 图编辑、拖拽 Kanban 和时间线可视化延后；
 - Outbox worker 发布、长连接重连 SSE、Redis fan-out、评论、通知和任务执行延后；
 - 群组、邀请和成员移除未实现；ACL 管理 UI 与成员管理 UI 未实现；
-- Bearer/OIDC 延后；知识摄取基础已完成，但知识摄取后的 Task 12 项目范围混合搜索未实现；真实 Web 知识工作区、连接器、Agent 执行和完整模型 Provider 策略层尚未交付。
+- Bearer/OIDC 延后；知识摄取与项目范围混合搜索 API 已完成，但真实 Web 知识工作区、连接器、Agent 执行和完整模型 Provider 策略层尚未交付。
 
 ## 核心能力
 
@@ -235,9 +237,9 @@ pnpm dev:api
 - 版本探针：`http://127.0.0.1:8080/api/v1`
 - OpenAPI：`http://127.0.0.1:8080/docs`
 
-API 现已提供 PostgreSQL 与对象存储 readiness、登录、会话恢复、注销、当前组织、项目任务、成员角色、项目 ACL 与上述知识资源接口。登录失败限制由 PostgreSQL 持久化：同一规范化邮箱在 15 分钟窗口内最多失败 5 次，同一来源 IP 最多失败 30 次，达到阈值后阻止 15 分钟；表中仅保存使用 `CAIRN_AUTH_RATE_LIMIT_SECRET` 生成的 HMAC 摘要，不保存明文邮箱或 IP。现有文档、上传和问答 Web UI 仍由 Node mock 提供。
+API 现已提供 PostgreSQL 与对象存储 readiness、登录、会话恢复、注销、当前组织、项目任务、成员角色、项目 ACL 与上述知识资源和混合搜索接口。登录失败限制由 PostgreSQL 持久化：同一规范化邮箱在 15 分钟窗口内最多失败 5 次，同一来源 IP 最多失败 30 次，达到阈值后阻止 15 分钟；表中仅保存使用 `CAIRN_AUTH_RATE_LIMIT_SECRET` 生成的 HMAC 摘要，不保存明文邮箱或 IP。现有文档、上传和问答 Web UI 仍由 Node mock 提供。
 
-当前切片不包含 Bearer/OIDC、群组、邀请、成员移除、ACL/成员管理 UI、Task 12 混合搜索、真实 Web 知识工作区、连接器、Agent 任务执行或完整 AI Provider 策略层。AI Provider 与外部 Agent 接入必须建立在组织、权限、审计、项目和知识基础完成之后，不能绕过这些边界提前扩展。
+当前切片不包含 Bearer/OIDC、群组、邀请、成员移除、ACL/成员管理 UI、真实 Web 知识工作区、连接器、Agent 任务执行或完整 AI Provider 策略层。AI Provider 与外部 Agent 接入必须建立在组织、权限、审计、项目和知识基础完成之后，不能绕过这些边界提前扩展。
 
 可按需清理过期或已撤销的认证状态：
 
@@ -262,7 +264,7 @@ pnpm verify
 
 `pnpm verify:core` 会创建独立 Compose project 和临时 PostgreSQL/MinIO 卷，执行对象存储初始化与往返、迁移、真实 API 集成测试、SDK 漂移检查、生产构建与 Chromium 登录闭环。最后一段验收会用 OpenSSL 生成仅供本次运行使用的 localhost 证书，在 HTTPS 反向代理后启动生产配置 API，并验证 CORS、Secure/HttpOnly/SameSite Cookie、会话恢复、CSRF 注销和可信来源 IP。临时证书、进程及 Compose project 会在成功、失败或信号中断后清理；该命令不会接触开发数据库和卷。
 
-`pnpm verify` 是完整的跨 package 门禁：它覆盖共享契约、OpenAPI 生成 SDK 测试与漂移检查、Web、API、Worker、Ruff、Pyright、发行包构建与最后的真实核心验证。浏览器部分覆盖错误密码、登录、刷新恢复、组织显示、注销、360/768/1280 像素布局、主题、路由保护、会话隔离、并发取消、文档状态、筛选、上传、提问和自动滚动；这些 Web 知识交互仍验证 Node mock UI，不代表 Task 12 已交付。Worker package 测试覆盖租约、归档、解析、切分、Embedding 与原子索引语义；真实核心验证覆盖 pgvector、MinIO 对象往返和知识 API/SDK 一致性。
+`pnpm verify` 是完整的跨 package 门禁：它覆盖共享契约、OpenAPI 生成 SDK 测试与漂移检查、Web、API、Worker、Ruff、Pyright、发行包构建与最后的真实核心验证。浏览器部分覆盖错误密码、登录、刷新恢复、组织显示、注销、360/768/1280 像素布局、主题、路由保护、会话隔离、并发取消、文档状态、筛选、上传、提问和自动滚动；这些 Web 知识交互仍验证 Node mock UI，不代表真实知识工作区已交付。Worker package 测试覆盖租约、归档、解析、切分、Embedding 与原子索引语义；真实核心验证覆盖 pgvector、MinIO 对象往返、项目范围混合搜索和知识 API/SDK 一致性。
 
 也可以使用 `pnpm test:contracts`、`pnpm typecheck:contracts`、`pnpm test:sdk`、`pnpm typecheck:sdk`、`pnpm check:sdk`、`pnpm test:web`、`pnpm test:api`、`pnpm typecheck:web`、`pnpm typecheck:api`、`pnpm test:worker`、`pnpm lint:worker`、`pnpm typecheck:worker`、`pnpm build:web` 和 `pnpm build:api` 分别检查单个 package 或生成契约。
 
