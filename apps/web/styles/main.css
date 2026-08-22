@@ -124,7 +124,13 @@ a:hover {
   height: 30px;
   border: 0;
   border-radius: 2px;
+  mix-blend-mode: multiply;
   object-fit: contain;
+}
+
+:root[data-theme='dark'] .product-brand img {
+  filter: invert(1) hue-rotate(180deg);
+  mix-blend-mode: screen;
 }
 
 .primary-nav ul {

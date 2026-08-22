@@ -102,6 +102,39 @@ async function readImageHealth(page) {
   );
 }
 
+async function readProductBrandAppearance(page, screenshot) {
+  const brandImage = page.locator(".product-brand img");
+  const bounds = await brandImage.boundingBox();
+  if (bounds === null) throw new Error("顶栏 wordmark 不可见");
+
+  return page.evaluate(
+    async ({ source, backgroundX, imageX, sampleY }) => {
+      const rendered = new Image();
+      rendered.src = source;
+      await rendered.decode();
+      const canvas = document.createElement("canvas");
+      canvas.width = rendered.naturalWidth;
+      canvas.height = rendered.naturalHeight;
+      const context = canvas.getContext("2d");
+      if (context === null) throw new Error("无法读取顶栏 wordmark 截图");
+      context.drawImage(rendered, 0, 0);
+
+      const readPixel = (x, y) =>
+        [...context.getImageData(x, y, 1, 1).data].slice(0, 3);
+      return {
+        backgroundPixel: readPixel(backgroundX, sampleY),
+        imageBackgroundPixel: readPixel(imageX, sampleY),
+      };
+    },
+    {
+      source: `data:image/png;base64,${screenshot.toString("base64")}`,
+      backgroundX: Math.max(0, Math.floor(bounds.x) - 2),
+      imageX: Math.round(bounds.x + bounds.width / 2),
+      sampleY: Math.floor(bounds.y) + 1,
+    },
+  );
+}
+
 async function waitForLoginBrandScenePaint(page) {
   await page.waitForFunction(
     () => {
@@ -312,11 +345,18 @@ export async function checkResponsiveFoundation({
       const documentImages = await readImageHealth(page);
       expectHealthyImages(documentImages, expect, `${viewport.name} 文档页`);
       expectThumbnailMascots(documentImages, expect, `${viewport.name} 文档页`);
-
-      await page.screenshot({
+      const documentsScreenshot = await page.screenshot({
         path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-documents.png`),
         fullPage: true,
       });
+      const brandAppearance = await readProductBrandAppearance(page, documentsScreenshot);
+      expect(
+        brandAppearance.imageBackgroundPixel.every(
+          (channel, index) =>
+            Math.abs(channel - brandAppearance.backgroundPixel[index]) <= 3,
+        ),
+        `${viewport.name} ${themeValue} 顶栏 wordmark 背景必须融入顶栏，实际图片像素 ${brandAppearance.imageBackgroundPixel.join(",")} / 顶栏 ${brandAppearance.backgroundPixel.join(",")}`,
+      );
 
       const assistantTrigger = page.getByRole("button", { name: "打开看板娘助手" });
       await assistantTrigger.click();
