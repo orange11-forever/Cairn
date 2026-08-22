@@ -1,8 +1,8 @@
 # apps/api: FastAPI 后端
 
-`apps/api` 是根 uv workspace 中可安装、可独立启动的 FastAPI package，现已提供 PostgreSQL 组织身份、Cookie 会话、组织 RBAC、项目 ACL、项目任务、审计、事务性 Outbox、有界 SSE、Stage 3A Task 1–11 知识上传与资源生命周期、配置、请求 ID、统一错误、健康检查和 OpenAPI。Task 12 混合搜索、Agent 执行和完整 Provider 治理能力仍在后续阶段。
+`apps/api` 是根 uv workspace 中可安装、可独立启动的 FastAPI package，现已提供 PostgreSQL 组织身份、Cookie 会话、组织 RBAC、项目 ACL、项目任务、审计、事务性 Outbox、有界 SSE、Stage 3A Task 1–11 知识上传与资源生命周期、Task 12 项目范围混合搜索、配置、请求 ID、统一错误、健康检查和 OpenAPI。Agent 执行和完整 Provider 治理能力仍在后续阶段。
 
-Web 的身份请求连接本 API；现有文档、上传和问答原型仍连接 `mocks/docs-server.mjs`，尚未替换为真实知识工作区。当前产品、架构和阶段路线以 [公开架构说明](../../docs/architecture.md) 为准。
+Web 的身份、项目任务和 Task 13 项目知识工作区基础连接本 API；现有通用文档、上传和问答原型仍连接 `mocks/docs-server.mjs`。Task 13 已接通真实资源分页与搜索请求边界，但完整资源列表、上传、搜索结果和引用体验尚未交付。当前产品、架构和阶段路线以 [公开架构说明](../../docs/architecture.md) 为准。
 
 当前核心开发由 FastAPI、PostgreSQL 16/pgvector、S3 兼容 MinIO、独立知识 Worker、React/Vite Web 与文档 Node mock 共同组成；Redis 仍是规划中基础设施。API 默认绑定 `127.0.0.1:8080`，身份与知识数据不使用 SQLite 或内存仓储分叉。未来 Local Web、Compose 与 Helm 必须继续使用同一 `/api/v1` 契约、数据库迁移和权限规则。
 
@@ -40,9 +40,10 @@ Docker Desktop 必须保持运行。生产环境必须使用 HTTPS `APP_URL`/`CO
 - 已实现：组织、用户、成员关系、Argon2id 密码、Cookie 会话、CSRF、PostgreSQL 登录限流、当前组织查询、项目、任务、任务依赖、状态机、追加式审计、事务性 Outbox 和有界 SSE 查询。
 - 阶段 2.5A 已交付项目范围的组织 RBAC、规范化 ACL、成员角色列表与更新 API。
 - Stage 3A Task 1–11 已交付：1–20 文件上传批次、校验和绑定的 MinIO/S3 预签名直传、批次状态、知识资源生命周期、切片上下文和独立 Worker 摄取链路。
+- Stage 3A Task 12 混合搜索 API 已交付：项目权限过滤优先的关键词/向量召回、确定性融合、关键词降级、限流、审计与可追溯引用。
+- Stage 3A Task 13 Web 知识工作区基础已交付：受保护路由、真实资源分页、`canWrite` 权限状态展示与搜索请求/query 状态边界；完整 UI 闭环仍在后续任务中。
 - `Bearer/OIDC`：未实现。
 - 群组、邀请、成员移除、ACL 管理 UI 与成员管理 UI：未实现。
-- Task 12 混合搜索知识端点与真实 Web 知识工作区：未实现，文档、上传和问答 UI 仍由 Node mock 提供。
 - 连接器、AI Provider 完整策略层与外部 Agent：未实现。
 
 登录限流使用固定的 15 分钟窗口：规范化邮箱最多失败 5 次，来源 IP 最多失败 30 次，达到阈值后阻止 15 分钟。`auth_rate_limits` 只保存以 `CAIRN_AUTH_RATE_LIMIT_SECRET` 生成的 HMAC-SHA-256 摘要，不保存明文邮箱或 IP；限流数据库操作失败时登录会关闭并返回 `503 database_unavailable`。
@@ -134,9 +135,9 @@ Cookie 会话下的 `POST`/`PATCH`/`PUT`/`DELETE` 命令要求合法 Origin 和�
 
 - 完整阶段/里程碑编辑 UI、React Flow/ELK 图编辑、拖拽 Kanban 和时间线可视化延后。
 - Outbox worker 发布、长连接重连 SSE、Redis fan-out、评论、通知和任务执行延后。
-- 群组、邀请、成员移除、ACL/成员管理 UI、Bearer/OIDC、Task 12 混合搜索、真实 Web 知识工作区、连接器、Agent 执行和完整模型 Provider 策略层延后。
+- 群组、邀请、成员移除、ACL/成员管理 UI、Bearer/OIDC、完整真实 Web 知识闭环、连接器、Agent 执行和完整模型 Provider 策略层延后。
 
-## Stage 3A Task 1–11 知识摄取契约
+## Stage 3A Task 1–12 知识摄取与搜索契约
 
 这些端点继承 Cookie 会话和项目授权。上传批次、上传完成、手动重试和删除是 mutation，都要求合法 Cookie Origin 和会话绑定的 `X-CSRF-Token`。项目或知识资源不存在、跨组织或权限不足时使用统一的不泄露 `404 not_found`，不通过错误差异暴露资源存在性。
 
@@ -153,10 +154,13 @@ Cookie 会话下的 `POST`/`PATCH`/`PUT`/`DELETE` 命令要求合法 Origin 和�
 | `DELETE /api/v1/projects/{project_id}/knowledge/resources/{resource_id}` | `204` 无响应体 | 软删除资源并默认从后续读取中排除 |
 | `GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}/download` | `307` + `Location` | 重新检查项目 `read` 权限后重定向到短时效对象 URL |
 | `GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}/chunks/{chunk_id}` | `200 ChunkContextResponse` | 返回命中切片、结构化 locator 和同版本前后文 |
+| `POST /api/v1/projects/{project_id}/knowledge/search` | `200 KnowledgeSearchResponse` | 在项目授权边界内返回混合检索结果、模式与可追溯引用 |
 
 资源列表 `limit` 范围为 1–100、默认 50，客户端只能将 `nextCursor` 原样作为下次 `cursor`。下载端点不代理对象内容：它会在每次请求中重新授权和写入读取审计，然后返回 `307` 短时效 S3/MinIO URL。
 
-所有知识响应都带 `X-Request-ID` 和 `Cache-Control: private, no-store`。标准错误体为 `{ message, code, traceId }`，其 `traceId` 与 `X-Request-ID` 对应；请求验证、会话/CSRF、资源隐藏、状态冲突、数据库/对象存储和未预期异常都通过现有统一错误边界暴露。FastAPI OpenAPI 是契约来源，`pnpm generate:sdk` 生成客户端，`pnpm check:sdk` 在门禁中防止 OpenAPI/SDK 漂移。Task 12 项目范围混合搜索 API 当前不存在。
+搜索 `POST` 与上传批次、上传完成、手动重试和删除 mutation 一样，要求合法 Cookie Origin 和会话绑定的 `X-CSRF-Token`。搜索先在数据库中固定组织、项目、当前版本、资源状态与 ACL，再召回关键词和向量候选并确定性融合；Embedding 暂时不可用时明确返回 `keyword_fallback`，数据库或权限事实不可用时返回 `503 database_unavailable`。用户或组织超限返回 `429 search_rate_limited` 与有效 `Retry-After`，审计不记录原始查询文本。
+
+所有知识响应都带 `X-Request-ID` 和 `Cache-Control: private, no-store`。标准错误体为 `{ message, code, traceId }`，其 `traceId` 与 `X-Request-ID` 对应；请求验证、会话/CSRF、资源隐藏、状态冲突、数据库/对象存储和未预期异常都通过现有统一错误边界暴露。FastAPI OpenAPI 是契约来源，`pnpm generate:sdk` 生成客户端，`pnpm check:sdk` 在门禁中防止 OpenAPI/SDK 漂移。
 
 ## 实施顺序
 
@@ -167,13 +171,14 @@ Cookie 会话下的 `POST`/`PATCH`/`PUT`/`DELETE` 命令要求合法 Origin 和�
 | 2 | 已完成项目与任务 DAG、状态机、Outbox 和有界 SSE 查询模型 |
 | 2.5A | 已完成组织 RBAC、项目 ACL 与成员角色管理 API；群组、邀请、成员移除和管理 UI 延后 |
 | 3A Task 1–11 | 已完成通用知识资源、MinIO/S3 上传、摄取状态、Worker 解析/切分/Embedding/索引和切片引用上下文 |
-| 3A Task 12 | 项目范围混合搜索 API 未交付；真实 Web 知识工作区仍在后续边界 |
+| 3A Task 12 | 已完成项目范围混合搜索 API、权限预过滤、确定性融合、关键词降级、限流与审计 |
+| 3A Task 13 | 已完成真实 Web 知识工作区基础；完整资源、上传、搜索结果与引用 UI 仍在后续边界 |
 | 4 | Agent、模型策略、运行、预算、审批与 AgentRunner 契约 |
 | 5-6 | 外部编程 Agent、代码智能、OIDC/SAML、配额、审计查询和部署治理 |
 
 ## 后续数据模型不变量
 
-以下内容同时记录已交付的授权和 Stage 3A Task 1–11 知识边界，以及后续阶段必须遵守的设计约束；明确标为后续的搜索、连接器、Agent 或 Provider 能力尚未实现。
+以下内容同时记录已交付的授权和 Stage 3A Task 1–13 知识边界，以及后续阶段必须遵守的设计约束；明确标为后续的完整 Web 交互、连接器、Agent 或 Provider 能力尚未实现。
 
 ### 1. 组织是租户边界
 

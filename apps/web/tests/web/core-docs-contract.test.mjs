@@ -52,6 +52,10 @@ const knowledgeEndpointContracts = [
     "GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}/chunks/{chunk_id}",
     "`200 ChunkContextResponse`",
   ],
+  [
+    "POST /api/v1/projects/{project_id}/knowledge/search",
+    "`200 KnowledgeSearchResponse`",
+  ],
 ];
 
 function escapeRegExp(value) {
@@ -123,7 +127,8 @@ test("API documentation records the delivered authorization boundary and deferre
   assert.match(readme, /viewer[^。\n]*上限[^。\n]*read/i);
   assert.match(readme, /last_owner_required/);
   assert.match(readme, /群组.*未实现/);
-  assert.match(readme, /Task 12.*混合搜索.*未实现/);
+  assert.match(readme, /Task 12.*混合搜索.*已交付/);
+  assert.match(readme, /Task 13.*Web 知识工作区基础.*已交付/);
 });
 
 test("root documentation records the delivered Stage 2 project and task boundary", async () => {
@@ -158,12 +163,13 @@ test("root documentation publishes Stage 2.5A without expanding the UI boundary"
   }
   assert.match(readme, /ACL.*UI.*未实现/i);
   assert.match(readme, /群组.*未实现/);
-  assert.match(readme, /Task 12.*混合搜索.*未实现/);
+  assert.match(readme, /Task 12.*混合搜索.*已交付/);
+  assert.match(readme, /Task 13.*Web 知识工作区基础.*已交付/);
 });
 
-test("public documentation separates delivered Stage 3A ingestion from Task 12 search", async () => {
-  // Break caught: the architecture or public overview regresses to describing all
-  // knowledge ingestion as future work, or presents Task 12 search as delivered.
+test("public documentation records delivered Task 12 search and bounded Task 13 Web foundations", async () => {
+  // Break caught: public documents regress delivered search to future work or expand
+  // the Task 13 foundation into the complete upload/search/citation Web experience.
   const [rootReadme, apiReadme, architecture] = await Promise.all([
     readFile(new URL("README.md", repositoryRoot), "utf8"),
     readFile(new URL("apps/api/README.md", repositoryRoot), "utf8"),
@@ -176,7 +182,14 @@ test("public documentation separates delivered Stage 3A ingestion from Task 12 s
     ["docs/architecture.md", architecture],
   ]) {
     assert.match(document, /Stage 3A Task 1–11[^\n]*(?:已交付|已完成)/, documentName);
-    assert.match(document, /Task 12[^\n]*混合搜索[^\n]*(?:未交付|未实现)/, documentName);
+    assert.match(document, /Task 12[^\n]*混合搜索[^\n]*(?:已交付|已完成)/, documentName);
+    assert.match(document, /Task 13[^\n]*(?:Web|Web 知识工作区)[^\n]*(?:已交付|已完成)/, documentName);
+    assert.match(document, /完整(?:资源列表|资源)[^\n]*上传[^\n]*搜索结果[^\n]*引用[^\n]*(?:后续|尚未)/, documentName);
+    assert.doesNotMatch(
+      document,
+      /Task 12[^；。\n]*混合搜索[^；。\n]*(?:未交付|未实现)/,
+      documentName,
+    );
   }
 
   assert.match(rootReadme, /文档、上传和问答 UI[^\n]*Node mock/);
@@ -185,11 +198,12 @@ test("public documentation separates delivered Stage 3A ingestion from Task 12 s
   assert.doesNotMatch(architecture, /阶段 3：知识摄取与检索（下一阶段）/);
 });
 
-test("API documentation binds all nine knowledge routes to their response contracts", async () => {
+test("API documentation binds all ten knowledge routes to their response contracts", async () => {
   // Break caught: a route is omitted, assigned another schema/status, or the special
   // no-body delete and redirect Location contracts are weakened.
   const readme = await readFile(new URL("apps/api/README.md", repositoryRoot), "utf8");
 
+  assert.match(readme, /## Stage 3A Task 1–12 知识摄取与搜索契约/);
   assertKnowledgeEndpointContracts(readme, "apps/api/README.md");
 });
 
@@ -199,6 +213,7 @@ test("knowledge API documentation preserves security, tracing, and cache headers
   const readme = await readFile(new URL("apps/api/README.md", repositoryRoot), "utf8");
 
   assert.match(readme, /上传批次、上传完成、手动重试和删除[^。\n]*mutation[^。\n]*Origin[^。\n]*`X-CSRF-Token`/);
+  assert.match(readme, /搜索 `POST`[^。\n]*Origin[^。\n]*`X-CSRF-Token`/);
   assert.match(readme, /不存在、跨组织或权限不足[^。\n]*`404 not_found`/);
   assert.match(readme, /下载[^。\n]*重新授权[^。\n]*`307`[^。\n]*(?:对象 URL|S3\/MinIO URL)/);
   assert.match(readme, /`X-Request-ID`[^。\n]*`Cache-Control: private, no-store`/);
