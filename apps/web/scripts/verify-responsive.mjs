@@ -18,8 +18,11 @@ async function readLayout(page) {
     const nav = document.querySelector(".primary-nav");
     const workspace = document.querySelector("main.workspace");
     const panel = document.querySelector(".documents-panel, .assistant-panel");
+    const brandImage = document.querySelector(".product-brand img");
     const navRect = nav?.getBoundingClientRect();
+    const brandImageRect = brandImage?.getBoundingClientRect();
     const workspaceStyle = workspace === null ? null : getComputedStyle(workspace);
+    const brandImageStyle = brandImage === null ? null : getComputedStyle(brandImage);
 
     return {
       theme: document.documentElement.dataset.theme ?? null,
@@ -39,6 +42,14 @@ async function readLayout(page) {
             panel.getBoundingClientRect().right <= window.innerWidth,
       activeLabel:
         document.querySelector('.primary-nav a[aria-current="page"]')?.textContent.trim() ?? null,
+      brandImageWidth: brandImageRect?.width ?? null,
+      brandImageHeight: brandImageRect?.height ?? null,
+      brandImageNaturalWidth:
+        brandImage instanceof HTMLImageElement ? brandImage.naturalWidth : null,
+      brandImageNaturalHeight:
+        brandImage instanceof HTMLImageElement ? brandImage.naturalHeight : null,
+      brandImageBorderWidth: brandImageStyle?.borderTopWidth ?? null,
+      brandImageObjectFit: brandImageStyle?.objectFit ?? null,
       undersizedTargets: [
         ...document.querySelectorAll(
           ".product-brand, .primary-nav a, .account-menu summary, button, select, input:not([type='radio']):not([type='checkbox'])",
@@ -277,6 +288,19 @@ export async function checkResponsiveFoundation({
         `${viewport.name} 文档工作区不应强制横向滚动`,
       );
       expect(documents.activeLabel?.includes("文档"), `${viewport.name} 文档导航未激活`);
+      expect(
+        Number.isFinite(documents.brandImageWidth) &&
+          Number.isFinite(documents.brandImageHeight) &&
+          Number.isFinite(documents.brandImageNaturalWidth) &&
+          Number.isFinite(documents.brandImageNaturalHeight) &&
+          Math.abs(
+            documents.brandImageWidth / documents.brandImageHeight -
+              documents.brandImageNaturalWidth / documents.brandImageNaturalHeight,
+          ) < 0.01 &&
+          documents.brandImageBorderWidth === "0px" &&
+          documents.brandImageObjectFit === "contain",
+        `${viewport.name} 顶栏 wordmark 应保持横向比例且没有控件式边框，实际为 ${documents.brandImageWidth}x${documents.brandImageHeight}、边框 ${documents.brandImageBorderWidth}、适配 ${documents.brandImageObjectFit}`,
+      );
       expect(
         documents.undersizedTargets.length === 0,
         `${viewport.name} 文档页存在小于 44px 的交互目标：${documents.undersizedTargets.join(" / ")}`,

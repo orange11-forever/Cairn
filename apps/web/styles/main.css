@@ -119,11 +119,12 @@ a:hover {
 }
 
 .product-brand img {
-  width: 40px;
-  height: 28px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  object-fit: cover;
+  display: block;
+  width: auto;
+  height: 30px;
+  border: 0;
+  border-radius: 2px;
+  object-fit: contain;
 }
 
 .primary-nav ul {
