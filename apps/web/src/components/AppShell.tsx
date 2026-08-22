@@ -9,11 +9,12 @@ import { ThemeControl } from "./ThemeControl.tsx";
 
 export function AppShell({ identity, onLogout, logoutError }: { identity: IdentityContext; onLogout: () => Promise<void>; logoutError: ApiError | null }) {
   const { pathname } = useLocation();
-  const page = pathname === "/ask"
+  const normalizedPathname = pathname.replace(/\/+$/, "") || "/";
+  const page = normalizedPathname === "/ask"
     ? "ask"
-    : pathname.endsWith("/knowledge")
+    : normalizedPathname.endsWith("/knowledge")
       ? "knowledge"
-      : pathname === "/projects"
+      : normalizedPathname === "/projects"
         ? "projects"
         : "documents";
 

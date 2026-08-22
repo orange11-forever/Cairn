@@ -24,6 +24,13 @@ function contractError(context: string): ApiError {
   });
 }
 
+function retryAfterSeconds(response: Response): number | null {
+  const value = response.headers.get("Retry-After");
+  if (value === null || !/^\d+$/.test(value)) return null;
+  const seconds = Number(value);
+  return Number.isSafeInteger(seconds) ? seconds : null;
+}
+
 function responseError(error: unknown, response: Response, context: string): ApiError {
   const detail = parseApiErrorResponse(error, {
     message: `服务器返回 ${response.status}`,
@@ -34,6 +41,7 @@ function responseError(error: unknown, response: Response, context: string): Api
     status: response.status,
     code: detail.code,
     traceId: detail.traceId,
+    retryAfterSeconds: retryAfterSeconds(response),
     context,
   });
 }

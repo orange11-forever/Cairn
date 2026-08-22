@@ -239,6 +239,25 @@ test("the project knowledge route loads the selected project inside the shared k
   expect(screen.getByRole("dialog", { name: "看板娘助手" })).toHaveTextContent("项目知识助手");
 });
 
+test("the project knowledge assistant keeps its context with a trailing slash", async () => {
+  const projectId = "00000000-0000-4000-8000-000000004001";
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => jsonResponse({
+      capabilities: { canWrite: true },
+      items: [],
+      nextCursor: null,
+    })),
+  );
+  const user = userEvent.setup();
+
+  renderTestRoutes(`/projects/${projectId}/knowledge/`, { restoredIdentity: IDENTITY });
+
+  expect(await screen.findByRole("heading", { level: 1, name: "项目知识" })).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "打开看板娘助手" }));
+  expect(screen.getByRole("dialog", { name: "看板娘助手" })).toHaveTextContent("项目知识助手");
+});
+
 test("account menu exposes identity and logout without duplicating session state", async () => {
   const user = userEvent.setup();
   renderTestRoutes("/documents", { restoredIdentity: IDENTITY });

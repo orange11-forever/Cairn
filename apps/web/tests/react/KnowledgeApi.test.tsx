@@ -202,7 +202,35 @@ test("knowledge search preserves rate-limit errors", async () => {
     code: "rate_limited",
     message: "搜索请求过于频繁",
     traceId: "trace-search-429",
+    retryAfterSeconds: 17,
     context: "POST /api/v1/projects/{project_id}/knowledge/search",
+  });
+});
+
+test("knowledge search ignores malformed retry-after values", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response(JSON.stringify({
+      code: "rate_limited",
+      message: "搜索请求过于频繁",
+      traceId: "trace-search-invalid-retry",
+    }), {
+      status: 429,
+      headers: { "Content-Type": "application/json", "Retry-After": "17.5" },
+    })),
+  );
+  const { searchKnowledge } = await import("../../src/api/knowledge.ts");
+
+  await expect(searchKnowledge({
+    projectId: "00000000-0000-4000-8000-000000004001",
+    query: "租约",
+    limit: 8,
+    csrfToken: "csrf-knowledge-token",
+    signal: new AbortController().signal,
+  })).rejects.toMatchObject({
+    kind: "http",
+    status: 429,
+    retryAfterSeconds: null,
   });
 });
 

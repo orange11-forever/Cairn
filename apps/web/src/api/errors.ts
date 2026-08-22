@@ -19,6 +19,7 @@ export interface ApiErrorOptions {
   status?: number | null;
   code?: string | null;
   traceId?: string | null;
+  retryAfterSeconds?: number | null;
   context?: string | null;
   cause?: unknown;
 }
@@ -31,6 +32,7 @@ export class ApiError extends Error {
 
   readonly code: string | null;
   readonly traceId: string | null;
+  readonly retryAfterSeconds: number | null;
 
   /**
    * 出错的位置，例如 "GET /api/docs"。仅诊断用，不显示给用户。
@@ -50,6 +52,7 @@ export class ApiError extends Error {
     this.status = options.status ?? null;
     this.code = options.code ?? null;
     this.traceId = options.traceId ?? null;
+    this.retryAfterSeconds = options.retryAfterSeconds ?? null;
     this.context = options.context ?? null;
   }
 
