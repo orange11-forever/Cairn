@@ -28,7 +28,7 @@ function retryAfterSeconds(response: Response): number | null {
   const value = response.headers.get("Retry-After");
   if (value === null || !/^\d+$/.test(value)) return null;
   const seconds = Number(value);
-  return Number.isSafeInteger(seconds) ? seconds : null;
+  return Number.isSafeInteger(seconds) && seconds >= 1 ? seconds : null;
 }
 
 function responseError(error: unknown, response: Response, context: string): ApiError {
