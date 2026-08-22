@@ -1,6 +1,7 @@
 import { BookOpenText, Layers3 } from "lucide-react";
 import { Navigate, useParams } from "react-router-dom";
 
+import { ApiError } from "../api/errors.ts";
 import { WorkspaceHeader } from "../components/WorkspaceHeader.tsx";
 import { useKnowledgeResourcesQuery } from "../queries/knowledge.ts";
 import { useSession } from "../session/SessionContext.tsx";
@@ -70,9 +71,11 @@ function KnowledgeWorkspace({
       {resources.isError && resources.data === undefined ? (
         <div className="knowledge-state knowledge-state-error">
           <p role="alert">{errorMessage(resources.error)}</p>
-          <button type="button" onClick={() => void resources.refetch()}>
-            重新加载知识资料
-          </button>
+          {resources.error instanceof ApiError && resources.error.retryable ? (
+            <button type="button" onClick={() => void resources.refetch()}>
+              重新加载知识资料
+            </button>
+          ) : null}
         </div>
       ) : null}
 
