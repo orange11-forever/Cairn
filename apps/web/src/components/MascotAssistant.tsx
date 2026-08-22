@@ -17,13 +17,17 @@ const PAGE_COPY = {
     title: "项目任务助手",
     description: "我会陪你查看项目任务，并提示当前状态可以执行的下一步操作。",
   },
+  knowledge: {
+    title: "项目知识助手",
+    description: "我会陪你查看当前项目的资料状态，并提示摄取或检索的下一步操作。",
+  },
 } as const;
 
 export function MascotAssistant({
   page,
   defaultState = "idle",
 }: {
-  page: "documents" | "projects" | "ask";
+  page: "documents" | "projects" | "knowledge" | "ask";
   defaultState?: MascotState;
 }) {
   const [open, setOpen] = useState(false);

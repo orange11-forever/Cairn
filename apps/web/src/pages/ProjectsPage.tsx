@@ -1,5 +1,6 @@
-import { CalendarDays, ClipboardCheck, Flag, FolderKanban, ListChecks } from "lucide-react";
+import { BookOpenText, CalendarDays, ClipboardCheck, Flag, FolderKanban, ListChecks } from "lucide-react";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 
 import type { Project, Task, TaskStatus } from "../api/projects.ts";
 import {
@@ -250,7 +251,17 @@ function TaskWorkspace({
           <h2>{project.name}</h2>
           <p>{project.description ?? "暂无项目说明"}</p>
         </div>
-        <ListChecks aria-hidden="true" size={22} strokeWidth={1.8} />
+        <div className="task-workspace-tools">
+          <Link
+            aria-label="打开知识工作区"
+            className="task-knowledge-link"
+            to={`/projects/${project.id}/knowledge`}
+          >
+            <BookOpenText aria-hidden="true" size={17} strokeWidth={1.8} />
+            <span>知识资料</span>
+          </Link>
+          <ListChecks aria-hidden="true" size={22} strokeWidth={1.8} />
+        </div>
       </header>
 
       {tasks.isPending ? (

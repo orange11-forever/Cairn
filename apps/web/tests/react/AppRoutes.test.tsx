@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -203,6 +203,40 @@ test("the project route stays in the shared shell with project navigation and as
   );
   await user.click(screen.getByRole("button", { name: "打开看板娘助手" }));
   expect(screen.getByRole("dialog", { name: "看板娘助手" })).toHaveTextContent("项目任务助手");
+});
+
+test("the project knowledge route loads the selected project inside the shared knowledge shell", async () => {
+  const projectId = "00000000-0000-4000-8000-000000004001";
+  const requests: Request[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      requests.push(input as Request);
+      return jsonResponse({
+        capabilities: { canWrite: true },
+        items: [],
+        nextCursor: null,
+      });
+    }),
+  );
+  const user = userEvent.setup();
+
+  renderTestRoutes(`/projects/${projectId}/knowledge`, { restoredIdentity: IDENTITY });
+
+  expect(await screen.findByRole("heading", { level: 1, name: "项目知识" })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "还没有知识资料" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "项目任务" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await waitFor(() => expect(requests).toHaveLength(1));
+  expect(new URL(requests[0]?.url ?? "").pathname).toBe(
+    `/api/v1/projects/${projectId}/knowledge/resources`,
+  );
+  expect(requests[0]?.credentials).toBe("include");
+
+  await user.click(screen.getByRole("button", { name: "打开看板娘助手" }));
+  expect(screen.getByRole("dialog", { name: "看板娘助手" })).toHaveTextContent("项目知识助手");
 });
 
 test("account menu exposes identity and logout without duplicating session state", async () => {
