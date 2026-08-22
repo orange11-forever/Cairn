@@ -1,5 +1,6 @@
 import type { IdentityContext } from "../api/auth.ts";
 import type { ApiError } from "../api/errors.ts";
+import { useState } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 
 import { AccountMenu } from "./AccountMenu.tsx";
@@ -9,20 +10,31 @@ import { ThemeControl } from "./ThemeControl.tsx";
 
 export function AppShell({ identity, onLogout, logoutError }: { identity: IdentityContext; onLogout: () => Promise<void>; logoutError: ApiError | null }) {
   const { pathname } = useLocation();
-  const page = pathname === "/ask" ? "ask" : pathname === "/projects" ? "projects" : "documents";
+  const [wordmarkFailed, setWordmarkFailed] = useState(false);
+  const normalizedPathname = pathname.replace(/\/+$/, "") || "/";
+  const page = normalizedPathname === "/ask"
+    ? "ask"
+    : normalizedPathname.endsWith("/knowledge")
+      ? "knowledge"
+      : normalizedPathname === "/projects"
+        ? "projects"
+        : "documents";
 
   return (
     <div className="app-shell">
       <header className="product-header">
         <Link className="product-brand" to="/documents">
-          <img
-            alt=""
-            src="/assets/brand/cairn-logo.png"
-            onError={(event) => {
-              event.currentTarget.hidden = true;
-            }}
-          />
-          <span>Cairn</span>
+          {wordmarkFailed ? (
+            <span>Cairn</span>
+          ) : (
+            <img
+              alt="Cairn"
+              src="/assets/brand/cairn-wordmark.png"
+              onError={() => {
+                setWordmarkFailed(true);
+              }}
+            />
+          )}
         </Link>
         <PrimaryNavigation />
         <div className="header-utilities">

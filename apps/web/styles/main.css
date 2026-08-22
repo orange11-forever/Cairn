@@ -119,11 +119,18 @@ a:hover {
 }
 
 .product-brand img {
-  width: 40px;
-  height: 28px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  object-fit: cover;
+  display: block;
+  width: auto;
+  height: 30px;
+  border: 0;
+  border-radius: 2px;
+  mix-blend-mode: multiply;
+  object-fit: contain;
+}
+
+:root[data-theme='dark'] .product-brand img {
+  filter: invert(1) hue-rotate(180deg);
+  mix-blend-mode: screen;
 }
 
 .primary-nav ul {
@@ -170,6 +177,10 @@ a:hover {
 .documents-panel,
 .assistant-panel,
 .projects-page {
+  min-width: 0;
+}
+
+.knowledge-page {
   min-width: 0;
 }
 
@@ -1427,9 +1438,39 @@ summary:focus-visible {
   color: var(--color-muted);
 }
 
-.task-workspace-heading > svg {
+.task-workspace-heading > svg,
+.task-workspace-tools > svg {
   flex: 0 0 auto;
   color: var(--color-accent-strong);
+}
+
+.task-workspace-tools,
+.task-knowledge-link {
+  display: inline-flex;
+  align-items: center;
+}
+
+.task-workspace-tools {
+  flex: 0 0 auto;
+  gap: var(--space-3);
+}
+
+.task-knowledge-link {
+  min-height: 44px;
+  gap: var(--space-2);
+  padding-inline: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-accent-strong);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.task-knowledge-link:hover {
+  border-color: var(--color-accent);
+  background: var(--color-empty-bg);
+  text-decoration: none;
 }
 
 .task-list {
@@ -1693,6 +1734,83 @@ summary:focus-visible {
   border-color: var(--color-accent);
   background: var(--color-empty-bg);
   color: var(--color-accent-strong);
+}
+
+/* 项目知识骨架用三层横向地层表达“资源 → 处理 → 检索”的真实数据边界。 */
+.knowledge-foundation,
+.knowledge-state {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.knowledge-foundation {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-5);
+}
+
+.knowledge-stratum {
+  min-height: 52px;
+  padding: var(--space-3) var(--space-4);
+  border-left: 4px solid var(--color-mineral);
+  background: var(--color-empty-bg);
+  color: var(--color-muted);
+}
+
+.knowledge-stratum:nth-child(2) {
+  border-left-color: var(--color-amber);
+  background: var(--color-loading-bg);
+}
+
+.knowledge-stratum:nth-child(3) {
+  border-left-color: var(--color-jade);
+  background: var(--color-success-bg);
+}
+
+.knowledge-state {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-5);
+}
+
+.knowledge-state h2 {
+  margin-bottom: var(--space-1);
+  font-size: 1.125rem;
+}
+
+.knowledge-state p {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+.knowledge-state > svg {
+  flex: 0 0 auto;
+  color: var(--color-accent-strong);
+}
+
+.knowledge-state-error {
+  align-items: center;
+  justify-content: space-between;
+  border-color: var(--color-danger);
+  background: var(--color-danger-bg);
+}
+
+.knowledge-state-error p {
+  color: var(--color-danger);
+}
+
+.knowledge-access {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding-inline: var(--space-2);
+  border-radius: var(--radius);
+  background: var(--color-success-bg);
+  color: var(--color-success);
+  font-size: 0.8125rem;
+  font-weight: 700;
 }
 
 @media (max-width: 767px) {

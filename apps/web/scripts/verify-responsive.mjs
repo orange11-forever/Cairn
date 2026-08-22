@@ -18,8 +18,11 @@ async function readLayout(page) {
     const nav = document.querySelector(".primary-nav");
     const workspace = document.querySelector("main.workspace");
     const panel = document.querySelector(".documents-panel, .assistant-panel");
+    const brandImage = document.querySelector(".product-brand img");
     const navRect = nav?.getBoundingClientRect();
+    const brandImageRect = brandImage?.getBoundingClientRect();
     const workspaceStyle = workspace === null ? null : getComputedStyle(workspace);
+    const brandImageStyle = brandImage === null ? null : getComputedStyle(brandImage);
 
     return {
       theme: document.documentElement.dataset.theme ?? null,
@@ -39,6 +42,14 @@ async function readLayout(page) {
             panel.getBoundingClientRect().right <= window.innerWidth,
       activeLabel:
         document.querySelector('.primary-nav a[aria-current="page"]')?.textContent.trim() ?? null,
+      brandImageWidth: brandImageRect?.width ?? null,
+      brandImageHeight: brandImageRect?.height ?? null,
+      brandImageNaturalWidth:
+        brandImage instanceof HTMLImageElement ? brandImage.naturalWidth : null,
+      brandImageNaturalHeight:
+        brandImage instanceof HTMLImageElement ? brandImage.naturalHeight : null,
+      brandImageBorderWidth: brandImageStyle?.borderTopWidth ?? null,
+      brandImageObjectFit: brandImageStyle?.objectFit ?? null,
       undersizedTargets: [
         ...document.querySelectorAll(
           ".product-brand, .primary-nav a, .account-menu summary, button, select, input:not([type='radio']):not([type='checkbox'])",
@@ -88,6 +99,39 @@ async function readImageHealth(page) {
         };
       },
     ),
+  );
+}
+
+async function readProductBrandAppearance(page, screenshot) {
+  const brandImage = page.locator(".product-brand img");
+  const bounds = await brandImage.boundingBox();
+  if (bounds === null) throw new Error("顶栏 wordmark 不可见");
+
+  return page.evaluate(
+    async ({ source, backgroundX, imageX, sampleY }) => {
+      const rendered = new Image();
+      rendered.src = source;
+      await rendered.decode();
+      const canvas = document.createElement("canvas");
+      canvas.width = rendered.naturalWidth;
+      canvas.height = rendered.naturalHeight;
+      const context = canvas.getContext("2d");
+      if (context === null) throw new Error("无法读取顶栏 wordmark 截图");
+      context.drawImage(rendered, 0, 0);
+
+      const readPixel = (x, y) =>
+        [...context.getImageData(x, y, 1, 1).data].slice(0, 3);
+      return {
+        backgroundPixel: readPixel(backgroundX, sampleY),
+        imageBackgroundPixel: readPixel(imageX, sampleY),
+      };
+    },
+    {
+      source: `data:image/png;base64,${screenshot.toString("base64")}`,
+      backgroundX: Math.max(0, Math.floor(bounds.x) - 2),
+      imageX: Math.round(bounds.x + bounds.width / 2),
+      sampleY: Math.floor(bounds.y) + 1,
+    },
   );
 }
 
@@ -278,6 +322,19 @@ export async function checkResponsiveFoundation({
       );
       expect(documents.activeLabel?.includes("文档"), `${viewport.name} 文档导航未激活`);
       expect(
+        Number.isFinite(documents.brandImageWidth) &&
+          Number.isFinite(documents.brandImageHeight) &&
+          Number.isFinite(documents.brandImageNaturalWidth) &&
+          Number.isFinite(documents.brandImageNaturalHeight) &&
+          Math.abs(
+            documents.brandImageWidth / documents.brandImageHeight -
+              documents.brandImageNaturalWidth / documents.brandImageNaturalHeight,
+          ) < 0.01 &&
+          documents.brandImageBorderWidth === "0px" &&
+          documents.brandImageObjectFit === "contain",
+        `${viewport.name} 顶栏 wordmark 应保持横向比例且没有控件式边框，实际为 ${documents.brandImageWidth}x${documents.brandImageHeight}、边框 ${documents.brandImageBorderWidth}、适配 ${documents.brandImageObjectFit}`,
+      );
+      expect(
         documents.undersizedTargets.length === 0,
         `${viewport.name} 文档页存在小于 44px 的交互目标：${documents.undersizedTargets.join(" / ")}`,
       );
@@ -288,11 +345,18 @@ export async function checkResponsiveFoundation({
       const documentImages = await readImageHealth(page);
       expectHealthyImages(documentImages, expect, `${viewport.name} 文档页`);
       expectThumbnailMascots(documentImages, expect, `${viewport.name} 文档页`);
-
-      await page.screenshot({
+      const documentsScreenshot = await page.screenshot({
         path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-documents.png`),
         fullPage: true,
       });
+      const brandAppearance = await readProductBrandAppearance(page, documentsScreenshot);
+      expect(
+        brandAppearance.imageBackgroundPixel.every(
+          (channel, index) =>
+            Math.abs(channel - brandAppearance.backgroundPixel[index]) <= 3,
+        ),
+        `${viewport.name} ${themeValue} 顶栏 wordmark 背景必须融入顶栏，实际图片像素 ${brandAppearance.imageBackgroundPixel.join(",")} / 顶栏 ${brandAppearance.backgroundPixel.join(",")}`,
+      );
 
       const assistantTrigger = page.getByRole("button", { name: "打开看板娘助手" });
       await assistantTrigger.click();

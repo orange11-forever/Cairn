@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -87,6 +87,15 @@ test("unauthenticated project route redirects to login", async () => {
   renderTestRoutes("/projects");
 
   expect(await screen.findByRole("heading", { name: "登录 Cairn" })).toBeInTheDocument();
+});
+
+test("unauthenticated project knowledge route redirects without loading resources", async () => {
+  const fetchSpy = vi.mocked(fetch);
+
+  renderTestRoutes("/projects/00000000-0000-4000-8000-000000004001/knowledge");
+
+  expect(await screen.findByRole("heading", { name: "登录 Cairn" })).toBeInTheDocument();
+  expect(fetchSpy).not.toHaveBeenCalled();
 });
 
 test("login reaches documents and NavLink reaches ask without a reload", async () => {
@@ -187,6 +196,27 @@ test("authenticated routes use one extensible application shell", async () => {
   expect(assistantTrigger).toHaveAttribute("aria-expanded", "true");
 });
 
+test("authenticated shell presents the dedicated Cairn wordmark once", async () => {
+  renderTestRoutes("/documents", { restoredIdentity: IDENTITY });
+
+  const brandLink = await screen.findByRole("link", { name: "Cairn" });
+  expect(within(brandLink).getByRole("img", { name: "Cairn" })).toHaveAttribute(
+    "src",
+    "/assets/brand/cairn-wordmark.png",
+  );
+  expect(within(brandLink).queryByText("Cairn")).toBeNull();
+});
+
+test("authenticated shell keeps a text brand when the wordmark fails", async () => {
+  renderTestRoutes("/documents", { restoredIdentity: IDENTITY });
+
+  const brandLink = await screen.findByRole("link", { name: "Cairn" });
+  fireEvent.error(within(brandLink).getByRole("img", { name: "Cairn" }));
+
+  expect(within(brandLink).queryByRole("img")).toBeNull();
+  expect(within(brandLink).getByText("Cairn")).toBeInTheDocument();
+});
+
 test("the project route stays in the shared shell with project navigation and assistant copy", async () => {
   vi.stubGlobal(
     "fetch",
@@ -203,6 +233,113 @@ test("the project route stays in the shared shell with project navigation and as
   );
   await user.click(screen.getByRole("button", { name: "打开看板娘助手" }));
   expect(screen.getByRole("dialog", { name: "看板娘助手" })).toHaveTextContent("项目任务助手");
+});
+
+test.each([
+  ["contract", () => jsonResponse({ items: [], nextCursor: null })],
+  ["HTTP 404", () => jsonResponse({
+    code: "not_found",
+    message: "项目不存在或不可访问",
+    traceId: "trace-knowledge-404",
+  }, 404)],
+])("project knowledge %s errors do not offer an ineffective retry", async (_kind, response) => {
+  vi.stubGlobal("fetch", vi.fn(async () => response()));
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+  renderTestRoutes(
+    "/projects/00000000-0000-4000-8000-000000004001/knowledge",
+    { restoredIdentity: IDENTITY },
+  );
+
+  expect(await screen.findByRole("alert")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "重新加载知识资料" })).toBeNull();
+});
+
+test.each(["503", "network"])(
+  "project knowledge %s errors offer retry and recover",
+  async (failureKind) => {
+    let attempts = 0;
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      attempts += 1;
+      if (attempts > 2) {
+        return jsonResponse({
+          capabilities: { canWrite: true },
+          items: [],
+          nextCursor: null,
+        });
+      }
+      if (failureKind === "network") throw new TypeError("socket closed");
+      return jsonResponse({
+        code: "database_unavailable",
+        message: "知识服务暂时不可用",
+        traceId: "trace-knowledge-503",
+      }, 503);
+    }));
+    const user = userEvent.setup();
+
+    renderTestRoutes(
+      "/projects/00000000-0000-4000-8000-000000004001/knowledge",
+      { restoredIdentity: IDENTITY },
+    );
+
+    expect(await screen.findByRole("alert", undefined, { timeout: 3_000 })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "重新加载知识资料" }));
+    expect(await screen.findByRole("heading", { name: "还没有知识资料" })).toBeInTheDocument();
+    expect(attempts).toBe(3);
+  },
+);
+
+test("the project knowledge route loads the selected project inside the shared knowledge shell", async () => {
+  const projectId = "00000000-0000-4000-8000-000000004001";
+  const requests: Request[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      requests.push(input as Request);
+      return jsonResponse({
+        capabilities: { canWrite: true },
+        items: [],
+        nextCursor: null,
+      });
+    }),
+  );
+  const user = userEvent.setup();
+
+  renderTestRoutes(`/projects/${projectId}/knowledge`, { restoredIdentity: IDENTITY });
+
+  expect(await screen.findByRole("heading", { level: 1, name: "项目知识" })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "还没有知识资料" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "项目任务" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await waitFor(() => expect(requests).toHaveLength(1));
+  expect(new URL(requests[0]?.url ?? "").pathname).toBe(
+    `/api/v1/projects/${projectId}/knowledge/resources`,
+  );
+  expect(requests[0]?.credentials).toBe("include");
+
+  await user.click(screen.getByRole("button", { name: "打开看板娘助手" }));
+  expect(screen.getByRole("dialog", { name: "看板娘助手" })).toHaveTextContent("项目知识助手");
+});
+
+test("the project knowledge assistant keeps its context with a trailing slash", async () => {
+  const projectId = "00000000-0000-4000-8000-000000004001";
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => jsonResponse({
+      capabilities: { canWrite: true },
+      items: [],
+      nextCursor: null,
+    })),
+  );
+  const user = userEvent.setup();
+
+  renderTestRoutes(`/projects/${projectId}/knowledge/`, { restoredIdentity: IDENTITY });
+
+  expect(await screen.findByRole("heading", { level: 1, name: "项目知识" })).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "打开看板娘助手" }));
+  expect(screen.getByRole("dialog", { name: "看板娘助手" })).toHaveTextContent("项目知识助手");
 });
 
 test("account menu exposes identity and logout without duplicating session state", async () => {

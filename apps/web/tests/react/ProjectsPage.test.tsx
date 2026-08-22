@@ -278,6 +278,25 @@ test("the selected project shows an explicit empty task workspace", async () => 
   expect(screen.queryByRole("button", { name: /创建任务/ })).toBeNull();
 });
 
+test("the selected project links to its real knowledge workspace", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const { url } = requestDetails(input, init);
+      return url.pathname === "/api/v1/projects"
+        ? jsonResponse({ items: [PROJECT], nextCursor: null })
+        : jsonResponse({ items: [], nextCursor: null });
+    }),
+  );
+
+  renderProjects();
+
+  expect(await screen.findByRole("link", { name: "打开知识工作区" })).toHaveAttribute(
+    "href",
+    `/projects/${PROJECT.id}/knowledge`,
+  );
+});
+
 test("a failed task request exposes retry inside the selected project", async () => {
   let taskAttempts = 0;
   vi.stubGlobal(
