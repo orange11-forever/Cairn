@@ -91,12 +91,12 @@ test("session invalidation still closes locally when query cancellation fails", 
   const queryClient = createAppQueryClient();
   queryClient.setQueryData(["session-private"], "private");
   vi.spyOn(queryClient, "cancelQueries").mockRejectedValue(new Error("cancel failed"));
-  let sessionSignal: AbortSignal | null = null;
+  const capturedSession = { signal: null as AbortSignal | null };
 
   function Harness() {
     const { status, session } = useSession();
     const location = useLocation();
-    if (session !== null) sessionSignal = session.signal;
+    if (session !== null) capturedSession.signal = session.signal;
     return (
       <>
         <output>{status}</output>
@@ -130,7 +130,7 @@ test("session invalidation still closes locally when query cancellation fails", 
   expect(await screen.findByText("anonymous")).toBeInTheDocument();
   expect(screen.getByText("no-session")).toBeInTheDocument();
   expect(screen.getByText("/login")).toBeInTheDocument();
-  expect(sessionSignal?.aborted).toBe(true);
+  expect(capturedSession.signal?.aborted).toBe(true);
   expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
 });
 
