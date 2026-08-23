@@ -366,6 +366,31 @@ test("task rows show status, priority, due date, acceptance criteria, and legal 
   expect(within(task).queryByRole("button", { name: /完成|阻塞|取消/ })).toBeNull();
 });
 
+test("task rows safely render an offset RFC3339 leap-second due date", async () => {
+  const dueAt = "1991-01-01T00:59:60+01:00";
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const { url } = requestDetails(input, init);
+      if (url.pathname === "/api/v1/projects") {
+        return jsonResponse({ items: [PROJECT], nextCursor: null });
+      }
+      return jsonResponse({ items: [{ ...TASK, dueAt }], nextCursor: null });
+    }),
+  );
+  const expectedDate = new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  }).format(new Date("1990-12-31T23:59:59Z"));
+
+  renderProjects();
+
+  const task = await screen.findByRole("article", { name: "核对迁移清单" });
+  expect(within(task).getByText(expectedDate)).toBeInTheDocument();
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
 test("viewer membership renders project tasks without mutation controls", async () => {
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
