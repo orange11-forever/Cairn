@@ -69,7 +69,7 @@ function KnowledgeWorkspace({
   const resources = useKnowledgeResourcesQuery(organizationId, projectId, signal);
   const pages = resources.data?.pages ?? [];
   const items = pages.flatMap((page) => page.items);
-  const capabilities = pages[0]?.capabilities;
+  const capabilities = pages[pages.length - 1]?.capabilities;
 
   return (
     <section

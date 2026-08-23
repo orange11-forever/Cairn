@@ -35,6 +35,13 @@ export interface SessionContextValue {
 const defaultSessionApi: SessionApi = { restore: restoreSession, logout: logoutSession };
 const SessionContext = createContext<SessionContextValue | undefined>(undefined);
 
+function isSessionInvalid(error: unknown): error is ApiError {
+  return error instanceof ApiError &&
+    error.kind === "http" &&
+    error.status === 401 &&
+    error.code === "session_invalid";
+}
+
 export function SessionProvider({
   children,
   sessionApi = defaultSessionApi,
@@ -48,6 +55,7 @@ export function SessionProvider({
   const navigate = useNavigate();
   const controllerRef = useRef<AbortController | null>(null);
   const restoreControllerRef = useRef<AbortController | null>(null);
+  const expiringRef = useRef(false);
   const [status, setStatus] = useState<SessionStatus>(
     restoredIdentity === undefined ? "restoring" : "authenticated",
   );
@@ -64,11 +72,32 @@ export function SessionProvider({
     controllerRef.current?.abort();
     const controller = new AbortController();
     controllerRef.current = controller;
+    expiringRef.current = false;
     setSession({ identity, user: identity.user, signal: controller.signal });
     setRestoreError(null);
     setLogoutError(null);
     setStatus("authenticated");
   }, []);
+
+  const expireSession = useCallback((): void => {
+    const controller = controllerRef.current;
+    if (controller === null || expiringRef.current) return;
+    expiringRef.current = true;
+
+    void Promise.resolve()
+      .then(() => queryClient.cancelQueries())
+      .catch(() => undefined)
+      .then(() => {
+        controller.abort();
+        queryClient.clear();
+        if (controllerRef.current === controller) controllerRef.current = null;
+        setSession(null);
+        setStatus("anonymous");
+        setRestoreError(null);
+        setLogoutError(null);
+        navigate("/login", { replace: true });
+      });
+  }, [navigate, queryClient]);
 
   const retryRestore = useCallback((): void => {
     restoreControllerRef.current?.abort();
@@ -125,6 +154,16 @@ export function SessionProvider({
     retryRestore();
     return () => restoreControllerRef.current?.abort();
   }, [restoredIdentity, retryRestore]);
+
+  useEffect(() => queryClient.getQueryCache().subscribe((event) => {
+    if (
+      event.type === "updated" &&
+      event.action.type === "error" &&
+      isSessionInvalid(event.action.error)
+    ) {
+      expireSession();
+    }
+  }), [expireSession, queryClient]);
 
   useEffect(() => () => controllerRef.current?.abort(), []);
 

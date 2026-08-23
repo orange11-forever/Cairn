@@ -18,6 +18,20 @@ function referencedSchema(reference: unknown): unknown {
   return (componentSchemas as unknown as JsonObject)[name];
 }
 
+function matchesDateTime(value: string): boolean {
+  const match = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])[Tt]([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.\d+)?(?:[Zz]|[+-]([01]\d|2[0-3]):([0-5]\d))$/.exec(
+    value,
+  );
+  if (match === null) return false;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day <= (daysInMonth[month - 1] ?? 0);
+}
+
 function matchesStringFormat(format: unknown, value: string): boolean {
   if (format === "uuid") {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -25,6 +39,7 @@ function matchesStringFormat(format: unknown, value: string): boolean {
     );
   }
   if (format === "email") return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+  if (format === "date-time") return matchesDateTime(value);
   return true;
 }
 

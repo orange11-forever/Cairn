@@ -76,7 +76,7 @@ function fakeSessionApi(overrides: Partial<SessionApi> = {}): SessionApi {
 function renderTestRoutes(path: string, options: { restoredIdentity?: IdentityContext; sessionApi?: SessionApi } = {}) {
   const queryClient = createAppQueryClient();
 
-  return render(
+  const result = render(
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={[path]}>
@@ -87,6 +87,7 @@ function renderTestRoutes(path: string, options: { restoredIdentity?: IdentityCo
       </QueryClientProvider>
     </ThemeProvider>,
   );
+  return { ...result, queryClient };
 }
 
 beforeEach(() => {
@@ -271,7 +272,18 @@ test("the project route stays in the shared shell with project navigation and as
 });
 
 test.each([
-  ["contract", () => jsonResponse({ items: [], nextCursor: null })],
+  ["contract", () => jsonResponse({
+    capabilities: { canWrite: true },
+    items: [{
+      id: "00000000-0000-4000-8000-000000005099",
+      title: "损坏日期.pdf",
+      sourceType: "upload",
+      createdAt: "2026-08-21T02:00:00Z",
+      updatedAt: "not-a-date",
+      latestVersion: null,
+    }],
+    nextCursor: null,
+  })],
   ["HTTP 404", () => jsonResponse({
     code: "not_found",
     message: "项目不存在或不可访问",
@@ -288,6 +300,31 @@ test.each([
 
   expect(await screen.findByRole("alert")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "重新加载知识资料" })).toBeNull();
+});
+
+test("an initial session-invalid knowledge response clears the session without retrying", async () => {
+  const requests: Request[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      requests.push(input as Request);
+      return jsonResponse({
+        code: "session_invalid",
+        message: "会话已过期",
+        traceId: "trace-knowledge-session-401",
+      }, 401);
+    }),
+  );
+
+  const { queryClient } = renderTestRoutes(
+    "/projects/00000000-0000-4000-8000-000000004001/knowledge",
+    { restoredIdentity: IDENTITY },
+  );
+
+  expect(await screen.findByRole("heading", { name: "登录 Cairn" })).toBeInTheDocument();
+  expect(requests).toHaveLength(1);
+  expect(requests[0]?.signal.aborted).toBe(true);
+  expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
 });
 
 test.each(["503", "network"])(
@@ -504,6 +541,55 @@ test("the project knowledge route appends cursor pages without replacing loaded 
   );
 });
 
+test.each([
+  [true, false, "可维护资料", "只读访问"],
+  [false, true, "只读访问", "可维护资料"],
+] as const)(
+  "knowledge pagination updates access from canWrite=%s to canWrite=%s",
+  async (initialCanWrite, nextCanWrite, initialLabel, nextLabel) => {
+    const projectId = "00000000-0000-4000-8000-000000004001";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const cursor = new URL((input as Request).url).searchParams.get("cursor");
+        return cursor === null
+          ? jsonResponse({
+              capabilities: { canWrite: initialCanWrite },
+              items: [knowledgeResource({
+                id: "00000000-0000-4000-8000-000000005013",
+                title: "权限变化前.pdf",
+                mediaType: "application/pdf",
+                sizeBytes: 1024,
+                status: "ready",
+              })],
+              nextCursor: "cursor-capability-change",
+            })
+          : jsonResponse({
+              capabilities: { canWrite: nextCanWrite },
+              items: [knowledgeResource({
+                id: "00000000-0000-4000-8000-000000005014",
+                title: "权限变化后.pdf",
+                mediaType: "application/pdf",
+                sizeBytes: 2048,
+                status: "ready",
+              })],
+              nextCursor: null,
+            });
+      }),
+    );
+    const user = userEvent.setup();
+
+    renderTestRoutes(`/projects/${projectId}/knowledge`, { restoredIdentity: IDENTITY });
+
+    expect(await screen.findByText(initialLabel)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "加载更多知识资料" }));
+
+    expect(await screen.findByText("权限变化后.pdf")).toBeInTheDocument();
+    expect(screen.getByText(nextLabel)).toBeInTheDocument();
+    expect(screen.queryByText(initialLabel)).toBeNull();
+  },
+);
+
 test("a retryable knowledge pagination failure keeps loaded resources and recovers in place", async () => {
   const projectId = "00000000-0000-4000-8000-000000004001";
   const nextPage = deferred<Response>();
@@ -607,6 +693,52 @@ test("a non-retryable knowledge pagination failure keeps loaded resources withou
   expect(await screen.findByRole("alert")).toHaveTextContent("项目或知识资料不存在");
   expect(screen.getByText("仍然可见的资料.pdf")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /加载更多知识资料/ })).toBeNull();
+});
+
+test("a session-invalid knowledge pagination response clears loaded resources and ends the session", async () => {
+  const projectId = "00000000-0000-4000-8000-000000004001";
+  const requests: Request[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const request = input as Request;
+      requests.push(request);
+      const cursor = new URL(request.url).searchParams.get("cursor");
+      if (cursor === null) {
+        return jsonResponse({
+          capabilities: { canWrite: true },
+          items: [knowledgeResource({
+            id: "00000000-0000-4000-8000-000000005041",
+            title: "会话过期前的资料.pdf",
+            mediaType: "application/pdf",
+            sizeBytes: 4096,
+            status: "ready",
+          })],
+          nextCursor: "cursor-expired-session",
+        });
+      }
+      return jsonResponse({
+        code: "session_invalid",
+        message: "会话已过期",
+        traceId: "trace-knowledge-page-session-401",
+      }, 401);
+    }),
+  );
+  const user = userEvent.setup();
+
+  const { queryClient } = renderTestRoutes(
+    `/projects/${projectId}/knowledge`,
+    { restoredIdentity: IDENTITY },
+  );
+
+  expect(await screen.findByText("会话过期前的资料.pdf")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "加载更多知识资料" }));
+
+  expect(await screen.findByRole("heading", { name: "登录 Cairn" })).toBeInTheDocument();
+  expect(requests).toHaveLength(2);
+  expect(requests.every((request) => request.signal.aborted)).toBe(true);
+  expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
+  expect(screen.queryByText("会话过期前的资料.pdf")).toBeNull();
 });
 
 test("the project knowledge assistant keeps its context with a trailing slash", async () => {
