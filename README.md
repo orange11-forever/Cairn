@@ -13,6 +13,16 @@
 > [!IMPORTANT]
 > Cairn 当前已交付 Stage 3A Task 1–14：在已完成的阶段 2 与 2.5A 授权基础上，真实 PostgreSQL 16/pgvector、S3 兼容 MinIO 对象存储和独立 Worker 已进入知识摄取核心链路。Task 12 混合搜索 API 与 Task 13 Web 知识工作区基础已交付；Task 14 真实知识资源列表已交付，展示资源元数据、处理状态和游标续页。上传、搜索结果和引用体验仍在后续任务中，现有通用文档、上传和问答 UI 仍由 Node mock 承载。
 
+## 当前交付快照
+
+| 边界 | 当前状态 |
+|---|---|
+| Web | 身份、项目/任务和项目知识工作区连接真实 FastAPI；知识资源列表展示元数据、处理状态、只读权限和游标续页。查询和变更请求返回规范化 `401 session_invalid` 时，统一清理本地会话与查询缓存、重置变更缓存并回到登录页。 |
+| API / SDK | FastAPI 已提供会话、项目/任务、RBAC/ACL、知识摄取、资源与混合搜索契约；生成 SDK 导出 OpenAPI schema 与运行时校验器，Web API 适配器使用该校验器检查身份、项目/任务和知识响应，并对 OpenAPI `date-time` 字段执行运行时校验。 |
+| Worker | 独立 Python Worker 通过 PostgreSQL 持久化任务完成受限归档、解析、切分、Embedding 与原子索引发布。 |
+| 基础设施 | 核心开发链路使用 PostgreSQL 16/pgvector 与 S3 兼容 MinIO；Redis、正式 Compose/Helm 部署和 OpenTelemetry 仍在规划。 |
+| 延后 | Web 上传、资源操作、搜索结果和引用体验继续延后；现有通用文档、上传和问答 UI 仍由 Node mock 承载。 |
+
 ## 阶段 2、2.5A 与 Stage 3A Task 1–14 已交付边界
 
 共享 API 契约、响应式 Web 与真实身份基础已经完成。阶段 2 已完成并交付项目、任务、依赖、状态机、事务性 Outbox 和有界 SSE 查询；Cairn 已完成阶段 2.5A，交付组织角色、项目 ACL 与成员角色管理 API；Stage 3A Task 1–11 已交付文件摄取和可发布索引基础，Task 12 混合搜索 API、Task 13 Web 知识工作区基础与 Task 14 真实知识资源列表均已交付。
@@ -155,7 +165,7 @@ Stage 3A Task 1–12 在项目授权边界内提供上传批次状态、资源�
 以下目录树只列出公开维护的源码、测试与工程入口，不包含私有文档、依赖缓存和构建产物。
 
 ```text
-Carin
+Cairn
 ├── apps/
 │   ├── api/                  # FastAPI 工程基线
 │   │   ├── src/cairn_api/    # API 应用、配置、中间件与错误契约

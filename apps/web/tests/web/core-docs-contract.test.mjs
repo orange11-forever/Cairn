@@ -114,6 +114,33 @@ test("root documentation describes the real core development path", async () => 
   assert.doesNotMatch(readme, /真实鉴权.*仍未实现/);
 });
 
+test("root README publishes a concise current delivery snapshot", async () => {
+  // Break caught: the first-screen project status omits a runtime boundary, loses the
+  // cross-query/mutation session-invalid contract, or presents deferred Web work as shipped.
+  const readme = await readFile(new URL("README.md", repositoryRoot), "utf8");
+
+  assert.match(readme, /## 当前交付快照/);
+  for (const boundary of ["Web", "API \/ SDK", "Worker", "基础设施", "延后"]) {
+    assert.match(readme, new RegExp(`\\| ${boundary} \\|`));
+  }
+
+  const webBoundary = readme.split("\n").find((line) => line.startsWith("| Web |"));
+  assert.ok(webBoundary, "README must include the Web delivery boundary");
+  assert.match(webBoundary, /查询和变更请求[^|]*`401 session_invalid`/);
+  assert.match(webBoundary, /清理本地会话/);
+  assert.match(webBoundary, /查询缓存/);
+  assert.match(webBoundary, /变更缓存/);
+  assert.match(webBoundary, /回到登录页/);
+
+  const apiSdkBoundary = readme.split("\n").find((line) => line.startsWith("| API \/ SDK |"));
+  assert.ok(apiSdkBoundary, "README must include the API / SDK delivery boundary");
+  assert.match(apiSdkBoundary, /SDK[^|]*导出[^|]*OpenAPI schema[^|]*运行时校验器/);
+  assert.match(apiSdkBoundary, /Web API 适配器[^|]*OpenAPI `date-time`[^|]*校验/);
+  assert.match(readme, /上传、资源操作、搜索结果和引用体验[^。\n]*延后/);
+  assert.match(readme, /```text\nCairn\n├── apps\//);
+  assert.doesNotMatch(readme, /```text\nCarin\n/);
+});
+
 test("API documentation records the delivered authorization boundary and deferred work", async () => {
   const readme = await readFile(new URL("apps/api/README.md", repositoryRoot), "utf8");
 
