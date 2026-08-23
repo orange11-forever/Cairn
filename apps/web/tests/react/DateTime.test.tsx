@@ -17,4 +17,7 @@ test("calendar dates preserve an RFC3339 leap second without rolling into the ne
 
 test("calendar date formatting falls back without throwing for an unexpected value", () => {
   expect(formatCalendarDate("not-a-date", UTC_DATE_FORMAT)).toBe("not-a-date");
+  expect(formatCalendarDate("2026-08-10T09:30:60Z", UTC_DATE_FORMAT)).toBe(
+    "2026-08-10T09:30:60Z",
+  );
 });

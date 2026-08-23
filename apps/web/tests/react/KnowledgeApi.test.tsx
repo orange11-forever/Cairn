@@ -57,6 +57,34 @@ test("knowledge resource pages reject invalid OpenAPI date-time values", async (
   });
 });
 
+test("knowledge resource pages reject a leap second outside the UTC month-end minute", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => Response.json({
+      capabilities: { canWrite: true },
+      items: [{
+        id: "00000000-0000-4000-8000-000000005002",
+        title: "伪造闰秒.pdf",
+        sourceType: "upload",
+        createdAt: "2026-08-21T02:00:00Z",
+        updatedAt: "2026-08-10T09:30:60Z",
+        latestVersion: null,
+      }],
+      nextCursor: null,
+    })),
+  );
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+  await expect(fetchKnowledgeResources({
+    projectId: "00000000-0000-4000-8000-000000004001",
+    cursor: null,
+    signal: new AbortController().signal,
+  })).rejects.toMatchObject({
+    kind: "contract",
+    context: "GET /api/v1/projects/{project_id}/knowledge/resources",
+  });
+});
+
 test("knowledge resource failures preserve the normalized API error", async () => {
   vi.stubGlobal(
     "fetch",
