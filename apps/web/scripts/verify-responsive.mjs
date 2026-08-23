@@ -6,6 +6,95 @@ const VIEWPORTS = [
   { name: "desktop", width: 1280, height: 900 },
 ];
 
+const KNOWLEDGE_PROJECT_ID = "00000000-0000-4000-8000-000000004001";
+
+const KNOWLEDGE_RESOURCE_PAGE = {
+  capabilities: { canWrite: false },
+  items: [
+    {
+      id: "00000000-0000-4000-8000-000000005001",
+      title: "跨区域交付与故障恢复架构决策记录（最终评审版）.pdf",
+      sourceType: "upload",
+      createdAt: "2026-08-21T02:00:00Z",
+      updatedAt: "2026-08-22T02:00:00Z",
+      latestVersion: {
+        id: "00000000-0000-4000-8000-000000006001",
+        sourceType: "upload",
+        mediaType: "application/pdf",
+        sizeBytes: 1536,
+        sha256: "a".repeat(64),
+        status: "queued",
+        errorCode: null,
+        retryable: false,
+        createdAt: "2026-08-21T02:00:00Z",
+        processingStartedAt: null,
+        readyAt: null,
+      },
+    },
+    {
+      id: "00000000-0000-4000-8000-000000005002",
+      title: "上线检查清单.docx",
+      sourceType: "upload",
+      createdAt: "2026-08-21T02:00:00Z",
+      updatedAt: "2026-08-22T02:00:00Z",
+      latestVersion: {
+        id: "00000000-0000-4000-8000-000000006002",
+        sourceType: "upload",
+        mediaType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        sizeBytes: 2 * 1024 * 1024,
+        sha256: "b".repeat(64),
+        status: "processing",
+        errorCode: null,
+        retryable: false,
+        createdAt: "2026-08-21T02:00:00Z",
+        processingStartedAt: "2026-08-21T02:01:00Z",
+        readyAt: null,
+      },
+    },
+    {
+      id: "00000000-0000-4000-8000-000000005003",
+      title: "值班说明.txt",
+      sourceType: "upload",
+      createdAt: "2026-08-21T02:00:00Z",
+      updatedAt: "2026-08-22T02:00:00Z",
+      latestVersion: {
+        id: "00000000-0000-4000-8000-000000006003",
+        sourceType: "upload",
+        mediaType: "text/plain",
+        sizeBytes: 512,
+        sha256: "c".repeat(64),
+        status: "ready",
+        errorCode: null,
+        retryable: false,
+        createdAt: "2026-08-21T02:00:00Z",
+        processingStartedAt: "2026-08-21T02:01:00Z",
+        readyAt: "2026-08-21T02:03:00Z",
+      },
+    },
+    {
+      id: "00000000-0000-4000-8000-000000005004",
+      title: "损坏报告.pdf",
+      sourceType: "upload",
+      createdAt: "2026-08-21T02:00:00Z",
+      updatedAt: "2026-08-22T02:00:00Z",
+      latestVersion: {
+        id: "00000000-0000-4000-8000-000000006004",
+        sourceType: "upload",
+        mediaType: "application/pdf",
+        sizeBytes: 10 * 1024 * 1024,
+        sha256: "d".repeat(64),
+        status: "failed",
+        errorCode: "parser_failed",
+        retryable: true,
+        createdAt: "2026-08-21T02:00:00Z",
+        processingStartedAt: "2026-08-21T02:01:00Z",
+        readyAt: null,
+      },
+    },
+  ],
+  nextCursor: "responsive-next-page",
+};
+
 async function chooseTheme(page, label) {
   const menu = page.locator(".account-menu");
   if (!(await menu.evaluate((element) => element.open))) await menu.locator("summary").click();
@@ -17,7 +106,7 @@ async function readLayout(page) {
   return page.evaluate(() => {
     const nav = document.querySelector(".primary-nav");
     const workspace = document.querySelector("main.workspace");
-    const panel = document.querySelector(".documents-panel, .assistant-panel");
+    const panel = document.querySelector(".documents-panel, .assistant-panel, .knowledge-page");
     const brandImage = document.querySelector(".product-brand img");
     const navRect = nav?.getBoundingClientRect();
     const brandImageRect = brandImage?.getBoundingClientRect();
@@ -70,6 +159,49 @@ async function readLayout(page) {
         }),
     };
   });
+}
+
+async function checkKnowledgeResourceLayout(page, expect, screenshotDir, viewport, themeValue) {
+  await page.goto(
+    `${new URL(page.url()).origin}/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`,
+    { waitUntil: "networkidle" },
+  );
+  await page.waitForSelector(".knowledge-resource-list");
+
+  const layout = await readLayout(page);
+  const knowledge = await page.evaluate(() => {
+    const list = document.querySelector(".knowledge-resource-list");
+    const listRect = list?.getBoundingClientRect();
+    return {
+      count: document.querySelectorAll(".knowledge-resource").length,
+      statusLabels: [...document.querySelectorAll(".knowledge-resource-status")].map(
+        (element) => element.textContent.trim(),
+      ),
+      insideViewport:
+        listRect !== undefined && listRect !== null &&
+        listRect.left >= 0 && listRect.right <= window.innerWidth,
+    };
+  });
+
+  expect(layout.overflow <= 0, `${viewport.name} 项目知识页横向溢出 ${layout.overflow}px`);
+  expect(layout.panelInsideViewport, `${viewport.name} 项目知识面板超出视口`);
+  expect(knowledge.insideViewport, `${viewport.name} 知识资料列表超出视口`);
+  expect(knowledge.count === 4, `${viewport.name} 应渲染 4 条知识资料，实际 ${knowledge.count}`);
+  expect(
+    knowledge.statusLabels.join(" | ") === "等待处理 | 处理中 | 可检索 | 处理失败",
+    `${viewport.name} 知识资料状态不完整：${knowledge.statusLabels.join(" | ")}`,
+  );
+  expect(
+    layout.undersizedTargets.length === 0,
+    `${viewport.name} 项目知识页存在小于 44px 的交互目标：${layout.undersizedTargets.join(" / ")}`,
+  );
+
+  await page.screenshot({
+    path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-knowledge.png`),
+    fullPage: true,
+  });
+  await page.getByRole("link", { name: "知识文档" }).click();
+  await page.waitForSelector(".documents-panel");
 }
 
 async function readImageHealth(page) {
@@ -299,6 +431,11 @@ export async function checkResponsiveFoundation({
   logout,
   waitForAuthenticated,
 }) {
+  await page.route(
+    `**/api/v1/projects/${KNOWLEDGE_PROJECT_ID}/knowledge/resources*`,
+    (route) => route.fulfill({ json: KNOWLEDGE_RESOURCE_PAGE }),
+  );
+
   for (const viewport of VIEWPORTS) {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
 
@@ -384,6 +521,8 @@ export async function checkResponsiveFoundation({
         await assistantTrigger.evaluate((element) => document.activeElement === element),
         `${viewport.name} Escape 后焦点应返回助手入口`,
       );
+
+      await checkKnowledgeResourceLayout(page, expect, screenshotDir, viewport, themeValue);
 
       await page.selectOption("#scenario", "empty");
       await page.click("#load-btn");
