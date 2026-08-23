@@ -78,6 +78,13 @@ test("SDK validates OpenAPI date-time formats before consumers parse them", () =
     }),
     true,
   );
+  assert.equal(
+    matchesComponentSchema("MembershipDetailResponse", {
+      ...membership,
+      createdAt: "1990-12-31T23:59:60Z",
+    }),
+    true,
+  );
   for (const createdAt of [
     "not-a-date",
     "2026-02-30T09:30:00Z",

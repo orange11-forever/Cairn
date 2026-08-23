@@ -155,15 +155,30 @@ export function SessionProvider({
     return () => restoreControllerRef.current?.abort();
   }, [restoredIdentity, retryRestore]);
 
-  useEffect(() => queryClient.getQueryCache().subscribe((event) => {
-    if (
-      event.type === "updated" &&
-      event.action.type === "error" &&
-      isSessionInvalid(event.action.error)
-    ) {
-      expireSession();
-    }
-  }), [expireSession, queryClient]);
+  useEffect(() => {
+    const unsubscribeQueries = queryClient.getQueryCache().subscribe((event) => {
+      if (
+        event.type === "updated" &&
+        event.action.type === "error" &&
+        isSessionInvalid(event.action.error)
+      ) {
+        expireSession();
+      }
+    });
+    const unsubscribeMutations = queryClient.getMutationCache().subscribe((event) => {
+      if (
+        event.type === "updated" &&
+        event.action.type === "error" &&
+        isSessionInvalid(event.action.error)
+      ) {
+        expireSession();
+      }
+    });
+    return () => {
+      unsubscribeQueries();
+      unsubscribeMutations();
+    };
+  }, [expireSession, queryClient]);
 
   useEffect(() => () => controllerRef.current?.abort(), []);
 

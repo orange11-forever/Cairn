@@ -490,6 +490,37 @@ test("the project knowledge route renders resource metadata and every processing
   );
 });
 
+test("the project knowledge route safely renders an RFC3339 leap second", async () => {
+  const projectId = "00000000-0000-4000-8000-000000004001";
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => jsonResponse({
+      capabilities: { canWrite: true },
+      items: [{
+        ...knowledgeResource({
+          id: "00000000-0000-4000-8000-000000005006",
+          title: "闰秒记录.pdf",
+          mediaType: "application/pdf",
+          sizeBytes: 1024,
+          status: "ready",
+        }),
+        updatedAt: "1990-12-31T23:59:60Z",
+      }],
+      nextCursor: null,
+    })),
+  );
+
+  renderTestRoutes(`/projects/${projectId}/knowledge`, { restoredIdentity: IDENTITY });
+
+  const resource = (await screen.findByText("闰秒记录.pdf")).closest("li");
+  expect(resource).not.toBeNull();
+  expect(resource?.querySelector("time")).toHaveAttribute(
+    "datetime",
+    "1990-12-31T23:59:60Z",
+  );
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
 test("the project knowledge route appends cursor pages without replacing loaded resources", async () => {
   const projectId = "00000000-0000-4000-8000-000000004001";
   const requests: Request[] = [];

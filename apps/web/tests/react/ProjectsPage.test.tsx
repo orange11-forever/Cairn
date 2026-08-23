@@ -1,13 +1,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, expect, test, vi } from "vitest";
 
 import type { IdentityContext } from "../../src/api/auth.ts";
 import { projectKeys, taskKeys } from "../../src/queries/projects.ts";
 import { ProjectsPage } from "../../src/pages/ProjectsPage.tsx";
-import { SessionProvider } from "../../src/session/SessionContext.tsx";
+import { SessionProvider, useSession } from "../../src/session/SessionContext.tsx";
 
 const IDENTITY: IdentityContext = {
   user: {
@@ -105,13 +105,29 @@ function requestDetails(input: RequestInfo | URL, init?: RequestInit) {
 function renderProjects(queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
 }), identity = IDENTITY) {
+  const sessionSignal = { current: null as AbortSignal | null };
+
+  function SessionProbe() {
+    const { session, status } = useSession();
+    const location = useLocation();
+    if (session !== null) sessionSignal.current = session.signal;
+    return (
+      <div hidden>
+        <output data-testid="session-status">{status}</output>
+        <output data-testid="session-location">{location.pathname}</output>
+      </div>
+    );
+  }
+
   return {
     queryClient,
+    sessionSignal,
     ...render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={["/projects"]}>
           <SessionProvider restoredIdentity={identity}>
             <ProjectsPage />
+            <SessionProbe />
           </SessionProvider>
         </MemoryRouter>
       </QueryClientProvider>,
@@ -639,6 +655,42 @@ test("a delayed transition failure does not leak its pending or error state into
   });
   expect(screen.queryByText("任务状态更新失败")).toBeNull();
   expect(within(projectBTask).getByRole("button", { name: "开始任务" })).toBeEnabled();
+});
+
+test("a session-invalid task transition clears the authenticated mutation boundary", async () => {
+  let transitionRequests = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const { url, method } = requestDetails(input, init);
+      if (url.pathname === "/api/v1/projects") {
+        return jsonResponse({ items: [PROJECT], nextCursor: null });
+      }
+      if (url.pathname === `/api/v1/projects/${PROJECT.id}/tasks`) {
+        return jsonResponse({ items: [TASK], nextCursor: null });
+      }
+      if (url.pathname === `/api/v1/tasks/${TASK.id}/status` && method === "PATCH") {
+        transitionRequests += 1;
+        return jsonResponse({
+          code: "session_invalid",
+          message: "会话已过期",
+          traceId: "trace-task-transition-session",
+        }, 401);
+      }
+      throw new Error(`unexpected request: ${method} ${url.pathname}`);
+    }),
+  );
+  const user = userEvent.setup();
+  const { queryClient, sessionSignal } = renderProjects();
+
+  await user.click(await screen.findByRole("button", { name: "开始任务" }));
+
+  await waitFor(() => expect(screen.getByTestId("session-status")).toHaveTextContent("anonymous"));
+  expect(screen.getByTestId("session-location")).toHaveTextContent("/login");
+  expect(transitionRequests).toBe(1);
+  expect(sessionSignal.current?.aborted).toBe(true);
+  expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
+  expect(queryClient.getMutationCache().getAll()).toHaveLength(0);
 });
 
 test("project pagination keeps the first page while loading, failing, and retrying the next cursor", async () => {

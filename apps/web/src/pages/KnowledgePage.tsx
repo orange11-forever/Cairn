@@ -4,6 +4,7 @@ import { Navigate, useParams } from "react-router-dom";
 import { ApiError } from "../api/errors.ts";
 import type { KnowledgeResource } from "../api/knowledge.ts";
 import { WorkspaceHeader } from "../components/WorkspaceHeader.tsx";
+import { formatCalendarDate } from "../lib/dateTime.ts";
 import { formatBytes } from "../lib/validation.ts";
 import { useKnowledgeResourcesQuery } from "../queries/knowledge.ts";
 import { useSession } from "../session/SessionContext.tsx";
@@ -214,7 +215,7 @@ function KnowledgeResourceRow({ resource }: { resource: KnowledgeResource }) {
             )}
             <time dateTime={resource.updatedAt}>
               <CalendarDays aria-hidden="true" size={15} />
-              {UPDATED_DATE_FORMAT.format(new Date(resource.updatedAt))}
+              {formatCalendarDate(resource.updatedAt, UPDATED_DATE_FORMAT)}
             </time>
           </div>
         </div>

@@ -19,7 +19,7 @@ function referencedSchema(reference: unknown): unknown {
 }
 
 function matchesDateTime(value: string): boolean {
-  const match = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])[Tt]([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?:\.\d+)?(?:[Zz]|[+-]([01]\d|2[0-3]):([0-5]\d))$/.exec(
+  const match = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])[Tt]([01]\d|2[0-3]):([0-5]\d):([0-5]\d|60)(?:\.\d+)?(?:[Zz]|[+-]([01]\d|2[0-3]):([0-5]\d))$/.exec(
     value,
   );
   if (match === null) return false;
