@@ -324,6 +324,30 @@ test.each(["503", "network"])(
   },
 );
 
+test("the project knowledge route exposes its initial loading state until resources arrive", async () => {
+  const resourcePage = deferred<Response>();
+  vi.stubGlobal("fetch", vi.fn(async () => resourcePage.promise));
+
+  renderTestRoutes(
+    "/projects/00000000-0000-4000-8000-000000004001/knowledge",
+    { restoredIdentity: IDENTITY },
+  );
+
+  const workspace = screen.getByRole("region", { name: "项目知识工作区" });
+  expect(workspace).toHaveAttribute("aria-busy", "true");
+  expect(screen.getByText("正在连接项目知识")).toBeInTheDocument();
+
+  resourcePage.resolve(jsonResponse({
+    capabilities: { canWrite: true },
+    items: [],
+    nextCursor: null,
+  }));
+
+  expect(await screen.findByRole("heading", { name: "还没有知识资料" })).toBeInTheDocument();
+  expect(workspace).not.toHaveAttribute("aria-busy");
+  expect(screen.queryByText("正在连接项目知识")).toBeNull();
+});
+
 test("the project knowledge route loads the selected project inside the shared knowledge shell", async () => {
   const projectId = "00000000-0000-4000-8000-000000004001";
   const requests: Request[] = [];
@@ -344,6 +368,7 @@ test("the project knowledge route loads the selected project inside the shared k
 
   expect(await screen.findByRole("heading", { level: 1, name: "项目知识" })).toBeInTheDocument();
   expect(await screen.findByRole("heading", { name: "还没有知识资料" })).toBeInTheDocument();
+  expect(screen.getByText("可维护资料")).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "项目任务" })).toHaveAttribute(
     "aria-current",
     "page",
