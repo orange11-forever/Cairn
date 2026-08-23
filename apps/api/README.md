@@ -2,7 +2,7 @@
 
 `apps/api` 是根 uv workspace 中可安装、可独立启动的 FastAPI package，现已提供 PostgreSQL 组织身份、Cookie 会话、组织 RBAC、项目 ACL、项目任务、审计、事务性 Outbox、有界 SSE、Stage 3A Task 1–11 知识上传与资源生命周期、Task 12 项目范围混合搜索、配置、请求 ID、统一错误、健康检查和 OpenAPI。Agent 执行和完整 Provider 治理能力仍在后续阶段。
 
-Web 的身份、项目任务和 Task 13 项目知识工作区基础连接本 API；现有通用文档、上传和问答原型仍连接 `mocks/docs-server.mjs`。Task 13 已接通真实资源分页与搜索请求边界，但完整资源列表、上传、搜索结果和引用体验尚未交付。当前产品、架构和阶段路线以 [公开架构说明](../../docs/architecture.md) 为准。
+Web 的身份、项目任务、Task 13 项目知识工作区基础和 Task 14 真实知识资源列表连接本 API；现有通用文档、上传和问答原型仍连接 `mocks/docs-server.mjs`。Task 14 已展示真实资源元数据、处理状态与游标续页；上传、搜索结果和引用体验尚未交付。当前产品、架构和阶段路线以 [公开架构说明](../../docs/architecture.md) 为准。
 
 当前核心开发由 FastAPI、PostgreSQL 16/pgvector、S3 兼容 MinIO、独立知识 Worker、React/Vite Web 与文档 Node mock 共同组成；Redis 仍是规划中基础设施。API 默认绑定 `127.0.0.1:8080`，身份与知识数据不使用 SQLite 或内存仓储分叉。未来 Local Web、Compose 与 Helm 必须继续使用同一 `/api/v1` 契约、数据库迁移和权限规则。
 
@@ -42,6 +42,7 @@ Docker Desktop 必须保持运行。生产环境必须使用 HTTPS `APP_URL`/`CO
 - Stage 3A Task 1–11 已交付：1–20 文件上传批次、校验和绑定的 MinIO/S3 预签名直传、批次状态、知识资源生命周期、切片上下文和独立 Worker 摄取链路。
 - Stage 3A Task 12 混合搜索 API 已交付：项目权限过滤优先的关键词/向量召回、确定性融合、关键词降级、限流、审计与可追溯引用。
 - Stage 3A Task 13 Web 知识工作区基础已交付：受保护路由、真实资源分页、`canWrite` 权限状态展示与搜索请求/query 状态边界；完整 UI 闭环仍在后续任务中。
+- Stage 3A Task 14 真实知识资源列表已交付：显示标题、文件类型、大小、更新时间和处理状态，支持保留既有项目的游标续页、分页错误恢复与只读能力提示；上传、搜索结果和引用体验仍在后续任务中。
 - `Bearer/OIDC`：未实现。
 - 群组、邀请、成员移除、ACL 管理 UI 与成员管理 UI：未实现。
 - 连接器、AI Provider 完整策略层与外部 Agent：未实现。
@@ -172,13 +173,14 @@ Cookie 会话下的 `POST`/`PATCH`/`PUT`/`DELETE` 命令要求合法 Origin 和�
 | 2.5A | 已完成组织 RBAC、项目 ACL 与成员角色管理 API；群组、邀请、成员移除和管理 UI 延后 |
 | 3A Task 1–11 | 已完成通用知识资源、MinIO/S3 上传、摄取状态、Worker 解析/切分/Embedding/索引和切片引用上下文 |
 | 3A Task 12 | 已完成项目范围混合搜索 API、权限预过滤、确定性融合、关键词降级、限流与审计 |
-| 3A Task 13 | 已完成真实 Web 知识工作区基础；完整资源、上传、搜索结果与引用 UI 仍在后续边界 |
+| 3A Task 13 | 已完成真实 Web 知识工作区基础与查询边界 |
+| 3A Task 14 | 已完成真实知识资源列表、处理状态、只读提示和游标续页；上传、资源操作、搜索结果与引用 UI 仍在后续边界 |
 | 4 | Agent、模型策略、运行、预算、审批与 AgentRunner 契约 |
 | 5-6 | 外部编程 Agent、代码智能、OIDC/SAML、配额、审计查询和部署治理 |
 
 ## 后续数据模型不变量
 
-以下内容同时记录已交付的授权和 Stage 3A Task 1–13 知识边界，以及后续阶段必须遵守的设计约束；明确标为后续的完整 Web 交互、连接器、Agent 或 Provider 能力尚未实现。
+以下内容同时记录已交付的授权和 Stage 3A Task 1–14 知识边界，以及后续阶段必须遵守的设计约束；明确标为后续的完整 Web 交互、连接器、Agent 或 Provider 能力尚未实现。
 
 ### 1. 组织是租户边界
 

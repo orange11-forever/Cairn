@@ -11,11 +11,11 @@
 </p>
 
 > [!IMPORTANT]
-> Cairn 当前已交付 Stage 3A Task 1–13：在已完成的阶段 2 与 2.5A 授权基础上，真实 PostgreSQL 16/pgvector、S3 兼容 MinIO 对象存储和独立 Worker 已进入知识摄取核心链路。Task 12 混合搜索 API 已交付；Task 13 Web 知识工作区基础已交付，并接通项目范围的资源列表与搜索请求边界。完整资源列表、上传、搜索结果和引用体验仍在后续任务中，现有通用文档、上传和问答 UI 仍由 Node mock 承载。
+> Cairn 当前已交付 Stage 3A Task 1–14：在已完成的阶段 2 与 2.5A 授权基础上，真实 PostgreSQL 16/pgvector、S3 兼容 MinIO 对象存储和独立 Worker 已进入知识摄取核心链路。Task 12 混合搜索 API 与 Task 13 Web 知识工作区基础已交付；Task 14 真实知识资源列表已交付，展示资源元数据、处理状态和游标续页。上传、搜索结果和引用体验仍在后续任务中，现有通用文档、上传和问答 UI 仍由 Node mock 承载。
 
-## 阶段 2、2.5A 与 Stage 3A Task 1–13 已交付边界
+## 阶段 2、2.5A 与 Stage 3A Task 1–14 已交付边界
 
-共享 API 契约、响应式 Web 与真实身份基础已经完成。阶段 2 已完成并交付项目、任务、依赖、状态机、事务性 Outbox 和有界 SSE 查询；Cairn 已完成阶段 2.5A，交付组织角色、项目 ACL 与成员角色管理 API；Stage 3A Task 1–11 已交付文件摄取和可发布索引基础，Task 12 混合搜索 API 已交付，Task 13 Web 知识工作区基础已交付。
+共享 API 契约、响应式 Web 与真实身份基础已经完成。阶段 2 已完成并交付项目、任务、依赖、状态机、事务性 Outbox 和有界 SSE 查询；Cairn 已完成阶段 2.5A，交付组织角色、项目 ACL 与成员角色管理 API；Stage 3A Task 1–11 已交付文件摄取和可发布索引基础，Task 12 混合搜索 API、Task 13 Web 知识工作区基础与 Task 14 真实知识资源列表均已交付。
 
 - `@cairn/contracts` 统一现有登录、文档、问答、上传和错误响应契约；
 - Web 保留本地容错、请求取消、查询缓存和 UI 状态边界；
@@ -28,9 +28,9 @@
 - 项目可以一次创建 1–20 个文件的上传批次，客户端通过绑定 SHA-256 校验和的 S3/MinIO 预签名 `PUT` 直传对象；
 - 独立 Worker 从 PostgreSQL 租用持久化任务，执行受限 ZIP 展开、支持文档解析、结构化切分、OpenAI 兼容的 1024 维 Embedding 和原子索引发布；
 - 项目知识搜索在候选限制前应用组织、项目、当前版本、资源状态与 ACL 过滤，并以关键词和 pgvector 结果执行确定性混合排序；
-- Web 已提供受保护的 `/projects/:projectId/knowledge` 工作区，接入真实资源分页查询、项目 `canWrite` 权限状态展示和搜索请求状态边界，并保持会话取消、错误重试与响应式应用壳；
+- Web 已提供受保护的 `/projects/:projectId/knowledge` 工作区，接入真实资源分页查询、项目 `canWrite` 权限状态展示和搜索请求状态边界；资源列表显示标题、文件类型、大小、更新时间及排队、处理、可检索、失败状态，并保持会话取消、错误重试与响应式应用壳；
 - 应用壳使用单一专用 Cairn wordmark；亮暗主题下图片背景与顶栏融合，资源加载失败时回退为可访问的文字品牌；
-- 现有通用文档、上传和问答 UI 仍连接 Node mock API；Task 13 是真实知识工作区基础，不代表上传、资源明细、搜索结果和引用闭环已经完成。
+- 现有通用文档、上传和问答 UI 仍连接 Node mock API；Task 14 只交付真实资源列表，不代表上传、资源操作、搜索结果和引用闭环已经完成。
 
 ## 项目与任务 API
 
@@ -92,7 +92,7 @@ Stage 3A Task 1–12 在项目授权边界内提供上传批次状态、资源�
 - 完整阶段/里程碑编辑 UI、React Flow/ELK 图编辑、拖拽 Kanban 和时间线可视化延后；
 - Outbox worker 发布、长连接重连 SSE、Redis fan-out、评论、通知和任务执行延后；
 - 群组、邀请和成员移除未实现；ACL 管理 UI 与成员管理 UI 未实现；
-- Bearer/OIDC 延后；知识摄取与项目范围混合搜索 API 已完成，真实 Web 知识工作区基础已交付，但完整上传、资源状态、搜索结果、引用体验、连接器、Agent 执行和完整模型 Provider 策略层尚未交付。
+- Bearer/OIDC 延后；知识摄取与项目范围混合搜索 API、真实 Web 知识工作区基础和资源列表已交付，但上传、资源操作、搜索结果、引用体验、连接器、Agent 执行和完整模型 Provider 策略层尚未交付。
 
 ## 核心能力
 
@@ -181,7 +181,7 @@ Carin
 
 ## 最终部署形式
 
-正式 Local Web、单服务器私有部署和 Kubernetes 私有部署将共享同一套 API、数据库迁移和应用镜像。当前核心开发链路已有真实 API、PostgreSQL/pgvector、MinIO、独立 Worker 和 Web；项目知识工作区基础已连接真实 API，现有通用文档、上传和问答操作仍由 Node mock 承载，正式部署能力仍在建设中。
+正式 Local Web、单服务器私有部署和 Kubernetes 私有部署将共享同一套 API、数据库迁移和应用镜像。当前核心开发链路已有真实 API、PostgreSQL/pgvector、MinIO、独立 Worker 和 Web；项目知识工作区与资源列表已连接真实 API，现有通用文档、上传和问答操作仍由 Node mock 承载，正式部署能力仍在建设中。
 
 | 形式 | 默认入口 | 定位 |
 |---|---|---|
@@ -266,7 +266,7 @@ pnpm verify
 
 `pnpm verify:core` 会创建独立 Compose project 和临时 PostgreSQL/MinIO 卷，执行对象存储初始化与往返、迁移、真实 API 集成测试、SDK 漂移检查、生产构建与 Chromium 登录闭环。最后一段验收会用 OpenSSL 生成仅供本次运行使用的 localhost 证书，在 HTTPS 反向代理后启动生产配置 API，并验证 CORS、Secure/HttpOnly/SameSite Cookie、会话恢复、CSRF 注销和可信来源 IP。临时证书、进程及 Compose project 会在成功、失败或信号中断后清理；该命令不会接触开发数据库和卷。
 
-`pnpm verify` 是完整的跨 package 门禁：它覆盖共享契约、OpenAPI 生成 SDK 测试与漂移检查、Web、API、Worker、Ruff、Pyright、发行包构建与最后的真实核心验证。浏览器部分覆盖错误密码、登录、刷新恢复、组织显示、注销、360/768/1280 像素布局、主题、路由保护、会话隔离、并发取消、项目知识路由和品牌像素契约，以及通用文档状态、筛选、上传、提问和自动滚动；后四类交互仍验证 Node mock UI，不代表完整的真实知识闭环已交付。Worker package 测试覆盖租约、归档、解析、切分、Embedding 与原子索引语义；真实核心验证覆盖 pgvector、MinIO 对象往返、项目范围混合搜索和知识 API/SDK 一致性。
+`pnpm verify` 是完整的跨 package 门禁：它覆盖共享契约、OpenAPI 生成 SDK 测试与漂移检查、Web、API、Worker、Ruff、Pyright、发行包构建与最后的真实核心验证。浏览器部分覆盖错误密码、登录、刷新恢复、组织显示、注销、360/768/1280 像素布局、主题、路由保护、会话隔离、并发取消、真实项目知识资源列表和品牌像素契约，以及通用文档状态、筛选、上传、提问和自动滚动；后四类交互仍验证 Node mock UI，不代表完整的真实知识闭环已交付。Worker package 测试覆盖租约、归档、解析、切分、Embedding 与原子索引语义；真实核心验证覆盖 pgvector、MinIO 对象往返、项目范围混合搜索和知识 API/SDK 一致性。
 
 也可以使用 `pnpm test:contracts`、`pnpm typecheck:contracts`、`pnpm test:sdk`、`pnpm typecheck:sdk`、`pnpm check:sdk`、`pnpm test:web`、`pnpm test:api`、`pnpm typecheck:web`、`pnpm typecheck:api`、`pnpm test:worker`、`pnpm lint:worker`、`pnpm typecheck:worker`、`pnpm build:web` 和 `pnpm build:api` 分别检查单个 package 或生成契约。
 

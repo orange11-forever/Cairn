@@ -167,9 +167,9 @@ test("root documentation publishes Stage 2.5A without expanding the UI boundary"
   assert.match(readme, /Task 13.*Web 知识工作区基础.*已交付/);
 });
 
-test("public documentation records delivered Task 12 search and bounded Task 13 Web foundations", async () => {
-  // Break caught: public documents regress delivered search to future work or expand
-  // the Task 13 foundation into the complete upload/search/citation Web experience.
+test("public documentation records the delivered Task 14 resource list and remaining Web scope", async () => {
+  // Break caught: public documents regress the real resource list to future work or expand
+  // Task 14 into the still-deferred upload/search/citation Web experience.
   const [rootReadme, apiReadme, architecture] = await Promise.all([
     readFile(new URL("README.md", repositoryRoot), "utf8"),
     readFile(new URL("apps/api/README.md", repositoryRoot), "utf8"),
@@ -184,7 +184,9 @@ test("public documentation records delivered Task 12 search and bounded Task 13 
     assert.match(document, /Stage 3A Task 1–11[^\n]*(?:已交付|已完成)/, documentName);
     assert.match(document, /Task 12[^\n]*混合搜索[^\n]*(?:已交付|已完成)/, documentName);
     assert.match(document, /Task 13[^\n]*(?:Web|Web 知识工作区)[^\n]*(?:已交付|已完成)/, documentName);
-    assert.match(document, /完整(?:资源列表|资源)[^\n]*上传[^\n]*搜索结果[^\n]*引用[^\n]*(?:后续|尚未)/, documentName);
+    assert.match(document, /Task 14[^\n]*资源列表[^\n]*(?:已交付|已完成)/, documentName);
+    assert.match(document, /上传[^\n]*搜索结果[^\n]*引用[^\n]*(?:后续|尚未)/, documentName);
+    assert.doesNotMatch(document, /完整资源列表[^。\n]*(?:后续|尚未)/, documentName);
     assert.doesNotMatch(
       document,
       /Task 12[^；。\n]*混合搜索[^；。\n]*(?:未交付|未实现)/,
