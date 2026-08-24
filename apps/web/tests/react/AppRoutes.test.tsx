@@ -463,6 +463,14 @@ test("the project knowledge route renders resource metadata and every processing
           updatedAt: "2026-08-22T02:00:00Z",
           latestVersion: null,
         },
+        {
+          id: "00000000-0000-4000-8000-000000005015",
+          title: "等待上传版本.txt",
+          sourceType: "upload",
+          createdAt: "2026-08-21T02:00:00Z",
+          updatedAt: "2026-08-22T02:00:00Z",
+          latestVersion: null,
+        },
       ],
       nextCursor: null,
     })),
@@ -472,7 +480,7 @@ test("the project knowledge route renders resource metadata and every processing
 
   expect(await screen.findByText("只读访问")).toBeInTheDocument();
   const list = screen.getByRole("list", { name: "知识资料" });
-  expect(within(list).getAllByRole("listitem")).toHaveLength(5);
+  expect(within(list).getAllByRole("listitem")).toHaveLength(6);
   expect(within(list).getByText("架构决策.pdf").closest("li")).toHaveTextContent(
     "等待处理PDF1.5 KB2026年8月22日",
   );
@@ -486,8 +494,13 @@ test("the project knowledge route renders resource metadata and every processing
     "处理失败PDF10.0 MB",
   );
   expect(within(list).getByText("等待版本.md").closest("li")).toHaveTextContent(
-    "等待版本ZIP 内文件",
+    "等待版本文件类型待生成文件大小待生成ZIP 内文件",
   );
+  const uploadWithoutVersion = within(list).getByText("等待上传版本.txt").closest("li");
+  expect(uploadWithoutVersion).toHaveTextContent(
+    "等待版本文件类型待生成文件大小待生成",
+  );
+  expect(within(uploadWithoutVersion as HTMLElement).queryByText("ZIP 内文件")).toBeNull();
 });
 
 test("the project knowledge route safely renders an RFC3339 leap second", async () => {
@@ -688,43 +701,109 @@ test("a retryable knowledge pagination failure keeps loaded resources and recove
   expect(paginationAttempts).toBe(3);
 });
 
-test("a non-retryable knowledge pagination failure keeps loaded resources without a retry action", async () => {
+test("a retryable network pagination failure keeps loaded resources and recovers in place", async () => {
   const projectId = "00000000-0000-4000-8000-000000004001";
+  let paginationAttempts = 0;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
       const cursor = new URL((input as Request).url).searchParams.get("cursor");
       if (cursor === null) {
         return jsonResponse({
-          capabilities: { canWrite: false },
+          capabilities: { canWrite: true },
           items: [knowledgeResource({
-            id: "00000000-0000-4000-8000-000000005031",
-            title: "仍然可见的资料.pdf",
+            id: "00000000-0000-4000-8000-000000005023",
+            title: "网络中断前.pdf",
             mediaType: "application/pdf",
             sizeBytes: 4096,
             status: "ready",
           })],
-          nextCursor: "cursor-forbidden-page",
+          nextCursor: "cursor-network-retry-page",
         });
       }
+      paginationAttempts += 1;
+      if (paginationAttempts <= 2) throw new TypeError("socket closed");
       return jsonResponse({
-        code: "not_found",
-        message: "项目或知识资料不存在",
-        traceId: "trace-knowledge-page-404",
-      }, 404);
+        capabilities: { canWrite: true },
+        items: [knowledgeResource({
+          id: "00000000-0000-4000-8000-000000005024",
+          title: "网络恢复后的资料.csv",
+          mediaType: "text/csv",
+          sizeBytes: 8192,
+          status: "ready",
+        })],
+        nextCursor: null,
+      });
     }),
   );
   const user = userEvent.setup();
 
   renderTestRoutes(`/projects/${projectId}/knowledge`, { restoredIdentity: IDENTITY });
 
-  expect(await screen.findByText("仍然可见的资料.pdf")).toBeInTheDocument();
+  expect(await screen.findByText("网络中断前.pdf")).toBeInTheDocument();
+  expect(screen.getByText("可维护资料")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "加载更多知识资料" }));
 
-  expect(await screen.findByRole("alert")).toHaveTextContent("项目或知识资料不存在");
-  expect(screen.getByText("仍然可见的资料.pdf")).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: /加载更多知识资料/ })).toBeNull();
+  expect(
+    await screen.findByRole("alert", undefined, { timeout: 3_000 }),
+  ).toHaveTextContent("无法连接服务器，请检查网络");
+  expect(screen.getByText("网络中断前.pdf")).toBeInTheDocument();
+  expect(screen.getByText("可维护资料")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "重新加载更多知识资料" }));
+
+  expect(await screen.findByText("网络恢复后的资料.csv")).toBeInTheDocument();
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(paginationAttempts).toBe(3);
 });
+
+test.each([
+  [false, "只读访问"],
+  [true, "可维护资料"],
+] as const)(
+  "a concealed knowledge pagination 404 clears previously authorized resources with canWrite=%s",
+  async (canWrite, capabilityLabel) => {
+    const projectId = "00000000-0000-4000-8000-000000004001";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const cursor = new URL((input as Request).url).searchParams.get("cursor");
+        if (cursor === null) {
+          return jsonResponse({
+            capabilities: { canWrite },
+            items: [knowledgeResource({
+              id: "00000000-0000-4000-8000-000000005031",
+              title: "仍然可见的资料.pdf",
+              mediaType: "application/pdf",
+              sizeBytes: 4096,
+              status: "ready",
+            })],
+            nextCursor: "cursor-forbidden-page",
+          });
+        }
+        return jsonResponse({
+          code: "not_found",
+          message: "项目或知识资料不存在",
+          traceId: "trace-knowledge-page-404",
+        }, 404);
+      }),
+    );
+    const user = userEvent.setup();
+
+    renderTestRoutes(`/projects/${projectId}/knowledge`, { restoredIdentity: IDENTITY });
+
+    expect(await screen.findByText("仍然可见的资料.pdf")).toBeInTheDocument();
+    expect(screen.getByText(capabilityLabel)).toBeInTheDocument();
+    expect(screen.getByText("已加载 1 项")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "加载更多知识资料" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("项目或知识资料不存在");
+    expect(screen.queryByText("仍然可见的资料.pdf")).toBeNull();
+    expect(screen.queryByText(capabilityLabel)).toBeNull();
+    expect(screen.queryByText("已加载 1 项")).toBeNull();
+    expect(screen.queryByRole("list", { name: "知识资料" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /加载更多知识资料/ })).toBeNull();
+  },
+);
 
 test("a session-invalid knowledge pagination response clears loaded resources and ends the session", async () => {
   const projectId = "00000000-0000-4000-8000-000000004001";

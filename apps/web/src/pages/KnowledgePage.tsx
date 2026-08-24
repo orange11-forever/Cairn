@@ -68,7 +68,10 @@ function KnowledgeWorkspace({
   signal: AbortSignal;
 }) {
   const resources = useKnowledgeResourcesQuery(organizationId, projectId, signal);
-  const pages = resources.data?.pages ?? [];
+  const accessUnavailable = resources.isError &&
+    resources.error instanceof ApiError &&
+    resources.error.status === 404;
+  const pages = accessUnavailable ? [] : (resources.data?.pages ?? []);
   const items = pages.flatMap((page) => page.items);
   const capabilities = pages[pages.length - 1]?.capabilities;
 
@@ -98,7 +101,7 @@ function KnowledgeWorkspace({
         </div>
       ) : null}
 
-      {resources.isError && resources.data === undefined ? (
+      {resources.isError && (resources.data === undefined || accessUnavailable) ? (
         <div className="knowledge-state knowledge-state-error">
           <p role="alert">{errorMessage(resources.error)}</p>
           {resources.error instanceof ApiError && resources.error.retryable ? (
@@ -109,7 +112,7 @@ function KnowledgeWorkspace({
         </div>
       ) : null}
 
-      {resources.data !== undefined && items.length === 0 ? (
+      {!accessUnavailable && resources.data !== undefined && items.length === 0 ? (
         <div className="knowledge-state knowledge-state-empty">
           <BookOpenText aria-hidden="true" size={28} strokeWidth={1.8} />
           <div>
@@ -197,10 +200,22 @@ function KnowledgeResourceRow({ resource }: { resource: KnowledgeResource }) {
           </div>
           <div className="knowledge-resource-metadata">
             {version === null ? (
-              <span>
-                <PackageOpen aria-hidden="true" size={15} />
-                {resource.sourceType === "zip_entry" ? "ZIP 内文件" : "尚无文件版本"}
-              </span>
+              <>
+                <span>
+                  <FileText aria-hidden="true" size={15} />
+                  文件类型待生成
+                </span>
+                <span>
+                  <HardDrive aria-hidden="true" size={15} />
+                  文件大小待生成
+                </span>
+                {resource.sourceType === "zip_entry" ? (
+                  <span>
+                    <PackageOpen aria-hidden="true" size={15} />
+                    ZIP 内文件
+                  </span>
+                ) : null}
+              </>
             ) : (
               <>
                 <span title={version.mediaType}>
