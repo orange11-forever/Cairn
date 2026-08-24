@@ -1,10 +1,40 @@
-import { BookOpenText, Layers3 } from "lucide-react";
+import { BookOpenText, CalendarDays, FileText, HardDrive, PackageOpen } from "lucide-react";
 import { Navigate, useParams } from "react-router-dom";
 
 import { ApiError } from "../api/errors.ts";
+import type { KnowledgeResource } from "../api/knowledge.ts";
 import { WorkspaceHeader } from "../components/WorkspaceHeader.tsx";
+import { formatCalendarDate } from "../lib/dateTime.ts";
+import { formatBytes } from "../lib/validation.ts";
 import { useKnowledgeResourcesQuery } from "../queries/knowledge.ts";
 import { useSession } from "../session/SessionContext.tsx";
+
+type ResourceStatus = NonNullable<KnowledgeResource["latestVersion"]>["status"];
+
+const RESOURCE_STATUS_LABELS: Record<ResourceStatus, string> = {
+  queued: "等待处理",
+  processing: "处理中",
+  ready: "可检索",
+  failed: "处理失败",
+};
+
+const MEDIA_TYPE_LABELS: Readonly<Record<string, string>> = {
+  "application/pdf": "PDF",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "DOCX",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": "PPTX",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "XLSX",
+  "application/zip": "ZIP",
+  "text/csv": "CSV",
+  "text/html": "HTML",
+  "text/markdown": "Markdown",
+  "text/plain": "纯文本",
+};
+
+const UPDATED_DATE_FORMAT = new Intl.DateTimeFormat("zh-CN", {
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+});
 
 function errorMessage(error: unknown): string {
   return error instanceof Error && error.message.trim()
@@ -40,7 +70,7 @@ function KnowledgeWorkspace({
   const resources = useKnowledgeResourcesQuery(organizationId, projectId, signal);
   const pages = resources.data?.pages ?? [];
   const items = pages.flatMap((page) => page.items);
-  const capabilities = pages[0]?.capabilities;
+  const capabilities = pages[pages.length - 1]?.capabilities;
 
   return (
     <section
@@ -90,14 +120,106 @@ function KnowledgeWorkspace({
       ) : null}
 
       {items.length > 0 ? (
-        <div className="knowledge-state knowledge-state-connected">
-          <Layers3 aria-hidden="true" size={28} strokeWidth={1.8} />
-          <div>
-            <h2>知识资料已连接</h2>
-            <p>当前已加载 {items.length} 项；资源列表将在后续任务展开。</p>
-          </div>
+        <KnowledgeResourceList
+          items={items}
+          hasNextPage={resources.hasNextPage}
+          paginationError={resources.isFetchNextPageError ? resources.error : null}
+          pending={resources.isFetchingNextPage}
+          onLoadMore={() => void resources.fetchNextPage()}
+        />
+      ) : null}
+    </section>
+  );
+}
+
+function KnowledgeResourceList({
+  items,
+  hasNextPage,
+  paginationError,
+  pending,
+  onLoadMore,
+}: {
+  items: KnowledgeResource[];
+  hasNextPage: boolean;
+  paginationError: unknown;
+  pending: boolean;
+  onLoadMore(): void;
+}) {
+  const canRetryPagination = paginationError instanceof ApiError && paginationError.retryable;
+
+  return (
+    <section className="knowledge-resources" aria-labelledby="knowledge-resources-title">
+      <div className="knowledge-resources-heading">
+        <div>
+          <span className="knowledge-resources-kicker">资料状态</span>
+          <h2 id="knowledge-resources-title">知识资料</h2>
+        </div>
+        <span>已加载 {items.length} 项</span>
+      </div>
+      <ul aria-label="知识资料" className="knowledge-resource-list">
+        {items.map((resource) => (
+          <KnowledgeResourceRow key={resource.id} resource={resource} />
+        ))}
+      </ul>
+      {hasNextPage ? (
+        <div className="knowledge-pagination">
+          {paginationError !== null ? (
+            <p role="alert">{errorMessage(paginationError)}</p>
+          ) : null}
+          {paginationError === null || canRetryPagination ? (
+            <button type="button" disabled={pending} onClick={onLoadMore}>
+              {pending
+                ? "正在加载更多知识资料"
+                : paginationError === null
+                  ? "加载更多知识资料"
+                  : "重新加载更多知识资料"}
+            </button>
+          ) : null}
         </div>
       ) : null}
     </section>
+  );
+}
+
+function KnowledgeResourceRow({ resource }: { resource: KnowledgeResource }) {
+  const version = resource.latestVersion;
+  const status = version?.status ?? "waiting";
+  const statusLabel = version === null ? "等待版本" : RESOURCE_STATUS_LABELS[version.status];
+
+  return (
+    <li className="knowledge-resource" data-status={status}>
+      <article>
+        <FileText aria-hidden="true" className="knowledge-resource-icon" size={22} strokeWidth={1.7} />
+        <div className="knowledge-resource-content">
+          <div className="knowledge-resource-title-line">
+            <h3>{resource.title}</h3>
+            <span className="knowledge-resource-status" data-status={status}>{statusLabel}</span>
+          </div>
+          <div className="knowledge-resource-metadata">
+            {version === null ? (
+              <span>
+                <PackageOpen aria-hidden="true" size={15} />
+                {resource.sourceType === "zip_entry" ? "ZIP 内文件" : "尚无文件版本"}
+              </span>
+            ) : (
+              <>
+                <span title={version.mediaType}>
+                  <FileText aria-hidden="true" size={15} />
+                  {MEDIA_TYPE_LABELS[version.mediaType] ?? version.mediaType}
+                </span>
+                <span>
+                  <HardDrive aria-hidden="true" size={15} />
+                  {formatBytes(version.sizeBytes)}
+                </span>
+              </>
+            )}
+            <time dateTime={resource.updatedAt}>
+              <CalendarDays aria-hidden="true" size={15} />
+              {formatCalendarDate(resource.updatedAt, UPDATED_DATE_FORMAT)}
+            </time>
+          </div>
+        </div>
+      </article>
+    </li>
   );
 }

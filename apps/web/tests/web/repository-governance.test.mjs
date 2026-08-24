@@ -98,6 +98,7 @@ test("public architecture documentation is reachable and status-explicit", async
     "Stage 3A Task 1–11：知识摄取基础（已交付）",
     "Stage 3A Task 12：项目范围混合搜索 API（已交付）",
     "Stage 3A Task 13：真实 Web 知识工作区基础（已交付）",
+    "Stage 3A Task 14：真实知识资源列表（已交付）",
   ]) {
     assert.ok(architecture.includes(statement), `missing architecture invariant: ${statement}`);
   }

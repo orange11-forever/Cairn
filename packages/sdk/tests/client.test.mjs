@@ -60,6 +60,55 @@ test("SDK validates identity responses from generated OpenAPI component schemas"
   );
 });
 
+test("SDK validates OpenAPI date-time formats before consumers parse them", () => {
+  const membership = {
+    id: "00000000-0000-4000-8000-000000003001",
+    userId: "00000000-0000-4000-8000-000000001001",
+    email: "member@example.com",
+    displayName: "Member",
+    role: "member",
+    createdAt: "2026-08-10T09:30:00Z",
+  };
+
+  assert.equal(matchesComponentSchema("MembershipDetailResponse", membership), true);
+  assert.equal(
+    matchesComponentSchema("MembershipDetailResponse", {
+      ...membership,
+      createdAt: "2024-02-29T23:59:59.123456+08:00",
+    }),
+    true,
+  );
+  assert.equal(
+    matchesComponentSchema("MembershipDetailResponse", {
+      ...membership,
+      createdAt: "1990-12-31T23:59:60Z",
+    }),
+    true,
+  );
+  assert.equal(
+    matchesComponentSchema("MembershipDetailResponse", {
+      ...membership,
+      createdAt: "1991-01-01T00:59:60+01:00",
+    }),
+    true,
+  );
+  for (const createdAt of [
+    "not-a-date",
+    "2026-02-30T09:30:00Z",
+    "2026-08-10",
+    "2026-08-10T09:30:00",
+    "2026-08-10T09:30:60Z",
+    "2026-08-31T23:58:60Z",
+    "1990-12-31T23:59:60+01:00",
+  ]) {
+    assert.equal(
+      matchesComponentSchema("MembershipDetailResponse", { ...membership, createdAt }),
+      false,
+      createdAt,
+    );
+  }
+});
+
 test("SDK validates generated membership and ACL response schemas", () => {
   const membershipFixture = {
     id: "00000000-0000-4000-8000-000000003001",

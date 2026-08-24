@@ -87,6 +87,53 @@ test("logout aborts the session, clears queries, and replaces the URL", async ()
   clear.mockRestore();
 });
 
+test("session invalidation still closes locally when query cancellation fails", async () => {
+  const queryClient = createAppQueryClient();
+  queryClient.setQueryData(["session-private"], "private");
+  vi.spyOn(queryClient, "cancelQueries").mockRejectedValue(new Error("cancel failed"));
+  const capturedSession = { signal: null as AbortSignal | null };
+
+  function Harness() {
+    const { status, session } = useSession();
+    const location = useLocation();
+    if (session !== null) capturedSession.signal = session.signal;
+    return (
+      <>
+        <output>{status}</output>
+        <output>{session?.user.email ?? "no-session"}</output>
+        <output>{location.pathname}</output>
+      </>
+    );
+  }
+
+  render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={["/projects"]}>
+        <SessionProvider restoredIdentity={IDENTITY}>
+          <Harness />
+        </SessionProvider>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+
+  expect(screen.getByText("authenticated")).toBeInTheDocument();
+  await expect(queryClient.fetchQuery({
+    queryKey: ["expired-session"],
+    queryFn: async () => {
+      throw new ApiError("http", "会话已过期", {
+        status: 401,
+        code: "session_invalid",
+      });
+    },
+  })).rejects.toMatchObject({ status: 401, code: "session_invalid" });
+
+  expect(await screen.findByText("anonymous")).toBeInTheDocument();
+  expect(screen.getByText("no-session")).toBeInTheDocument();
+  expect(screen.getByText("/login")).toBeInTheDocument();
+  expect(capturedSession.signal?.aborted).toBe(true);
+  expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
+});
+
 test("restore outages expose a retry state instead of becoming anonymous", async () => {
   const queryClient = createAppQueryClient();
   let attempts = 0;

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import type { Project, Task, TaskStatus } from "../api/projects.ts";
+import { formatCalendarDate } from "../lib/dateTime.ts";
 import {
   useProjectsQuery,
   useProjectTasksQuery,
@@ -436,7 +437,7 @@ function TaskRow({
           </div>
           <div>
             <dt><CalendarDays aria-hidden="true" size={15} strokeWidth={1.8} />到期日</dt>
-            <dd>{task.dueAt === null ? "未设置" : DUE_DATE_FORMAT.format(new Date(task.dueAt))}</dd>
+            <dd>{task.dueAt === null ? "未设置" : formatCalendarDate(task.dueAt, DUE_DATE_FORMAT)}</dd>
           </div>
         </dl>
         <div className="task-acceptance">
