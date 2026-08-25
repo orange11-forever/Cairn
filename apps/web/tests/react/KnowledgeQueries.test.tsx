@@ -157,6 +157,14 @@ test("knowledge search queries preserve session cancellation", async () => {
 test("switching submitted search aborts the old Query and observes only the new response", async () => {
   const requests: Request[] = [];
   const queryA = deferred<Response>();
+  const lateResponseConsumed = deferred<void>();
+  const lateResponse = Response.json({ retrievalMode: "keyword_fallback", results: [] });
+  const readLateResponse = lateResponse.text.bind(lateResponse);
+  vi.spyOn(lateResponse, "text").mockImplementation(async () => {
+    const body = await readLateResponse();
+    lateResponseConsumed.resolve();
+    return body;
+  });
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
     const request = input as Request;
     requests.push(request);
@@ -181,6 +189,12 @@ test("switching submitted search aborts the old Query and observes only the new 
   rerender({ query: "查询乙" });
   await waitFor(() => expect(result.current.isSuccess).toBe(true));
   expect(requests[0]!.signal.aborted).toBe(true);
-  queryA.resolve(Response.json({ retrievalMode: "keyword_fallback", results: [] }));
-  expect(result.current.data).toEqual({ retrievalMode: "hybrid", results: [] });
+  await act(async () => {
+    queryA.resolve(lateResponse);
+    await lateResponseConsumed.promise;
+  });
+  expect(lateResponse.bodyUsed).toBe(true);
+  await waitFor(() => {
+    expect(result.current.data).toEqual({ retrievalMode: "hybrid", results: [] });
+  });
 });

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -15,6 +15,7 @@ import {
   formatKnowledgeMediaType,
   validateKnowledgeQuery,
 } from "../../src/lib/knowledgeSearch.ts";
+import { knowledgeKeys } from "../../src/queries/knowledge.ts";
 
 const PROJECT_ID = "00000000-0000-4000-8000-000000004001";
 const ORGANIZATION_ID = "00000000-0000-4000-8000-000000002001";
@@ -212,6 +213,73 @@ test("explicit retry refetches the same normalized query", async () => {
   await user.click(screen.getByRole("button", { name: "重新搜索" }));
   expect(await screen.findByText("没有匹配片段")).toBeInTheDocument();
   expect(attempts).toBe(2);
+});
+
+test("normalization-equivalent resubmission reuses one exact search key and request body", async () => {
+  const requests: Request[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    requests.push(input as Request);
+    return Response.json({ retrievalMode: "hybrid", results: [] });
+  }));
+  const user = userEvent.setup();
+  const { queryClient } = renderKnowledgeSearch();
+
+  await user.type(screen.getByLabelText("搜索项目知识"), "  ＡＢＣ  ");
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+  expect(await screen.findByText("没有匹配片段")).toBeInTheDocument();
+
+  await user.clear(screen.getByLabelText("搜索项目知识"));
+  await user.type(screen.getByLabelText("搜索项目知识"), "ABC");
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+  await waitFor(() => expect(requests).toHaveLength(2));
+
+  await expect(Promise.all(requests.map((request) => request.clone().json())))
+    .resolves.toEqual([
+      { query: "ABC", limit: 10 },
+      { query: "ABC", limit: 10 },
+    ]);
+  const searchKey = knowledgeKeys.search(ORGANIZATION_ID, PROJECT_ID, "ABC", 10);
+  expect(queryClient.getQueryData(searchKey)).toEqual({
+    retrievalMode: "hybrid",
+    results: [],
+  });
+  expect(queryClient.getQueryCache().findAll({
+    predicate: ({ queryKey }) =>
+      queryKey.length === 6 &&
+      queryKey[0] === "project-knowledge" &&
+      queryKey[1] === ORGANIZATION_ID &&
+      queryKey[2] === PROJECT_ID &&
+      queryKey[3] === "search",
+  }).map(({ queryKey }) => queryKey)).toEqual([searchKey]);
+});
+
+test("reports a concealed 404 ApiError through the access-unavailable callback", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+    code: "not_found",
+    message: "资源不存在",
+    traceId: "trace-knowledge-search-404",
+  }), {
+    status: 404,
+    headers: { "Content-Type": "application/json" },
+  })));
+  const onAccessUnavailable = vi.fn();
+  const user = userEvent.setup();
+  renderKnowledgeSearch({ onAccessUnavailable });
+
+  await user.type(screen.getByLabelText("搜索项目知识"), "权限边界");
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+
+  await waitFor(() => expect(onAccessUnavailable).toHaveBeenCalledTimes(1));
+  const [error] = onAccessUnavailable.mock.calls[0] as [ApiError];
+  expect(error).toBeInstanceOf(ApiError);
+  expect(error).toMatchObject({
+    kind: "http",
+    status: 404,
+    code: "not_found",
+    message: "资源不存在",
+    traceId: "trace-knowledge-search-404",
+    context: "POST /api/v1/projects/{project_id}/knowledge/search",
+  });
 });
 
 test("does not offer retry when the generated response contract rejects the body", async () => {
