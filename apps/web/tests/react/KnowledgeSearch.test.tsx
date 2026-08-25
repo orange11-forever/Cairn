@@ -33,6 +33,20 @@ describe("knowledge search query validation", () => {
     const query = "😀".repeat(500);
     expect(validateKnowledgeQuery(query)).toEqual({ ok: true, query });
   });
+
+  test.each([
+    [500, { ok: true, query: "é".repeat(500) }],
+    [
+      501,
+      {
+        ok: false,
+        query: "é".repeat(501),
+        message: "搜索内容不能超过 500 个字符",
+      },
+    ],
+  ])("validates %i code points after NFKC composition", (length, expected) => {
+    expect(validateKnowledgeQuery("e\u0301".repeat(length))).toEqual(expected);
+  });
 });
 
 describe("knowledge locator formatting", () => {
