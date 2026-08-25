@@ -1901,6 +1901,10 @@ summary:focus-visible {
   border-radius: var(--radius);
 }
 
+.knowledge-search-error {
+  overflow-wrap: anywhere;
+}
+
 .knowledge-search-fallback {
   border-left: 4px solid var(--color-warning);
   background: var(--color-loading-bg);

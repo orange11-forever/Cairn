@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Search, X } from "lucide-react";
-import { useId, useLayoutEffect, useState, type FormEvent } from "react";
+import { useId, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 
 import { ApiError } from "../../api/errors.ts";
 import type { KnowledgeCitation, KnowledgeSearchResponse } from "../../api/knowledge.ts";
@@ -60,6 +60,8 @@ export function KnowledgeSearch({
   const [validationError, setValidationError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [search, setSearch] = useState<SubmittedKnowledgeSearch | null>(null);
+  const onAccessUnavailableRef = useRef(onAccessUnavailable);
+  const deliveredAccessErrorsRef = useRef(new WeakSet<ApiError>());
   const query = useKnowledgeSearchQuery({
     organizationId,
     projectId,
@@ -69,9 +71,17 @@ export function KnowledgeSearch({
   });
 
   useLayoutEffect(() => {
-    if (query.error instanceof ApiError && query.error.status === 404) {
-      onAccessUnavailable(query.error);
+    onAccessUnavailableRef.current = onAccessUnavailable;
+    const error = query.error;
+    if (
+      !(error instanceof ApiError) ||
+      error.status !== 404 ||
+      deliveredAccessErrorsRef.current.has(error)
+    ) {
+      return;
     }
+    deliveredAccessErrorsRef.current.add(error);
+    onAccessUnavailableRef.current(error);
   }, [onAccessUnavailable, query.error]);
 
   function submit(event: FormEvent<HTMLFormElement>) {

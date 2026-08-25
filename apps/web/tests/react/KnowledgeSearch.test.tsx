@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ComponentProps } from "react";
+import { StrictMode, useState, type ComponentProps } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { ApiError } from "../../src/api/errors.ts";
@@ -19,6 +19,12 @@ import { knowledgeKeys } from "../../src/queries/knowledge.ts";
 
 const PROJECT_ID = "00000000-0000-4000-8000-000000004001";
 const ORGANIZATION_ID = "00000000-0000-4000-8000-000000002001";
+const HOSTILE_TITLE = "<script data-hostile-title>title-marker</script>";
+const HOSTILE_EXCERPT = "<img src=x data-hostile-excerpt>excerpt-marker";
+const HOSTILE_MEDIA_TYPE = "application/x-<svg data-hostile-media>media-marker</svg>";
+const HOSTILE_LOCATOR = "<iframe data-hostile-locator>locator-marker</iframe>";
+const HOSTILE_ERROR_MESSAGE = "<script data-hostile-error>error-marker</script>";
+const HOSTILE_REQUEST_ID = "<img data-hostile-request-id>request-id-marker</img>";
 
 function renderKnowledgeSearch(
   overrides: Partial<ComponentProps<typeof KnowledgeSearch>> = {},
@@ -58,11 +64,11 @@ test("submits normalized real search and renders ordered text-only results", asy
           resourceId: "00000000-0000-4000-8000-000000005001",
           resourceVersionId: "00000000-0000-4000-8000-000000006001",
           chunkId: "00000000-0000-4000-8000-000000007001",
-          title: "<script>首条</script>",
-          mediaType: "application/pdf",
-          excerpt: "<img src=x onerror=alert(1)>原子发布",
-          locator: { type: "pdf", page: 3 },
-          score: 0.92,
+          title: HOSTILE_TITLE,
+          mediaType: HOSTILE_MEDIA_TYPE,
+          excerpt: HOSTILE_EXCERPT,
+          locator: { type: "xlsx", sheet: HOSTILE_LOCATOR, cellRange: "A1" },
+          score: 0.920123,
         },
         {
           resourceId: "00000000-0000-4000-8000-000000005002",
@@ -77,7 +83,7 @@ test("submits normalized real search and renders ordered text-only results", asy
             lineStart: 6,
             lineEnd: 12,
           },
-          score: 0.71,
+          score: 0.710456,
         },
       ],
     });
@@ -91,15 +97,29 @@ test("submits normalized real search and renders ordered text-only results", asy
   const results = await screen.findByRole("list", { name: "知识搜索结果" });
   expect(within(results).getAllByRole("listitem")).toHaveLength(2);
   expect(within(results).getAllByRole("heading").map((node) => node.textContent)).toEqual([
-    "<script>首条</script>",
+    HOSTILE_TITLE,
     "第二条",
   ]);
-  expect(within(results).getByText("第 3 页")).toBeInTheDocument();
+  expect(within(results).getByText(HOSTILE_EXCERPT)).toBeInTheDocument();
+  expect(within(results).getByText(HOSTILE_MEDIA_TYPE)).toBeInTheDocument();
+  expect(within(results).getByText(`工作表「${HOSTILE_LOCATOR}」 · A1`))
+    .toBeInTheDocument();
   expect(within(results).getByText("租约 · 第 6–12 行")).toBeInTheDocument();
   expect(screen.getByText("混合检索")).toBeInTheDocument();
-  expect(container.querySelector("script, img")).toBeNull();
-  expect(container).not.toHaveTextContent("0.92");
-  expect(container).not.toHaveTextContent("00000000-0000-4000-8000-000000007001");
+  expect(results.querySelector("script, img, svg, iframe, object, embed, link, style"))
+    .toBeNull();
+  for (const privateValue of [
+    "00000000-0000-4000-8000-000000005001",
+    "00000000-0000-4000-8000-000000006001",
+    "00000000-0000-4000-8000-000000007001",
+    "00000000-0000-4000-8000-000000005002",
+    "00000000-0000-4000-8000-000000006002",
+    "00000000-0000-4000-8000-000000007002",
+    "0.920123",
+    "0.710456",
+  ]) {
+    expect(container).not.toHaveTextContent(privateValue);
+  }
   expect(requests).toHaveLength(1);
   expect((await requests[0]!.clone().json())).toEqual({ query: "ABC", limit: 10 });
   expect(requests[0]!.headers.get("X-CSRF-Token")).toBe("csrf-search-test");
@@ -182,6 +202,32 @@ test.each([
     expect(screen.queryByRole("button", { name: "重新搜索" }) !== null).toBe(retryable);
   },
 );
+
+test("renders hostile error text and falls back to the X-Request-ID as text", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+    code: "gateway_failure",
+    message: HOSTILE_ERROR_MESSAGE,
+  }), {
+    status: 502,
+    headers: {
+      "Content-Type": "application/json",
+      "X-Request-ID": HOSTILE_REQUEST_ID,
+    },
+  })));
+  const user = userEvent.setup();
+  const { container } = renderKnowledgeSearch();
+
+  await user.type(screen.getByLabelText("搜索项目知识"), "网关错误边界");
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(HOSTILE_ERROR_MESSAGE);
+  expect(screen.getByText(`请求编号：${HOSTILE_REQUEST_ID}`)).toBeInTheDocument();
+  expect(container.querySelector(
+    ".knowledge-search-error script, .knowledge-search-error img, " +
+    ".knowledge-search-error svg, .knowledge-search-error iframe, " +
+    ".knowledge-search-error object, .knowledge-search-error embed",
+  )).toBeNull();
+});
 
 test("never renders an unexpected thrown value", async () => {
   vi.stubGlobal("fetch", vi.fn(async () => { throw { secret: "do-not-render" }; }));
@@ -280,6 +326,57 @@ test("reports a concealed 404 ApiError through the access-unavailable callback",
     traceId: "trace-knowledge-search-404",
     context: "POST /api/v1/projects/{project_id}/knowledge/search",
   });
+});
+
+test("delivers each persistent 404 once and uses the latest parent callback", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+    code: "not_found",
+    message: "资源不存在",
+    traceId: "trace-callback-identity-404",
+  }), {
+    status: 404,
+    headers: { "Content-Type": "application/json" },
+  })));
+  const deliveries: Array<{ error: ApiError; revision: number }> = [];
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const sessionSignal = new AbortController().signal;
+
+  function StatefulParent() {
+    const [revision, setRevision] = useState(0);
+    return (
+      <KnowledgeSearch
+        organizationId={ORGANIZATION_ID}
+        projectId={PROJECT_ID}
+        csrfToken="csrf-search-test"
+        sessionSignal={sessionSignal}
+        onAccessUnavailable={(error) => {
+          deliveries.push({ error, revision });
+          if (revision === 0) setRevision(1);
+        }}
+      />
+    );
+  }
+
+  render(
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <StatefulParent />
+      </QueryClientProvider>
+    </StrictMode>,
+  );
+  const user = userEvent.setup();
+  await user.type(screen.getByLabelText("搜索项目知识"), "回调身份边界");
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+
+  await waitFor(() => expect(deliveries).toHaveLength(1));
+  expect(deliveries[0]?.revision).toBe(0);
+
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+  await waitFor(() => expect(deliveries).toHaveLength(2));
+  expect(deliveries.map(({ revision }) => revision)).toEqual([0, 1]);
+  expect(deliveries[1]?.error).not.toBe(deliveries[0]?.error);
 });
 
 test("does not offer retry when the generated response contract rejects the body", async () => {
