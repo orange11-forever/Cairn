@@ -69,6 +69,13 @@ describe("knowledge search query validation", () => {
       query,
     });
   });
+
+  test("strips edge whitespace without changing interior whitespace", () => {
+    expect(validateKnowledgeQuery("  部署 回滚  ")).toEqual({
+      ok: true,
+      query: "部署 回滚",
+    });
+  });
 });
 
 describe("knowledge locator formatting", () => {
