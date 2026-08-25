@@ -6,20 +6,27 @@ export type KnowledgeQueryValidation =
   | { ok: true; query: string }
   | { ok: false; query: string; message: string };
 
-const MEDIA_TYPE_LABELS: Readonly<Record<string, string>> = {
-  "application/pdf": "PDF",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "DOCX",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation": "PPTX",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "XLSX",
-  "application/zip": "ZIP",
-  "text/csv": "CSV",
-  "text/html": "HTML",
-  "text/markdown": "Markdown",
-  "text/plain": "纯文本",
-};
+const MEDIA_TYPE_LABELS: ReadonlyMap<string, string> = new Map([
+  ["application/pdf", "PDF"],
+  ["application/vnd.openxmlformats-officedocument.wordprocessingml.document", "DOCX"],
+  ["application/vnd.openxmlformats-officedocument.presentationml.presentation", "PPTX"],
+  ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "XLSX"],
+  ["application/zip", "ZIP"],
+  ["text/csv", "CSV"],
+  ["text/html", "HTML"],
+  ["text/markdown", "Markdown"],
+  ["text/plain", "纯文本"],
+]);
+
+const API_EDGE_WHITESPACE =
+  /^[\p{White_Space}\u001c-\u001f]+|[\p{White_Space}\u001c-\u001f]+$/gu;
+
+function normalizeKnowledgeQuery(value: string): string {
+  return value.normalize("NFKC").replace(API_EDGE_WHITESPACE, "");
+}
 
 export function validateKnowledgeQuery(value: string): KnowledgeQueryValidation {
-  const query = value.normalize("NFKC").trim();
+  const query = normalizeKnowledgeQuery(value);
   const length = Array.from(query).length;
   if (length < 3) return { ok: false, query, message: "请输入至少 3 个字符" };
   if (length > 500) {
@@ -29,7 +36,7 @@ export function validateKnowledgeQuery(value: string): KnowledgeQueryValidation 
 }
 
 export function formatKnowledgeMediaType(mediaType: string): string {
-  return MEDIA_TYPE_LABELS[mediaType] ?? mediaType;
+  return MEDIA_TYPE_LABELS.get(mediaType) ?? mediaType;
 }
 
 function lineRange(start: number, end: number): string {

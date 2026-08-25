@@ -47,6 +47,28 @@ describe("knowledge search query validation", () => {
   ])("validates %i code points after NFKC composition", (length, expected) => {
     expect(validateKnowledgeQuery("e\u0301".repeat(length))).toEqual(expected);
   });
+
+  test.each([
+    [
+      "\u0085ab\u0085",
+      { ok: false, query: "ab", message: "请输入至少 3 个字符" },
+    ],
+    [
+      "\u001cab\u001f",
+      { ok: false, query: "ab", message: "请输入至少 3 个字符" },
+    ],
+    ["\ufeffab\ufeff", { ok: true, query: "\ufeffab\ufeff" }],
+  ])("matches API edge-whitespace normalization for %j", (input, expected) => {
+    expect(validateKnowledgeQuery(input)).toEqual(expected);
+  });
+
+  test("accepts 500 code points surrounded by API whitespace", () => {
+    const query = "a".repeat(500);
+    expect(validateKnowledgeQuery(`\u0085${query}\u0085`)).toEqual({
+      ok: true,
+      query,
+    });
+  });
 });
 
 describe("knowledge locator formatting", () => {
@@ -104,11 +126,14 @@ describe("knowledge locator formatting", () => {
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "XLSX",
     ],
+    ["application/zip", "ZIP"],
     ["text/csv", "CSV"],
     ["text/html", "HTML"],
     ["text/markdown", "Markdown"],
     ["text/plain", "纯文本"],
     ["application/x-cairn-unknown", "application/x-cairn-unknown"],
+    ["__proto__", "__proto__"],
+    ["constructor", "constructor"],
   ])("formats media type %s", (mediaType, expected) => {
     expect(formatKnowledgeMediaType(mediaType)).toBe(expected);
   });
