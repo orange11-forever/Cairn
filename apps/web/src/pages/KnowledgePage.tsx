@@ -64,20 +64,7 @@ function KnowledgeWorkspace({
 }) {
   const queryClient = useQueryClient();
   const [searchAccessError, setSearchAccessError] = useState<ApiError | null>(null);
-  const resources = useKnowledgeResourcesQuery(organizationId, projectId, signal);
   useEffect(() => setSearchAccessError(null), [organizationId, projectId]);
-
-  const resourceAccessError = resources.isError &&
-    resources.error instanceof ApiError &&
-    resources.error.status === 404
-    ? resources.error
-    : null;
-  const accessError = resourceAccessError ?? searchAccessError;
-  const accessUnavailable = accessError !== null;
-  const pages = accessUnavailable ? [] : (resources.data?.pages ?? []);
-  const items = pages.flatMap((page) => page.items);
-  const capabilities = pages[pages.length - 1]?.capabilities;
-  const displayedError = accessError ?? resources.error;
 
   const handleSearchAccessUnavailable = useCallback((error: ApiError) => {
     setSearchAccessError(error);
@@ -86,6 +73,62 @@ function KnowledgeWorkspace({
       queryClient.removeQueries({ queryKey: projectKey });
     });
   }, [organizationId, projectId, queryClient]);
+
+  if (searchAccessError !== null) {
+    return <KnowledgeAccessUnavailable error={searchAccessError} />;
+  }
+
+  return (
+    <KnowledgeWorkspaceContent
+      organizationId={organizationId}
+      projectId={projectId}
+      csrfToken={csrfToken}
+      signal={signal}
+      onSearchAccessUnavailable={handleSearchAccessUnavailable}
+    />
+  );
+}
+
+function KnowledgeAccessUnavailable({ error }: { error: ApiError }) {
+  return (
+    <section aria-label="项目知识工作区" className="knowledge-page">
+      <WorkspaceHeader
+        id="knowledge-page-title"
+        eyebrow="项目范围知识"
+        title="项目知识"
+        description="管理当前项目的资料、处理状态与检索入口。"
+      />
+      <div className="knowledge-state knowledge-state-error">
+        <p role="alert">{errorMessage(error)}</p>
+      </div>
+    </section>
+  );
+}
+
+function KnowledgeWorkspaceContent({
+  organizationId,
+  projectId,
+  csrfToken,
+  signal,
+  onSearchAccessUnavailable,
+}: {
+  organizationId: string;
+  projectId: string;
+  csrfToken: string;
+  signal: AbortSignal;
+  onSearchAccessUnavailable(error: ApiError): void;
+}) {
+  const resources = useKnowledgeResourcesQuery(organizationId, projectId, signal);
+  const accessError = resources.isError &&
+    resources.error instanceof ApiError &&
+    resources.error.status === 404
+    ? resources.error
+    : null;
+  const accessUnavailable = accessError !== null;
+  const pages = accessUnavailable ? [] : (resources.data?.pages ?? []);
+  const items = pages.flatMap((page) => page.items);
+  const capabilities = pages[pages.length - 1]?.capabilities;
+  const displayedError = accessError ?? resources.error;
 
   return (
     <section
@@ -131,7 +174,7 @@ function KnowledgeWorkspace({
           projectId={projectId}
           csrfToken={csrfToken}
           sessionSignal={signal}
-          onAccessUnavailable={handleSearchAccessUnavailable}
+          onAccessUnavailable={onSearchAccessUnavailable}
         />
       ) : null}
 
