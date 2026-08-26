@@ -2202,11 +2202,19 @@ summary:focus-visible {
   }
 
   .knowledge-search-controls,
+  .knowledge-search-result-heading,
   .knowledge-search-actions {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .knowledge-search-actions button {
+  .knowledge-search-result-heading {
+    display: grid;
+    justify-items: start;
+  }
+
+  .knowledge-search-actions,
+  .knowledge-search-actions button,
+  .knowledge-search-error button {
     width: 100%;
   }
 }

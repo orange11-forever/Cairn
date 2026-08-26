@@ -95,6 +95,25 @@ const KNOWLEDGE_RESOURCE_PAGE = {
   nextCursor: "responsive-next-page",
 };
 
+const KNOWLEDGE_SEARCH_RESPONSE = {
+  retrievalMode: "keyword_fallback",
+  results: [{
+    resourceId: "00000000-0000-4000-8000-000000005003",
+    resourceVersionId: "00000000-0000-4000-8000-000000006003",
+    chunkId: "00000000-0000-4000-8000-000000007003",
+    title: "跨区域交付与故障恢复架构决策记录（需要在窄屏完整换行）",
+    mediaType: "text/markdown",
+    excerpt: "这是一段用于验证三种视口、亮暗主题和长中文内容不会造成横向溢出的真实搜索结果摘录。",
+    locator: {
+      type: "markdown",
+      headingPath: ["平台运行", "故障升级与跨区域恢复"],
+      lineStart: 128,
+      lineEnd: 176,
+    },
+    score: 0.75,
+  }],
+};
+
 async function chooseTheme(page, label) {
   const menu = page.locator(".account-menu");
   if (!(await menu.evaluate((element) => element.open))) await menu.locator("summary").click();
@@ -141,7 +160,7 @@ async function readLayout(page) {
       brandImageObjectFit: brandImageStyle?.objectFit ?? null,
       undersizedTargets: [
         ...document.querySelectorAll(
-          ".product-brand, .primary-nav a, .account-menu summary, button, select, input:not([type='radio']):not([type='checkbox'])",
+          ".product-brand, .primary-nav a, .account-menu summary, button, select, textarea, input:not([type='radio']):not([type='checkbox'])",
         ),
       ]
         .filter((element) => {
@@ -194,6 +213,30 @@ async function checkKnowledgeResourceLayout(page, expect, screenshotDir, viewpor
   expect(
     layout.undersizedTargets.length === 0,
     `${viewport.name} 项目知识页存在小于 44px 的交互目标：${layout.undersizedTargets.join(" / ")}`,
+  );
+
+  await page.getByLabel("搜索项目知识").fill("跨区域故障恢复");
+  await page.getByRole("button", { name: "搜索项目知识" }).click();
+  await page.waitForSelector(".knowledge-search-result-list");
+  const searchLayout = await page.evaluate(() => {
+    const panel = document.querySelector(".knowledge-search");
+    const result = document.querySelector(".knowledge-search-result");
+    const panelRect = panel?.getBoundingClientRect();
+    const resultRect = result?.getBoundingClientRect();
+    return {
+      fallbackVisible: document.body.textContent.includes("语义检索暂时不可用"),
+      panelInsideViewport: panelRect != null && panelRect.left >= 0 && panelRect.right <= innerWidth,
+      resultInsideViewport: resultRect != null && resultRect.left >= 0 && resultRect.right <= innerWidth,
+    };
+  });
+  expect(searchLayout.fallbackVisible, `${viewport.name} 应显示关键词降级提示`);
+  expect(searchLayout.panelInsideViewport, `${viewport.name} 搜索面板超出视口`);
+  expect(searchLayout.resultInsideViewport, `${viewport.name} 搜索结果超出视口`);
+  const searchedLayout = await readLayout(page);
+  expect(searchedLayout.overflow <= 0, `${viewport.name} 搜索结果横向溢出 ${searchedLayout.overflow}px`);
+  expect(
+    searchedLayout.undersizedTargets.length === 0,
+    `${viewport.name} 搜索页存在小于 44px 的交互目标：${searchedLayout.undersizedTargets.join(" / ")}`,
   );
 
   await page.screenshot({
@@ -434,6 +477,19 @@ export async function checkResponsiveFoundation({
   await page.route(
     `**/api/v1/projects/${KNOWLEDGE_PROJECT_ID}/knowledge/resources*`,
     (route) => route.fulfill({ json: KNOWLEDGE_RESOURCE_PAGE }),
+  );
+  await page.route(
+    `**/api/v1/projects/${KNOWLEDGE_PROJECT_ID}/knowledge/search`,
+    async (route) => {
+      const request = route.request();
+      expect(request.method() === "POST", "知识搜索必须使用 POST");
+      expect(request.headers()["x-csrf-token"], "知识搜索必须携带 CSRF token");
+      expect(
+        JSON.stringify(request.postDataJSON()) === JSON.stringify({ query: "跨区域故障恢复", limit: 10 }),
+        `知识搜索请求体错误：${request.postData()}`,
+      );
+      await route.fulfill({ json: KNOWLEDGE_SEARCH_RESPONSE });
+    },
   );
 
   for (const viewport of VIEWPORTS) {
