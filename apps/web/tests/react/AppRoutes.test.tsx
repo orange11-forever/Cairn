@@ -420,6 +420,156 @@ test("the project knowledge route loads the selected project inside the shared k
   expect(screen.getByRole("dialog", { name: "看板娘助手" })).toHaveTextContent("项目知识助手");
 });
 
+test("a read-only project reader can search real project knowledge", async () => {
+  const projectId = "00000000-0000-4000-8000-000000004001";
+  const requests: Request[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    requests.push(request);
+    if (request.method === "POST") {
+      return jsonResponse({
+        retrievalMode: "hybrid",
+        results: [{
+          resourceId: "00000000-0000-4000-8000-000000005001",
+          resourceVersionId: "00000000-0000-4000-8000-000000006001",
+          chunkId: "00000000-0000-4000-8000-000000007001",
+          title: "只读资料",
+          mediaType: "application/pdf",
+          excerpt: "只读权限仍可检索",
+          locator: { type: "pdf", page: 2 },
+          score: 0.8,
+        }],
+      });
+    }
+    return jsonResponse({
+      capabilities: { canWrite: false },
+      items: [knowledgeResource({
+        id: "00000000-0000-4000-8000-000000005001",
+        title: "只读资料.pdf",
+        mediaType: "application/pdf",
+        sizeBytes: 1024,
+        status: "ready",
+      })],
+      nextCursor: null,
+    });
+  }));
+  const user = userEvent.setup();
+  renderTestRoutes(`/projects/${projectId}/knowledge`, { restoredIdentity: IDENTITY });
+
+  expect(await screen.findByText("只读访问")).toBeInTheDocument();
+  await user.type(screen.getByLabelText("搜索项目知识"), "只读检索");
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+  expect(await screen.findByText("只读权限仍可检索")).toBeInTheDocument();
+  const searchRequest = requests.find((request) => request.method === "POST");
+  expect(searchRequest).toBeDefined();
+  expect(searchRequest!.headers.get("X-CSRF-Token")).toBe("csrf-test-token");
+  await expect(searchRequest!.clone().json()).resolves.toEqual({ query: "只读检索", limit: 10 });
+});
+
+test("a concealed search 404 clears all previously authorized project knowledge", async () => {
+  let searches = 0;
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    if (request.method === "GET") {
+      return jsonResponse({
+        capabilities: { canWrite: true },
+        items: [knowledgeResource({
+          id: "00000000-0000-4000-8000-000000005001",
+          title: "撤权前资料.pdf",
+          mediaType: "application/pdf",
+          sizeBytes: 1024,
+          status: "ready",
+        })],
+        nextCursor: null,
+      });
+    }
+    searches += 1;
+    if (searches === 1) {
+      return jsonResponse({
+        retrievalMode: "hybrid",
+        results: [{
+          resourceId: "00000000-0000-4000-8000-000000005001",
+          resourceVersionId: "00000000-0000-4000-8000-000000006001",
+          chunkId: "00000000-0000-4000-8000-000000007001",
+          title: "撤权前结果",
+          mediaType: "application/pdf",
+          excerpt: "随后 ACL 被撤销",
+          locator: { type: "pdf", page: 1 },
+          score: 0.9,
+        }],
+      });
+    }
+    return jsonResponse({
+      code: "not_found",
+      message: "项目或知识资料不存在",
+      traceId: "trace-search-revoked",
+    }, 404);
+  }));
+  const user = userEvent.setup();
+  const { queryClient } = renderTestRoutes(
+    "/projects/00000000-0000-4000-8000-000000004001/knowledge",
+    { restoredIdentity: IDENTITY },
+  );
+  expect(await screen.findByText("撤权前资料.pdf")).toBeInTheDocument();
+  await user.type(screen.getByLabelText("搜索项目知识"), "第一轮查询");
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+  expect(await screen.findByText("撤权前结果")).toBeInTheDocument();
+  await user.clear(screen.getByLabelText("搜索项目知识"));
+  await user.type(screen.getByLabelText("搜索项目知识"), "第二轮查询");
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("项目或知识资料不存在");
+  for (const staleText of ["撤权前资料.pdf", "撤权前结果", "可维护资料"]) {
+    expect(screen.queryByText(staleText)).toBeNull();
+  }
+  expect(screen.queryByRole("list", { name: "知识资料" })).toBeNull();
+  expect(screen.queryByLabelText("搜索项目知识")).toBeNull();
+  expect(queryClient.getQueriesData({
+    queryKey: ["project-knowledge", IDENTITY.organization.id, "00000000-0000-4000-8000-000000004001"],
+  }).every(([, data]) => data === undefined)).toBe(true);
+});
+
+test("a session-invalid knowledge search clears resources and ends the session", async () => {
+  const projectId = "00000000-0000-4000-8000-000000004001";
+  const requests: Request[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    requests.push(request);
+    if (request.method === "POST") {
+      return jsonResponse({
+        code: "session_invalid",
+        message: "会话已过期",
+        traceId: "trace-search-session-401",
+      }, 401);
+    }
+    return jsonResponse({
+      capabilities: { canWrite: true },
+      items: [knowledgeResource({
+        id: "00000000-0000-4000-8000-000000005001",
+        title: "会话过期前资料.pdf",
+        mediaType: "application/pdf",
+        sizeBytes: 1024,
+        status: "ready",
+      })],
+      nextCursor: null,
+    });
+  }));
+  const user = userEvent.setup();
+  const { queryClient } = renderTestRoutes(
+    `/projects/${projectId}/knowledge`,
+    { restoredIdentity: IDENTITY },
+  );
+  expect(await screen.findByText("会话过期前资料.pdf")).toBeInTheDocument();
+  await user.type(screen.getByLabelText("搜索项目知识"), "会话失效边界");
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+
+  expect(await screen.findByRole("heading", { name: "登录 Cairn" })).toBeInTheDocument();
+  expect(requests).toHaveLength(2);
+  expect(requests.every((request) => request.signal.aborted)).toBe(true);
+  expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
+  expect(screen.queryByText("会话过期前资料.pdf")).toBeNull();
+});
+
 test("the project knowledge route renders resource metadata and every processing state", async () => {
   const projectId = "00000000-0000-4000-8000-000000004001";
   vi.stubGlobal(

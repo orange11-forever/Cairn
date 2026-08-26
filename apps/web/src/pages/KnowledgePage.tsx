@@ -1,12 +1,16 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { BookOpenText, CalendarDays, FileText, HardDrive, PackageOpen } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { Navigate, useParams } from "react-router-dom";
 
 import { ApiError } from "../api/errors.ts";
 import type { KnowledgeResource } from "../api/knowledge.ts";
+import { KnowledgeSearch } from "../components/knowledge/KnowledgeSearch.tsx";
 import { WorkspaceHeader } from "../components/WorkspaceHeader.tsx";
 import { formatCalendarDate } from "../lib/dateTime.ts";
+import { formatKnowledgeMediaType } from "../lib/knowledgeSearch.ts";
 import { formatBytes } from "../lib/validation.ts";
-import { useKnowledgeResourcesQuery } from "../queries/knowledge.ts";
+import { knowledgeKeys, useKnowledgeResourcesQuery } from "../queries/knowledge.ts";
 import { useSession } from "../session/SessionContext.tsx";
 
 type ResourceStatus = NonNullable<KnowledgeResource["latestVersion"]>["status"];
@@ -16,18 +20,6 @@ const RESOURCE_STATUS_LABELS: Record<ResourceStatus, string> = {
   processing: "处理中",
   ready: "可检索",
   failed: "处理失败",
-};
-
-const MEDIA_TYPE_LABELS: Readonly<Record<string, string>> = {
-  "application/pdf": "PDF",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "DOCX",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation": "PPTX",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "XLSX",
-  "application/zip": "ZIP",
-  "text/csv": "CSV",
-  "text/html": "HTML",
-  "text/markdown": "Markdown",
-  "text/plain": "纯文本",
 };
 
 const UPDATED_DATE_FORMAT = new Intl.DateTimeFormat("zh-CN", {
@@ -53,6 +45,7 @@ export function KnowledgePage() {
     <KnowledgeWorkspace
       organizationId={session.identity.organization.id}
       projectId={projectId}
+      csrfToken={session.identity.csrfToken}
       signal={session.signal}
     />
   );
@@ -61,19 +54,38 @@ export function KnowledgePage() {
 function KnowledgeWorkspace({
   organizationId,
   projectId,
+  csrfToken,
   signal,
 }: {
   organizationId: string;
   projectId: string;
+  csrfToken: string;
   signal: AbortSignal;
 }) {
+  const queryClient = useQueryClient();
+  const [searchAccessError, setSearchAccessError] = useState<ApiError | null>(null);
   const resources = useKnowledgeResourcesQuery(organizationId, projectId, signal);
-  const accessUnavailable = resources.isError &&
+  useEffect(() => setSearchAccessError(null), [organizationId, projectId]);
+
+  const resourceAccessError = resources.isError &&
     resources.error instanceof ApiError &&
-    resources.error.status === 404;
+    resources.error.status === 404
+    ? resources.error
+    : null;
+  const accessError = resourceAccessError ?? searchAccessError;
+  const accessUnavailable = accessError !== null;
   const pages = accessUnavailable ? [] : (resources.data?.pages ?? []);
   const items = pages.flatMap((page) => page.items);
   const capabilities = pages[pages.length - 1]?.capabilities;
+  const displayedError = accessError ?? resources.error;
+
+  const handleSearchAccessUnavailable = useCallback((error: ApiError) => {
+    setSearchAccessError(error);
+    const projectKey = knowledgeKeys.project(organizationId, projectId);
+    void queryClient.cancelQueries({ queryKey: projectKey }).finally(() => {
+      queryClient.removeQueries({ queryKey: projectKey });
+    });
+  }, [organizationId, projectId, queryClient]);
 
   return (
     <section
@@ -101,15 +113,26 @@ function KnowledgeWorkspace({
         </div>
       ) : null}
 
-      {resources.isError && (resources.data === undefined || accessUnavailable) ? (
+      {accessUnavailable || (resources.isError && resources.data === undefined) ? (
         <div className="knowledge-state knowledge-state-error">
-          <p role="alert">{errorMessage(resources.error)}</p>
-          {resources.error instanceof ApiError && resources.error.retryable ? (
+          <p role="alert">{errorMessage(displayedError)}</p>
+          {displayedError instanceof ApiError && displayedError.retryable ? (
             <button type="button" onClick={() => void resources.refetch()}>
               重新加载知识资料
             </button>
           ) : null}
         </div>
+      ) : null}
+
+      {!accessUnavailable && resources.data !== undefined ? (
+        <KnowledgeSearch
+          key={`${organizationId}:${projectId}`}
+          organizationId={organizationId}
+          projectId={projectId}
+          csrfToken={csrfToken}
+          sessionSignal={signal}
+          onAccessUnavailable={handleSearchAccessUnavailable}
+        />
       ) : null}
 
       {!accessUnavailable && resources.data !== undefined && items.length === 0 ? (
@@ -220,7 +243,7 @@ function KnowledgeResourceRow({ resource }: { resource: KnowledgeResource }) {
               <>
                 <span title={version.mediaType}>
                   <FileText aria-hidden="true" size={15} />
-                  {MEDIA_TYPE_LABELS[version.mediaType] ?? version.mediaType}
+                  {formatKnowledgeMediaType(version.mediaType)}
                 </span>
                 <span>
                   <HardDrive aria-hidden="true" size={15} />
