@@ -258,19 +258,46 @@ async function checkKnowledgeResourceLayout(page, expect, screenshotDir, viewpor
     const error = document.querySelector(".knowledge-search-error");
     const retry = error?.querySelector("button");
     const alert = error?.querySelector('[role="alert"]');
+    const requestId = [...(error?.querySelectorAll("p") ?? [])].find(
+      (element) => element.textContent.trim() === `请求编号：${expectedTraceId}`,
+    );
     const panelRect = panel?.getBoundingClientRect();
     const errorRect = error?.getBoundingClientRect();
+    const messageRect = alert?.getBoundingClientRect();
+    const requestIdRect = requestId?.getBoundingClientRect();
     const retryRect = retry?.getBoundingClientRect();
     const errorStyle = error === null ? null : getComputedStyle(error);
-    const errorHorizontalPadding = errorStyle === null
-      ? 0
-      : Number.parseFloat(errorStyle.paddingLeft) + Number.parseFloat(errorStyle.paddingRight);
+    const errorPadding = errorStyle === null ? null : {
+      top: Number.parseFloat(errorStyle.paddingTop),
+      right: Number.parseFloat(errorStyle.paddingRight),
+      bottom: Number.parseFloat(errorStyle.paddingBottom),
+      left: Number.parseFloat(errorStyle.paddingLeft),
+    };
+    const errorHorizontalPadding = errorPadding === null ? 0 : errorPadding.left + errorPadding.right;
     const availableButtonWidth = errorRect === undefined
       ? null
       : errorRect.width - errorHorizontalPadding;
+    const insideErrorContent = (rect) =>
+      rect != null && errorRect != null && errorPadding != null &&
+      rect.left >= errorRect.left + errorPadding.left &&
+      rect.right <= errorRect.right - errorPadding.right &&
+      rect.top >= errorRect.top + errorPadding.top &&
+      rect.bottom <= errorRect.bottom - errorPadding.bottom;
+    const insideViewportHorizontally = (rect) =>
+      rect != null && rect.left >= 0 && rect.right <= innerWidth;
     return {
       messageVisible: alert?.textContent.trim() === expectedMessage,
-      traceVisible: error?.textContent.includes(`请求编号：${expectedTraceId}`) ?? false,
+      traceVisible: requestId !== undefined,
+      messageFitsOwnBox: alert != null && alert.scrollWidth <= alert.clientWidth,
+      requestIdFitsOwnBox: requestId != null && requestId.scrollWidth <= requestId.clientWidth,
+      messageInsideErrorContent: insideErrorContent(messageRect),
+      requestIdInsideErrorContent: insideErrorContent(requestIdRect),
+      messageInsideViewport: insideViewportHorizontally(messageRect),
+      requestIdInsideViewport: insideViewportHorizontally(requestIdRect),
+      messageScrollWidth: alert?.scrollWidth ?? null,
+      messageClientWidth: alert?.clientWidth ?? null,
+      requestIdScrollWidth: requestId?.scrollWidth ?? null,
+      requestIdClientWidth: requestId?.clientWidth ?? null,
       errorInsidePanel:
         panelRect != null && errorRect != null &&
         errorRect.left >= panelRect.left && errorRect.right <= panelRect.right,
@@ -296,6 +323,18 @@ async function checkKnowledgeResourceLayout(page, expect, screenshotDir, viewpor
   });
   expect(errorLayout.messageVisible, `${viewport.name} 应显示完整搜索错误`);
   expect(errorLayout.traceVisible, `${viewport.name} 应显示搜索请求编号`);
+  expect(
+    errorLayout.messageFitsOwnBox,
+    `${viewport.name} 搜索错误消息被裁切：scrollWidth ${errorLayout.messageScrollWidth}px / clientWidth ${errorLayout.messageClientWidth}px`,
+  );
+  expect(
+    errorLayout.requestIdFitsOwnBox,
+    `${viewport.name} 搜索请求编号被裁切：scrollWidth ${errorLayout.requestIdScrollWidth}px / clientWidth ${errorLayout.requestIdClientWidth}px`,
+  );
+  expect(errorLayout.messageInsideErrorContent, `${viewport.name} 搜索错误消息超出错误内容区`);
+  expect(errorLayout.requestIdInsideErrorContent, `${viewport.name} 搜索请求编号超出错误内容区`);
+  expect(errorLayout.messageInsideViewport, `${viewport.name} 搜索错误消息超出视口`);
+  expect(errorLayout.requestIdInsideViewport, `${viewport.name} 搜索请求编号超出视口`);
   expect(errorLayout.errorInsidePanel, `${viewport.name} 搜索错误超出面板`);
   expect(errorLayout.errorInsideViewport, `${viewport.name} 搜索错误超出视口`);
   expect(errorLayout.retryInsidePanel, `${viewport.name} 重试按钮超出面板`);
