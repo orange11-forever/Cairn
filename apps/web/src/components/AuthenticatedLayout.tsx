@@ -6,5 +6,12 @@ export function AuthenticatedLayout() {
 
   if (session === null) return null;
 
-  return <AppShell identity={session.identity} onLogout={logout} logoutError={logoutError} />;
+  return (
+    <AppShell
+      key={session.generation}
+      identity={session.identity}
+      onLogout={logout}
+      logoutError={logoutError}
+    />
+  );
 }
