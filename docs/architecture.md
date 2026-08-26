@@ -4,11 +4,11 @@
 
 ## 当前已交付
 
-- React 19、TypeScript 与 Vite 构成 Web 客户端；身份、项目、任务、Task 13 项目知识工作区基础和 Task 14 真实知识资源列表连接真实 FastAPI，通用文档、上传和问答仍连接 Node mock。
+- React 19、TypeScript 与 Vite 构成 Web 客户端；身份、项目、任务与 `/projects/:projectId/knowledge` 的资源/搜索连接真实 FastAPI，通用文档、上传和问答仍连接 Node mock。
 - FastAPI 采用模块化单体边界，提供 Cookie 会话、组织身份与 RBAC、项目 ACL、成员角色管理、项目任务、追加式审计、事务性 Outbox、有界 SSE，以及项目授权下的知识上传与资源生命周期 API。
 - PostgreSQL 16/pgvector 与 S3 兼容 MinIO 当前已使用：PostgreSQL 保存业务事实、持久化摄取任务、知识资源、切片和向量，MinIO 保存原始对象与 ZIP 展开产物；生成的 TypeScript SDK 对齐 OpenAPI。Redis 仍是规划中基础设施。
 - Stage 3A Task 1–11 的独立 Worker 已交付，用租约和心跳处理受限归档展开、文档解析、结构化切分、OpenAI 兼容 1024 维 Embedding 与原子索引发布。
-- Stage 3A Task 12 项目范围混合搜索 API 已交付；Task 13 Web 知识工作区基础已交付，包含受保护的项目知识路由、真实资源分页、`canWrite` 权限状态展示与搜索请求/query 边界。Task 14 真实知识资源列表已交付，包含资源元数据、处理状态、只读提示和游标续页；上传、搜索结果、引用体验、群组、邀请、成员移除、ACL/成员管理 UI、连接器、Agent 执行和完整模型 Provider 策略层尚未实现。
+- Stage 3A Task 12 项目范围混合搜索 API 已交付；Task 13 Web 知识工作区基础已交付，包含受保护的项目知识路由、真实资源分页、`canWrite` 权限状态展示与搜索请求/query 边界。Task 14 真实知识资源列表已交付，包含资源元数据、处理状态、只读提示和游标续页。Task 15 真实知识搜索结果已交付，按服务端顺序展示摘录、文件类型、类型化 locator 定位信息与混合检索/关键词降级标签，并处理取消、错误、会话失效和访问权撤销状态；上传、资源操作、引用上下文/下载、生成式回答、Mock 退场、群组、邀请、成员移除、ACL/成员管理 UI、连接器、Agent 执行和完整模型 Provider 策略层尚未实现。
 
 ## 目标架构
 
@@ -34,6 +34,7 @@
 - Stage 3A Task 1–11：知识摄取基础（已交付），包含 Worker、S3/MinIO、Resource/ResourceVersion、解析、分块、Embedding 与原子索引发布。
 - Stage 3A Task 12：项目范围混合搜索 API（已交付），包含检索前权限过滤、关键词/向量召回、确定性融合、关键词降级、限流和审计。
 - Stage 3A Task 13：真实 Web 知识工作区基础（已交付），包含受保护路由、资源分页与搜索 query 边界。
-- Stage 3A Task 14：真实知识资源列表（已交付），包含标题、文件类型、大小、更新时间、处理状态、只读提示和游标续页；上传、资源操作、搜索结果与引用 UI 留在后续任务。
+- Stage 3A Task 14：真实知识资源列表（已交付），包含标题、文件类型、大小、更新时间、处理状态、只读提示和游标续页。
+- Stage 3A Task 15：真实知识搜索结果（已交付），包含服务端排序摘录、文件类型、类型化 locator、混合检索/关键词降级标签与取消/错误/会话/访问权撤销状态；上传、资源操作和引用上下文/下载留在后续任务。
 
 后续 Agent、模型 Provider 和工作流能力必须建立在租户、权限、审计和知识边界之上，不能绕过这些基础能力提前接入生产数据。

@@ -1,14 +1,19 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { Profiler, useState } from "react";
+import { MemoryRouter, useNavigate, type NavigateFunction } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { AppRoutes } from "../../src/app/AppRoutes.tsx";
 import type { IdentityContext } from "../../src/api/auth.ts";
 import { ApiError } from "../../src/api/errors.ts";
 import { createAppQueryClient } from "../../src/app/queryClient.ts";
-import { SessionProvider, type SessionApi } from "../../src/session/SessionContext.tsx";
+import {
+  SessionProvider,
+  type SessionApi,
+  useSession,
+} from "../../src/session/SessionContext.tsx";
 import { ThemeProvider } from "../../src/theme/ThemeContext.tsx";
 
 const IDENTITY: IdentityContext = {
@@ -73,21 +78,74 @@ function fakeSessionApi(overrides: Partial<SessionApi> = {}): SessionApi {
   };
 }
 
+interface TestRouteControls {
+  establishSession(identity: IdentityContext): void;
+  forceRerender(): void;
+  navigate: NavigateFunction;
+}
+
+function TestAppHarness({
+  capture,
+  onCommit,
+}: {
+  capture(controls: TestRouteControls): void;
+  onCommit(): void;
+}) {
+  const navigate = useNavigate();
+  const { establishSession } = useSession();
+  const [renderCount, setRenderCount] = useState(0);
+  void renderCount;
+  capture({
+    establishSession,
+    forceRerender: () => setRenderCount((value) => value + 1),
+    navigate,
+  });
+  return (
+    <Profiler id="test-app-routes" onRender={onCommit}>
+      <AppRoutes />
+    </Profiler>
+  );
+}
+
 function renderTestRoutes(path: string, options: { restoredIdentity?: IdentityContext; sessionApi?: SessionApi } = {}) {
   const queryClient = createAppQueryClient();
+  const commitSnapshots: string[] = [];
+  let controls: TestRouteControls | null = null;
 
   const result = render(
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={[path]}>
           <SessionProvider sessionApi={options.sessionApi ?? fakeSessionApi()} restoredIdentity={options.restoredIdentity}>
-            <AppRoutes />
+            <TestAppHarness
+              capture={(value) => { controls = value; }}
+              onCommit={() => {
+                queueMicrotask(() => { commitSnapshots.push(document.body.textContent ?? ""); });
+              }}
+            />
           </SessionProvider>
         </MemoryRouter>
       </QueryClientProvider>
     </ThemeProvider>,
   );
-  return { ...result, queryClient };
+  function requireControls(): TestRouteControls {
+    if (controls === null) throw new Error("测试路由控制器尚未挂载");
+    return controls;
+  }
+  return {
+    ...result,
+    commitSnapshots,
+    queryClient,
+    establishSession(identity: IdentityContext) {
+      act(() => requireControls().establishSession(identity));
+    },
+    forceRerender() {
+      act(() => requireControls().forceRerender());
+    },
+    navigate(pathname: string) {
+      act(() => requireControls().navigate(pathname));
+    },
+  };
 }
 
 beforeEach(() => {
@@ -418,6 +476,665 @@ test("the project knowledge route loads the selected project inside the shared k
 
   await user.click(screen.getByRole("button", { name: "打开看板娘助手" }));
   expect(screen.getByRole("dialog", { name: "看板娘助手" })).toHaveTextContent("项目知识助手");
+});
+
+test("a read-only project reader can search real project knowledge", async () => {
+  const projectId = "00000000-0000-4000-8000-000000004001";
+  const requests: Request[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    requests.push(request);
+    if (request.method === "POST") {
+      return jsonResponse({
+        retrievalMode: "hybrid",
+        results: [{
+          resourceId: "00000000-0000-4000-8000-000000005001",
+          resourceVersionId: "00000000-0000-4000-8000-000000006001",
+          chunkId: "00000000-0000-4000-8000-000000007001",
+          title: "只读资料",
+          mediaType: "application/pdf",
+          excerpt: "只读权限仍可检索",
+          locator: { type: "pdf", page: 2 },
+          score: 0.8,
+        }],
+      });
+    }
+    return jsonResponse({
+      capabilities: { canWrite: false },
+      items: [knowledgeResource({
+        id: "00000000-0000-4000-8000-000000005001",
+        title: "只读资料.pdf",
+        mediaType: "application/pdf",
+        sizeBytes: 1024,
+        status: "ready",
+      })],
+      nextCursor: null,
+    });
+  }));
+  const user = userEvent.setup();
+  renderTestRoutes(`/projects/${projectId}/knowledge`, { restoredIdentity: IDENTITY });
+
+  expect(await screen.findByText("只读访问")).toBeInTheDocument();
+  await user.type(screen.getByLabelText("搜索项目知识"), "只读检索");
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+  expect(await screen.findByText("只读权限仍可检索")).toBeInTheDocument();
+  const searchRequest = requests.find((request) => request.method === "POST");
+  expect(searchRequest).toBeDefined();
+  expect(searchRequest!.headers.get("X-CSRF-Token")).toBe("csrf-test-token");
+  await expect(searchRequest!.clone().json()).resolves.toEqual({ query: "只读检索", limit: 10 });
+});
+
+test("a concealed search 404 clears all previously authorized project knowledge", async () => {
+  const projectId = "00000000-0000-4000-8000-000000004001";
+  const projectKey = ["project-knowledge", IDENTITY.organization.id, projectId] as const;
+  const latePage = deferred<Response>();
+  const requests: Request[] = [];
+  let searches = 0;
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    requests.push(request);
+    if (request.method === "GET") {
+      const cursor = new URL(request.url).searchParams.get("cursor");
+      if (cursor !== null) return latePage.promise;
+      return jsonResponse({
+        capabilities: { canWrite: true },
+        items: [knowledgeResource({
+          id: "00000000-0000-4000-8000-000000005001",
+          title: "撤权前资料.pdf",
+          mediaType: "application/pdf",
+          sizeBytes: 1024,
+          status: "ready",
+        })],
+        nextCursor: "cursor-revoked-sibling",
+      });
+    }
+    searches += 1;
+    if (searches === 1) {
+      return jsonResponse({
+        retrievalMode: "hybrid",
+        results: [{
+          resourceId: "00000000-0000-4000-8000-000000005001",
+          resourceVersionId: "00000000-0000-4000-8000-000000006001",
+          chunkId: "00000000-0000-4000-8000-000000007001",
+          title: "撤权前结果",
+          mediaType: "application/pdf",
+          excerpt: "随后 ACL 被撤销",
+          locator: { type: "pdf", page: 1 },
+          score: 0.9,
+        }],
+      });
+    }
+    return jsonResponse({
+      code: "not_found",
+      message: "项目或知识资料不存在",
+      traceId: "trace-search-revoked",
+    }, 404);
+  }));
+  const user = userEvent.setup();
+  const { commitSnapshots, forceRerender, queryClient } = renderTestRoutes(
+    `/projects/${projectId}/knowledge`,
+    { restoredIdentity: IDENTITY },
+  );
+  expect(await screen.findByText("撤权前资料.pdf")).toBeInTheDocument();
+  await user.type(screen.getByLabelText("搜索项目知识"), "第一轮查询");
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+  expect(await screen.findByText("撤权前结果")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "加载更多知识资料" }));
+  const paginationRequest = await waitFor(() => {
+    const request = requests.find((candidate) =>
+      candidate.method === "GET" &&
+      new URL(candidate.url).searchParams.get("cursor") === "cursor-revoked-sibling"
+    );
+    expect(request).toBeDefined();
+    return request!;
+  });
+  expect(paginationRequest.signal.aborted).toBe(false);
+  await user.clear(screen.getByLabelText("搜索项目知识"));
+  await user.type(screen.getByLabelText("搜索项目知识"), "第二轮查询");
+  const revocationCommitStart = commitSnapshots.length;
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("项目或知识资料不存在");
+  const accessErrorCommits = commitSnapshots
+    .slice(revocationCommitStart)
+    .filter((snapshot) => snapshot.includes("项目或知识资料不存在"));
+  expect(accessErrorCommits.length).toBeGreaterThan(0);
+  expect(accessErrorCommits.every((snapshot) =>
+    !snapshot.includes("撤权前资料.pdf") &&
+    !snapshot.includes("撤权前结果") &&
+    !snapshot.includes("可维护资料")
+  )).toBe(true);
+  for (const staleText of ["撤权前资料.pdf", "撤权前结果", "可维护资料"]) {
+    expect(screen.queryByText(staleText)).toBeNull();
+  }
+  expect(screen.queryByRole("list", { name: "知识资料" })).toBeNull();
+  expect(screen.queryByLabelText("搜索项目知识")).toBeNull();
+  expect(paginationRequest.signal.aborted).toBe(true);
+  await waitFor(() => {
+    expect(queryClient.getQueryCache().findAll({ queryKey: projectKey })).toHaveLength(0);
+  });
+
+  latePage.resolve(jsonResponse({
+    capabilities: { canWrite: true },
+    items: [knowledgeResource({
+      id: "00000000-0000-4000-8000-000000005002",
+      title: "撤权后迟到资料.pdf",
+      mediaType: "application/pdf",
+      sizeBytes: 2048,
+      status: "ready",
+    })],
+    nextCursor: null,
+  }));
+  await act(async () => Promise.resolve());
+  forceRerender();
+
+  expect(screen.getByRole("alert")).toHaveTextContent("项目或知识资料不存在");
+  expect(screen.queryByText("撤权后迟到资料.pdf")).toBeNull();
+  expect(screen.queryByText("撤权前资料.pdf")).toBeNull();
+  expect(queryClient.getQueryCache().findAll({ queryKey: projectKey })).toHaveLength(0);
+});
+
+test("project navigation aborts the old search and starts the new scope without replay", async () => {
+  const projectA = "00000000-0000-4000-8000-000000004001";
+  const projectB = "00000000-0000-4000-8000-000000004002";
+  const lateSearch = deferred<Response>();
+  const requests: Request[] = [];
+  let projectASearches = 0;
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    requests.push(request);
+    const pathname = new URL(request.url).pathname;
+    if (request.method === "GET") {
+      const isProjectA = pathname.includes(projectA);
+      return jsonResponse({
+        capabilities: { canWrite: true },
+        items: [knowledgeResource({
+          id: isProjectA
+            ? "00000000-0000-4000-8000-000000005011"
+            : "00000000-0000-4000-8000-000000005012",
+          title: isProjectA ? "项目甲资料.pdf" : "项目乙资料.pdf",
+          mediaType: "application/pdf",
+          sizeBytes: 1024,
+          status: "ready",
+        })],
+        nextCursor: null,
+      });
+    }
+    if (pathname.includes(projectA)) {
+      projectASearches += 1;
+      if (projectASearches > 1) return lateSearch.promise;
+      return jsonResponse({
+        retrievalMode: "hybrid",
+        results: [{
+          resourceId: "00000000-0000-4000-8000-000000005011",
+          resourceVersionId: "00000000-0000-4000-8000-000000006011",
+          chunkId: "00000000-0000-4000-8000-000000007011",
+          title: "项目甲结果",
+          mediaType: "application/pdf",
+          excerpt: "只属于项目甲",
+          locator: { type: "pdf", page: 1 },
+          score: 0.9,
+        }],
+      });
+    }
+    return jsonResponse({
+      retrievalMode: "hybrid",
+      results: [{
+        resourceId: "00000000-0000-4000-8000-000000005012",
+        resourceVersionId: "00000000-0000-4000-8000-000000006012",
+        chunkId: "00000000-0000-4000-8000-000000007012",
+        title: "项目乙结果",
+        mediaType: "application/pdf",
+        excerpt: "只属于项目乙",
+        locator: { type: "pdf", page: 1 },
+        score: 0.8,
+      }],
+    });
+  }));
+  const user = userEvent.setup();
+  const { forceRerender, navigate, queryClient } = renderTestRoutes(
+    `/projects/${projectA}/knowledge`,
+    { restoredIdentity: IDENTITY },
+  );
+
+  expect(await screen.findByText("项目甲资料.pdf")).toBeInTheDocument();
+  await user.type(screen.getByLabelText("搜索项目知识"), "项目甲查询");
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+  expect(await screen.findByText("项目甲结果")).toBeInTheDocument();
+  await user.clear(screen.getByLabelText("搜索项目知识"));
+  await user.type(screen.getByLabelText("搜索项目知识"), "项目甲未完成查询");
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+  const pendingRequest = await waitFor(() => {
+    const projectAPosts = requests.filter((request) =>
+      request.method === "POST" && new URL(request.url).pathname.includes(projectA)
+    );
+    expect(projectAPosts).toHaveLength(2);
+    return projectAPosts[1]!;
+  });
+  queryClient.setQueryData(
+    ["project-knowledge", IDENTITY.organization.id, projectB, "resources"],
+    {
+      pages: [{
+        capabilities: { canWrite: true },
+        items: [knowledgeResource({
+          id: "00000000-0000-4000-8000-000000005012",
+          title: "项目乙资料.pdf",
+          mediaType: "application/pdf",
+          sizeBytes: 1024,
+          status: "ready",
+        })],
+        nextCursor: null,
+      }],
+      pageParams: [null],
+    },
+  );
+
+  navigate(`/projects/${projectB}/knowledge`);
+
+  expect(await screen.findByText("项目乙资料.pdf")).toBeInTheDocument();
+  expect(pendingRequest.signal.aborted).toBe(true);
+  expect(screen.getByLabelText("搜索项目知识")).toHaveValue("");
+  for (const projectAText of ["项目甲资料.pdf", "项目甲结果", "项目甲未完成查询"]) {
+    expect(screen.queryByText(projectAText)).toBeNull();
+  }
+  expect(requests.filter((request) =>
+    request.method === "POST" && new URL(request.url).pathname.includes(projectB)
+  )).toHaveLength(0);
+
+  lateSearch.resolve(jsonResponse({
+    retrievalMode: "hybrid",
+    results: [{
+      resourceId: "00000000-0000-4000-8000-000000005011",
+      resourceVersionId: "00000000-0000-4000-8000-000000006011",
+      chunkId: "00000000-0000-4000-8000-000000007013",
+      title: "项目甲迟到结果",
+      mediaType: "application/pdf",
+      excerpt: "不应进入项目乙",
+      locator: { type: "pdf", page: 2 },
+      score: 0.7,
+    }],
+  }));
+  await act(async () => Promise.resolve());
+  forceRerender();
+
+  expect(screen.queryByText("项目甲迟到结果")).toBeNull();
+  expect(requests.filter((request) =>
+    request.method === "POST" && new URL(request.url).pathname.includes(projectB)
+  )).toHaveLength(0);
+  const projectBCache = queryClient.getQueryCache().findAll({
+    queryKey: ["project-knowledge", IDENTITY.organization.id, projectB],
+  });
+  expect(projectBCache.length).toBeGreaterThan(0);
+  expect(projectBCache.every((query) =>
+    !(JSON.stringify(query.state.data) ?? "").includes("项目甲")
+  )).toBe(true);
+});
+
+test("organization transition clears an old search 404 without replaying its scope", async () => {
+  const projectId = "00000000-0000-4000-8000-000000004001";
+  const nextIdentity: IdentityContext = {
+    ...IDENTITY,
+    organization: {
+      id: "00000000-0000-4000-8000-000000002002",
+      slug: "cairn-next",
+      name: "Cairn Next",
+    },
+    membership: {
+      id: "00000000-0000-4000-8000-000000003002",
+      role: "member",
+    },
+    csrfToken: "csrf-next-token",
+  };
+  const requests: Request[] = [];
+  let resourceLoads = 0;
+  let searches = 0;
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    requests.push(request);
+    if (request.method === "GET") {
+      resourceLoads += 1;
+      const nextOrganization = resourceLoads > 1;
+      return jsonResponse({
+        capabilities: { canWrite: !nextOrganization },
+        items: [knowledgeResource({
+          id: nextOrganization
+            ? "00000000-0000-4000-8000-000000005022"
+            : "00000000-0000-4000-8000-000000005021",
+          title: nextOrganization ? "新组织资料.pdf" : "旧组织资料.pdf",
+          mediaType: "application/pdf",
+          sizeBytes: 1024,
+          status: "ready",
+        })],
+        nextCursor: null,
+      });
+    }
+    searches += 1;
+    if (searches === 1) {
+      return jsonResponse({
+        code: "not_found",
+        message: "旧组织项目不可用",
+        traceId: "trace-old-organization-404",
+      }, 404);
+    }
+    return jsonResponse({
+      retrievalMode: "hybrid",
+      results: [{
+        resourceId: "00000000-0000-4000-8000-000000005022",
+        resourceVersionId: "00000000-0000-4000-8000-000000006022",
+        chunkId: "00000000-0000-4000-8000-000000007022",
+        title: "新组织结果",
+        mediaType: "application/pdf",
+        excerpt: "只属于新组织",
+        locator: { type: "pdf", page: 3 },
+        score: 0.8,
+      }],
+    });
+  }));
+  const user = userEvent.setup();
+  const { establishSession, queryClient } = renderTestRoutes(
+    `/projects/${projectId}/knowledge`,
+    { restoredIdentity: IDENTITY },
+  );
+
+  expect(await screen.findByText("旧组织资料.pdf")).toBeInTheDocument();
+  await user.type(screen.getByLabelText("搜索项目知识"), "触发旧组织撤权");
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("旧组织项目不可用");
+  const oldSearchRequest = requests.find((request) => request.method === "POST")!;
+  expect(queryClient.getQueryCache().findAll({
+    queryKey: ["project-knowledge", IDENTITY.organization.id, projectId],
+  })).toHaveLength(0);
+
+  establishSession(nextIdentity);
+
+  expect(await screen.findByText("新组织资料.pdf")).toBeInTheDocument();
+  expect(oldSearchRequest.signal.aborted).toBe(true);
+  expect(screen.queryByText("旧组织项目不可用")).toBeNull();
+  expect(screen.queryByText("旧组织资料.pdf")).toBeNull();
+  expect(screen.getByLabelText("搜索项目知识")).toHaveValue("");
+  expect(requests.filter((request) => request.method === "POST")).toHaveLength(1);
+  expect(queryClient.getQueryCache().findAll({
+    queryKey: ["project-knowledge", IDENTITY.organization.id, projectId],
+  })).toHaveLength(0);
+  const nextOrganizationCache = queryClient.getQueryCache().findAll({
+    queryKey: ["project-knowledge", nextIdentity.organization.id, projectId],
+  });
+  expect(nextOrganizationCache.length).toBeGreaterThan(0);
+  expect(nextOrganizationCache.every((query) =>
+    !(JSON.stringify(query.state.data) ?? "").includes("旧组织")
+  )).toBe(true);
+
+  await user.type(screen.getByLabelText("搜索项目知识"), "新组织显式查询");
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+  expect(await screen.findByText("新组织结果")).toBeInTheDocument();
+  const searchRequests = requests.filter((request) => request.method === "POST");
+  expect(searchRequests).toHaveLength(2);
+  expect(searchRequests[1]!.headers.get("X-CSRF-Token")).toBe("csrf-next-token");
+});
+
+test("same-project subject transition hard-isolates resources, search state, and in-flight work", async () => {
+  const projectId = "00000000-0000-4000-8000-000000004001";
+  const nextIdentity: IdentityContext = {
+    ...IDENTITY,
+    user: {
+      id: "00000000-0000-4000-8000-000000001002",
+      email: "next@cairn.dev",
+      displayName: "用户乙",
+    },
+    membership: {
+      id: "00000000-0000-4000-8000-000000003002",
+      role: "member",
+    },
+    csrfToken: "csrf-next-subject",
+  };
+  const lateSearch = deferred<Response>();
+  const requests: Request[] = [];
+  let resourceLoads = 0;
+  let searches = 0;
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    requests.push(request);
+    if (request.method === "GET") {
+      resourceLoads += 1;
+      const nextSubject = resourceLoads > 1;
+      return jsonResponse({
+        capabilities: { canWrite: !nextSubject },
+        items: [knowledgeResource({
+          id: nextSubject
+            ? "00000000-0000-4000-8000-000000005032"
+            : "00000000-0000-4000-8000-000000005031",
+          title: nextSubject ? "用户乙资料.pdf" : "用户甲私有资料.pdf",
+          mediaType: "application/pdf",
+          sizeBytes: 1024,
+          status: "ready",
+        })],
+        nextCursor: null,
+      });
+    }
+    searches += 1;
+    if (searches === 1) {
+      return jsonResponse({
+        retrievalMode: "hybrid",
+        results: [{
+          resourceId: "00000000-0000-4000-8000-000000005031",
+          resourceVersionId: "00000000-0000-4000-8000-000000006031",
+          chunkId: "00000000-0000-4000-8000-000000007031",
+          title: "用户甲私有结果",
+          mediaType: "application/pdf",
+          excerpt: "仅用户甲可以看到的片段",
+          locator: { type: "pdf", page: 1 },
+          score: 0.9,
+        }],
+      });
+    }
+    if (searches === 2) return lateSearch.promise;
+    return jsonResponse({
+      retrievalMode: "hybrid",
+      results: [{
+        resourceId: "00000000-0000-4000-8000-000000005032",
+        resourceVersionId: "00000000-0000-4000-8000-000000006032",
+        chunkId: "00000000-0000-4000-8000-000000007032",
+        title: "用户乙结果",
+        mediaType: "application/pdf",
+        excerpt: "只属于用户乙",
+        locator: { type: "pdf", page: 2 },
+        score: 0.8,
+      }],
+    });
+  }));
+  const user = userEvent.setup();
+  const {
+    commitSnapshots,
+    establishSession,
+    forceRerender,
+    queryClient,
+  } = renderTestRoutes(
+    `/projects/${projectId}/knowledge`,
+    { restoredIdentity: IDENTITY },
+  );
+
+  expect(await screen.findByText("用户甲私有资料.pdf")).toBeInTheDocument();
+  await user.type(screen.getByLabelText("搜索项目知识"), "用户甲显式查询");
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+  expect(await screen.findByText("用户甲私有结果")).toBeInTheDocument();
+  await user.clear(screen.getByLabelText("搜索项目知识"));
+  await user.type(screen.getByLabelText("搜索项目知识"), "用户甲未完成查询");
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+  const oldPendingRequest = await waitFor(() => {
+    const posts = requests.filter((request) => request.method === "POST");
+    expect(posts).toHaveLength(2);
+    return posts[1]!;
+  });
+  queryClient.getMutationCache().build(queryClient, {
+    mutationKey: ["user-a-private-mutation"],
+    mutationFn: async () => "用户甲私有变更",
+  });
+  await act(async () => Promise.resolve());
+  const transitionCommitStart = commitSnapshots.length;
+
+  establishSession(nextIdentity);
+
+  expect(await screen.findByText("用户乙资料.pdf")).toBeInTheDocument();
+  expect(oldPendingRequest.signal.aborted).toBe(true);
+  expect(screen.getByLabelText("搜索项目知识")).toHaveValue("");
+  expect(requests.filter((request) => request.method === "POST")).toHaveLength(2);
+  expect(queryClient.getMutationCache().getAll()).toHaveLength(0);
+  const postTransitionCommits = commitSnapshots.slice(transitionCommitStart);
+  expect(postTransitionCommits.length).toBeGreaterThan(0);
+  expect(postTransitionCommits.every((snapshot) =>
+    !snapshot.includes("用户甲私有资料.pdf") &&
+    !snapshot.includes("用户甲私有结果") &&
+    !snapshot.includes("仅用户甲可以看到的片段")
+  )).toBe(true);
+  for (const staleText of [
+    "用户甲私有资料.pdf",
+    "用户甲私有结果",
+    "仅用户甲可以看到的片段",
+  ]) {
+    expect(screen.queryByText(staleText)).toBeNull();
+  }
+  expect(queryClient.getQueryCache().getAll().every((query) =>
+    !(JSON.stringify(query.state.data) ?? "").includes("用户甲")
+  )).toBe(true);
+
+  await user.type(screen.getByLabelText("搜索项目知识"), "用户乙显式查询");
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+  expect(await screen.findByText("用户乙结果")).toBeInTheDocument();
+  const nextSearchRequest = requests.filter((request) => request.method === "POST")[2]!;
+  expect(nextSearchRequest.headers.get("X-CSRF-Token")).toBe("csrf-next-subject");
+  await expect(nextSearchRequest.clone().json()).resolves.toEqual({
+    query: "用户乙显式查询",
+    limit: 10,
+  });
+
+  lateSearch.resolve(jsonResponse({
+    retrievalMode: "hybrid",
+    results: [{
+      resourceId: "00000000-0000-4000-8000-000000005031",
+      resourceVersionId: "00000000-0000-4000-8000-000000006031",
+      chunkId: "00000000-0000-4000-8000-000000007033",
+      title: "用户甲迟到结果",
+      mediaType: "application/pdf",
+      excerpt: "迟到的用户甲私有片段",
+      locator: { type: "pdf", page: 3 },
+      score: 0.7,
+    }],
+  }));
+  await act(async () => Promise.resolve());
+  forceRerender();
+
+  expect(screen.queryByText("用户甲迟到结果")).toBeNull();
+  expect(screen.queryByText("迟到的用户甲私有片段")).toBeNull();
+  expect(queryClient.getQueryCache().getAll().every((query) =>
+    !(JSON.stringify(query.state.data) ?? "").includes("用户甲")
+  )).toBe(true);
+});
+
+test("same-project subject transition remounts a concealed 404 boundary", async () => {
+  const projectId = "00000000-0000-4000-8000-000000004001";
+  const nextIdentity: IdentityContext = {
+    ...IDENTITY,
+    user: {
+      id: "00000000-0000-4000-8000-000000001002",
+      email: "next@cairn.dev",
+      displayName: "用户乙",
+    },
+    membership: {
+      id: "00000000-0000-4000-8000-000000003002",
+      role: "member",
+    },
+    csrfToken: "csrf-next-subject",
+  };
+  let resourceLoads = 0;
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    if (request.method === "POST") {
+      return jsonResponse({
+        code: "not_found",
+        message: "用户甲项目不可用",
+        traceId: "trace-user-a-concealed",
+      }, 404);
+    }
+    resourceLoads += 1;
+    const nextSubject = resourceLoads > 1;
+    return jsonResponse({
+      capabilities: { canWrite: !nextSubject },
+      items: [knowledgeResource({
+        id: nextSubject
+          ? "00000000-0000-4000-8000-000000005042"
+          : "00000000-0000-4000-8000-000000005041",
+        title: nextSubject ? "用户乙恢复资料.pdf" : "用户甲撤权前资料.pdf",
+        mediaType: "application/pdf",
+        sizeBytes: 1024,
+        status: "ready",
+      })],
+      nextCursor: null,
+    });
+  }));
+  const user = userEvent.setup();
+  const { commitSnapshots, establishSession } = renderTestRoutes(
+    `/projects/${projectId}/knowledge`,
+    { restoredIdentity: IDENTITY },
+  );
+
+  expect(await screen.findByText("用户甲撤权前资料.pdf")).toBeInTheDocument();
+  await user.type(screen.getByLabelText("搜索项目知识"), "触发用户甲撤权");
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("用户甲项目不可用");
+  await act(async () => Promise.resolve());
+  const transitionCommitStart = commitSnapshots.length;
+
+  establishSession(nextIdentity);
+
+  expect(await screen.findByText("用户乙恢复资料.pdf")).toBeInTheDocument();
+  expect(screen.queryByText("用户甲项目不可用")).toBeNull();
+  expect(screen.queryByText("用户甲撤权前资料.pdf")).toBeNull();
+  expect(screen.getByLabelText("搜索项目知识")).toHaveValue("");
+  expect(commitSnapshots.slice(transitionCommitStart).every((snapshot) =>
+    !snapshot.includes("用户甲项目不可用") &&
+    !snapshot.includes("用户甲撤权前资料.pdf")
+  )).toBe(true);
+});
+
+test("a session-invalid knowledge search clears resources and ends the session", async () => {
+  const projectId = "00000000-0000-4000-8000-000000004001";
+  const requests: Request[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    requests.push(request);
+    if (request.method === "POST") {
+      return jsonResponse({
+        code: "session_invalid",
+        message: "会话已过期",
+        traceId: "trace-search-session-401",
+      }, 401);
+    }
+    return jsonResponse({
+      capabilities: { canWrite: true },
+      items: [knowledgeResource({
+        id: "00000000-0000-4000-8000-000000005001",
+        title: "会话过期前资料.pdf",
+        mediaType: "application/pdf",
+        sizeBytes: 1024,
+        status: "ready",
+      })],
+      nextCursor: null,
+    });
+  }));
+  const user = userEvent.setup();
+  const { queryClient } = renderTestRoutes(
+    `/projects/${projectId}/knowledge`,
+    { restoredIdentity: IDENTITY },
+  );
+  expect(await screen.findByText("会话过期前资料.pdf")).toBeInTheDocument();
+  await user.type(screen.getByLabelText("搜索项目知识"), "会话失效边界");
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+
+  expect(await screen.findByRole("heading", { name: "登录 Cairn" })).toBeInTheDocument();
+  expect(requests).toHaveLength(2);
+  expect(requests.every((request) => request.signal.aborted)).toBe(true);
+  expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
+  expect(screen.queryByText("会话过期前资料.pdf")).toBeNull();
 });
 
 test("the project knowledge route renders resource metadata and every processing state", async () => {

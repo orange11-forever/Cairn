@@ -13,6 +13,7 @@ export interface ActiveSession {
   identity: IdentityContext;
   user: IdentityContext["user"];
   signal: AbortSignal;
+  generation: number;
 }
 
 export interface SessionApi {
@@ -54,6 +55,7 @@ export function SessionProvider({
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const controllerRef = useRef<AbortController | null>(null);
+  const generationRef = useRef(restoredIdentity === undefined ? 0 : 1);
   const restoreControllerRef = useRef<AbortController | null>(null);
   const expiringRef = useRef(false);
   const [status, setStatus] = useState<SessionStatus>(
@@ -63,21 +65,33 @@ export function SessionProvider({
     if (restoredIdentity === undefined) return null;
     const controller = new AbortController();
     controllerRef.current = controller;
-    return { identity: restoredIdentity, user: restoredIdentity.user, signal: controller.signal };
+    return {
+      identity: restoredIdentity,
+      user: restoredIdentity.user,
+      signal: controller.signal,
+      generation: generationRef.current,
+    };
   });
   const [restoreError, setRestoreError] = useState<ApiError | null>(null);
   const [logoutError, setLogoutError] = useState<ApiError | null>(null);
 
   const establishSession = useCallback((identity: IdentityContext): void => {
     controllerRef.current?.abort();
+    queryClient.clear();
     const controller = new AbortController();
+    generationRef.current += 1;
     controllerRef.current = controller;
     expiringRef.current = false;
-    setSession({ identity, user: identity.user, signal: controller.signal });
+    setSession({
+      identity,
+      user: identity.user,
+      signal: controller.signal,
+      generation: generationRef.current,
+    });
     setRestoreError(null);
     setLogoutError(null);
     setStatus("authenticated");
-  }, []);
+  }, [queryClient]);
 
   const expireSession = useCallback((): void => {
     const controller = controllerRef.current;

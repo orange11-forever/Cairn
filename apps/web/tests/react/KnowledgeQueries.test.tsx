@@ -15,6 +15,12 @@ function wrapper(client: QueryClient) {
   };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => { resolve = next; });
+  return { promise, resolve };
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -146,4 +152,49 @@ test("knowledge search queries preserve session cancellation", async () => {
     kind: "aborted",
     context: "POST /api/v1/projects/{project_id}/knowledge/search",
   }));
+});
+
+test("switching submitted search aborts the old Query and observes only the new response", async () => {
+  const requests: Request[] = [];
+  const queryA = deferred<Response>();
+  const lateResponseConsumed = deferred<void>();
+  const lateResponse = Response.json({ retrievalMode: "keyword_fallback", results: [] });
+  const readLateResponse = lateResponse.text.bind(lateResponse);
+  vi.spyOn(lateResponse, "text").mockImplementation(async () => {
+    const body = await readLateResponse();
+    lateResponseConsumed.resolve();
+    return body;
+  });
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    requests.push(request);
+    const body = await request.clone().json() as { query: string };
+    return body.query === "查询甲"
+      ? queryA.promise
+      : Response.json({ retrievalMode: "hybrid", results: [] });
+  }));
+  const client = queryClient();
+  const session = new AbortController();
+  const { result, rerender } = renderHook(
+    ({ query }) => useKnowledgeSearchQuery({
+      organizationId: "org-a",
+      projectId: "project-a",
+      search: { query, limit: 10 },
+      csrfToken: "csrf-search",
+      sessionSignal: session.signal,
+    }),
+    { initialProps: { query: "查询甲" }, wrapper: wrapper(client) },
+  );
+  await waitFor(() => expect(requests).toHaveLength(1));
+  rerender({ query: "查询乙" });
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  expect(requests[0]!.signal.aborted).toBe(true);
+  await act(async () => {
+    queryA.resolve(lateResponse);
+    await lateResponseConsumed.promise;
+  });
+  expect(lateResponse.bodyUsed).toBe(true);
+  await waitFor(() => {
+    expect(result.current.data).toEqual({ retrievalMode: "hybrid", results: [] });
+  });
 });

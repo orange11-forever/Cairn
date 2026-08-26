@@ -9,6 +9,8 @@ import { ApiError } from "./errors.ts";
 import { parseApiErrorResponse } from "./parseApiErrorResponse.ts";
 
 export type KnowledgeCapabilities = components["schemas"]["KnowledgeCapabilities"];
+export type KnowledgeCitation = components["schemas"]["KnowledgeCitation"];
+export type KnowledgeLocator = KnowledgeCitation["locator"];
 export type KnowledgeResource = components["schemas"]["KnowledgeResourceResponse"];
 export type KnowledgeResourcePage = components["schemas"]["KnowledgeResourcePage"];
 export type KnowledgeSearchResponse = components["schemas"]["KnowledgeSearchResponse"];

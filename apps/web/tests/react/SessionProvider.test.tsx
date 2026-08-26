@@ -87,6 +87,90 @@ test("logout aborts the session, clears queries, and replaces the URL", async ()
   clear.mockRestore();
 });
 
+test("establishing a new subject synchronously isolates private state before publishing it", async () => {
+  const queryClient = createAppQueryClient();
+  queryClient.setQueryData(["session-private-query"], "user-a-private-query");
+  queryClient.getMutationCache().build(queryClient, {
+    mutationKey: ["session-private-mutation"],
+    mutationFn: async () => "user-a-private-mutation",
+  });
+  const nextIdentity: IdentityContext = {
+    ...IDENTITY,
+    user: {
+      id: "00000000-0000-4000-8000-000000001002",
+      email: "next@cairn.dev",
+      displayName: "下一位用户",
+    },
+    membership: {
+      id: "00000000-0000-4000-8000-000000003002",
+      role: "member",
+    },
+    csrfToken: "csrf-next-user",
+  };
+  const events: string[] = [];
+  const sessions: Array<{ email: string; generation: number; signal: AbortSignal }> = [];
+  const originalClear = queryClient.clear.bind(queryClient);
+  vi.spyOn(queryClient, "clear").mockImplementation(() => {
+    events.push("cache:clear");
+    originalClear();
+  });
+
+  function Harness() {
+    const { establishSession, session } = useSession();
+    if (
+      session !== null &&
+      sessions.at(-1)?.signal !== session.signal
+    ) {
+      sessions.push({
+        email: session.user.email,
+        generation: session.generation,
+        signal: session.signal,
+      });
+      events.push(`session:publish:${session.user.email}`);
+      session.signal.addEventListener(
+        "abort",
+        () => events.push(`session:abort:${session.user.email}`),
+        { once: true },
+      );
+    }
+    return (
+      <button type="button" onClick={() => establishSession(nextIdentity)}>
+        switch subject
+      </button>
+    );
+  }
+
+  const user = userEvent.setup();
+  render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <SessionProvider restoredIdentity={IDENTITY}>
+          <Harness />
+        </SessionProvider>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+
+  expect(sessions).toHaveLength(1);
+  const firstSession = sessions[0]!;
+  await user.click(screen.getByRole("button", { name: "switch subject" }));
+
+  expect(firstSession.signal.aborted).toBe(true);
+  expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
+  expect(queryClient.getMutationCache().getAll()).toHaveLength(0);
+  expect(sessions).toHaveLength(2);
+  expect(sessions[1]).toMatchObject({
+    email: "next@cairn.dev",
+    generation: firstSession.generation + 1,
+  });
+  expect(events).toEqual([
+    "session:publish:demo@cairn.dev",
+    "session:abort:demo@cairn.dev",
+    "cache:clear",
+    "session:publish:next@cairn.dev",
+  ]);
+});
+
 test("session invalidation still closes locally when query cancellation fails", async () => {
   const queryClient = createAppQueryClient();
   queryClient.setQueryData(["session-private"], "private");

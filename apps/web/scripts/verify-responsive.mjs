@@ -95,6 +95,31 @@ const KNOWLEDGE_RESOURCE_PAGE = {
   nextCursor: "responsive-next-page",
 };
 
+const KNOWLEDGE_SEARCH_RESPONSE = {
+  retrievalMode: "keyword_fallback",
+  results: [{
+    resourceId: "00000000-0000-4000-8000-000000005003",
+    resourceVersionId: "00000000-0000-4000-8000-000000006003",
+    chunkId: "00000000-0000-4000-8000-000000007003",
+    title: "跨区域交付与故障恢复架构决策记录（需要在窄屏完整换行）",
+    mediaType: "text/markdown",
+    excerpt: "这是一段用于验证三种视口、亮暗主题和长中文内容不会造成横向溢出的真实搜索结果摘录。",
+    locator: {
+      type: "markdown",
+      headingPath: ["平台运行", "故障升级与跨区域恢复"],
+      lineStart: 128,
+      lineEnd: 176,
+    },
+    score: 0.75,
+  }],
+};
+
+const KNOWLEDGE_SEARCH_ERROR_QUERY = "跨区域搜索错误";
+const KNOWLEDGE_SEARCH_ERROR_MESSAGE =
+  "KnowledgeSearchInfrastructureUnavailableKnowledgeSearchInfrastructureUnavailableKnowledgeSearchInfrastructureUnavailableKnowledgeSearchInfrastructureUnavailable";
+const KNOWLEDGE_SEARCH_TRACE_ID =
+  "trace-knowledge-search-503-ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+
 async function chooseTheme(page, label) {
   const menu = page.locator(".account-menu");
   if (!(await menu.evaluate((element) => element.open))) await menu.locator("summary").click();
@@ -141,7 +166,7 @@ async function readLayout(page) {
       brandImageObjectFit: brandImageStyle?.objectFit ?? null,
       undersizedTargets: [
         ...document.querySelectorAll(
-          ".product-brand, .primary-nav a, .account-menu summary, button, select, input:not([type='radio']):not([type='checkbox'])",
+          ".product-brand, .primary-nav a, .account-menu summary, button, select, textarea, input:not([type='radio']):not([type='checkbox'])",
         ),
       ]
         .filter((element) => {
@@ -196,8 +221,138 @@ async function checkKnowledgeResourceLayout(page, expect, screenshotDir, viewpor
     `${viewport.name} 项目知识页存在小于 44px 的交互目标：${layout.undersizedTargets.join(" / ")}`,
   );
 
+  await page.getByLabel("搜索项目知识").fill("跨区域故障恢复");
+  await page.getByRole("button", { name: "搜索项目知识" }).click();
+  await page.waitForSelector(".knowledge-search-result-list");
+  const searchLayout = await page.evaluate(() => {
+    const panel = document.querySelector(".knowledge-search");
+    const result = document.querySelector(".knowledge-search-result");
+    const panelRect = panel?.getBoundingClientRect();
+    const resultRect = result?.getBoundingClientRect();
+    return {
+      fallbackVisible: document.body.textContent.includes("语义检索暂时不可用"),
+      panelInsideViewport: panelRect != null && panelRect.left >= 0 && panelRect.right <= innerWidth,
+      resultInsideViewport: resultRect != null && resultRect.left >= 0 && resultRect.right <= innerWidth,
+    };
+  });
+  expect(searchLayout.fallbackVisible, `${viewport.name} 应显示关键词降级提示`);
+  expect(searchLayout.panelInsideViewport, `${viewport.name} 搜索面板超出视口`);
+  expect(searchLayout.resultInsideViewport, `${viewport.name} 搜索结果超出视口`);
+  const searchedLayout = await readLayout(page);
+  expect(searchedLayout.overflow <= 0, `${viewport.name} 搜索结果横向溢出 ${searchedLayout.overflow}px`);
+  expect(
+    searchedLayout.undersizedTargets.length === 0,
+    `${viewport.name} 搜索页存在小于 44px 的交互目标：${searchedLayout.undersizedTargets.join(" / ")}`,
+  );
+
   await page.screenshot({
     path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-knowledge.png`),
+    fullPage: true,
+  });
+
+  await page.getByLabel("搜索项目知识").fill(KNOWLEDGE_SEARCH_ERROR_QUERY);
+  await page.getByRole("button", { name: "搜索项目知识" }).click();
+  await page.waitForSelector(".knowledge-search-error");
+  const errorLayout = await page.evaluate(({ expectedMessage, expectedTraceId }) => {
+    const panel = document.querySelector(".knowledge-search");
+    const error = document.querySelector(".knowledge-search-error");
+    const retry = error?.querySelector("button");
+    const alert = error?.querySelector('[role="alert"]');
+    const requestId = [...(error?.querySelectorAll("p") ?? [])].find(
+      (element) => element.textContent.trim() === `请求编号：${expectedTraceId}`,
+    );
+    const panelRect = panel?.getBoundingClientRect();
+    const errorRect = error?.getBoundingClientRect();
+    const messageRect = alert?.getBoundingClientRect();
+    const requestIdRect = requestId?.getBoundingClientRect();
+    const retryRect = retry?.getBoundingClientRect();
+    const errorStyle = error === null ? null : getComputedStyle(error);
+    const errorPadding = errorStyle === null ? null : {
+      top: Number.parseFloat(errorStyle.paddingTop),
+      right: Number.parseFloat(errorStyle.paddingRight),
+      bottom: Number.parseFloat(errorStyle.paddingBottom),
+      left: Number.parseFloat(errorStyle.paddingLeft),
+    };
+    const errorHorizontalPadding = errorPadding === null ? 0 : errorPadding.left + errorPadding.right;
+    const availableButtonWidth = errorRect === undefined
+      ? null
+      : errorRect.width - errorHorizontalPadding;
+    const insideErrorContent = (rect) =>
+      rect != null && errorRect != null && errorPadding != null &&
+      rect.left >= errorRect.left + errorPadding.left &&
+      rect.right <= errorRect.right - errorPadding.right &&
+      rect.top >= errorRect.top + errorPadding.top &&
+      rect.bottom <= errorRect.bottom - errorPadding.bottom;
+    const insideViewportHorizontally = (rect) =>
+      rect != null && rect.left >= 0 && rect.right <= innerWidth;
+    return {
+      messageVisible: alert?.textContent.trim() === expectedMessage,
+      traceVisible: requestId !== undefined,
+      messageFitsOwnBox: alert != null && alert.scrollWidth <= alert.clientWidth,
+      requestIdFitsOwnBox: requestId != null && requestId.scrollWidth <= requestId.clientWidth,
+      messageInsideErrorContent: insideErrorContent(messageRect),
+      requestIdInsideErrorContent: insideErrorContent(requestIdRect),
+      messageInsideViewport: insideViewportHorizontally(messageRect),
+      requestIdInsideViewport: insideViewportHorizontally(requestIdRect),
+      messageScrollWidth: alert?.scrollWidth ?? null,
+      messageClientWidth: alert?.clientWidth ?? null,
+      requestIdScrollWidth: requestId?.scrollWidth ?? null,
+      requestIdClientWidth: requestId?.clientWidth ?? null,
+      errorInsidePanel:
+        panelRect != null && errorRect != null &&
+        errorRect.left >= panelRect.left && errorRect.right <= panelRect.right,
+      errorInsideViewport:
+        errorRect != null && errorRect.left >= 0 && errorRect.right <= innerWidth,
+      retryInsidePanel:
+        panelRect != null && retryRect != null &&
+        retryRect.left >= panelRect.left && retryRect.right <= panelRect.right,
+      retryInsideViewport:
+        retryRect != null && retryRect.left >= 0 && retryRect.right <= innerWidth,
+      retryTouchTarget:
+        retryRect != null && retryRect.width >= 44 && retryRect.height >= 44,
+      mobileRetryFillsAvailableWidth:
+        innerWidth !== 360 ||
+        (retryRect != null && availableButtonWidth != null &&
+          Math.abs(retryRect.width - availableButtonWidth) <= 1),
+      retryWidth: retryRect?.width ?? null,
+      availableButtonWidth,
+    };
+  }, {
+    expectedMessage: KNOWLEDGE_SEARCH_ERROR_MESSAGE,
+    expectedTraceId: KNOWLEDGE_SEARCH_TRACE_ID,
+  });
+  expect(errorLayout.messageVisible, `${viewport.name} 应显示完整搜索错误`);
+  expect(errorLayout.traceVisible, `${viewport.name} 应显示搜索请求编号`);
+  expect(
+    errorLayout.messageFitsOwnBox,
+    `${viewport.name} 搜索错误消息被裁切：scrollWidth ${errorLayout.messageScrollWidth}px / clientWidth ${errorLayout.messageClientWidth}px`,
+  );
+  expect(
+    errorLayout.requestIdFitsOwnBox,
+    `${viewport.name} 搜索请求编号被裁切：scrollWidth ${errorLayout.requestIdScrollWidth}px / clientWidth ${errorLayout.requestIdClientWidth}px`,
+  );
+  expect(errorLayout.messageInsideErrorContent, `${viewport.name} 搜索错误消息超出错误内容区`);
+  expect(errorLayout.requestIdInsideErrorContent, `${viewport.name} 搜索请求编号超出错误内容区`);
+  expect(errorLayout.messageInsideViewport, `${viewport.name} 搜索错误消息超出视口`);
+  expect(errorLayout.requestIdInsideViewport, `${viewport.name} 搜索请求编号超出视口`);
+  expect(errorLayout.errorInsidePanel, `${viewport.name} 搜索错误超出面板`);
+  expect(errorLayout.errorInsideViewport, `${viewport.name} 搜索错误超出视口`);
+  expect(errorLayout.retryInsidePanel, `${viewport.name} 重试按钮超出面板`);
+  expect(errorLayout.retryInsideViewport, `${viewport.name} 重试按钮超出视口`);
+  expect(errorLayout.retryTouchTarget, `${viewport.name} 重试按钮小于 44px`);
+  expect(
+    errorLayout.mobileRetryFillsAvailableWidth,
+    `${viewport.name} 重试按钮未填满可用宽度：${errorLayout.retryWidth}px / ${errorLayout.availableButtonWidth}px`,
+  );
+  const erroredLayout = await readLayout(page);
+  expect(erroredLayout.overflow <= 0, `${viewport.name} 搜索错误横向溢出 ${erroredLayout.overflow}px`);
+  expect(
+    erroredLayout.undersizedTargets.length === 0,
+    `${viewport.name} 搜索错误页存在小于 44px 的交互目标：${erroredLayout.undersizedTargets.join(" / ")}`,
+  );
+
+  await page.screenshot({
+    path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-knowledge-error.png`),
     fullPage: true,
   });
   await page.getByRole("link", { name: "知识文档" }).click();
@@ -434,6 +589,36 @@ export async function checkResponsiveFoundation({
   await page.route(
     `**/api/v1/projects/${KNOWLEDGE_PROJECT_ID}/knowledge/resources*`,
     (route) => route.fulfill({ json: KNOWLEDGE_RESOURCE_PAGE }),
+  );
+  await page.route(
+    `**/api/v1/projects/${KNOWLEDGE_PROJECT_ID}/knowledge/search`,
+    async (route) => {
+      const request = route.request();
+      expect(request.method() === "POST", "知识搜索必须使用 POST");
+      expect(request.headers()["x-csrf-token"], "知识搜索必须携带 CSRF token");
+      const body = request.postDataJSON();
+      if (body.query === "跨区域故障恢复") {
+        expect(
+          JSON.stringify(body) === JSON.stringify({ query: "跨区域故障恢复", limit: 10 }),
+          `知识搜索请求体错误：${request.postData()}`,
+        );
+        await route.fulfill({ json: KNOWLEDGE_SEARCH_RESPONSE });
+        return;
+      }
+      expect(
+        JSON.stringify(body) === JSON.stringify({ query: KNOWLEDGE_SEARCH_ERROR_QUERY, limit: 10 }),
+        `知识搜索错误场景请求体错误：${request.postData()}`,
+      );
+      await route.fulfill({
+        status: 503,
+        headers: { "X-Request-ID": KNOWLEDGE_SEARCH_TRACE_ID },
+        json: {
+          message: KNOWLEDGE_SEARCH_ERROR_MESSAGE,
+          code: "database_unavailable",
+          traceId: KNOWLEDGE_SEARCH_TRACE_ID,
+        },
+      });
+    },
   );
 
   for (const viewport of VIEWPORTS) {
