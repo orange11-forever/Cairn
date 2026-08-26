@@ -114,6 +114,12 @@ const KNOWLEDGE_SEARCH_RESPONSE = {
   }],
 };
 
+const KNOWLEDGE_SEARCH_ERROR_QUERY = "跨区域搜索错误";
+const KNOWLEDGE_SEARCH_ERROR_MESSAGE =
+  "KnowledgeSearchInfrastructureUnavailableKnowledgeSearchInfrastructureUnavailableKnowledgeSearchInfrastructureUnavailableKnowledgeSearchInfrastructureUnavailable";
+const KNOWLEDGE_SEARCH_TRACE_ID =
+  "trace-knowledge-search-503-ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+
 async function chooseTheme(page, label) {
   const menu = page.locator(".account-menu");
   if (!(await menu.evaluate((element) => element.open))) await menu.locator("summary").click();
@@ -241,6 +247,73 @@ async function checkKnowledgeResourceLayout(page, expect, screenshotDir, viewpor
 
   await page.screenshot({
     path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-knowledge.png`),
+    fullPage: true,
+  });
+
+  await page.getByLabel("搜索项目知识").fill(KNOWLEDGE_SEARCH_ERROR_QUERY);
+  await page.getByRole("button", { name: "搜索项目知识" }).click();
+  await page.waitForSelector(".knowledge-search-error");
+  const errorLayout = await page.evaluate(({ expectedMessage, expectedTraceId }) => {
+    const panel = document.querySelector(".knowledge-search");
+    const error = document.querySelector(".knowledge-search-error");
+    const retry = error?.querySelector("button");
+    const alert = error?.querySelector('[role="alert"]');
+    const panelRect = panel?.getBoundingClientRect();
+    const errorRect = error?.getBoundingClientRect();
+    const retryRect = retry?.getBoundingClientRect();
+    const errorStyle = error === null ? null : getComputedStyle(error);
+    const errorHorizontalPadding = errorStyle === null
+      ? 0
+      : Number.parseFloat(errorStyle.paddingLeft) + Number.parseFloat(errorStyle.paddingRight);
+    const availableButtonWidth = errorRect === undefined
+      ? null
+      : errorRect.width - errorHorizontalPadding;
+    return {
+      messageVisible: alert?.textContent.trim() === expectedMessage,
+      traceVisible: error?.textContent.includes(`请求编号：${expectedTraceId}`) ?? false,
+      errorInsidePanel:
+        panelRect != null && errorRect != null &&
+        errorRect.left >= panelRect.left && errorRect.right <= panelRect.right,
+      errorInsideViewport:
+        errorRect != null && errorRect.left >= 0 && errorRect.right <= innerWidth,
+      retryInsidePanel:
+        panelRect != null && retryRect != null &&
+        retryRect.left >= panelRect.left && retryRect.right <= panelRect.right,
+      retryInsideViewport:
+        retryRect != null && retryRect.left >= 0 && retryRect.right <= innerWidth,
+      retryTouchTarget:
+        retryRect != null && retryRect.width >= 44 && retryRect.height >= 44,
+      mobileRetryFillsAvailableWidth:
+        innerWidth !== 360 ||
+        (retryRect != null && availableButtonWidth != null &&
+          Math.abs(retryRect.width - availableButtonWidth) <= 1),
+      retryWidth: retryRect?.width ?? null,
+      availableButtonWidth,
+    };
+  }, {
+    expectedMessage: KNOWLEDGE_SEARCH_ERROR_MESSAGE,
+    expectedTraceId: KNOWLEDGE_SEARCH_TRACE_ID,
+  });
+  expect(errorLayout.messageVisible, `${viewport.name} 应显示完整搜索错误`);
+  expect(errorLayout.traceVisible, `${viewport.name} 应显示搜索请求编号`);
+  expect(errorLayout.errorInsidePanel, `${viewport.name} 搜索错误超出面板`);
+  expect(errorLayout.errorInsideViewport, `${viewport.name} 搜索错误超出视口`);
+  expect(errorLayout.retryInsidePanel, `${viewport.name} 重试按钮超出面板`);
+  expect(errorLayout.retryInsideViewport, `${viewport.name} 重试按钮超出视口`);
+  expect(errorLayout.retryTouchTarget, `${viewport.name} 重试按钮小于 44px`);
+  expect(
+    errorLayout.mobileRetryFillsAvailableWidth,
+    `${viewport.name} 重试按钮未填满可用宽度：${errorLayout.retryWidth}px / ${errorLayout.availableButtonWidth}px`,
+  );
+  const erroredLayout = await readLayout(page);
+  expect(erroredLayout.overflow <= 0, `${viewport.name} 搜索错误横向溢出 ${erroredLayout.overflow}px`);
+  expect(
+    erroredLayout.undersizedTargets.length === 0,
+    `${viewport.name} 搜索错误页存在小于 44px 的交互目标：${erroredLayout.undersizedTargets.join(" / ")}`,
+  );
+
+  await page.screenshot({
+    path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-knowledge-error.png`),
     fullPage: true,
   });
   await page.getByRole("link", { name: "知识文档" }).click();
@@ -484,11 +557,28 @@ export async function checkResponsiveFoundation({
       const request = route.request();
       expect(request.method() === "POST", "知识搜索必须使用 POST");
       expect(request.headers()["x-csrf-token"], "知识搜索必须携带 CSRF token");
+      const body = request.postDataJSON();
+      if (body.query === "跨区域故障恢复") {
+        expect(
+          JSON.stringify(body) === JSON.stringify({ query: "跨区域故障恢复", limit: 10 }),
+          `知识搜索请求体错误：${request.postData()}`,
+        );
+        await route.fulfill({ json: KNOWLEDGE_SEARCH_RESPONSE });
+        return;
+      }
       expect(
-        JSON.stringify(request.postDataJSON()) === JSON.stringify({ query: "跨区域故障恢复", limit: 10 }),
-        `知识搜索请求体错误：${request.postData()}`,
+        JSON.stringify(body) === JSON.stringify({ query: KNOWLEDGE_SEARCH_ERROR_QUERY, limit: 10 }),
+        `知识搜索错误场景请求体错误：${request.postData()}`,
       );
-      await route.fulfill({ json: KNOWLEDGE_SEARCH_RESPONSE });
+      await route.fulfill({
+        status: 503,
+        headers: { "X-Request-ID": KNOWLEDGE_SEARCH_TRACE_ID },
+        json: {
+          message: KNOWLEDGE_SEARCH_ERROR_MESSAGE,
+          code: "database_unavailable",
+          traceId: KNOWLEDGE_SEARCH_TRACE_ID,
+        },
+      });
     },
   );
 
