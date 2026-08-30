@@ -31,7 +31,9 @@ function requestDetails(input: RequestInfo | URL) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
+  vi.resetModules();
 });
 
 test("fetches a schema-valid citation context from the generated client", async () => {
@@ -60,6 +62,23 @@ test("fetches a schema-valid citation context from the generated client", async 
 test("builds only the trusted Identity API download entry URL", () => {
   const url = new URL(buildKnowledgeDownloadUrl("project/with slash", "resource?query"));
   expect(url.origin).toBe("http://localhost:8080");
+  expect(url.pathname).toBe(
+    "/api/v1/projects/project%2Fwith%20slash/knowledge/resources/resource%3Fquery/download",
+  );
+  expect(url.search).toBe("");
+  expect(url.hash).toBe("");
+});
+
+test("builds the download entry from the configured Identity API origin", async () => {
+  vi.stubEnv("VITE_IDENTITY_API_URL", "https://identity.customer.test:9443");
+  vi.resetModules();
+  const { buildKnowledgeDownloadUrl: buildConfiguredDownloadUrl } = await import(
+    "../../src/api/knowledge.ts"
+  );
+
+  const url = new URL(buildConfiguredDownloadUrl("project/with slash", "resource?query"));
+
+  expect(url.origin).toBe("https://identity.customer.test:9443");
   expect(url.pathname).toBe(
     "/api/v1/projects/project%2Fwith%20slash/knowledge/resources/resource%3Fquery/download",
   );
@@ -121,19 +140,46 @@ test.each([401, 404, 503])("preserves citation-context HTTP %s details", async (
   });
 });
 
-test("maps a session abort without exposing the thrown cause", async () => {
+test("forwards session cancellation to the citation request", async () => {
+  let requestSignal: AbortSignal | undefined;
+  let rejectFetch: ((reason?: unknown) => void) | undefined;
   const session = new AbortController();
-  vi.stubGlobal("fetch", vi.fn(async () => {
-    session.abort("session-ended");
-    throw { secret: "hidden-abort-cause" };
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    requestSignal = (input as Request).signal;
+    return await new Promise<Response>((_resolve, reject) => {
+      rejectFetch = reject;
+      requestSignal?.addEventListener(
+        "abort",
+        () => reject(requestSignal?.reason ?? new DOMException("Aborted", "AbortError")),
+        { once: true },
+      );
+    });
   }));
-  await expect(fetchKnowledgeChunkContext({
+  const pending = fetchKnowledgeChunkContext({
     projectId: PROJECT_ID,
     resourceId: RESOURCE_ID,
     resourceVersionId: RESOURCE_VERSION_ID,
     chunkId: CHUNK_ID,
     signal: session.signal,
-  })).rejects.toMatchObject({ kind: "aborted", message: "请求已被取消" });
+  });
+  const handled = pending.catch(() => undefined);
+
+  try {
+    await vi.waitFor(() => expect(requestSignal).toBeDefined());
+    expect(requestSignal?.aborted).toBe(false);
+    session.abort("session-ended");
+
+    expect(requestSignal?.aborted).toBe(true);
+    await expect(pending).rejects.toMatchObject({
+      kind: "aborted",
+      message: "请求已被取消",
+      context:
+        "GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}/chunks/{chunk_id}",
+    });
+  } finally {
+    rejectFetch?.(new Error("test cleanup"));
+    await handled;
+  }
 });
 
 test("maps an unexpected citation transport failure to a safe network error", async () => {
