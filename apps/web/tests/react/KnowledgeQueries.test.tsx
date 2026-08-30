@@ -126,6 +126,9 @@ test("the citation hook requests the exact citation and stores it under its full
 
   await waitFor(() => expect(result.current.isSuccess).toBe(true));
   expect(requests).toHaveLength(1);
+  expect(new URL(requests[0]!.url).pathname).toBe(
+    `/api/v1/projects/${PROJECT_ID}/knowledge/resources/${RESOURCE_ID}/chunks/${CHUNK_ID}`,
+  );
   expect(client.getQueryData(knowledgeKeys.citationContext(
     "org-a", PROJECT_ID, RESOURCE_ID, RESOURCE_VERSION_ID, CHUNK_ID,
   ))).toEqual(validContext);
@@ -184,6 +187,46 @@ test("session abort cancels a pending citation context request", async () => {
   await waitFor(() => expect(requests).toHaveLength(1));
   session.abort(new DOMException("Session ended", "AbortError"));
   await waitFor(() => expect(requests[0]!.signal.aborted).toBe(true));
+});
+
+test("unmounting a citation context aborts its pending Query request", async () => {
+  const requests: Request[] = [];
+  const fetchSettled = deferred<void>();
+  let resolveFetch: ((response: Response) => void) | undefined;
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    requests.push(request);
+    try {
+      return await new Promise<Response>((resolve, reject) => {
+        resolveFetch = resolve;
+        request.signal.addEventListener("abort", () => {
+          reject(request.signal.reason ?? new DOMException("Aborted", "AbortError"));
+        }, { once: true });
+      });
+    } finally {
+      fetchSettled.resolve();
+    }
+  }));
+  const session = new AbortController();
+  const client = queryClient();
+  const rendered = renderHook(() => useKnowledgeChunkContextQuery({
+    organizationId: "org-a",
+    projectId: PROJECT_ID,
+    resourceId: RESOURCE_ID,
+    resourceVersionId: RESOURCE_VERSION_ID,
+    chunkId: CHUNK_ID,
+    sessionSignal: session.signal,
+  }), { wrapper: wrapper(client) });
+  await waitFor(() => expect(requests).toHaveLength(1));
+
+  try {
+    rendered.unmount();
+    await waitFor(() => expect(requests[0]!.signal.aborted).toBe(true));
+  } finally {
+    resolveFetch?.(Response.json(validContext));
+    await fetchSettled.promise;
+    await vi.waitFor(() => expect(client.isFetching()).toBe(0));
+  }
 });
 
 test("knowledge search stays idle until a submitted search exists", () => {
