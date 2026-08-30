@@ -79,12 +79,19 @@ afterEach(() => {
 
 test("loads ordered plain-text context only while expanded and exposes the API download entry", async () => {
   const requests: Request[] = [];
+  let resolveReauthorization!: (response: Response) => void;
+  const reauthorization = new Promise<Response>((resolve) => {
+    resolveReauthorization = resolve;
+  });
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
     const request = input as Request;
     requests.push(request);
-    return request.method === "POST"
-      ? Response.json({ retrievalMode: "hybrid", results: [citation] })
-      : Response.json(context);
+    if (request.method === "POST") {
+      return Response.json({ retrievalMode: "hybrid", results: [citation] });
+    }
+    return requests.filter((candidate) => candidate.method === "GET").length === 1
+      ? Response.json(context)
+      : reauthorization;
   }));
   const user = userEvent.setup();
   const { container } = renderSearch();
@@ -124,6 +131,34 @@ test("loads ordered plain-text context only while expanded and exposes the API d
   await waitFor(() => {
     expect(requests.filter((request) => request.method === "GET")).toHaveLength(2);
   });
+  const reauthorizingPanel = screen.getByRole("region", { name: "引用上下文" });
+  const refreshedContext = {
+    ...context,
+    hit: { ...context.hit, text: "重新授权后的命中片段" },
+  } as const;
+  try {
+    expect(reauthorizingPanel).toHaveAttribute("aria-busy", "true");
+    expect(within(reauthorizingPanel).getByRole("status")).toHaveTextContent(
+      "正在加载引用上下文",
+    );
+    expect(within(reauthorizingPanel).queryByText(/命中第一行\s+命中第二行/))
+      .toBeNull();
+    expect(within(reauthorizingPanel).queryByRole(
+      "link",
+      { name: "下载原文件（新标签页）" },
+    )).toBeNull();
+
+    resolveReauthorization(Response.json(refreshedContext));
+    expect(await within(reauthorizingPanel).findByText("重新授权后的命中片段"))
+      .toBeInTheDocument();
+    expect(reauthorizingPanel).not.toHaveAttribute("aria-busy");
+    expect(within(reauthorizingPanel).getByRole(
+      "link",
+      { name: "下载原文件（新标签页）" },
+    )).toBeInTheDocument();
+  } finally {
+    resolveReauthorization(Response.json(refreshedContext));
+  }
 });
 
 test("a persistent 503 retries once, shows trace ID, and supports manual reload", async () => {

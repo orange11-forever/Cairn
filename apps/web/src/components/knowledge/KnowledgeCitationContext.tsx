@@ -92,16 +92,17 @@ export function KnowledgeCitationContext({
   const presentedError = query.error === null
     ? null
     : presentKnowledgeCitationContextError(query.error);
+  const authorizing = query.isFetching;
 
   return (
     <section
       id={id}
-      aria-busy={query.isPending ? "true" : undefined}
+      aria-busy={authorizing ? "true" : undefined}
       aria-label="引用上下文"
       className="knowledge-citation-context"
       role="region"
     >
-      {query.isPending ? (
+      {authorizing ? (
         <p role="status" aria-live="polite">正在加载引用上下文…</p>
       ) : null}
       {presentedError === null ? null : (
@@ -117,7 +118,7 @@ export function KnowledgeCitationContext({
           ) : null}
         </div>
       )}
-      {query.isSuccess ? (
+      {query.isSuccess && !authorizing ? (
         <ContextSuccess
           context={query.data}
           downloadUrl={buildKnowledgeDownloadUrl(projectId, citation.resourceId)}
