@@ -10,6 +10,7 @@ import { parseApiErrorResponse } from "./parseApiErrorResponse.ts";
 
 export type KnowledgeCapabilities = components["schemas"]["KnowledgeCapabilities"];
 export type KnowledgeCitation = components["schemas"]["KnowledgeCitation"];
+export type KnowledgeChunkContext = components["schemas"]["ChunkContextResponse"];
 export type KnowledgeLocator = KnowledgeCitation["locator"];
 export type KnowledgeResource = components["schemas"]["KnowledgeResourceResponse"];
 export type KnowledgeResourcePage = components["schemas"]["KnowledgeResourcePage"];
@@ -57,6 +58,69 @@ function requestError(error: unknown, context: string, signal: AbortSignal): Api
     context,
     cause: error,
   });
+}
+
+export async function fetchKnowledgeChunkContext({
+  projectId,
+  resourceId,
+  resourceVersionId,
+  chunkId,
+  signal,
+}: {
+  projectId: string;
+  resourceId: string;
+  resourceVersionId: string;
+  chunkId: string;
+  signal: AbortSignal;
+}): Promise<KnowledgeChunkContext> {
+  const context =
+    "GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}/chunks/{chunk_id}";
+  try {
+    const { data, error, response } = await knowledgeClient().GET(
+      "/api/v1/projects/{project_id}/knowledge/resources/{resource_id}/chunks/{chunk_id}",
+      {
+        params: {
+          path: {
+            project_id: projectId,
+            resource_id: resourceId,
+            chunk_id: chunkId,
+          },
+        },
+        signal,
+      },
+    );
+    if (data === undefined) throw responseError(error, response, context);
+    if (!matchesComponentSchema("ChunkContextResponse", data)) {
+      throw contractError(context);
+    }
+    if (
+      data.resourceId !== resourceId ||
+      data.resourceVersionId !== resourceVersionId ||
+      data.hit.id !== chunkId
+    ) {
+      throw contractError(context);
+    }
+    return data;
+  } catch (error) {
+    throw requestError(error, context, signal);
+  }
+}
+
+export function buildKnowledgeDownloadUrl(projectId: string, resourceId: string): string {
+  const base = apiOrigins.identity.endsWith("/")
+    ? apiOrigins.identity
+    : `${apiOrigins.identity}/`;
+  const path = [
+    "api",
+    "v1",
+    "projects",
+    encodeURIComponent(projectId),
+    "knowledge",
+    "resources",
+    encodeURIComponent(resourceId),
+    "download",
+  ].join("/");
+  return new URL(path, base).toString();
 }
 
 export async function fetchKnowledgeResources({

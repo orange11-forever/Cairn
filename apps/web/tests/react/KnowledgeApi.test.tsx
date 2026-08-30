@@ -1,6 +1,28 @@
 import { afterEach, expect, test, vi } from "vitest";
 
-import { fetchKnowledgeResources } from "../../src/api/knowledge.ts";
+import {
+  buildKnowledgeDownloadUrl,
+  fetchKnowledgeChunkContext,
+  fetchKnowledgeResources,
+} from "../../src/api/knowledge.ts";
+
+const PROJECT_ID = "00000000-0000-4000-8000-000000004001";
+const RESOURCE_ID = "00000000-0000-4000-8000-000000005001";
+const RESOURCE_VERSION_ID = "00000000-0000-4000-8000-000000006001";
+const CHUNK_ID = "00000000-0000-4000-8000-000000007001";
+
+const validContext = {
+  resourceId: RESOURCE_ID,
+  resourceVersionId: RESOURCE_VERSION_ID,
+  before: null,
+  hit: {
+    id: CHUNK_ID,
+    ordinal: 3,
+    text: "命中原文",
+    locator: { type: "pdf", page: 4 },
+  },
+  after: null,
+} as const;
 
 function requestDetails(input: RequestInfo | URL) {
   const request = input as Request;
@@ -10,6 +32,122 @@ function requestDetails(input: RequestInfo | URL) {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+});
+
+test("fetches a schema-valid citation context from the generated client", async () => {
+  const requests: Request[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    requests.push(input as Request);
+    return Response.json(validContext);
+  }));
+
+  await expect(fetchKnowledgeChunkContext({
+    projectId: PROJECT_ID,
+    resourceId: RESOURCE_ID,
+    resourceVersionId: RESOURCE_VERSION_ID,
+    chunkId: CHUNK_ID,
+    signal: new AbortController().signal,
+  })).resolves.toEqual(validContext);
+
+  expect(requests).toHaveLength(1);
+  expect(requests[0]!.method).toBe("GET");
+  expect(new URL(requests[0]!.url).pathname).toBe(
+    `/api/v1/projects/${PROJECT_ID}/knowledge/resources/${RESOURCE_ID}/chunks/${CHUNK_ID}`,
+  );
+  expect(requests[0]!.credentials).toBe("include");
+});
+
+test("builds only the trusted Identity API download entry URL", () => {
+  const url = new URL(buildKnowledgeDownloadUrl("project/with slash", "resource?query"));
+  expect(url.origin).toBe("http://localhost:8080");
+  expect(url.pathname).toBe(
+    "/api/v1/projects/project%2Fwith%20slash/knowledge/resources/resource%3Fquery/download",
+  );
+  expect(url.search).toBe("");
+  expect(url.hash).toBe("");
+});
+
+test.each([
+  ["schema", { resourceId: RESOURCE_ID }],
+  ["resource", { ...validContext, resourceId: "00000000-0000-4000-8000-000000005099" }],
+  ["version", {
+    ...validContext,
+    resourceVersionId: "00000000-0000-4000-8000-000000006099",
+  }],
+  ["hit", {
+    ...validContext,
+    hit: { ...validContext.hit, id: "00000000-0000-4000-8000-000000007099" },
+  }],
+])("rejects %s citation-context contract mismatch", async (_caseName, body) => {
+  vi.stubGlobal("fetch", vi.fn(async () => Response.json(body)));
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+  await expect(fetchKnowledgeChunkContext({
+    projectId: PROJECT_ID,
+    resourceId: RESOURCE_ID,
+    resourceVersionId: RESOURCE_VERSION_ID,
+    chunkId: CHUNK_ID,
+    signal: new AbortController().signal,
+  })).rejects.toMatchObject({
+    kind: "contract",
+    context:
+      "GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}/chunks/{chunk_id}",
+    retryable: false,
+  });
+});
+
+test.each([401, 404, 503])("preserves citation-context HTTP %s details", async (status) => {
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+    code: status === 401 ? "session_invalid" : status === 404
+      ? "not_found" : "database_unavailable",
+    message: `安全错误 ${status}`,
+    traceId: `trace-context-${status}`,
+  }), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  })));
+
+  await expect(fetchKnowledgeChunkContext({
+    projectId: PROJECT_ID,
+    resourceId: RESOURCE_ID,
+    resourceVersionId: RESOURCE_VERSION_ID,
+    chunkId: CHUNK_ID,
+    signal: new AbortController().signal,
+  })).rejects.toMatchObject({
+    kind: "http",
+    status,
+    message: `安全错误 ${status}`,
+    traceId: `trace-context-${status}`,
+  });
+});
+
+test("maps a session abort without exposing the thrown cause", async () => {
+  const session = new AbortController();
+  vi.stubGlobal("fetch", vi.fn(async () => {
+    session.abort("session-ended");
+    throw { secret: "hidden-abort-cause" };
+  }));
+  await expect(fetchKnowledgeChunkContext({
+    projectId: PROJECT_ID,
+    resourceId: RESOURCE_ID,
+    resourceVersionId: RESOURCE_VERSION_ID,
+    chunkId: CHUNK_ID,
+    signal: session.signal,
+  })).rejects.toMatchObject({ kind: "aborted", message: "请求已被取消" });
+});
+
+test("maps an unexpected citation transport failure to a safe network error", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => { throw { secret: "hidden-network-cause" }; }));
+  await expect(fetchKnowledgeChunkContext({
+    projectId: PROJECT_ID,
+    resourceId: RESOURCE_ID,
+    resourceVersionId: RESOURCE_VERSION_ID,
+    chunkId: CHUNK_ID,
+    signal: new AbortController().signal,
+  })).rejects.toMatchObject({
+    kind: "network",
+    message: "无法连接服务器，请检查网络",
+  });
 });
 
 test("knowledge resource pages reject malformed successful responses", async () => {
