@@ -136,11 +136,22 @@ test("the citation hook requests the exact citation and stores it under its full
 
 test("remounting a citation context always reauthorizes", async () => {
   const requests: Request[] = [];
+  const refreshedContext = {
+    ...validContext,
+    hit: { ...validContext.hit, text: "重新授权后的原文" },
+  } as const;
+  const reauthorization = deferred<Response>();
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
     requests.push(input as Request);
-    return Response.json(validContext);
+    return requests.length === 1
+      ? Response.json(validContext)
+      : reauthorization.promise;
   }));
-  const client = queryClient();
+  const client = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, staleTime: Infinity, refetchOnMount: false },
+    },
+  });
   const session = new AbortController();
   const props = {
     organizationId: "org-a",
@@ -159,8 +170,38 @@ test("remounting a citation context always reauthorizes", async () => {
   const second = renderHook(() => useKnowledgeChunkContextQuery(props), {
     wrapper: wrapper(client),
   });
-  await waitFor(() => expect(requests).toHaveLength(2));
-  await waitFor(() => expect(second.result.current.isSuccess).toBe(true));
+
+  try {
+    await waitFor(() => expect(requests).toHaveLength(2));
+    act(() => reauthorization.resolve(Response.json(refreshedContext)));
+    await waitFor(() => expect(second.result.current.data).toEqual(refreshedContext));
+    expect(second.result.current.fetchStatus).toBe("idle");
+  } finally {
+    reauthorization.resolve(Response.json(refreshedContext));
+    second.unmount();
+    await vi.waitFor(() => expect(client.isFetching()).toBe(0));
+  }
+});
+
+test("a successful citation context stays stale despite conflicting client defaults", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => Response.json(validContext)));
+  const client = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, staleTime: Infinity, refetchOnMount: false },
+    },
+  });
+  const session = new AbortController();
+  const { result } = renderHook(() => useKnowledgeChunkContextQuery({
+    organizationId: "org-a",
+    projectId: PROJECT_ID,
+    resourceId: RESOURCE_ID,
+    resourceVersionId: RESOURCE_VERSION_ID,
+    chunkId: CHUNK_ID,
+    sessionSignal: session.signal,
+  }), { wrapper: wrapper(client) });
+
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  expect(result.current.isStale).toBe(true);
 });
 
 test("session abort cancels a pending citation context request", async () => {
