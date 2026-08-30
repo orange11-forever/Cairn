@@ -1,9 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { StrictMode } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 
+import { ApiError } from "../../src/api/errors.ts";
 import { shouldRetry } from "../../src/app/queryClient.ts";
+import { KnowledgeCitationContext } from "../../src/components/knowledge/KnowledgeCitationContext.tsx";
 import { KnowledgeSearch } from "../../src/components/knowledge/KnowledgeSearch.tsx";
 
 const ORGANIZATION_ID = "00000000-0000-4000-8000-000000002001";
@@ -250,6 +253,115 @@ test("a citation 404 refetches resources once and only marks searches stale", as
   await screen.findByRole("alert");
   await waitFor(() => expect(refetch).toHaveBeenCalledTimes(2));
   expect(invalidate).toHaveBeenCalledTimes(2);
+});
+
+test("delivers each 404 object once across StrictMode effect replay", async () => {
+  const firstError = new ApiError("http", "首次不可见资源", {
+    status: 404,
+    code: "not_found",
+    traceId: "trace-context-404-first",
+  });
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const citationKey = [
+    "project-knowledge",
+    ORGANIZATION_ID,
+    PROJECT_ID,
+    "citation-context",
+    RESOURCE_ID,
+    VERSION_ID,
+    CHUNK_ID,
+  ] as const;
+  client.setQueryData(citationKey, context);
+  const cachedQuery = client.getQueryCache().find({
+    queryKey: citationKey,
+    exact: true,
+  });
+  if (cachedQuery === undefined) throw new Error("citation cache setup failed");
+  cachedQuery.setState({
+    error: firstError,
+    errorUpdatedAt: Date.now(),
+    fetchStatus: "idle",
+    status: "error",
+  });
+
+  const pendingRequests: Array<{
+    request: Request;
+    resolve(response: Response): void;
+  }> = [];
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    return await new Promise<Response>((resolve, reject) => {
+      pendingRequests.push({ request, resolve });
+      request.signal.addEventListener("abort", () => {
+        reject(request.signal.reason ?? new DOMException("Aborted", "AbortError"));
+      }, { once: true });
+    });
+  }));
+  const refetch = vi.spyOn(client, "refetchQueries");
+  const invalidate = vi.spyOn(client, "invalidateQueries");
+  const rendered = render(
+    <StrictMode>
+      <QueryClientProvider client={client}>
+        <KnowledgeCitationContext
+          id="strict-context"
+          organizationId={ORGANIZATION_ID}
+          projectId={PROJECT_ID}
+          citation={citation}
+          sessionSignal={new AbortController().signal}
+        />
+      </QueryClientProvider>
+    </StrictMode>,
+  );
+
+  try {
+    await waitFor(() => expect(refetch).toHaveBeenCalledTimes(1));
+    expect(refetch).toHaveBeenNthCalledWith(1, {
+      queryKey: ["project-knowledge", ORGANIZATION_ID, PROJECT_ID, "resources"],
+      exact: true,
+      type: "active",
+    });
+    expect(invalidate).toHaveBeenCalledTimes(1);
+    expect(invalidate).toHaveBeenNthCalledWith(1, {
+      queryKey: ["project-knowledge", ORGANIZATION_ID, PROJECT_ID, "search"],
+      refetchType: "none",
+    });
+    await waitFor(() => {
+      expect(pendingRequests.filter(({ request }) => !request.signal.aborted))
+        .toHaveLength(1);
+    });
+
+    const activeRequest = pendingRequests.find(({ request }) => !request.signal.aborted);
+    if (activeRequest === undefined) throw new Error("active citation request missing");
+    activeRequest.resolve(new Response(JSON.stringify({
+      code: "not_found",
+      message: "再次不可见资源",
+      traceId: "trace-context-404-second",
+    }), { status: 404, headers: { "Content-Type": "application/json" } }));
+
+    await waitFor(() => expect(refetch).toHaveBeenCalledTimes(2));
+    expect(refetch).toHaveBeenNthCalledWith(2, {
+      queryKey: ["project-knowledge", ORGANIZATION_ID, PROJECT_ID, "resources"],
+      exact: true,
+      type: "active",
+    });
+    expect(invalidate).toHaveBeenCalledTimes(2);
+    expect(invalidate).toHaveBeenNthCalledWith(2, {
+      queryKey: ["project-knowledge", ORGANIZATION_ID, PROJECT_ID, "search"],
+      refetchType: "none",
+    });
+    expect(await screen.findByText("请求编号：trace-context-404-second"))
+      .toBeInTheDocument();
+  } finally {
+    for (const pending of pendingRequests) {
+      if (!pending.request.signal.aborted) {
+        pending.resolve(Response.json(context));
+      }
+    }
+    rendered.unmount();
+    await vi.waitFor(() => expect(client.isFetching()).toBe(0));
+  }
 });
 
 test("collapsing aborts a pending context without rendering an abort error", async () => {
