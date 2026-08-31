@@ -87,17 +87,24 @@ function assertKnowledgeEndpointContracts(readme, documentName) {
   }
 }
 
-function findDeliveryStatement(document, documentName, taskName, capabilityPattern) {
+function findTaskStatement(document, documentName, taskName, capabilityPattern) {
+  const taskBoundary = /(?=(?:Stage 3A )?Task \d+(?:–\d+)?(?:\b|[：|]))/;
+  const targetTask = new RegExp(
+    `^(?:Stage 3A )?${escapeRegExp(taskName)}(?:\\b|[：|])`,
+  );
   const statement = document
     .split("\n")
-    .find((line) =>
-      line.includes(taskName) &&
-      capabilityPattern.test(line) &&
-      /(?:已交付|已完成)/.test(line),
-    );
+    .flatMap((line) => line.split(taskBoundary))
+    .map((segment) => segment.trim())
+    .find((segment) => targetTask.test(segment) && capabilityPattern.test(segment));
   assert.ok(
     statement,
-    `${documentName} must identify ${taskName} ${capabilityPattern.source} as delivered`,
+    `${documentName} must contain a ${taskName} ${capabilityPattern.source} statement`,
+  );
+  assert.match(
+    statement,
+    /(?:已交付|已完成)/,
+    `${documentName} ${taskName} capability statement must carry its own delivery status`,
   );
   return statement;
 }
@@ -105,7 +112,7 @@ function findDeliveryStatement(document, documentName, taskName, capabilityPatte
 function assertTask16PublicDelivery(document, documentName) {
   // Break caught: one public status surface regresses Task 15 search facts, weakens
   // the Task 16 reauthorization/download safety boundary, or presents deferred UI as shipped.
-  const task15Statement = findDeliveryStatement(
+  const task15Statement = findTaskStatement(
     document,
     documentName,
     "Task 15",
@@ -118,11 +125,16 @@ function assertTask16PublicDelivery(document, documentName) {
   );
   assert.match(
     task15Statement,
-    /(?:混合检索|关键词降级)/,
-    `${documentName} Task 15 delivery must retain hybrid-search or keyword-fallback behavior`,
+    /混合检索/,
+    `${documentName} Task 15 delivery must retain hybrid-search behavior`,
+  );
+  assert.match(
+    task15Statement,
+    /关键词降级/,
+    `${documentName} Task 15 delivery must retain keyword-fallback behavior`,
   );
 
-  const task16Statement = findDeliveryStatement(
+  const task16Statement = findTaskStatement(
     document,
     documentName,
     "Task 16",
