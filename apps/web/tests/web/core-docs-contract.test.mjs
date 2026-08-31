@@ -136,7 +136,10 @@ test("root README publishes a concise current delivery snapshot", async () => {
   assert.ok(apiSdkBoundary, "README must include the API / SDK delivery boundary");
   assert.match(apiSdkBoundary, /SDK[^|]*导出[^|]*OpenAPI schema[^|]*运行时校验器/);
   assert.match(apiSdkBoundary, /Web API 适配器[^|]*OpenAPI `date-time`[^|]*校验/);
-  assert.match(readme, /上传、资源操作、引用上下文与下载[^。\n]*延后/);
+  assert.match(
+    readme,
+    /Web 上传[^\n]*资源详情[^\n]*重试\/删除[^\n]*全文格式化预览[^\n]*生成式回答[^\n]*Mock[^\n]*(?:后续|尚未|延后)/,
+  );
   assert.doesNotMatch(readme, /搜索结果[^；。\n]*(?:后续|尚未|延后)/);
   assert.match(readme, /```text\nCairn\n├── apps\//);
   assert.doesNotMatch(readme, /```text\nCarin\n/);
@@ -195,7 +198,7 @@ test("root documentation publishes Stage 2.5A without expanding the UI boundary"
   assert.match(readme, /Task 13.*Web 知识工作区基础.*已交付/);
 });
 
-test("public documentation records Task 15 real search and its remaining Web scope", async () => {
+test("public documentation records Task 16 citation context and authorized download", async () => {
   const [rootReadme, apiReadme, architecture] = await Promise.all([
     readFile(new URL("README.md", repositoryRoot), "utf8"),
     readFile(new URL("apps/api/README.md", repositoryRoot), "utf8"),
@@ -207,16 +210,23 @@ test("public documentation records Task 15 real search and its remaining Web sco
     ["apps/api/README.md", apiReadme],
     ["docs/architecture.md", architecture],
   ]) {
-    assert.match(document, /Task 14[^\n]*资源列表[^\n]*(?:已交付|已完成)/, documentName);
     assert.match(document, /Task 15[^\n]*(?:真实)?知识搜索结果[^\n]*(?:已交付|已完成)/, documentName);
-    assert.match(document, /locator|定位信息/, documentName);
-    assert.match(document, /混合检索|关键词降级/, documentName);
-    assert.match(document, /上传[^\n]*引用[^\n]*(?:后续|尚未|延后)/, documentName);
-    assert.doesNotMatch(document, /搜索结果[^；。\n]*(?:后续|尚未|延后)/, documentName);
+    assert.match(document, /Task 16[^\n]*引用上下文[^\n]*下载[^\n]*(?:已交付|已完成)/, documentName);
+    assert.match(document, /前文[^\n]*命中[^\n]*后文|前后文/, documentName);
+    assert.match(document, /实时授权|重新授权/, documentName);
+    assert.match(
+      document,
+      /上传[^\n]*(?:资源操作|重试|删除)[^\n]*(?:后续|尚未|延后)/,
+      documentName,
+    );
+    assert.match(document, /生成式回答[^\n]*(?:后续|尚未|延后)/, documentName);
+    assert.match(document, /Mock[^\n]*(?:后续|尚未|延后|仍)/, documentName);
+    assert.doesNotMatch(
+      document,
+      /引用上下文(?:与|\/)?下载[^；。\n]*(?:后续|尚未|延后)/,
+      documentName,
+    );
   }
-
-  assert.match(rootReadme, /文档、上传和问答 UI[^\n]*Node mock/);
-  assert.match(architecture, /文档、上传和问答[^\n]*Node mock/);
 });
 
 test("API documentation binds all ten knowledge routes to their response contracts", async () => {
