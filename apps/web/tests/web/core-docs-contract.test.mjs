@@ -87,6 +87,94 @@ function assertKnowledgeEndpointContracts(readme, documentName) {
   }
 }
 
+function findDeliveryStatement(document, documentName, taskName, capabilityPattern) {
+  const statement = document
+    .split("\n")
+    .find((line) =>
+      line.includes(taskName) &&
+      capabilityPattern.test(line) &&
+      /(?:已交付|已完成)/.test(line),
+    );
+  assert.ok(
+    statement,
+    `${documentName} must identify ${taskName} ${capabilityPattern.source} as delivered`,
+  );
+  return statement;
+}
+
+function assertTask16PublicDelivery(document, documentName) {
+  // Break caught: one public status surface regresses Task 15 search facts, weakens
+  // the Task 16 reauthorization/download safety boundary, or presents deferred UI as shipped.
+  const task15Statement = findDeliveryStatement(
+    document,
+    documentName,
+    "Task 15",
+    /真实知识搜索结果/,
+  );
+  assert.match(
+    task15Statement,
+    /(?:locator|定位信息)/,
+    `${documentName} Task 15 delivery must retain locator information`,
+  );
+  assert.match(
+    task15Statement,
+    /(?:混合检索|关键词降级)/,
+    `${documentName} Task 15 delivery must retain hybrid-search or keyword-fallback behavior`,
+  );
+
+  const task16Statement = findDeliveryStatement(
+    document,
+    documentName,
+    "Task 16",
+    /引用上下文[^\n]*授权下载/,
+  );
+  assert.match(
+    task16Statement,
+    /纯文本/,
+    `${documentName} Task 16 context must be described as plain text`,
+  );
+  assert.match(
+    task16Statement,
+    /前文[^\n]*命中(?:片段)?[^\n]*后文/,
+    `${documentName} Task 16 context must preserve before, hit, after ordering`,
+  );
+  assert.match(
+    task16Statement,
+    /重新展开[^；。\n]*重新授权/,
+    `${documentName} Task 16 re-expansion must reauthorize context`,
+  );
+  assert.match(
+    task16Statement,
+    /下载[^；。\n]*新标签页[^；。\n]*Identity API/,
+    `${documentName} Task 16 download must open a new tab at the Identity API`,
+  );
+  assert.match(
+    task16Statement,
+    /实时授权后[^；。\n]*`307`[^；。\n]*短时效对象地址/,
+    `${documentName} Task 16 download must authorize live before a 307 to a short-lived object address`,
+  );
+  assert.match(
+    task16Statement,
+    /Web 不(?:读取或缓存|缓存或读取)最终预签名 URL/,
+    `${documentName} must forbid Web from reading or caching the final presigned URL`,
+  );
+  assert.match(
+    task16Statement,
+    /Web 上传、资源详情与重试\/删除、全文格式化预览、生成式回答和 Mock 退场仍在后续任务/,
+    `${documentName} must retain the complete deferred Web boundary`,
+  );
+  assert.doesNotMatch(
+    document,
+    /引用上下文[^；。\n]*(?:后续|尚未|延后|未交付|不交付)/,
+    `${documentName} must not defer citation context`,
+  );
+  assert.doesNotMatch(
+    document,
+    /(?:授权)?下载[^；。\n]*(?:后续|尚未|延后|未交付|不交付)/,
+    `${documentName} must not defer authorized download`,
+  );
+}
+
 test("endpoint inventory does not infer parent routes from child route text", () => {
   // Break caught: substring matching lets child routes masquerade as the missing
   // POST/GET project collection and GET project detail inventory entries.
@@ -205,28 +293,9 @@ test("public documentation records Task 16 citation context and authorized downl
     readFile(new URL("docs/architecture.md", repositoryRoot), "utf8"),
   ]);
 
-  for (const [documentName, document] of [
-    ["README.md", rootReadme],
-    ["apps/api/README.md", apiReadme],
-    ["docs/architecture.md", architecture],
-  ]) {
-    assert.match(document, /Task 15[^\n]*(?:真实)?知识搜索结果[^\n]*(?:已交付|已完成)/, documentName);
-    assert.match(document, /Task 16[^\n]*引用上下文[^\n]*下载[^\n]*(?:已交付|已完成)/, documentName);
-    assert.match(document, /前文[^\n]*命中[^\n]*后文|前后文/, documentName);
-    assert.match(document, /实时授权|重新授权/, documentName);
-    assert.match(
-      document,
-      /上传[^\n]*(?:资源操作|重试|删除)[^\n]*(?:后续|尚未|延后)/,
-      documentName,
-    );
-    assert.match(document, /生成式回答[^\n]*(?:后续|尚未|延后)/, documentName);
-    assert.match(document, /Mock[^\n]*(?:后续|尚未|延后|仍)/, documentName);
-    assert.doesNotMatch(
-      document,
-      /引用上下文(?:与|\/)?下载[^；。\n]*(?:后续|尚未|延后)/,
-      documentName,
-    );
-  }
+  assertTask16PublicDelivery(rootReadme, "README.md");
+  assertTask16PublicDelivery(apiReadme, "apps/api/README.md");
+  assertTask16PublicDelivery(architecture, "docs/architecture.md");
 });
 
 test("API documentation binds all ten knowledge routes to their response contracts", async () => {
