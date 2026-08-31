@@ -118,6 +118,7 @@ const KNOWLEDGE_RESOURCE_ID = KNOWLEDGE_SEARCH_RESPONSE.results[0].resourceId;
 const KNOWLEDGE_RESOURCE_VERSION_ID =
   KNOWLEDGE_SEARCH_RESPONSE.results[0].resourceVersionId;
 const KNOWLEDGE_CHUNK_ID = KNOWLEDGE_SEARCH_RESPONSE.results[0].chunkId;
+const KNOWLEDGE_NO_WHITESPACE_TOKEN = "NoWhitespaceOverflowBoundary".repeat(18);
 const KNOWLEDGE_CHUNK_CONTEXT = {
   resourceId: KNOWLEDGE_RESOURCE_ID,
   resourceVersionId: KNOWLEDGE_RESOURCE_VERSION_ID,
@@ -135,7 +136,7 @@ const KNOWLEDGE_CHUNK_CONTEXT = {
   hit: {
     id: KNOWLEDGE_CHUNK_ID,
     ordinal: 11,
-    text: `命中片段保留换行\n${"NoWhitespaceOverflowBoundary".repeat(18)}`,
+    text: `命中片段保留换行\n${KNOWLEDGE_NO_WHITESPACE_TOKEN}`,
     locator: {
       type: "markdown",
       headingPath: ["平台运行", "故障升级与跨区域恢复"],
@@ -290,27 +291,56 @@ async function checkKnowledgeResourceLayout(page, expect, screenshotDir, viewpor
   await page.getByRole("button", { name: "查看引用上下文" }).click();
   await page.waitForSelector(".knowledge-citation-context");
   await page.waitForSelector('.knowledge-citation-chunk[data-hit="true"]');
-  const contextLayout = await page.evaluate(() => {
+  const contextLayout = await page.evaluate((expectedLongToken) => {
     const panel = document.querySelector(".knowledge-citation-context");
     const panelRect = panel?.getBoundingClientRect();
     const hit = document.querySelector('.knowledge-citation-chunk[data-hit="true"]');
     const download = document.querySelector(".knowledge-citation-download");
+    const measure = (selector, kind) =>
+      [...document.querySelectorAll(selector)].map((element, index) => ({
+        kind,
+        index,
+        clientWidth: element.clientWidth,
+        scrollWidth: element.scrollWidth,
+      }));
     return {
       insideViewport:
         panelRect != null && panelRect.left >= 0 && panelRect.right <= window.innerWidth,
       labels: [...document.querySelectorAll(".knowledge-citation-chunk strong")]
         .map((node) => node.textContent.trim()),
       hitVisible: hit !== null,
+      longTokenVisible: hit?.textContent.includes(expectedLongToken) ?? false,
       downloadTarget: download?.getAttribute("target"),
       downloadRel: download?.getAttribute("rel"),
+      internalWidths: [
+        ...measure(".knowledge-citation-context", "panel"),
+        ...measure(".knowledge-citation-chunk", "chunk"),
+        ...measure(".knowledge-citation-chunk p", "text"),
+        ...measure(".knowledge-citation-chunk-heading span", "locator"),
+      ],
     };
-  });
+  }, KNOWLEDGE_NO_WHITESPACE_TOKEN);
   expect(contextLayout.insideViewport, `${viewport.name} 引用上下文超出视口`);
   expect(
     contextLayout.labels.join(" | ") === "前文 | 命中片段 | 后文",
     `${viewport.name} 引用顺序错误：${contextLayout.labels.join(" | ")}`,
   );
   expect(contextLayout.hitVisible, `${viewport.name} 未显示命中片段层级`);
+  expect(contextLayout.longTokenVisible, `${viewport.name} 未完整渲染长 token`);
+  expect(
+    contextLayout.internalWidths.length === 10,
+    `${viewport.name} 引用内部宽度测量不完整：${contextLayout.internalWidths.length}/10`,
+  );
+  const clippedCitationContent = contextLayout.internalWidths.filter(
+    ({ clientWidth, scrollWidth }) => scrollWidth > clientWidth,
+  );
+  expect(
+    clippedCitationContent.length === 0,
+    `${viewport.name} 引用内容被内部裁切：${clippedCitationContent
+      .map(({ kind, index, clientWidth, scrollWidth }) =>
+        `${kind}[${index}] ${scrollWidth}px/${clientWidth}px`)
+      .join(" / ")}`,
+  );
   expect(contextLayout.downloadTarget === "_blank", `${viewport.name} 下载未打开新标签页`);
   expect(
     contextLayout.downloadRel === "noopener noreferrer",
