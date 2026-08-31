@@ -114,6 +114,48 @@ const KNOWLEDGE_SEARCH_RESPONSE = {
   }],
 };
 
+const KNOWLEDGE_RESOURCE_ID = KNOWLEDGE_SEARCH_RESPONSE.results[0].resourceId;
+const KNOWLEDGE_RESOURCE_VERSION_ID =
+  KNOWLEDGE_SEARCH_RESPONSE.results[0].resourceVersionId;
+const KNOWLEDGE_CHUNK_ID = KNOWLEDGE_SEARCH_RESPONSE.results[0].chunkId;
+const KNOWLEDGE_CHUNK_CONTEXT = {
+  resourceId: KNOWLEDGE_RESOURCE_ID,
+  resourceVersionId: KNOWLEDGE_RESOURCE_VERSION_ID,
+  before: {
+    id: "00000000-0000-4000-8000-000000007002",
+    ordinal: 10,
+    text: "前文保留第一行\n前文保留第二行",
+    locator: {
+      type: "markdown",
+      headingPath: ["平台运行", "故障升级前置检查"],
+      lineStart: 116,
+      lineEnd: 127,
+    },
+  },
+  hit: {
+    id: KNOWLEDGE_CHUNK_ID,
+    ordinal: 11,
+    text: `命中片段保留换行\n${"NoWhitespaceOverflowBoundary".repeat(18)}`,
+    locator: {
+      type: "markdown",
+      headingPath: ["平台运行", "故障升级与跨区域恢复"],
+      lineStart: 128,
+      lineEnd: 176,
+    },
+  },
+  after: {
+    id: "00000000-0000-4000-8000-000000007004",
+    ordinal: 12,
+    text: "后文记录恢复后的验证与复盘。",
+    locator: {
+      type: "markdown",
+      headingPath: ["平台运行", "恢复后验证"],
+      lineStart: 177,
+      lineEnd: 188,
+    },
+  },
+};
+
 const KNOWLEDGE_SEARCH_ERROR_QUERY = "跨区域搜索错误";
 const KNOWLEDGE_SEARCH_ERROR_MESSAGE =
   "KnowledgeSearchInfrastructureUnavailableKnowledgeSearchInfrastructureUnavailableKnowledgeSearchInfrastructureUnavailableKnowledgeSearchInfrastructureUnavailable";
@@ -166,7 +208,7 @@ async function readLayout(page) {
       brandImageObjectFit: brandImageStyle?.objectFit ?? null,
       undersizedTargets: [
         ...document.querySelectorAll(
-          ".product-brand, .primary-nav a, .account-menu summary, button, select, textarea, input:not([type='radio']):not([type='checkbox'])",
+          ".product-brand, .primary-nav a, .account-menu summary, .knowledge-citation-download, button, select, textarea, input:not([type='radio']):not([type='checkbox'])",
         ),
       ]
         .filter((element) => {
@@ -243,6 +285,42 @@ async function checkKnowledgeResourceLayout(page, expect, screenshotDir, viewpor
   expect(
     searchedLayout.undersizedTargets.length === 0,
     `${viewport.name} 搜索页存在小于 44px 的交互目标：${searchedLayout.undersizedTargets.join(" / ")}`,
+  );
+
+  await page.getByRole("button", { name: "查看引用上下文" }).click();
+  await page.waitForSelector(".knowledge-citation-context");
+  await page.waitForSelector('.knowledge-citation-chunk[data-hit="true"]');
+  const contextLayout = await page.evaluate(() => {
+    const panel = document.querySelector(".knowledge-citation-context");
+    const panelRect = panel?.getBoundingClientRect();
+    const hit = document.querySelector('.knowledge-citation-chunk[data-hit="true"]');
+    const download = document.querySelector(".knowledge-citation-download");
+    return {
+      insideViewport:
+        panelRect != null && panelRect.left >= 0 && panelRect.right <= window.innerWidth,
+      labels: [...document.querySelectorAll(".knowledge-citation-chunk strong")]
+        .map((node) => node.textContent.trim()),
+      hitVisible: hit !== null,
+      downloadTarget: download?.getAttribute("target"),
+      downloadRel: download?.getAttribute("rel"),
+    };
+  });
+  expect(contextLayout.insideViewport, `${viewport.name} 引用上下文超出视口`);
+  expect(
+    contextLayout.labels.join(" | ") === "前文 | 命中片段 | 后文",
+    `${viewport.name} 引用顺序错误：${contextLayout.labels.join(" | ")}`,
+  );
+  expect(contextLayout.hitVisible, `${viewport.name} 未显示命中片段层级`);
+  expect(contextLayout.downloadTarget === "_blank", `${viewport.name} 下载未打开新标签页`);
+  expect(
+    contextLayout.downloadRel === "noopener noreferrer",
+    `${viewport.name} 下载链接缺少安全 rel`,
+  );
+  const expandedLayout = await readLayout(page);
+  expect(expandedLayout.overflow <= 0, `${viewport.name} 引用上下文横向溢出`);
+  expect(
+    expandedLayout.undersizedTargets.length === 0,
+    `${viewport.name} 引用操作目标小于 44px：${expandedLayout.undersizedTargets.join(" / ")}`,
   );
 
   await page.screenshot({
@@ -618,6 +696,19 @@ export async function checkResponsiveFoundation({
           traceId: KNOWLEDGE_SEARCH_TRACE_ID,
         },
       });
+    },
+  );
+  await page.route(
+    `**/api/v1/projects/${KNOWLEDGE_PROJECT_ID}/knowledge/resources/*/chunks/*`,
+    async (route) => {
+      const request = route.request();
+      expect(request.method() === "GET", "引用上下文必须使用 GET");
+      expect(
+        new URL(request.url()).pathname ===
+          `/api/v1/projects/${KNOWLEDGE_PROJECT_ID}/knowledge/resources/${KNOWLEDGE_RESOURCE_ID}/chunks/${KNOWLEDGE_CHUNK_ID}`,
+        `引用上下文路径错误：${request.url()}`,
+      );
+      await route.fulfill({ json: KNOWLEDGE_CHUNK_CONTEXT });
     },
   );
 
