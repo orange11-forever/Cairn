@@ -23,7 +23,7 @@
 | 基础设施 | 核心开发链路使用 PostgreSQL 16/pgvector 与 S3 兼容 MinIO；Redis、正式 Compose/Helm 部署和 OpenTelemetry 仍在规划。 |
 | 延后 | Web 上传、资源详情与重试/删除、全文格式化预览、生成式回答和 Mock 退场仍在后续任务；连接器、Agent 执行和完整模型 Provider 策略层尚未交付。现有通用文档、上传和问答 UI 仍由 Node mock 承载。 |
 
-## 阶段 2、2.5A 与 Stage 3A Task 1–16 已交付边界
+##  Stage 3A Task 1–16 已交付边界
 
 共享 API 契约、响应式 Web 与真实身份基础已经完成。阶段 2 已完成并交付项目、任务、依赖、状态机、事务性 Outbox 和有界 SSE 查询；Cairn 已完成阶段 2.5A，交付组织角色、项目 ACL 与成员角色管理 API；Stage 3A Task 1–11 已交付文件摄取和可发布索引基础，Task 12 混合搜索 API、Task 13 Web 知识工作区基础、Task 14 真实知识资源列表与 Task 15 真实知识搜索结果均已交付。Task 16 搜索卡片内按需引用上下文与授权下载已交付。
 
