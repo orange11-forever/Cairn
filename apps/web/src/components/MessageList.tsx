@@ -63,13 +63,13 @@ export function MessageList({ messages, pending = false }: MessageListProps) {
             {message.role === "assistant" ? (
               <MascotFigure
                 className="message-mascot"
-                label="Cairn 看板娘助手"
+                label="岑宁，Cairn 助手"
                 state="success"
               />
             ) : null}
             <div className="message-bubble">
               <span className="message-author">
-                {message.role === "assistant" ? "看板娘助手" : "你"}
+                {message.role === "assistant" ? "岑宁" : "你"}
               </span>
               <p className="message-text">{message.text}</p>
             {/*
@@ -95,11 +95,11 @@ export function MessageList({ messages, pending = false }: MessageListProps) {
           <li data-role="pending" className="message-pending">
             <MascotFigure
               className="message-mascot"
-              label="Cairn 看板娘助手"
+              label="岑宁，Cairn 助手"
               state="thinking"
             />
             <div className="message-bubble">
-              <span className="message-author">看板娘助手</span>
+              <span className="message-author">岑宁</span>
               <p className="message-text" aria-live="polite">正在检索知识文档…</p>
             </div>
           </li>

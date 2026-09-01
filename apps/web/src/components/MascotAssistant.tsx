@@ -66,18 +66,18 @@ export function MascotAssistant({
       <button
         aria-controls={panelId}
         aria-expanded={open}
-        aria-label="打开看板娘助手"
+        aria-label="打开岑宁助手"
         className="mascot-assistant-trigger"
         onClick={() => setOpen((current) => !current)}
         ref={triggerRef}
         type="button"
       >
-        <MascotFigure label="Cairn 看板娘" state={defaultState} />
+        <MascotFigure label="岑宁，Cairn 知识向导" state={defaultState} />
       </button>
 
       {open ? (
         <section
-          aria-label="看板娘助手"
+          aria-label="岑宁助手"
           className="mascot-assistant-panel"
           id={panelId}
           role="dialog"
@@ -88,7 +88,7 @@ export function MascotAssistant({
             </span>
             <h2>{copy.title}</h2>
             <button
-              aria-label="关闭看板娘助手"
+              aria-label="关闭岑宁助手"
               className="icon-button mascot-assistant-close"
               onClick={closePanel}
               type="button"
@@ -97,7 +97,7 @@ export function MascotAssistant({
             </button>
           </div>
           <div className="mascot-assistant-body">
-            <MascotFigure label="Cairn 看板娘助手" state={defaultState} variant="half" />
+            <MascotFigure label="岑宁，Cairn 助手" state={defaultState} variant="half" />
             <p>{copy.description}</p>
           </div>
         </section>

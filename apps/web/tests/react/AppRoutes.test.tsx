@@ -174,7 +174,7 @@ test("unauthenticated document route redirects to login", async () => {
   renderTestRoutes("/documents");
 
   expect(await screen.findByRole("heading", { name: "登录 Cairn" })).toBeInTheDocument();
-  expect(screen.getByRole("img", { name: "Cairn 看板娘" })).toBeInTheDocument();
+  expect(screen.getByRole("img", { name: "岑宁，Cairn 知识向导" })).toBeInTheDocument();
 });
 
 test("unauthenticated project route redirects to login", async () => {
@@ -283,10 +283,10 @@ test("authenticated routes use one extensible application shell", async () => {
   expect(screen.getByRole("heading", { level: 1, name: "知识文档" })).toBeInTheDocument();
   expect(screen.getByText("管理用于企业问答的内部资料。")).toBeInTheDocument();
 
-  const assistantTrigger = screen.getByRole("button", { name: "打开看板娘助手" });
+  const assistantTrigger = screen.getByRole("button", { name: "打开岑宁助手" });
   expect(assistantTrigger).toHaveAttribute("aria-expanded", "false");
   await user.click(assistantTrigger);
-  expect(screen.getByRole("dialog", { name: "看板娘助手" })).toHaveTextContent("知识文档");
+  expect(screen.getByRole("dialog", { name: "岑宁助手" })).toHaveTextContent("知识文档");
   expect(assistantTrigger).toHaveAttribute("aria-expanded", "true");
 });
 
@@ -325,8 +325,8 @@ test("the project route stays in the shared shell with project navigation and as
     "aria-current",
     "page",
   );
-  await user.click(screen.getByRole("button", { name: "打开看板娘助手" }));
-  expect(screen.getByRole("dialog", { name: "看板娘助手" })).toHaveTextContent("项目任务助手");
+  await user.click(screen.getByRole("button", { name: "打开岑宁助手" }));
+  expect(screen.getByRole("dialog", { name: "岑宁助手" })).toHaveTextContent("项目任务助手");
 });
 
 test.each([
@@ -474,8 +474,8 @@ test("the project knowledge route loads the selected project inside the shared k
   );
   expect(requests[0]?.credentials).toBe("include");
 
-  await user.click(screen.getByRole("button", { name: "打开看板娘助手" }));
-  expect(screen.getByRole("dialog", { name: "看板娘助手" })).toHaveTextContent("项目知识助手");
+  await user.click(screen.getByRole("button", { name: "打开岑宁助手" }));
+  expect(screen.getByRole("dialog", { name: "岑宁助手" })).toHaveTextContent("项目知识助手");
 });
 
 test("a read-only project reader can search real project knowledge", async () => {
@@ -1832,8 +1832,8 @@ test("the project knowledge assistant keeps its context with a trailing slash", 
   renderTestRoutes(`/projects/${projectId}/knowledge/`, { restoredIdentity: IDENTITY });
 
   expect(await screen.findByRole("heading", { level: 1, name: "项目知识" })).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "打开看板娘助手" }));
-  expect(screen.getByRole("dialog", { name: "看板娘助手" })).toHaveTextContent("项目知识助手");
+  await user.click(screen.getByRole("button", { name: "打开岑宁助手" }));
+  expect(screen.getByRole("dialog", { name: "岑宁助手" })).toHaveTextContent("项目知识助手");
 });
 
 test("account menu exposes identity and logout without duplicating session state", async () => {

@@ -76,7 +76,7 @@ export function AssistantPanel({ parentSignal }: { parentSignal?: AbortSignal })
             <div className="assistant-empty-state" role="status" aria-label="问答工作区">
               <WorkspaceStatus
                 state="empty"
-                mascot={{ label: "Cairn 问答助手", variant: "half" }}
+                mascot={{ label: "岑宁，Cairn 问答助手", variant: "half" }}
                 title="准备就绪"
                 description="选择一个常见问题，或直接输入你的问题。"
                 action={

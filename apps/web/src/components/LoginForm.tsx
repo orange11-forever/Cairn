@@ -148,7 +148,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
               />
             </span>
           )}
-          <MascotFigure variant="full" state="idle" label="Cairn 看板娘" />
+          <MascotFigure variant="full" state="idle" label="岑宁，Cairn 知识向导" />
         </section>
 
         <section className="login-card" aria-labelledby="login-title">

@@ -18,15 +18,16 @@ describe("MascotAssistant", () => {
     const user = userEvent.setup();
     renderAssistant();
 
-    const trigger = screen.getByRole("button", { name: "打开看板娘助手" });
+    const trigger = screen.getByRole("button", { name: "打开岑宁助手" });
     expect(trigger).toHaveAttribute("aria-expanded", "false");
 
     await user.click(trigger);
-    expect(screen.getByRole("dialog", { name: "看板娘助手" })).toHaveTextContent("知识文档");
+    expect(screen.getByRole("dialog", { name: "岑宁助手" })).toHaveTextContent("知识文档");
+    expect(screen.getByRole("img", { name: "岑宁，Cairn 助手" })).toBeInTheDocument();
     expect(trigger).toHaveAttribute("aria-expanded", "true");
 
     await user.keyboard("{Escape}");
-    expect(screen.queryByRole("dialog", { name: "看板娘助手" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "岑宁助手" })).toBeNull();
     expect(trigger).toHaveFocus();
   });
 
@@ -34,10 +35,10 @@ describe("MascotAssistant", () => {
     const user = userEvent.setup();
     renderAssistant("ask");
 
-    await user.click(screen.getByRole("button", { name: "打开看板娘助手" }));
-    expect(screen.getByRole("dialog", { name: "看板娘助手" })).toHaveTextContent("知识问答");
+    await user.click(screen.getByRole("button", { name: "打开岑宁助手" }));
+    expect(screen.getByRole("dialog", { name: "岑宁助手" })).toHaveTextContent("知识问答");
 
     await user.click(document.body);
-    expect(screen.queryByRole("dialog", { name: "看板娘助手" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "岑宁助手" })).toBeNull();
   });
 });

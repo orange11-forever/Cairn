@@ -5,6 +5,12 @@ import { MascotFigure } from "../../src/components/MascotFigure.tsx";
 import { WorkspaceStatus } from "../../src/components/WorkspaceStatus.tsx";
 
 describe("MascotFigure", () => {
+  test("uses the approved mascot name in its default accessible label", () => {
+    render(<MascotFigure />);
+
+    expect(screen.getByRole("img", { name: "岑宁，Cairn 知识向导" })).toBeInTheDocument();
+  });
+
   test("renders the requested mascot variant and explicit state", () => {
     render(<MascotFigure variant="half" state="thinking" label="看板娘正在检索" />);
 

@@ -25,7 +25,7 @@ const STATE_LABEL: Record<MascotState, string> = {
 export function MascotFigure({
   variant = "avatar",
   state = "idle",
-  label = "Cairn 看板娘",
+  label = "岑宁，Cairn 知识向导",
   className,
 }: MascotFigureProps) {
   const [imageStage, setImageStage] = useState<ImageStage>("primary");
