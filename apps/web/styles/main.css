@@ -1953,6 +1953,90 @@ summary:focus-visible {
   white-space: pre-wrap;
 }
 
+.knowledge-citation-toggle,
+.knowledge-citation-context-error button,
+.knowledge-citation-download {
+  min-height: 44px;
+}
+
+.knowledge-citation-toggle,
+.knowledge-citation-context-error button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.knowledge-citation-context {
+  min-width: 0;
+  margin-top: var(--space-3);
+  padding: var(--space-4);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface-subtle);
+}
+
+.knowledge-citation-chunks {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.knowledge-citation-chunk {
+  min-width: 0;
+  padding: var(--space-3);
+  border-left: 3px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.knowledge-citation-chunk[data-hit='true'] {
+  border-left-color: var(--color-accent-strong);
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
+}
+
+.knowledge-citation-chunk-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.knowledge-citation-chunk-heading span,
+.knowledge-citation-chunk p,
+.knowledge-citation-context-error {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.knowledge-citation-chunk-heading span {
+  color: var(--color-accent-strong);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.knowledge-citation-chunk p {
+  margin-bottom: 0;
+  white-space: pre-wrap;
+}
+
+.knowledge-citation-download {
+  display: inline-flex;
+  align-items: center;
+  margin-top: var(--space-4);
+}
+
+@media (max-width: 480px) {
+  .knowledge-citation-chunk-heading {
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .knowledge-citation-toggle,
+  .knowledge-citation-download {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
 .knowledge-resources {
   overflow: hidden;
   border: 1px solid var(--color-border);

@@ -480,17 +480,21 @@ test("the project knowledge route loads the selected project inside the shared k
 
 test("a read-only project reader can search real project knowledge", async () => {
   const projectId = "00000000-0000-4000-8000-000000004001";
+  const resourceId = "00000000-0000-4000-8000-000000005001";
+  const resourceVersionId = "00000000-0000-4000-8000-000000006001";
+  const chunkId = "00000000-0000-4000-8000-000000007001";
   const requests: Request[] = [];
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
     const request = input as Request;
     requests.push(request);
+    const pathname = new URL(request.url).pathname;
     if (request.method === "POST") {
       return jsonResponse({
         retrievalMode: "hybrid",
         results: [{
-          resourceId: "00000000-0000-4000-8000-000000005001",
-          resourceVersionId: "00000000-0000-4000-8000-000000006001",
-          chunkId: "00000000-0000-4000-8000-000000007001",
+          resourceId,
+          resourceVersionId,
+          chunkId,
           title: "只读资料",
           mediaType: "application/pdf",
           excerpt: "只读权限仍可检索",
@@ -499,10 +503,26 @@ test("a read-only project reader can search real project knowledge", async () =>
         }],
       });
     }
+    if (pathname ===
+      `/api/v1/projects/${projectId}/knowledge/resources/${resourceId}/chunks/${chunkId}`
+    ) {
+      return jsonResponse({
+        resourceId,
+        resourceVersionId,
+        before: null,
+        hit: {
+          id: chunkId,
+          ordinal: 1,
+          text: "只读权限仍可阅读引用原文",
+          locator: { type: "pdf", page: 2 },
+        },
+        after: null,
+      });
+    }
     return jsonResponse({
       capabilities: { canWrite: false },
       items: [knowledgeResource({
-        id: "00000000-0000-4000-8000-000000005001",
+        id: resourceId,
         title: "只读资料.pdf",
         mediaType: "application/pdf",
         sizeBytes: 1024,
@@ -522,6 +542,235 @@ test("a read-only project reader can search real project knowledge", async () =>
   expect(searchRequest).toBeDefined();
   expect(searchRequest!.headers.get("X-CSRF-Token")).toBe("csrf-test-token");
   await expect(searchRequest!.clone().json()).resolves.toEqual({ query: "只读检索", limit: 10 });
+
+  await user.click(screen.getByRole("button", { name: "查看引用上下文" }));
+  expect(await screen.findByText("只读权限仍可阅读引用原文")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "下载原文件（新标签页）" })).toHaveAttribute(
+    "href",
+    `http://localhost:8080/api/v1/projects/${projectId}/knowledge/resources/${resourceId}/download`,
+  );
+  expect(screen.getByText("只读访问")).toBeInTheDocument();
+  expect(requests.some((request) => new URL(request.url).pathname.endsWith("/download")))
+    .toBe(false);
+});
+
+test("a citation-only 404 keeps the project workspace and refreshes only resources", async () => {
+  const projectId = "00000000-0000-4000-8000-000000004001";
+  const resourceId = "00000000-0000-4000-8000-000000005001";
+  const resourceVersionId = "00000000-0000-4000-8000-000000006001";
+  const chunkId = "00000000-0000-4000-8000-000000007001";
+  let searchRequests = 0;
+  let resourceListRequests = 0;
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    const pathname = new URL(request.url).pathname;
+    if (request.method === "POST") {
+      searchRequests += 1;
+      return jsonResponse({
+        retrievalMode: "hybrid",
+        results: [{
+          resourceId,
+          resourceVersionId,
+          chunkId,
+          title: "撤销前结果",
+          mediaType: "application/pdf",
+          excerpt: "撤销前搜索摘录",
+          locator: { type: "pdf", page: 1 },
+          score: 0.9,
+        }],
+      });
+    }
+    if (pathname ===
+      `/api/v1/projects/${projectId}/knowledge/resources/${resourceId}/chunks/${chunkId}`
+    ) {
+      return jsonResponse({
+        code: "not_found",
+        message: "不可见资源",
+        traceId: "trace-context-resource-404",
+      }, 404);
+    }
+    resourceListRequests += 1;
+    return jsonResponse({
+      capabilities: { canWrite: false },
+      items: resourceListRequests === 1
+        ? [knowledgeResource({
+            id: resourceId,
+            title: "撤销前资料.pdf",
+            mediaType: "application/pdf",
+            sizeBytes: 1024,
+            status: "ready",
+          })]
+        : [],
+      nextCursor: null,
+    });
+  }));
+  const user = userEvent.setup();
+
+  renderTestRoutes(`/projects/${projectId}/knowledge`, { restoredIdentity: IDENTITY });
+
+  expect(await screen.findByText("撤销前资料.pdf")).toBeInTheDocument();
+  await user.type(screen.getByLabelText("搜索项目知识"), "资源撤销");
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+  expect(await screen.findByText("撤销前搜索摘录")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "查看引用上下文" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "该引用已不可用，请重新搜索",
+  );
+  expect(await screen.findByRole("heading", { name: "还没有知识资料" }))
+    .toBeInTheDocument();
+  expect(screen.getByLabelText("搜索项目知识")).toBeInTheDocument();
+  expect(screen.getByText("撤销前搜索摘录")).toBeInTheDocument();
+  expect(searchRequests).toBe(1);
+  expect(resourceListRequests).toBe(2);
+  expect(screen.queryByRole("link", { name: "下载原文件（新标签页）" })).toBeNull();
+});
+
+test("a citation 404 followed by a resource-list 404 removes revoked project knowledge", async () => {
+  const projectId = "00000000-0000-4000-8000-000000004001";
+  const resourceId = "00000000-0000-4000-8000-000000005001";
+  const resourceVersionId = "00000000-0000-4000-8000-000000006001";
+  const chunkId = "00000000-0000-4000-8000-000000007001";
+  let resourceListRequests = 0;
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    const pathname = new URL(request.url).pathname;
+    if (request.method === "POST") {
+      return jsonResponse({
+        retrievalMode: "hybrid",
+        results: [{
+          resourceId,
+          resourceVersionId,
+          chunkId,
+          title: "撤权前结果",
+          mediaType: "application/pdf",
+          excerpt: "撤权前搜索摘录",
+          locator: { type: "pdf", page: 1 },
+          score: 0.9,
+        }],
+      });
+    }
+    if (pathname ===
+      `/api/v1/projects/${projectId}/knowledge/resources/${resourceId}/chunks/${chunkId}`
+    ) {
+      return jsonResponse({
+        code: "not_found",
+        message: "不可见资源",
+        traceId: "trace-context-project-404",
+      }, 404);
+    }
+    resourceListRequests += 1;
+    if (resourceListRequests > 1) {
+      return jsonResponse({
+        code: "not_found",
+        message: "项目或知识资料不存在",
+        traceId: "trace-resources-project-404",
+      }, 404);
+    }
+    return jsonResponse({
+      capabilities: { canWrite: true },
+      items: [knowledgeResource({
+        id: resourceId,
+        title: "撤权前资料.pdf",
+        mediaType: "application/pdf",
+        sizeBytes: 1024,
+        status: "ready",
+      })],
+      nextCursor: null,
+    });
+  }));
+  const user = userEvent.setup();
+
+  renderTestRoutes(`/projects/${projectId}/knowledge`, { restoredIdentity: IDENTITY });
+
+  expect(await screen.findByText("撤权前资料.pdf")).toBeInTheDocument();
+  await user.type(screen.getByLabelText("搜索项目知识"), "项目撤权");
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+  expect(await screen.findByText("撤权前搜索摘录")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "查看引用上下文" }));
+
+  expect(await screen.findByText("项目或知识资料不存在")).toHaveAttribute(
+    "role",
+    "alert",
+  );
+  for (const staleText of [
+    "撤权前资料.pdf",
+    "撤权前搜索摘录",
+    "可维护资料",
+    "该引用已不可用，请重新搜索",
+  ]) {
+    expect(screen.queryByText(staleText)).toBeNull();
+  }
+  expect(screen.queryByLabelText("搜索项目知识")).toBeNull();
+  expect(screen.queryByRole("region", { name: "引用上下文" })).toBeNull();
+  expect(resourceListRequests).toBe(2);
+});
+
+test("a session-invalid citation context clears the authenticated page boundary", async () => {
+  const projectId = "00000000-0000-4000-8000-000000004001";
+  const resourceId = "00000000-0000-4000-8000-000000005001";
+  const resourceVersionId = "00000000-0000-4000-8000-000000006001";
+  const chunkId = "00000000-0000-4000-8000-000000007001";
+  const requests: Request[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    requests.push(request);
+    const pathname = new URL(request.url).pathname;
+    if (request.method === "POST") {
+      return jsonResponse({
+        retrievalMode: "hybrid",
+        results: [{
+          resourceId,
+          resourceVersionId,
+          chunkId,
+          title: "会话失效前结果",
+          mediaType: "application/pdf",
+          excerpt: "会话失效前搜索摘录",
+          locator: { type: "pdf", page: 1 },
+          score: 0.9,
+        }],
+      });
+    }
+    if (pathname ===
+      `/api/v1/projects/${projectId}/knowledge/resources/${resourceId}/chunks/${chunkId}`
+    ) {
+      return jsonResponse({
+        code: "session_invalid",
+        message: "会话已过期",
+        traceId: "trace-context-session-401",
+      }, 401);
+    }
+    return jsonResponse({
+      capabilities: { canWrite: true },
+      items: [knowledgeResource({
+        id: resourceId,
+        title: "会话失效前资料.pdf",
+        mediaType: "application/pdf",
+        sizeBytes: 1024,
+        status: "ready",
+      })],
+      nextCursor: null,
+    });
+  }));
+  const user = userEvent.setup();
+  const { queryClient } = renderTestRoutes(
+    `/projects/${projectId}/knowledge`,
+    { restoredIdentity: IDENTITY },
+  );
+
+  expect(await screen.findByText("会话失效前资料.pdf")).toBeInTheDocument();
+  await user.type(screen.getByLabelText("搜索项目知识"), "会话失效");
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+  expect(await screen.findByText("会话失效前搜索摘录")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "查看引用上下文" }));
+
+  expect(await screen.findByRole("heading", { name: "登录 Cairn" })).toBeInTheDocument();
+  expect(requests).toHaveLength(3);
+  expect(requests.every((request) => request.signal.aborted)).toBe(true);
+  expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
+  expect(screen.queryByText("会话失效前资料.pdf")).toBeNull();
+  expect(screen.queryByText("会话失效前搜索摘录")).toBeNull();
+  expect(screen.queryByRole("region", { name: "引用上下文" })).toBeNull();
 });
 
 test("a concealed search 404 clears all previously authorized project knowledge", async () => {

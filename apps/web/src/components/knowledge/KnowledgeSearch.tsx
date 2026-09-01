@@ -15,6 +15,7 @@ import {
   type SubmittedKnowledgeSearch,
   useKnowledgeSearchQuery,
 } from "../../queries/knowledge.ts";
+import { KnowledgeCitationContext } from "./KnowledgeCitationContext.tsx";
 
 export interface KnowledgeSearchProps {
   organizationId: string;
@@ -60,6 +61,7 @@ export function KnowledgeSearch({
   const [validationError, setValidationError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [search, setSearch] = useState<SubmittedKnowledgeSearch | null>(null);
+  const [resultTreeRevision, setResultTreeRevision] = useState(0);
   const onAccessUnavailableRef = useRef(onAccessUnavailable);
   const deliveredAccessErrorsRef = useRef(new WeakSet<ApiError>());
   const query = useKnowledgeSearchQuery({
@@ -94,6 +96,7 @@ export function KnowledgeSearch({
     setDraft(validation.query);
     setValidationError(null);
     setNotice(null);
+    setResultTreeRevision((current) => current + 1);
     if (search?.query === validation.query && search.limit === KNOWLEDGE_SEARCH_LIMIT) {
       void query.refetch();
       return;
@@ -178,14 +181,30 @@ export function KnowledgeSearch({
           </div>
         )}
         {search !== null && query.isSuccess ? (
-          <KnowledgeSearchResults response={query.data} />
+          <KnowledgeSearchResults
+            key={resultTreeRevision}
+            organizationId={organizationId}
+            projectId={projectId}
+            response={query.data}
+            sessionSignal={sessionSignal}
+          />
         ) : null}
       </div>
     </section>
   );
 }
 
-function KnowledgeSearchResults({ response }: { response: KnowledgeSearchResponse }) {
+function KnowledgeSearchResults({
+  organizationId,
+  projectId,
+  response,
+  sessionSignal,
+}: {
+  organizationId: string;
+  projectId: string;
+  response: KnowledgeSearchResponse;
+  sessionSignal: AbortSignal;
+}) {
   const fallback = response.retrievalMode === "keyword_fallback";
   return (
     <div className="knowledge-search-results">
@@ -206,7 +225,13 @@ function KnowledgeSearchResults({ response }: { response: KnowledgeSearchRespons
           <p>找到 {response.results.length} 个匹配片段</p>
           <ol className="knowledge-search-result-list" aria-label="知识搜索结果">
             {response.results.map((citation) => (
-              <KnowledgeSearchResult key={citation.chunkId} citation={citation} />
+              <KnowledgeSearchResult
+                key={citation.chunkId}
+                organizationId={organizationId}
+                projectId={projectId}
+                citation={citation}
+                sessionSignal={sessionSignal}
+              />
             ))}
           </ol>
         </>
@@ -215,7 +240,19 @@ function KnowledgeSearchResults({ response }: { response: KnowledgeSearchRespons
   );
 }
 
-function KnowledgeSearchResult({ citation }: { citation: KnowledgeCitation }) {
+function KnowledgeSearchResult({
+  organizationId,
+  projectId,
+  citation,
+  sessionSignal,
+}: {
+  organizationId: string;
+  projectId: string;
+  citation: KnowledgeCitation;
+  sessionSignal: AbortSignal;
+}) {
+  const panelId = useId();
+  const [expanded, setExpanded] = useState(false);
   return (
     <li className="knowledge-search-result">
       <article>
@@ -227,6 +264,24 @@ function KnowledgeSearchResult({ citation }: { citation: KnowledgeCitation }) {
           {formatKnowledgeLocator(citation.locator)}
         </p>
         <p className="knowledge-search-excerpt">{citation.excerpt}</p>
+        <button
+          aria-controls={panelId}
+          aria-expanded={expanded}
+          className="knowledge-citation-toggle"
+          type="button"
+          onClick={() => setExpanded((current) => !current)}
+        >
+          {expanded ? "收起引用上下文" : "查看引用上下文"}
+        </button>
+        {expanded ? (
+          <KnowledgeCitationContext
+            id={panelId}
+            organizationId={organizationId}
+            projectId={projectId}
+            citation={citation}
+            sessionSignal={sessionSignal}
+          />
+        ) : null}
       </article>
     </li>
   );

@@ -19,12 +19,39 @@ import { knowledgeKeys } from "../../src/queries/knowledge.ts";
 
 const PROJECT_ID = "00000000-0000-4000-8000-000000004001";
 const ORGANIZATION_ID = "00000000-0000-4000-8000-000000002001";
+const RESOURCE_ID = "00000000-0000-4000-8000-000000005001";
+const RESOURCE_VERSION_ID = "00000000-0000-4000-8000-000000006001";
+const CHUNK_ID = "00000000-0000-4000-8000-000000007001";
 const HOSTILE_TITLE = "<script data-hostile-title>title-marker</script>";
 const HOSTILE_EXCERPT = "<img src=x data-hostile-excerpt>excerpt-marker";
 const HOSTILE_MEDIA_TYPE = "application/x-<svg data-hostile-media>media-marker</svg>";
 const HOSTILE_LOCATOR = "<iframe data-hostile-locator>locator-marker</iframe>";
 const HOSTILE_ERROR_MESSAGE = "<script data-hostile-error>error-marker</script>";
 const HOSTILE_REQUEST_ID = "<img data-hostile-request-id>request-id-marker</img>";
+
+const lifecycleCitation = {
+  resourceId: RESOURCE_ID,
+  resourceVersionId: RESOURCE_VERSION_ID,
+  chunkId: CHUNK_ID,
+  title: "引用生命周期.pdf",
+  mediaType: "application/pdf",
+  excerpt: "引用生命周期摘录",
+  locator: { type: "pdf", page: 2 },
+  score: 0.9,
+} as const;
+
+const lifecycleContext = {
+  resourceId: RESOURCE_ID,
+  resourceVersionId: RESOURCE_VERSION_ID,
+  before: null,
+  hit: {
+    id: CHUNK_ID,
+    ordinal: 2,
+    text: "旧搜索已授权的引用原文",
+    locator: { type: "pdf", page: 2 },
+  },
+  after: null,
+} as const;
 
 function renderKnowledgeSearch(
   overrides: Partial<ComponentProps<typeof KnowledgeSearch>> = {},
@@ -297,6 +324,93 @@ test("normalization-equivalent resubmission reuses one exact search key and requ
       queryKey[2] === PROJECT_ID &&
       queryKey[3] === "search",
   }).map(({ queryKey }) => queryKey)).toEqual([searchKey]);
+});
+
+test("normalization-equivalent resubmission removes authorized detail and refreshes the same citation collapsed", async () => {
+  const requests: Request[] = [];
+  let searchAttempts = 0;
+  let contextAttempts = 0;
+  let resolveRefresh!: (response: Response) => void;
+  const refresh = new Promise<Response>((resolve) => {
+    resolveRefresh = resolve;
+  });
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    requests.push(request);
+    if (request.method === "POST") {
+      searchAttempts += 1;
+      return searchAttempts === 1
+        ? Response.json({ retrievalMode: "hybrid", results: [lifecycleCitation] })
+        : refresh;
+    }
+    contextAttempts += 1;
+    return Response.json(contextAttempts === 1
+      ? lifecycleContext
+      : {
+          ...lifecycleContext,
+          hit: { ...lifecycleContext.hit, text: "重新展开后新授权的引用原文" },
+        });
+  }));
+  const user = userEvent.setup();
+  renderKnowledgeSearch();
+
+  await user.type(screen.getByLabelText("搜索项目知识"), "  ＡＢＣ  ");
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+  await screen.findByText("引用生命周期摘录");
+  await user.click(screen.getByRole("button", { name: "查看引用上下文" }));
+  expect(await screen.findByText("旧搜索已授权的引用原文")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "下载原文件（新标签页）" }))
+    .toBeInTheDocument();
+
+  await user.clear(screen.getByLabelText("搜索项目知识"));
+  await user.type(screen.getByLabelText("搜索项目知识"), "ABC");
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+
+  expect(screen.queryByText("旧搜索已授权的引用原文")).toBeNull();
+  expect(screen.queryByRole("link", { name: "下载原文件（新标签页）" })).toBeNull();
+  expect(screen.queryByRole("region", { name: "引用上下文" })).toBeNull();
+  expect(requests.filter((request) => request.method === "GET")).toHaveLength(1);
+
+  resolveRefresh(Response.json({ retrievalMode: "hybrid", results: [lifecycleCitation] }));
+  await waitFor(() => expect(screen.queryByText("正在搜索项目知识…")).toBeNull());
+  const refreshedToggle = screen.getByRole("button", { name: "查看引用上下文" });
+  expect(refreshedToggle).toHaveAttribute("aria-expanded", "false");
+  expect(requests.filter((request) => request.method === "GET")).toHaveLength(1);
+
+  await user.click(refreshedToggle);
+  expect(await screen.findByText("重新展开后新授权的引用原文")).toBeInTheDocument();
+  expect(requests.filter((request) => request.method === "GET")).toHaveLength(2);
+});
+
+test("normalization-equivalent resubmission aborts a pending citation context request", async () => {
+  let contextRequest: Request | undefined;
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    if (request.method === "POST") {
+      return Response.json({ retrievalMode: "hybrid", results: [lifecycleCitation] });
+    }
+    contextRequest = request;
+    return await new Promise<Response>((_resolve, reject) => {
+      request.signal.addEventListener("abort", () => {
+        reject(request.signal.reason ?? new DOMException("Aborted", "AbortError"));
+      }, { once: true });
+    });
+  }));
+  const user = userEvent.setup();
+  renderKnowledgeSearch();
+
+  await user.type(screen.getByLabelText("搜索项目知识"), "  ＡＢＣ  ");
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+  await screen.findByText("引用生命周期摘录");
+  await user.click(screen.getByRole("button", { name: "查看引用上下文" }));
+  expect(await screen.findByText("正在加载引用上下文…")).toBeInTheDocument();
+
+  await user.clear(screen.getByLabelText("搜索项目知识"));
+  await user.type(screen.getByLabelText("搜索项目知识"), "ABC");
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+
+  await waitFor(() => expect(contextRequest?.signal.aborted).toBe(true));
+  expect(screen.queryByRole("region", { name: "引用上下文" })).toBeNull();
 });
 
 test("reports a concealed 404 ApiError through the access-unavailable callback", async () => {

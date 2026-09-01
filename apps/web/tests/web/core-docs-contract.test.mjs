@@ -87,6 +87,106 @@ function assertKnowledgeEndpointContracts(readme, documentName) {
   }
 }
 
+function findTaskStatement(document, documentName, taskName, capabilityPattern) {
+  const taskBoundary = /(?=(?:Stage 3A )?Task \d+(?:–\d+)?(?:\b|[：|]))/;
+  const targetTask = new RegExp(
+    `^(?:Stage 3A )?${escapeRegExp(taskName)}(?:\\b|[：|])`,
+  );
+  const statement = document
+    .split("\n")
+    .flatMap((line) => line.split(taskBoundary))
+    .map((segment) => segment.trim())
+    .find((segment) => targetTask.test(segment) && capabilityPattern.test(segment));
+  assert.ok(
+    statement,
+    `${documentName} must contain a ${taskName} ${capabilityPattern.source} statement`,
+  );
+  assert.match(
+    statement,
+    /(?:已交付|已完成)/,
+    `${documentName} ${taskName} capability statement must carry its own delivery status`,
+  );
+  return statement;
+}
+
+function assertTask16PublicDelivery(document, documentName) {
+  // Break caught: one public status surface regresses Task 15 search facts, weakens
+  // the Task 16 reauthorization/download safety boundary, or presents deferred UI as shipped.
+  const task15Statement = findTaskStatement(
+    document,
+    documentName,
+    "Task 15",
+    /真实知识搜索结果/,
+  );
+  assert.match(
+    task15Statement,
+    /(?:locator|定位信息)/,
+    `${documentName} Task 15 delivery must retain locator information`,
+  );
+  assert.match(
+    task15Statement,
+    /混合检索/,
+    `${documentName} Task 15 delivery must retain hybrid-search behavior`,
+  );
+  assert.match(
+    task15Statement,
+    /关键词降级/,
+    `${documentName} Task 15 delivery must retain keyword-fallback behavior`,
+  );
+
+  const task16Statement = findTaskStatement(
+    document,
+    documentName,
+    "Task 16",
+    /引用上下文[^\n]*授权下载/,
+  );
+  assert.match(
+    task16Statement,
+    /纯文本/,
+    `${documentName} Task 16 context must be described as plain text`,
+  );
+  assert.match(
+    task16Statement,
+    /前文[^\n]*命中(?:片段)?[^\n]*后文/,
+    `${documentName} Task 16 context must preserve before, hit, after ordering`,
+  );
+  assert.match(
+    task16Statement,
+    /重新展开[^；。\n]*重新授权/,
+    `${documentName} Task 16 re-expansion must reauthorize context`,
+  );
+  assert.match(
+    task16Statement,
+    /下载[^；。\n]*新标签页[^；。\n]*Identity API/,
+    `${documentName} Task 16 download must open a new tab at the Identity API`,
+  );
+  assert.match(
+    task16Statement,
+    /实时授权后[^；。\n]*`307`[^；。\n]*短时效对象地址/,
+    `${documentName} Task 16 download must authorize live before a 307 to a short-lived object address`,
+  );
+  assert.match(
+    task16Statement,
+    /Web 不(?:读取或缓存|缓存或读取)最终预签名 URL/,
+    `${documentName} must forbid Web from reading or caching the final presigned URL`,
+  );
+  assert.match(
+    task16Statement,
+    /Web 上传、资源详情与重试\/删除、全文格式化预览、生成式回答和 Mock 退场仍在后续任务/,
+    `${documentName} must retain the complete deferred Web boundary`,
+  );
+  assert.doesNotMatch(
+    document,
+    /引用上下文[^；。\n]*(?:后续|尚未|延后|未交付|不交付)/,
+    `${documentName} must not defer citation context`,
+  );
+  assert.doesNotMatch(
+    document,
+    /(?:授权)?下载[^；。\n]*(?:后续|尚未|延后|未交付|不交付)/,
+    `${documentName} must not defer authorized download`,
+  );
+}
+
 test("endpoint inventory does not infer parent routes from child route text", () => {
   // Break caught: substring matching lets child routes masquerade as the missing
   // POST/GET project collection and GET project detail inventory entries.
@@ -136,7 +236,10 @@ test("root README publishes a concise current delivery snapshot", async () => {
   assert.ok(apiSdkBoundary, "README must include the API / SDK delivery boundary");
   assert.match(apiSdkBoundary, /SDK[^|]*导出[^|]*OpenAPI schema[^|]*运行时校验器/);
   assert.match(apiSdkBoundary, /Web API 适配器[^|]*OpenAPI `date-time`[^|]*校验/);
-  assert.match(readme, /上传、资源操作、引用上下文与下载[^。\n]*延后/);
+  assert.match(
+    readme,
+    /Web 上传[^\n]*资源详情[^\n]*重试\/删除[^\n]*全文格式化预览[^\n]*生成式回答[^\n]*Mock[^\n]*(?:后续|尚未|延后)/,
+  );
   assert.doesNotMatch(readme, /搜索结果[^；。\n]*(?:后续|尚未|延后)/);
   assert.match(readme, /```text\nCairn\n├── apps\//);
   assert.doesNotMatch(readme, /```text\nCarin\n/);
@@ -195,28 +298,16 @@ test("root documentation publishes Stage 2.5A without expanding the UI boundary"
   assert.match(readme, /Task 13.*Web 知识工作区基础.*已交付/);
 });
 
-test("public documentation records Task 15 real search and its remaining Web scope", async () => {
+test("public documentation records Task 16 citation context and authorized download", async () => {
   const [rootReadme, apiReadme, architecture] = await Promise.all([
     readFile(new URL("README.md", repositoryRoot), "utf8"),
     readFile(new URL("apps/api/README.md", repositoryRoot), "utf8"),
     readFile(new URL("docs/architecture.md", repositoryRoot), "utf8"),
   ]);
 
-  for (const [documentName, document] of [
-    ["README.md", rootReadme],
-    ["apps/api/README.md", apiReadme],
-    ["docs/architecture.md", architecture],
-  ]) {
-    assert.match(document, /Task 14[^\n]*资源列表[^\n]*(?:已交付|已完成)/, documentName);
-    assert.match(document, /Task 15[^\n]*(?:真实)?知识搜索结果[^\n]*(?:已交付|已完成)/, documentName);
-    assert.match(document, /locator|定位信息/, documentName);
-    assert.match(document, /混合检索|关键词降级/, documentName);
-    assert.match(document, /上传[^\n]*引用[^\n]*(?:后续|尚未|延后)/, documentName);
-    assert.doesNotMatch(document, /搜索结果[^；。\n]*(?:后续|尚未|延后)/, documentName);
-  }
-
-  assert.match(rootReadme, /文档、上传和问答 UI[^\n]*Node mock/);
-  assert.match(architecture, /文档、上传和问答[^\n]*Node mock/);
+  assertTask16PublicDelivery(rootReadme, "README.md");
+  assertTask16PublicDelivery(apiReadme, "apps/api/README.md");
+  assertTask16PublicDelivery(architecture, "docs/architecture.md");
 });
 
 test("API documentation binds all ten knowledge routes to their response contracts", async () => {
