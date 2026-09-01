@@ -61,6 +61,7 @@ export function KnowledgeSearch({
   const [validationError, setValidationError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [search, setSearch] = useState<SubmittedKnowledgeSearch | null>(null);
+  const [resultTreeRevision, setResultTreeRevision] = useState(0);
   const onAccessUnavailableRef = useRef(onAccessUnavailable);
   const deliveredAccessErrorsRef = useRef(new WeakSet<ApiError>());
   const query = useKnowledgeSearchQuery({
@@ -95,6 +96,7 @@ export function KnowledgeSearch({
     setDraft(validation.query);
     setValidationError(null);
     setNotice(null);
+    setResultTreeRevision((current) => current + 1);
     if (search?.query === validation.query && search.limit === KNOWLEDGE_SEARCH_LIMIT) {
       void query.refetch();
       return;
@@ -180,6 +182,7 @@ export function KnowledgeSearch({
         )}
         {search !== null && query.isSuccess ? (
           <KnowledgeSearchResults
+            key={resultTreeRevision}
             organizationId={organizationId}
             projectId={projectId}
             response={query.data}
