@@ -1015,8 +1015,13 @@ async function readAssistantContentLayout(page) {
     const imageRect = image?.getBoundingClientRect();
     const copyRect = copy?.getBoundingClientRect();
     return {
+      currentSrc: image instanceof HTMLImageElement ? image.currentSrc : null,
       imageRight: imageRect?.right ?? null,
+      naturalHeight: image instanceof HTMLImageElement ? image.naturalHeight : null,
+      naturalWidth: image instanceof HTMLImageElement ? image.naturalWidth : null,
       copyLeft: copyRect?.left ?? null,
+      renderedHeight: imageRect?.height ?? null,
+      renderedWidth: imageRect?.width ?? null,
     };
   });
 }
@@ -1218,6 +1223,19 @@ export async function checkResponsiveFoundation({
         `${viewport.name} 看板娘助手面板未打开`,
       );
       const assistantLayout = await readAssistantContentLayout(page);
+      expect(
+        assistantLayout.currentSrc?.endsWith("/cairn-mascot-chibi.png") &&
+          assistantLayout.naturalWidth === 512 &&
+          assistantLayout.naturalHeight === 512,
+        `${viewport.name} 助手面板应使用 512px Q 版头像，实际为 ${assistantLayout.currentSrc} (${assistantLayout.naturalWidth}x${assistantLayout.naturalHeight})`,
+      );
+      expect(
+        assistantLayout.renderedWidth !== null &&
+          assistantLayout.renderedHeight !== null &&
+          Math.abs(assistantLayout.renderedWidth - 92) < 1 &&
+          Math.abs(assistantLayout.renderedHeight - 92) < 1,
+        `${viewport.name} 助手面板头像应渲染为 92px 正圆，实际为 ${assistantLayout.renderedWidth}x${assistantLayout.renderedHeight}`,
+      );
       expect(
         assistantLayout.imageRight !== null &&
           assistantLayout.copyLeft !== null &&

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, test } from "vitest";
@@ -20,10 +20,22 @@ describe("MascotAssistant", () => {
 
     const trigger = screen.getByRole("button", { name: "打开岑宁助手" });
     expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(within(trigger).getByRole("img", { name: "岑宁，Cairn 知识向导" })).toHaveAttribute(
+      "data-variant",
+      "avatar",
+    );
 
     await user.click(trigger);
-    expect(screen.getByRole("dialog", { name: "岑宁助手" })).toHaveTextContent("知识文档");
-    expect(screen.getByRole("img", { name: "岑宁，Cairn 助手" })).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", { name: "岑宁助手" });
+    expect(dialog).toHaveTextContent("知识文档");
+    expect(within(dialog).getByRole("img", { name: "岑宁，Cairn 助手" })).toHaveAttribute(
+      "data-variant",
+      "half",
+    );
+    expect(within(dialog).getByRole("img", { name: "岑宁，Cairn 助手" })).toHaveAttribute(
+      "src",
+      "/assets/brand/mascot/cairn-mascot-chibi.png",
+    );
     expect(trigger).toHaveAttribute("aria-expanded", "true");
 
     await user.keyboard("{Escape}");
