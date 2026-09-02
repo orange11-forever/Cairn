@@ -112,7 +112,7 @@ test("uses the mascot workspace status when no documents are available", async (
 
   const aside = screen.getByRole("complementary", { name: "工作区提示" });
   expect(await within(aside).findByRole("heading", { name: "建立知识空间" })).toBeInTheDocument();
-  expect(within(aside).getByRole("img", { name: "Cairn 看板娘" })).toBeInTheDocument();
+  expect(within(aside).getByRole("img", { name: "岑宁，Cairn 知识向导" })).toBeInTheDocument();
 });
 
 test("keeps recovery copy when an active status filter has no matches", async () => {

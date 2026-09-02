@@ -9,7 +9,7 @@ export interface MascotFigureProps {
   className?: string;
 }
 
-const MASCOT_AVATAR_SRC = "/assets/brand/mascot/cairn-mascot-avatar.png";
+const MASCOT_CHIBI_SRC = "/assets/brand/mascot/cairn-mascot-chibi.png";
 const MASCOT_FULL_SRC = "/assets/brand/mascot/cairn-mascot-transparent.png";
 const FALLBACK_SRC = "/assets/brand/cairn-logo.png";
 
@@ -25,11 +25,11 @@ const STATE_LABEL: Record<MascotState, string> = {
 export function MascotFigure({
   variant = "avatar",
   state = "idle",
-  label = "Cairn 看板娘",
+  label = "岑宁，Cairn 知识向导",
   className,
 }: MascotFigureProps) {
   const [imageStage, setImageStage] = useState<ImageStage>("primary");
-  const primarySrc = variant === "full" ? MASCOT_FULL_SRC : MASCOT_AVATAR_SRC;
+  const primarySrc = variant === "full" ? MASCOT_FULL_SRC : MASCOT_CHIBI_SRC;
   const src = imageStage === "primary" ? primarySrc : FALLBACK_SRC;
 
   const handleImageError = () => {
@@ -47,7 +47,7 @@ export function MascotFigure({
       ) : (
         <picture className="mascot-art">
           {variant === "full" && imageStage === "primary" ? (
-            <source media="(max-width: 599px)" srcSet={MASCOT_AVATAR_SRC} />
+            <source media="(max-width: 599px)" srcSet={MASCOT_CHIBI_SRC} />
           ) : null}
           <img
             alt={label}

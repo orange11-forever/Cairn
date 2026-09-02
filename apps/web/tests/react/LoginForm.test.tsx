@@ -63,7 +63,7 @@ test("显示 Cairn 品牌场景且不改变登录表单契约", () => {
 
   expect(screen.getByRole("region", { name: "Cairn 品牌场景" })).toBeInTheDocument();
   expect(screen.getByRole("img", { name: "Cairn" })).toBeInTheDocument();
-  expect(screen.getByRole("img", { name: "Cairn 看板娘" })).toHaveAttribute(
+  expect(screen.getByRole("img", { name: "岑宁，Cairn 知识向导" })).toHaveAttribute(
     "data-variant",
     "full",
   );

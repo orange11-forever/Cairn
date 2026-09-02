@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, test } from "vitest";
@@ -18,15 +18,28 @@ describe("MascotAssistant", () => {
     const user = userEvent.setup();
     renderAssistant();
 
-    const trigger = screen.getByRole("button", { name: "打开看板娘助手" });
+    const trigger = screen.getByRole("button", { name: "打开岑宁助手" });
     expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(within(trigger).getByRole("img", { name: "岑宁，Cairn 知识向导" })).toHaveAttribute(
+      "data-variant",
+      "avatar",
+    );
 
     await user.click(trigger);
-    expect(screen.getByRole("dialog", { name: "看板娘助手" })).toHaveTextContent("知识文档");
+    const dialog = screen.getByRole("dialog", { name: "岑宁助手" });
+    expect(dialog).toHaveTextContent("知识文档");
+    expect(within(dialog).getByRole("img", { name: "岑宁，Cairn 助手" })).toHaveAttribute(
+      "data-variant",
+      "half",
+    );
+    expect(within(dialog).getByRole("img", { name: "岑宁，Cairn 助手" })).toHaveAttribute(
+      "src",
+      "/assets/brand/mascot/cairn-mascot-chibi.png",
+    );
     expect(trigger).toHaveAttribute("aria-expanded", "true");
 
     await user.keyboard("{Escape}");
-    expect(screen.queryByRole("dialog", { name: "看板娘助手" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "岑宁助手" })).toBeNull();
     expect(trigger).toHaveFocus();
   });
 
@@ -34,10 +47,10 @@ describe("MascotAssistant", () => {
     const user = userEvent.setup();
     renderAssistant("ask");
 
-    await user.click(screen.getByRole("button", { name: "打开看板娘助手" }));
-    expect(screen.getByRole("dialog", { name: "看板娘助手" })).toHaveTextContent("知识问答");
+    await user.click(screen.getByRole("button", { name: "打开岑宁助手" }));
+    expect(screen.getByRole("dialog", { name: "岑宁助手" })).toHaveTextContent("知识问答");
 
     await user.click(document.body);
-    expect(screen.queryByRole("dialog", { name: "看板娘助手" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "岑宁助手" })).toBeNull();
   });
 });

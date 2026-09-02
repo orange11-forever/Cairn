@@ -23,6 +23,14 @@
   --color-success-bg: #e6f4ec;
   --color-empty-bg: #e7f0fb;
   --color-danger-bg: #fdeceb;
+  --color-selected-surface: #e2edf9;
+  --elevation-floating: 0 4px 8px rgb(23 32 42 / 14%);
+  --motion-feedback: 180ms;
+  --motion-ease-out: cubic-bezier(0.25, 1, 0.5, 1);
+  --z-sticky: 10;
+  --z-dropdown: 20;
+  --z-navigation: 30;
+  --z-popover: 40;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -57,6 +65,8 @@
   --color-success-bg: #1d3529;
   --color-empty-bg: #223248;
   --color-danger-bg: #3d2525;
+  --color-selected-surface: #263b52;
+  --elevation-floating: 0 4px 8px rgb(0 0 0 / 32%);
 }
 
 *,
@@ -150,10 +160,21 @@ a:hover {
   gap: var(--space-2);
   border-radius: var(--radius);
   color: var(--color-muted);
+  transition:
+    background-color var(--motion-feedback) var(--motion-ease-out),
+    box-shadow var(--motion-feedback) var(--motion-ease-out),
+    color var(--motion-feedback) var(--motion-ease-out);
+}
+
+.primary-nav a:hover {
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface));
+  color: var(--color-accent-strong);
+  text-decoration: none;
 }
 
 .primary-nav a[aria-current='page'] {
-  background: var(--color-empty-bg);
+  background: var(--color-selected-surface);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 38%, transparent);
   color: var(--color-accent-strong);
   font-weight: 700;
   text-decoration: none;
@@ -485,7 +506,7 @@ summary:focus-visible {
 
 .conversation-composer {
   position: sticky;
-  z-index: 10;
+  z-index: var(--z-sticky);
   bottom: 0;
   padding-top: var(--space-2);
   background: var(--color-canvas);
@@ -576,7 +597,7 @@ summary:focus-visible {
 .login-brand-scene {
   position: relative;
   /* isolation 建立独立层叠上下文，让三角装饰的 z-index 只在品牌区内部生效，
-     不会和页面其他部分（例如移动端 position: fixed 的底部导航，z-index: 30）互相干扰。 */
+     不会和页面其他部分（例如使用 --z-navigation 的移动端底部导航）互相干扰。 */
   isolation: isolate;
   display: grid;
   align-content: center;
@@ -761,7 +782,7 @@ summary:focus-visible {
 
 .account-menu-panel {
   position: absolute;
-  z-index: 20;
+  z-index: var(--z-dropdown);
   top: calc(100% + var(--space-2));
   right: 0;
   min-width: 240px;
@@ -769,7 +790,7 @@ summary:focus-visible {
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   background: var(--color-surface);
-  box-shadow: 0 16px 40px color-mix(in srgb, var(--color-canvas) 60%, transparent);
+  box-shadow: var(--elevation-floating);
 }
 
 .account-email {
@@ -973,7 +994,7 @@ summary:focus-visible {
 
 .mascot-assistant-panel {
   position: absolute;
-  z-index: 40;
+  z-index: var(--z-popover);
   top: calc(100% + var(--space-2));
   right: 0;
   width: min(340px, calc(100vw - 2 * var(--space-4)));
@@ -981,7 +1002,7 @@ summary:focus-visible {
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   background: var(--color-surface);
-  box-shadow: 0 18px 48px color-mix(in srgb, var(--color-canvas) 72%, transparent);
+  box-shadow: var(--elevation-floating);
 }
 
 .mascot-assistant-heading {
@@ -1381,21 +1402,24 @@ summary:focus-visible {
   gap: var(--space-1);
   width: 100%;
   padding: var(--space-3);
-  border: 0;
-  border-left: 3px solid transparent;
+  border: 1px solid transparent;
   background: transparent;
   color: var(--color-ink);
   text-align: left;
-  transition: background-color 140ms ease, border-color 140ms ease;
+  transition:
+    background-color var(--motion-feedback) var(--motion-ease-out),
+    box-shadow var(--motion-feedback) var(--motion-ease-out),
+    color var(--motion-feedback) var(--motion-ease-out);
 }
 
 .project-rail button:hover {
   background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface-subtle));
+  color: var(--color-accent-strong);
 }
 
 .project-rail button[aria-pressed='true'] {
-  border-left-color: var(--color-accent);
-  background: var(--color-empty-bg);
+  background: var(--color-selected-surface);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 42%, transparent);
   color: var(--color-accent-strong);
 }
 
@@ -1560,7 +1584,7 @@ summary:focus-visible {
 .task-acceptance {
   margin-top: var(--space-4);
   padding: var(--space-3);
-  border-left: 3px solid var(--color-jade);
+  border: 1px solid color-mix(in srgb, var(--color-jade) 42%, var(--color-border));
   background: color-mix(in srgb, var(--color-success-bg) 58%, var(--color-surface));
 }
 
@@ -1656,9 +1680,45 @@ summary:focus-visible {
 .task-transition-error {
   margin: 0 0 var(--space-3);
   padding: var(--space-3);
-  border-left: 3px solid var(--color-danger);
+  border: 1px solid color-mix(in srgb, var(--color-danger) 58%, var(--color-border));
   background: var(--color-danger-bg);
   color: var(--color-danger);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.project-empty-state {
+  align-items: center;
+}
+
+.project-empty-state .project-empty-mascot {
+  flex: 0 0 auto;
+}
+
+.project-empty-state .mascot-figure[data-variant='full'] .mascot-art > img,
+.project-empty-state .mascot-figure[data-variant='full'] .mascot-image-fallback {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.project-empty-state .project-empty-mascot .mascot-state {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
 }
 
 .project-workbench-skeleton {
@@ -2471,7 +2531,7 @@ summary:focus-visible {
 
   .primary-nav {
     position: fixed;
-    z-index: 30;
+    z-index: var(--z-navigation);
     right: 0;
     bottom: 0;
     left: 0;
@@ -2490,6 +2550,17 @@ summary:focus-visible {
     margin: 0;
     padding: var(--space-3);
     padding-bottom: calc(52px + var(--space-5) + env(safe-area-inset-bottom));
+  }
+
+  .project-empty-state .mascot-figure[data-variant='full'] .mascot-art > img,
+  .project-empty-state .mascot-figure[data-variant='full'] .mascot-image-fallback {
+    width: 120px;
+    height: 120px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    object-position: center;
   }
 
   .documents-panel,

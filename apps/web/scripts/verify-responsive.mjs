@@ -7,6 +7,53 @@ const VIEWPORTS = [
 ];
 
 const KNOWLEDGE_PROJECT_ID = "00000000-0000-4000-8000-000000004001";
+const RESPONSIVE_PROJECT_B_ID = "00000000-0000-4000-8000-000000004002";
+
+const RESPONSIVE_PROJECTS = [
+  {
+    id: KNOWLEDGE_PROJECT_ID,
+    name: "跨区域知识交付",
+    description: "验证项目轨道、任务工作区和长中文内容在各断点稳定呈现。",
+    createdAt: "2026-08-01T08:00:00Z",
+    updatedAt: "2026-08-22T08:00:00Z",
+  },
+  {
+    id: RESPONSIVE_PROJECT_B_ID,
+    name: "搜索体验升级",
+    description: "验证选择状态与受控任务区域的可访问关联。",
+    createdAt: "2026-08-03T08:00:00Z",
+    updatedAt: "2026-08-22T09:00:00Z",
+  },
+];
+
+const RESPONSIVE_TASKS = {
+  [KNOWLEDGE_PROJECT_ID]: [{
+    id: "00000000-0000-4000-8000-000000005011",
+    projectId: KNOWLEDGE_PROJECT_ID,
+    parentTaskId: null,
+    stageId: null,
+    title: "核对跨区域知识交付清单",
+    status: "todo",
+    priority: "high",
+    dueAt: "2026-09-12T08:00:00Z",
+    acceptanceCriteria: "每个交付区域都有负责人、恢复步骤和可核对的验收记录。",
+    createdAt: "2026-08-04T08:00:00Z",
+    updatedAt: "2026-08-22T09:00:00Z",
+  }],
+  [RESPONSIVE_PROJECT_B_ID]: [{
+    id: "00000000-0000-4000-8000-000000005012",
+    projectId: RESPONSIVE_PROJECT_B_ID,
+    parentTaskId: null,
+    stageId: null,
+    title: "复核搜索选择反馈",
+    status: "in_progress",
+    priority: "medium",
+    dueAt: null,
+    acceptanceCriteria: "桌面轨道与移动选择器都指向当前任务区域。",
+    createdAt: "2026-08-05T08:00:00Z",
+    updatedAt: "2026-08-22T10:00:00Z",
+  }],
+};
 
 const KNOWLEDGE_RESOURCE_PAGE = {
   capabilities: { canWrite: false },
@@ -162,6 +209,8 @@ const KNOWLEDGE_SEARCH_ERROR_MESSAGE =
   "KnowledgeSearchInfrastructureUnavailableKnowledgeSearchInfrastructureUnavailableKnowledgeSearchInfrastructureUnavailableKnowledgeSearchInfrastructureUnavailable";
 const KNOWLEDGE_SEARCH_TRACE_ID =
   "trace-knowledge-search-503-ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+const TASK_TRANSITION_TRACE_ID = "trace-responsive-task-transition-503";
+const TASK_TRANSITION_ERROR_MESSAGE = "任务状态更新失败，请稍后重试";
 
 async function chooseTheme(page, label) {
   const menu = page.locator(".account-menu");
@@ -170,11 +219,32 @@ async function chooseTheme(page, label) {
   await menu.locator("summary").click();
 }
 
+function assertUniformFullBoundary(boundary, expect, context) {
+  expect(
+    boundary.widths.length === 4 &&
+      boundary.widths.every((width) => width > 0 && width <= 1) &&
+      new Set(boundary.widths).size === 1,
+    `${context} 边界宽度必须四边一致、大于 0 且不超过 1px，实际 ${boundary.widths.join("/")}px`,
+  );
+  expect(
+    boundary.styles.length === 4 &&
+      boundary.styles.every((style) => style !== "none" && style !== "hidden") &&
+      new Set(boundary.styles).size === 1,
+    `${context} 边界样式必须四边一致且不能为 none/hidden，实际 ${boundary.styles.join("/")}`,
+  );
+  expect(
+    boundary.colors.length === 4 && new Set(boundary.colors).size === 1,
+    `${context} 边界颜色必须四边一致，实际 ${boundary.colors.join("/")}`,
+  );
+}
+
 async function readLayout(page) {
   return page.evaluate(() => {
     const nav = document.querySelector(".primary-nav");
     const workspace = document.querySelector("main.workspace");
-    const panel = document.querySelector(".documents-panel, .assistant-panel, .knowledge-page");
+    const panel = document.querySelector(
+      ".documents-panel, .assistant-panel, .knowledge-page, .projects-page",
+    );
     const brandImage = document.querySelector(".product-brand img");
     const navRect = nav?.getBoundingClientRect();
     const brandImageRect = brandImage?.getBoundingClientRect();
@@ -467,6 +537,310 @@ async function checkKnowledgeResourceLayout(page, expect, screenshotDir, viewpor
   await page.waitForSelector(".documents-panel");
 }
 
+async function checkProjectsLayout({
+  page,
+  expect,
+  screenshotDir,
+  viewport,
+  themeValue,
+  setScenario,
+}) {
+  setScenario("populated");
+  await page.goto(`${new URL(page.url()).origin}/projects`, { waitUntil: "networkidle" });
+  await page.waitForSelector(".task-workspace");
+
+  const populatedLayout = await readLayout(page);
+  const populated = await page.evaluate((firstId) => {
+    const region = document.querySelector(".task-workspace");
+    const heading = region?.querySelector("h2");
+    const selectedButton = document.querySelector('.project-rail button[aria-pressed="true"]');
+    const secondButton = [...document.querySelectorAll(".project-rail button")].find(
+      (button) => button.textContent.includes("搜索体验升级"),
+    );
+    const switcher = document.querySelector("#project-switcher");
+    const rail = document.querySelector(".project-rail");
+    const mobileSwitcher = document.querySelector(".project-mobile-switcher");
+    const acceptance = document.querySelector(".task-acceptance");
+    const selectedStyle = selectedButton === null ? null : getComputedStyle(selectedButton);
+    const railStyle = rail === null ? null : getComputedStyle(rail);
+    const acceptanceStyle = acceptance === null ? null : getComputedStyle(acceptance);
+    const readBoundary = (style) => style === null
+      ? { widths: [], styles: [], colors: [] }
+      : {
+          widths: [
+            style.borderTopWidth,
+            style.borderRightWidth,
+            style.borderBottomWidth,
+            style.borderLeftWidth,
+          ].map(Number.parseFloat),
+          styles: [
+            style.borderTopStyle,
+            style.borderRightStyle,
+            style.borderBottomStyle,
+            style.borderLeftStyle,
+          ],
+          colors: [
+            style.borderTopColor,
+            style.borderRightColor,
+            style.borderBottomColor,
+            style.borderLeftColor,
+          ],
+        };
+    return {
+      expectedFirstRegionId: `project-task-workspace-${firstId}`,
+      regionId: region?.id ?? null,
+      labelledBy: region?.getAttribute("aria-labelledby") ?? null,
+      headingId: heading?.id ?? null,
+      selectedControls: selectedButton?.getAttribute("aria-controls") ?? null,
+      secondControls: secondButton?.getAttribute("aria-controls") ?? null,
+      switcherControls: switcher?.getAttribute("aria-controls") ?? null,
+      railVisible: rail?.checkVisibility() ?? false,
+      switcherVisible: mobileSwitcher?.checkVisibility() ?? false,
+      selectedBackground: selectedStyle?.backgroundColor ?? null,
+      railBackground: railStyle?.backgroundColor ?? null,
+      selectedBoxShadow: selectedStyle?.boxShadow ?? null,
+      selectedBoundary: readBoundary(selectedStyle),
+      acceptanceBoundary: readBoundary(acceptanceStyle),
+      emptyMascots: document.querySelectorAll(".project-empty-state .mascot-figure").length,
+      taskMascots: document.querySelectorAll(".task-workspace .mascot-figure").length,
+    };
+  }, KNOWLEDGE_PROJECT_ID);
+
+  expect(populatedLayout.overflow <= 0, `${viewport.name} 项目页横向溢出`);
+  expect(populatedLayout.panelInsideViewport, `${viewport.name} 项目页超出视口`);
+  expect(populatedLayout.activeLabel?.includes("项目"), `${viewport.name} 项目导航未激活`);
+  expect(
+    populatedLayout.undersizedTargets.length === 0,
+    `${viewport.name} 项目页存在小于 44px 的交互目标：${populatedLayout.undersizedTargets.join(" / ")}`,
+  );
+  expect(
+    populated.regionId === populated.expectedFirstRegionId &&
+      populated.labelledBy === populated.headingId &&
+      populated.headingId === `${populated.expectedFirstRegionId}-heading`,
+    `${viewport.name} 当前任务区域缺少稳定 id/标题关联`,
+  );
+  expect(
+    populated.selectedControls === populated.regionId &&
+      populated.secondControls === populated.regionId &&
+      populated.switcherControls === populated.regionId,
+    `${viewport.name} 项目选择控件未指向当前任务区域`,
+  );
+  expect(
+    populated.railVisible === (viewport.width >= 768) &&
+      populated.switcherVisible === (viewport.width < 768),
+    `${viewport.name} 项目轨道/选择器断点错误`,
+  );
+  expect(
+    populated.selectedBackground !== populated.railBackground &&
+      populated.selectedBoxShadow?.includes("inset"),
+    `${viewport.name} 选中项目缺少完整表面与稳定内边界`,
+  );
+  assertUniformFullBoundary(populated.selectedBoundary, expect, `${viewport.name} 选中项目`);
+  assertUniformFullBoundary(populated.acceptanceBoundary, expect, `${viewport.name} 验收标准`);
+  expect(
+    populated.emptyMascots === 0 && populated.taskMascots === 0,
+    `${viewport.name} 非顶层空态不应渲染额外岑宁形象`,
+  );
+
+  await page.getByRole("button", { name: "开始任务" }).click();
+  await page.waitForSelector('.task-transition-error[role="alert"]');
+  const failedTransition = await page.evaluate((expectedMessage) => {
+    const error = document.querySelector(".task-transition-error");
+    const style = error === null ? null : getComputedStyle(error);
+    const boundary = style === null
+      ? { widths: [], styles: [], colors: [] }
+      : {
+          widths: [
+            style.borderTopWidth,
+            style.borderRightWidth,
+            style.borderBottomWidth,
+            style.borderLeftWidth,
+          ].map(Number.parseFloat),
+          styles: [
+            style.borderTopStyle,
+            style.borderRightStyle,
+            style.borderBottomStyle,
+            style.borderLeftStyle,
+          ],
+          colors: [
+            style.borderTopColor,
+            style.borderRightColor,
+            style.borderBottomColor,
+            style.borderLeftColor,
+          ],
+        };
+    const action = [...document.querySelectorAll(".task-actions button")].find(
+      (button) => button.textContent.includes("开始任务"),
+    );
+    const selectedProject = document.querySelector(
+      '.project-rail button[aria-pressed="true"]',
+    );
+    const switcher = document.querySelector("#project-switcher");
+    return {
+      messageVisible: error?.textContent.trim() === expectedMessage,
+      boundary,
+      actionEnabled: action instanceof HTMLButtonElement && !action.disabled,
+      selectedProjectEnabled:
+        selectedProject instanceof HTMLButtonElement && !selectedProject.disabled,
+      switcherEnabled: switcher instanceof HTMLSelectElement && !switcher.disabled,
+      workspacePresent: document.querySelector(".task-workspace") !== null,
+    };
+  }, TASK_TRANSITION_ERROR_MESSAGE);
+  expect(failedTransition.messageVisible, `${viewport.name} 未显示确定性任务更新错误`);
+  assertUniformFullBoundary(
+    failedTransition.boundary,
+    expect,
+    `${viewport.name} 任务更新错误`,
+  );
+  // Mutation proof: later `border: 0`, `border-left-color: red`, or a 3px left border
+  // respectively produce zero/none, unequal colors, or asymmetric widths in computed style.
+  // Each mutation fails here even when the earlier static rule still matches the CSS contract.
+  expect(
+    failedTransition.actionEnabled &&
+      failedTransition.selectedProjectEnabled &&
+      failedTransition.switcherEnabled &&
+      failedTransition.workspacePresent,
+    `${viewport.name} 任务更新失败后项目或任务控件不可继续使用`,
+  );
+
+  if (viewport.width < 768) {
+    await page.selectOption("#project-switcher", RESPONSIVE_PROJECT_B_ID);
+  } else {
+    await page.getByRole("button", { name: /搜索体验升级/ }).click();
+  }
+  await page.waitForSelector(`#project-task-workspace-${RESPONSIVE_PROJECT_B_ID}`);
+  const switched = await page.evaluate((projectId) => {
+    const regionId = `project-task-workspace-${projectId}`;
+    return {
+      regionPresent: document.getElementById(regionId) !== null,
+      selectedControls: document.querySelector('.project-rail button[aria-pressed="true"]')
+        ?.getAttribute("aria-controls") ?? null,
+      switcherControls: document.querySelector("#project-switcher")
+        ?.getAttribute("aria-controls") ?? null,
+      announcement: document.querySelector(".project-selection-announcement")?.textContent ?? null,
+    };
+  }, RESPONSIVE_PROJECT_B_ID);
+  expect(switched.regionPresent, `${viewport.name} 选择项目后未切换受控区域`);
+  expect(
+    switched.selectedControls === `project-task-workspace-${RESPONSIVE_PROJECT_B_ID}` &&
+      switched.switcherControls === `project-task-workspace-${RESPONSIVE_PROJECT_B_ID}`,
+    `${viewport.name} 选择项目后 aria-controls 未更新`,
+  );
+  expect(
+    switched.announcement === "已选择项目：搜索体验升级",
+    `${viewport.name} 项目选择播报错误：${switched.announcement}`,
+  );
+
+  const populatedImages = await readImageHealth(page);
+  expectHealthyImages(populatedImages, expect, `${viewport.name} 项目页`);
+  expectThumbnailMascots(populatedImages, expect, `${viewport.name} 项目页`);
+  await page.screenshot({
+    path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-projects.png`),
+    fullPage: true,
+  });
+
+  setScenario("empty");
+  await page.reload({ waitUntil: "networkidle" });
+  await page.waitForSelector(".project-empty-state");
+  await page.waitForFunction(() => {
+    const image = document.querySelector(".project-empty-state .mascot-figure img");
+    return image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0;
+  });
+  const emptyLayout = await readLayout(page);
+  const empty = await page.evaluate(() => {
+    const mascot = document.querySelector(".project-empty-state .mascot-figure img");
+    const heading = document.querySelector(".project-empty-state h2");
+    const mascotStyle = mascot === null ? null : getComputedStyle(mascot);
+    const mascotRect = mascot?.getBoundingClientRect();
+    const headingRect = heading?.getBoundingClientRect();
+    const headingStyle = heading === null ? null : getComputedStyle(heading);
+    const cssPixels = (values) => values.map(Number.parseFloat);
+    const radius = mascotStyle?.borderTopLeftRadius ?? "";
+    const radiusValue = Number.parseFloat(radius);
+    const circular = mascotRect != null && Number.isFinite(radiusValue) && (
+      radius.endsWith("%")
+        ? radiusValue >= 50
+        : radiusValue >= Math.min(mascotRect.width, mascotRect.height) / 2
+    );
+    return {
+      emptyMascots: document.querySelectorAll(".project-empty-state .mascot-figure").length,
+      taskWorkspacePresent: document.querySelector(".task-workspace") !== null,
+      alt: mascot?.getAttribute("alt") ?? null,
+      currentSrc: mascot instanceof HTMLImageElement ? mascot.currentSrc : null,
+      naturalWidth: mascot instanceof HTMLImageElement ? mascot.naturalWidth : null,
+      naturalHeight: mascot instanceof HTMLImageElement ? mascot.naturalHeight : null,
+      transparentBackground:
+        mascotStyle?.backgroundColor === "transparent" ||
+        /^rgba\(.+,\s*0(?:\.0+)?\)$/.test(mascotStyle?.backgroundColor ?? ""),
+      borderWidths: mascotStyle === null ? [] : cssPixels([
+        mascotStyle.borderTopWidth,
+        mascotStyle.borderRightWidth,
+        mascotStyle.borderBottomWidth,
+        mascotStyle.borderLeftWidth,
+      ]),
+      paddings: mascotStyle === null ? [] : cssPixels([
+        mascotStyle.paddingTop,
+        mascotStyle.paddingRight,
+        mascotStyle.paddingBottom,
+        mascotStyle.paddingLeft,
+      ]),
+      renderedWidth: mascotRect?.width ?? null,
+      renderedHeight: mascotRect?.height ?? null,
+      circular,
+      headingWidth: headingRect?.width ?? null,
+      headingFontSize: headingStyle === null ? null : Number.parseFloat(headingStyle.fontSize),
+    };
+  });
+  expect(emptyLayout.overflow <= 0, `${viewport.name} 项目顶层空态横向溢出`);
+  expect(emptyLayout.panelInsideViewport, `${viewport.name} 项目顶层空态超出视口`);
+  expect(emptyLayout.activeLabel?.includes("项目"), `${viewport.name} 空态项目导航未激活`);
+  expect(
+    emptyLayout.undersizedTargets.length === 0,
+    `${viewport.name} 项目空态存在小于 44px 的交互目标：${emptyLayout.undersizedTargets.join(" / ")}`,
+  );
+  expect(
+    empty.emptyMascots === 1 && !empty.taskWorkspacePresent && empty.alt?.includes("岑宁"),
+    `${viewport.name} 岑宁应只出现在项目顶层空态`,
+  );
+  expect(
+    empty.transparentBackground &&
+      empty.borderWidths.length === 4 && empty.borderWidths.every((width) => width === 0) &&
+      empty.paddings.length === 4 && empty.paddings.every((padding) => padding === 0),
+    `${viewport.name} 项目空态岑宁不应有矩形框：border ${empty.borderWidths.join("/")}px、padding ${empty.paddings.join("/")}px`,
+  );
+  const expectedEmptyAsset = viewport.width < 600
+    ? "/cairn-mascot-chibi.png"
+    : "/cairn-mascot-transparent.png";
+  const expectedEmptyDimensions = viewport.width < 600 ? [512, 512] : [1024, 1536];
+  expect(
+    empty.currentSrc?.endsWith(expectedEmptyAsset) &&
+      empty.naturalWidth === expectedEmptyDimensions[0] &&
+      empty.naturalHeight === expectedEmptyDimensions[1],
+    `${viewport.name} 项目空态岑宁素材异常：${empty.currentSrc} (${empty.naturalWidth}x${empty.naturalHeight})`,
+  );
+  if (viewport.width < 600) {
+    expect(
+      Number.isFinite(empty.renderedWidth) &&
+        Number.isFinite(empty.renderedHeight) &&
+        empty.renderedWidth >= 112 && empty.renderedWidth <= 128 &&
+        Math.abs(empty.renderedWidth - empty.renderedHeight) < 1 &&
+        empty.circular,
+      `${viewport.name} 项目空态头像应为 112–128px 的正圆，实际 ${empty.renderedWidth}x${empty.renderedHeight}`,
+    );
+    expect(
+      Number.isFinite(empty.headingWidth) &&
+        Number.isFinite(empty.headingFontSize) &&
+        empty.headingWidth >= empty.headingFontSize * 3,
+      `${viewport.name} 项目空态标题过窄：${empty.headingWidth}px / 字号 ${empty.headingFontSize}px`,
+    );
+  }
+  await page.screenshot({
+    path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-projects-empty.png`),
+    fullPage: true,
+  });
+  setScenario("populated");
+}
+
 async function readImageHealth(page) {
   return page.evaluate(() =>
     [...document.querySelectorAll(".login-wordmark, .product-brand img, .mascot-figure img")].map(
@@ -641,8 +1015,13 @@ async function readAssistantContentLayout(page) {
     const imageRect = image?.getBoundingClientRect();
     const copyRect = copy?.getBoundingClientRect();
     return {
+      currentSrc: image instanceof HTMLImageElement ? image.currentSrc : null,
       imageRight: imageRect?.right ?? null,
+      naturalHeight: image instanceof HTMLImageElement ? image.naturalHeight : null,
+      naturalWidth: image instanceof HTMLImageElement ? image.naturalWidth : null,
       copyLeft: copyRect?.left ?? null,
+      renderedHeight: imageRect?.height ?? null,
+      renderedWidth: imageRect?.width ?? null,
     };
   });
 }
@@ -659,16 +1038,16 @@ function expectHealthyImages(images, expect, context) {
 
 function expectThumbnailMascots(images, expect, context) {
   const mascots = images.filter(
-    (image) => image.alt?.includes("看板娘") || image.alt?.includes("助手"),
+    (image) => image.alt?.includes("岑宁"),
   );
   expect(mascots.length > 0, `${context} 应渲染看板娘缩略图`);
   for (const mascot of mascots) {
     expect(
-      mascot.currentSrc.endsWith("/cairn-mascot-avatar.png"),
+      mascot.currentSrc.endsWith("/cairn-mascot-chibi.png"),
       `${context} 应使用缩略图，实际为 ${mascot.currentSrc}`,
     );
     expect(
-      mascot.naturalWidth === 256 && mascot.naturalHeight === 256,
+      mascot.naturalWidth === 512 && mascot.naturalHeight === 512,
       `${context} 缩略图尺寸错误：${mascot.naturalWidth}x${mascot.naturalHeight}`,
     );
     expect(mascot.cornerAlpha === 0, `${context} 缩略图圆角外必须透明`);
@@ -676,9 +1055,9 @@ function expectThumbnailMascots(images, expect, context) {
 }
 
 function expectLoginMascot(images, viewport, expect) {
-  const mascot = images.find((image) => image.alt === "Cairn 看板娘");
+  const mascot = images.find((image) => image.alt === "岑宁，Cairn 知识向导");
   const expectedAsset = viewport.width < 600
-    ? "/cairn-mascot-avatar.png"
+    ? "/cairn-mascot-chibi.png"
     : "/cairn-mascot-transparent.png";
   expect(
     mascot?.currentSrc.endsWith(expectedAsset),
@@ -694,6 +1073,42 @@ export async function checkResponsiveFoundation({
   logout,
   waitForAuthenticated,
 }) {
+  let projectsScenario = "populated";
+  await page.route(/\/api\/v1\/projects(?:\?.*)?$/, async (route) => {
+    await route.fulfill({
+      json: {
+        items: projectsScenario === "populated" ? RESPONSIVE_PROJECTS : [],
+        nextCursor: null,
+      },
+    });
+  });
+  await page.route(/\/api\/v1\/projects\/[^/]+\/tasks(?:\?.*)?$/, async (route) => {
+    const projectId = new URL(route.request().url()).pathname.split("/").at(-2);
+    await route.fulfill({
+      json: {
+        items: RESPONSIVE_TASKS[projectId] ?? [],
+        nextCursor: null,
+      },
+    });
+  });
+  await page.route(/\/api\/v1\/tasks\/[^/]+\/status$/, async (route) => {
+    const request = route.request();
+    expect(request.method() === "PATCH", "任务状态转换必须使用 PATCH");
+    expect(request.headers()["x-csrf-token"], "任务状态转换必须携带 CSRF token");
+    expect(
+      JSON.stringify(request.postDataJSON()) === JSON.stringify({ status: "in_progress" }),
+      `任务状态转换请求体错误：${request.postData()}`,
+    );
+    await route.fulfill({
+      status: 503,
+      headers: { "X-Request-ID": TASK_TRANSITION_TRACE_ID },
+      json: {
+        code: "database_unavailable",
+        message: TASK_TRANSITION_ERROR_MESSAGE,
+        traceId: TASK_TRANSITION_TRACE_ID,
+      },
+    });
+  });
   await page.route(
     `**/api/v1/projects/${KNOWLEDGE_PROJECT_ID}/knowledge/resources*`,
     (route) => route.fulfill({ json: KNOWLEDGE_RESOURCE_PAGE }),
@@ -782,7 +1197,7 @@ export async function checkResponsiveFoundation({
         `${viewport.name} 文档页存在小于 44px 的交互目标：${documents.undersizedTargets.join(" / ")}`,
       );
       expect(
-        await page.getByRole("button", { name: "打开看板娘助手" }).isVisible(),
+        await page.getByRole("button", { name: "打开岑宁助手" }).isVisible(),
         `${viewport.name} 看板娘助手入口不可见`,
       );
       const documentImages = await readImageHealth(page);
@@ -801,13 +1216,33 @@ export async function checkResponsiveFoundation({
         `${viewport.name} ${themeValue} 顶栏 wordmark 背景必须融入顶栏，实际图片像素 ${brandAppearance.imageBackgroundPixel.join(",")} / 顶栏 ${brandAppearance.backgroundPixel.join(",")}`,
       );
 
-      const assistantTrigger = page.getByRole("button", { name: "打开看板娘助手" });
+      const assistantTrigger = page.getByRole("button", { name: "打开岑宁助手" });
       await assistantTrigger.click();
       expect(
-        await page.getByRole("dialog", { name: "看板娘助手" }).isVisible(),
+        await page.getByRole("dialog", { name: "岑宁助手" }).isVisible(),
         `${viewport.name} 看板娘助手面板未打开`,
       );
+      await page.waitForFunction(() => {
+        const image = document.querySelector(
+          ".mascot-assistant-body .mascot-art > img, .mascot-assistant-body .mascot-image-fallback",
+        );
+        return image instanceof HTMLImageElement &&
+          image.complete && image.naturalWidth > 0 && image.naturalHeight > 0;
+      });
       const assistantLayout = await readAssistantContentLayout(page);
+      expect(
+        assistantLayout.currentSrc?.endsWith("/cairn-mascot-chibi.png") &&
+          assistantLayout.naturalWidth === 512 &&
+          assistantLayout.naturalHeight === 512,
+        `${viewport.name} 助手面板应使用 512px Q 版头像，实际为 ${assistantLayout.currentSrc} (${assistantLayout.naturalWidth}x${assistantLayout.naturalHeight})`,
+      );
+      expect(
+        assistantLayout.renderedWidth !== null &&
+          assistantLayout.renderedHeight !== null &&
+          Math.abs(assistantLayout.renderedWidth - 92) < 1 &&
+          Math.abs(assistantLayout.renderedHeight - 92) < 1,
+        `${viewport.name} 助手面板头像应渲染为 92px 正圆，实际为 ${assistantLayout.renderedWidth}x${assistantLayout.renderedHeight}`,
+      );
       expect(
         assistantLayout.imageRight !== null &&
           assistantLayout.copyLeft !== null &&
@@ -820,13 +1255,24 @@ export async function checkResponsiveFoundation({
       });
       await page.keyboard.press("Escape");
       expect(
-        !(await page.getByRole("dialog", { name: "看板娘助手" }).isVisible()),
+        !(await page.getByRole("dialog", { name: "岑宁助手" }).isVisible()),
         `${viewport.name} Escape 后看板娘助手仍可见`,
       );
       expect(
         await assistantTrigger.evaluate((element) => document.activeElement === element),
         `${viewport.name} Escape 后焦点应返回助手入口`,
       );
+
+      await checkProjectsLayout({
+        page,
+        expect,
+        screenshotDir,
+        viewport,
+        themeValue,
+        setScenario: (scenario) => {
+          projectsScenario = scenario;
+        },
+      });
 
       await checkKnowledgeResourceLayout(page, expect, screenshotDir, viewport, themeValue);
 

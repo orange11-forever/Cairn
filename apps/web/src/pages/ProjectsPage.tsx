@@ -1,8 +1,9 @@
-import { BookOpenText, CalendarDays, ClipboardCheck, Flag, FolderKanban, ListChecks } from "lucide-react";
+import { BookOpenText, CalendarDays, ClipboardCheck, Flag, ListChecks } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import type { Project, Task, TaskStatus } from "../api/projects.ts";
+import { MascotFigure } from "../components/MascotFigure.tsx";
 import { formatCalendarDate } from "../lib/dateTime.ts";
 import {
   useProjectsQuery,
@@ -53,6 +54,10 @@ function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim() ? error.message : fallback;
 }
 
+function taskWorkspaceId(projectId: string): string {
+  return `project-task-workspace-${projectId}`;
+}
+
 export function ProjectsPage() {
   const { session } = useSession();
   if (session === null) return null;
@@ -80,6 +85,7 @@ function ProjectsWorkspace({
 }) {
   const projects = useProjectsQuery(organizationId, signal);
   const [requestedProjectId, setRequestedProjectId] = useState<string | null>(null);
+  const [selectionAnnouncement, setSelectionAnnouncement] = useState("");
 
   if (projects.isPending) {
     return (
@@ -131,8 +137,12 @@ function ProjectsWorkspace({
       <section className="projects-page" aria-label="项目工作区">
         <PageHeading />
         {projectRefreshError}
-        <div className="project-state project-state-empty">
-          <FolderKanban aria-hidden="true" size={28} strokeWidth={1.8} />
+        <div className="project-state project-state-empty project-empty-state">
+          <MascotFigure
+            className="project-empty-mascot"
+            label="岑宁，Cairn 项目向导"
+            variant="full"
+          />
           <div>
             <h2>还没有项目</h2>
             <p>项目创建后会显示在这里。</p>
@@ -144,6 +154,13 @@ function ProjectsWorkspace({
 
   const selectedProject =
     projectItems.find((project) => project.id === requestedProjectId) ?? firstProject;
+  const selectedWorkspaceId = taskWorkspaceId(selectedProject.id);
+  const selectProject = (projectId: string) => {
+    if (projectId === selectedProject.id) return;
+    const project = projectItems.find((item) => item.id === projectId);
+    setRequestedProjectId(projectId);
+    if (project !== undefined) setSelectionAnnouncement(`已选择项目：${project.name}`);
+  };
 
   return (
     <section className="projects-page" aria-label="项目工作区">
@@ -152,9 +169,10 @@ function ProjectsWorkspace({
       <div className="project-mobile-switcher">
         <label htmlFor="project-switcher">切换项目</label>
         <select
+          aria-controls={selectedWorkspaceId}
           id="project-switcher"
           value={selectedProject.id}
-          onChange={(event) => setRequestedProjectId(event.target.value)}
+          onChange={(event) => selectProject(event.target.value)}
         >
           {projectItems.map((project) => (
             <option key={project.id} value={project.id}>{project.name}</option>
@@ -172,8 +190,9 @@ function ProjectsWorkspace({
               <li key={project.id}>
                 <button
                   type="button"
+                  aria-controls={selectedWorkspaceId}
                   aria-pressed={project.id === selectedProject.id}
-                  onClick={() => setRequestedProjectId(project.id)}
+                  onClick={() => selectProject(project.id)}
                 >
                   <strong>{project.name}</strong>
                   <span>{project.description ?? "暂无项目说明"}</span>
@@ -189,8 +208,16 @@ function ProjectsWorkspace({
           organizationId={organizationId}
           project={selectedProject}
           signal={signal}
+          workspaceId={selectedWorkspaceId}
         />
       </div>
+      <p
+        aria-atomic="true"
+        aria-live="polite"
+        className="project-selection-announcement visually-hidden"
+      >
+        {selectionAnnouncement}
+      </p>
       {projects.hasNextPage ? (
         <PaginationAction
           className="project-pagination"
@@ -223,12 +250,14 @@ function TaskWorkspace({
   organizationId,
   project,
   signal,
+  workspaceId,
 }: {
   csrfToken: string;
   membershipRole: string;
   organizationId: string;
   project: Project;
   signal: AbortSignal;
+  workspaceId: string;
 }) {
   const tasks = useProjectTasksQuery(organizationId, project.id, signal);
   const transition = useTaskTransition({
@@ -246,10 +275,14 @@ function TaskWorkspace({
     && tasks.dataUpdatedAt <= transition.submittedAt;
 
   return (
-    <div className="task-workspace" aria-label={`${project.name}任务`}>
+    <section
+      aria-labelledby={`${workspaceId}-heading`}
+      className="task-workspace"
+      id={workspaceId}
+    >
       <header className="task-workspace-heading">
         <div>
-          <h2>{project.name}</h2>
+          <h2 id={`${workspaceId}-heading`}>{project.name}</h2>
           <p>{project.description ?? "暂无项目说明"}</p>
         </div>
         <div className="task-workspace-tools">
@@ -342,7 +375,7 @@ function TaskWorkspace({
           ) : null}
         </div>
       ) : null}
-    </div>
+    </section>
   );
 }
 

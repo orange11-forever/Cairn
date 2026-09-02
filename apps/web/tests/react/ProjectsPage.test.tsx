@@ -149,6 +149,7 @@ test("loading projects shows a workbench-shaped skeleton", () => {
   expect(workspace).toHaveAttribute("aria-busy", "true");
   expect(within(workspace).getByText("正在加载项目")).toBeInTheDocument();
   expect(workspace.querySelectorAll(".project-skeleton").length).toBeGreaterThan(1);
+  expect(screen.queryByRole("img", { name: /岑宁/ })).toBeNull();
 });
 
 test("an organization with no projects gets a clear empty state", async () => {
@@ -161,6 +162,7 @@ test("an organization with no projects gets a clear empty state", async () => {
 
   expect(await screen.findByRole("heading", { name: "还没有项目" })).toBeInTheDocument();
   expect(screen.getByText("项目创建后会显示在这里。")).toBeInTheDocument();
+  expect(screen.getByRole("img", { name: /岑宁/ })).toHaveAttribute("data-variant", "full");
   expect(screen.queryByRole("button", { name: /创建/ })).toBeNull();
 });
 
@@ -291,7 +293,66 @@ test("the selected project shows an explicit empty task workspace", async () => 
   const projectButton = await screen.findByRole("button", { name: /知识库迁移/ });
   expect(projectButton).toHaveAttribute("aria-pressed", "true");
   expect(await screen.findByRole("heading", { name: "这个项目还没有任务" })).toBeInTheDocument();
+  expect(screen.queryByRole("img", { name: /岑宁/ })).toBeNull();
   expect(screen.queryByRole("button", { name: /创建任务/ })).toBeNull();
+});
+
+test("project selectors control the labelled task region and announce only user changes", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const { url } = requestDetails(input, init);
+      if (url.pathname === "/api/v1/projects") {
+        return jsonResponse({ items: [PROJECT, PROJECT_B], nextCursor: null });
+      }
+      return jsonResponse({ items: [], nextCursor: null });
+    }),
+  );
+  const user = userEvent.setup();
+
+  renderProjects();
+
+  const firstRegionId = `project-task-workspace-${PROJECT.id}`;
+  const secondRegionId = `project-task-workspace-${PROJECT_B.id}`;
+  const firstButton = await screen.findByRole("button", { name: /知识库迁移/ });
+  const secondButton = screen.getByRole("button", { name: /搜索体验升级/ });
+  const switcher = screen.getByLabelText("切换项目");
+  const announcement = document.querySelector(".project-selection-announcement");
+  const firstRegion = screen.getByRole("region", { name: PROJECT.name });
+
+  expect(firstRegion).toHaveAttribute("id", firstRegionId);
+  expect(firstRegion).toHaveAttribute("aria-labelledby", `${firstRegionId}-heading`);
+  expect(firstButton).toHaveAttribute("aria-controls", firstRegionId);
+  expect(secondButton).toHaveAttribute("aria-controls", firstRegionId);
+  expect(switcher).toHaveAttribute("aria-controls", firstRegionId);
+  expect(announcement).toHaveAttribute("aria-live", "polite");
+  expect(announcement).toBeEmptyDOMElement();
+
+  await user.click(firstButton);
+
+  expect(screen.getByRole("region", { name: PROJECT.name })).toHaveAttribute(
+    "id",
+    firstRegionId,
+  );
+  expect(announcement).toBeEmptyDOMElement();
+
+  await user.click(secondButton);
+
+  expect(await screen.findByRole("region", { name: PROJECT_B.name })).toHaveAttribute(
+    "id",
+    secondRegionId,
+  );
+  expect(secondButton).toHaveAttribute("aria-controls", secondRegionId);
+  expect(switcher).toHaveAttribute("aria-controls", secondRegionId);
+  expect(announcement).toHaveTextContent(`已选择项目：${PROJECT_B.name}`);
+
+  await user.selectOptions(switcher, PROJECT.id);
+
+  expect(await screen.findByRole("region", { name: PROJECT.name })).toHaveAttribute(
+    "id",
+    firstRegionId,
+  );
+  expect(announcement).toHaveTextContent(`已选择项目：${PROJECT.name}`);
 });
 
 test("the selected project links to its real knowledge workspace", async () => {
@@ -337,6 +398,7 @@ test("a failed task request exposes retry inside the selected project", async ()
   renderProjects();
 
   expect(await screen.findByRole("alert")).toHaveTextContent("任务暂时无法加载");
+  expect(screen.queryByRole("img", { name: /岑宁/ })).toBeNull();
   await user.click(screen.getByRole("button", { name: "重新加载任务" }));
 
   expect(await screen.findByRole("heading", { name: "这个项目还没有任务" })).toBeInTheDocument();

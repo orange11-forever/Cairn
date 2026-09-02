@@ -126,7 +126,9 @@ describe("消息渲染", () => {
       "data-role",
       "assistant",
     );
-    expect(screen.getAllByRole("img", { name: "Cairn 看板娘助手" })).toHaveLength(2);
+    expect(screen.getAllByRole("img", { name: "岑宁，Cairn 助手" })).toHaveLength(2);
+    expect(screen.getAllByText("岑宁")).toHaveLength(2);
+    expect(screen.queryByText("看板娘助手")).toBeNull();
     expect(screen.getByText("正在检索知识文档…")).toHaveAttribute("aria-live", "polite");
   });
 });

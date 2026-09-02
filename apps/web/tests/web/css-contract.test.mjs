@@ -89,8 +89,45 @@ test('stylesheet defines semantic light and dark theme tokens', async () => {
     '--color-jade',
     '--color-amber',
     '--color-coral',
+    '--color-selected-surface',
+    '--elevation-floating',
+    '--motion-feedback',
+    '--z-navigation',
+    '--z-popover',
   ]) {
     assert.match(css, new RegExp(`${token}:`), `missing theme token ${token}`);
+  }
+});
+
+test('navigation and project selection expose stable full-surface interaction states', async () => {
+  const css = await readFile(cssUrl, 'utf8');
+
+  const navHover = css.match(/\.primary-nav a:hover\s*\{([^}]*)\}/);
+  assert.ok(navHover, 'primary navigation needs an explicit hover state');
+  assert.match(navHover[1], /background:/, 'navigation hover needs surface feedback');
+  assert.match(navHover[1], /text-decoration:\s*none/, 'navigation hover must not underline');
+
+  const selectedNav = css.match(/\.primary-nav a\[aria-current=['"]page['"]\]\s*\{([^}]*)\}/);
+  assert.ok(selectedNav, 'primary navigation needs a current-page state');
+  assert.match(selectedNav[1], /box-shadow:\s*inset/, 'current navigation needs a stable inset boundary');
+
+  const railButton = css.match(/\.project-rail button\s*\{([^}]*)\}/);
+  assert.ok(railButton, 'missing project rail button rule');
+  assert.match(railButton[1], /border:\s*1px solid transparent/, 'rail boundary must not shift layout');
+  assert.doesNotMatch(railButton[1], /border-left:\s*3px/, 'rail must not use a selection stripe');
+
+  const selectedProject = css.match(
+    /\.project-rail button\[aria-pressed=['"]true['"]\]\s*\{([^}]*)\}/,
+  );
+  assert.ok(selectedProject, 'missing selected project surface');
+  assert.match(selectedProject[1], /background:/, 'selected project needs full-surface feedback');
+  assert.match(selectedProject[1], /box-shadow:\s*inset/, 'selected project needs an inset boundary');
+
+  for (const selector of ['task-acceptance', 'task-transition-error']) {
+    const rule = css.match(new RegExp(`\\.${selector}\\s*\\{([^}]*)\\}`));
+    assert.ok(rule, `missing .${selector} rule`);
+    assert.match(rule[1], /border:\s*1px solid/, `.${selector} needs a full boundary`);
+    assert.doesNotMatch(rule[1], /border-left:\s*3px/, `.${selector} must not use a side stripe`);
   }
 });
 
@@ -236,6 +273,27 @@ test('login full mascot uses transparent artwork instead of a photo frame', asyn
   assert.match(rule[1], /filter:\s*drop-shadow\(/);
   assert.match(rule[1], /transform:\s*none/);
   assert.doesNotMatch(rule[1], /box-shadow:/);
+});
+
+test('projects top-level empty mascot stays frameless and compact on mobile', async () => {
+  const css = await readFile(cssUrl, 'utf8');
+  const full = css.match(
+    /\.project-empty-state \.mascot-figure\[data-variant=['"]full['"]\] \.mascot-art\s*>\s*img,\s*\.project-empty-state \.mascot-figure\[data-variant=['"]full['"]\] \.mascot-image-fallback\s*\{([^}]*)\}/,
+  );
+  assert.ok(full, 'missing frameless Projects empty-state mascot rule');
+  assert.match(full[1], /padding:\s*0/);
+  assert.match(full[1], /border:\s*0/);
+  assert.match(full[1], /background:\s*transparent/);
+
+  const mobile = css.match(/@media \(max-width:\s*599px\)\s*\{([\s\S]*)\}\s*$/);
+  assert.ok(mobile, 'missing mobile media query');
+  const mobileMascot = mobile[1].match(
+    /\.project-empty-state \.mascot-figure\[data-variant=['"]full['"]\] \.mascot-art\s*>\s*img,\s*\.project-empty-state \.mascot-figure\[data-variant=['"]full['"]\] \.mascot-image-fallback\s*\{([^}]*)\}/,
+  );
+  assert.ok(mobileMascot, 'missing compact mobile Projects mascot rule');
+  assert.match(mobileMascot[1], /width:\s*120px/);
+  assert.match(mobileMascot[1], /height:\s*120px/);
+  assert.match(mobileMascot[1], /border-radius:\s*50%/);
 });
 
 // 导航当前项、status region 的 role/aria-live、语义 landmark

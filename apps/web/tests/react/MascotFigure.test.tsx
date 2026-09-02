@@ -5,6 +5,12 @@ import { MascotFigure } from "../../src/components/MascotFigure.tsx";
 import { WorkspaceStatus } from "../../src/components/WorkspaceStatus.tsx";
 
 describe("MascotFigure", () => {
+  test("uses the approved mascot name in its default accessible label", () => {
+    render(<MascotFigure />);
+
+    expect(screen.getByRole("img", { name: "岑宁，Cairn 知识向导" })).toBeInTheDocument();
+  });
+
   test("renders the requested mascot variant and explicit state", () => {
     render(<MascotFigure variant="half" state="thinking" label="看板娘正在检索" />);
 
@@ -16,12 +22,12 @@ describe("MascotFigure", () => {
     expect(screen.getByRole("status")).toHaveTextContent("思考中");
   });
 
-  test.each(["avatar", "half"] as const)("uses the thumbnail for the %s variant", (variant) => {
+  test.each(["avatar", "half"] as const)("uses the centered chibi art for the %s variant", (variant) => {
     render(<MascotFigure label="看板娘" variant={variant} />);
 
     expect(screen.getByRole("img", { name: "看板娘" })).toHaveAttribute(
       "src",
-      "/assets/brand/mascot/cairn-mascot-avatar.png",
+      "/assets/brand/mascot/cairn-mascot-chibi.png",
     );
   });
 
@@ -31,7 +37,7 @@ describe("MascotFigure", () => {
     expect(container.querySelector("source")).toHaveAttribute("media", "(max-width: 599px)");
     expect(container.querySelector("source")).toHaveAttribute(
       "srcset",
-      "/assets/brand/mascot/cairn-mascot-avatar.png",
+      "/assets/brand/mascot/cairn-mascot-chibi.png",
     );
     expect(screen.getByRole("img", { name: "看板娘" })).toHaveAttribute(
       "src",

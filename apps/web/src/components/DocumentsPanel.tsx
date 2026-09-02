@@ -226,7 +226,7 @@ export function DocumentsPanel({
         <aside className="documents-secondary" aria-label="工作区提示">
           <WorkspaceStatus
             {...workspaceStatus}
-            mascot={{ label: "Cairn 看板娘", variant: "half" }}
+            mascot={{ label: "岑宁，Cairn 知识向导", variant: "half" }}
           />
           <UploadZone parentSignal={parentSignal} />
         </aside>
