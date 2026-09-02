@@ -1222,6 +1222,13 @@ export async function checkResponsiveFoundation({
         await page.getByRole("dialog", { name: "岑宁助手" }).isVisible(),
         `${viewport.name} 看板娘助手面板未打开`,
       );
+      await page.waitForFunction(() => {
+        const image = document.querySelector(
+          ".mascot-assistant-body .mascot-art > img, .mascot-assistant-body .mascot-image-fallback",
+        );
+        return image instanceof HTMLImageElement &&
+          image.complete && image.naturalWidth > 0 && image.naturalHeight > 0;
+      });
       const assistantLayout = await readAssistantContentLayout(page);
       expect(
         assistantLayout.currentSrc?.endsWith("/cairn-mascot-chibi.png") &&
