@@ -809,9 +809,9 @@ async function checkProjectsLayout({
     `${viewport.name} 项目空态岑宁不应有矩形框：border ${empty.borderWidths.join("/")}px、padding ${empty.paddings.join("/")}px`,
   );
   const expectedEmptyAsset = viewport.width < 600
-    ? "/cairn-mascot-avatar.png"
+    ? "/cairn-mascot-chibi.png"
     : "/cairn-mascot-transparent.png";
-  const expectedEmptyDimensions = viewport.width < 600 ? [256, 256] : [1024, 1536];
+  const expectedEmptyDimensions = viewport.width < 600 ? [512, 512] : [1024, 1536];
   expect(
     empty.currentSrc?.endsWith(expectedEmptyAsset) &&
       empty.naturalWidth === expectedEmptyDimensions[0] &&
@@ -1038,11 +1038,11 @@ function expectThumbnailMascots(images, expect, context) {
   expect(mascots.length > 0, `${context} 应渲染看板娘缩略图`);
   for (const mascot of mascots) {
     expect(
-      mascot.currentSrc.endsWith("/cairn-mascot-avatar.png"),
+      mascot.currentSrc.endsWith("/cairn-mascot-chibi.png"),
       `${context} 应使用缩略图，实际为 ${mascot.currentSrc}`,
     );
     expect(
-      mascot.naturalWidth === 256 && mascot.naturalHeight === 256,
+      mascot.naturalWidth === 512 && mascot.naturalHeight === 512,
       `${context} 缩略图尺寸错误：${mascot.naturalWidth}x${mascot.naturalHeight}`,
     );
     expect(mascot.cornerAlpha === 0, `${context} 缩略图圆角外必须透明`);
@@ -1052,7 +1052,7 @@ function expectThumbnailMascots(images, expect, context) {
 function expectLoginMascot(images, viewport, expect) {
   const mascot = images.find((image) => image.alt === "岑宁，Cairn 知识向导");
   const expectedAsset = viewport.width < 600
-    ? "/cairn-mascot-avatar.png"
+    ? "/cairn-mascot-chibi.png"
     : "/cairn-mascot-transparent.png";
   expect(
     mascot?.currentSrc.endsWith(expectedAsset),

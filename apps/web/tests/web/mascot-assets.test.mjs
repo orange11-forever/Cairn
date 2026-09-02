@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { inflateSync } from "node:zlib";
 
 const avatarUrl = new URL(
@@ -9,6 +11,10 @@ const avatarUrl = new URL(
 );
 const transparentFullUrl = new URL(
   "../../public/assets/brand/mascot/cairn-mascot-transparent.png",
+  import.meta.url,
+);
+const chibiUrl = new URL(
+  "../../public/assets/brand/mascot/cairn-mascot-chibi.png",
   import.meta.url,
 );
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
@@ -117,6 +123,31 @@ function assertTransparentMascotAlpha({ width, height, pixels }) {
   return { transparentRatio, opaqueRatio };
 }
 
+function measureAlphaComposition({ width, height, pixels }) {
+  let alphaWeight = 0;
+  let weightedX = 0;
+  let minX = width;
+  let maxX = -1;
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const alpha = pixels[(y * width + x) * 4 + 3];
+      if (alpha === 0) continue;
+      alphaWeight += alpha;
+      weightedX += x * alpha;
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+    }
+  }
+
+  assert.ok(alphaWeight > 0, "chibi mascot must contain visible pixels");
+  return {
+    centerX: weightedX / alphaWeight,
+    leftPadding: minX,
+    rightPadding: width - 1 - maxX,
+  };
+}
+
 test("mascot avatar is a compact 256px RGBA PNG", async () => {
   const png = await readFile(avatarUrl);
 
@@ -127,6 +158,33 @@ test("mascot avatar is a compact 256px RGBA PNG", async () => {
   assert.equal(png[24], 8, "avatar must use 8-bit channels");
   assert.equal(png[25], 6, "avatar must contain RGBA channels");
   assert.ok(png.byteLength < 300_000, "avatar must stay below 300 KB");
+});
+
+test("chibi mascot is a compact, transparent, visually centered square", async () => {
+  const path = fileURLToPath(chibiUrl);
+  assert.ok(existsSync(path), "chibi mascot asset must exist");
+  const png = await readFile(path);
+
+  assert.deepEqual(png.subarray(0, 8), PNG_SIGNATURE);
+  assert.equal(png.toString("ascii", 12, 16), "IHDR");
+  assert.equal(png.readUInt32BE(16), 512);
+  assert.equal(png.readUInt32BE(20), 512);
+  assert.equal(png[24], 8, "chibi mascot must use 8-bit channels");
+  assert.equal(png[25], 6, "chibi mascot must contain RGBA channels");
+  assert.ok(png.byteLength < 1_000_000, "chibi mascot must stay below 1 MB");
+
+  const decoded = decodeRgbaPng(png);
+  assertTransparentMascotAlpha(decoded);
+  const composition = measureAlphaComposition(decoded);
+  const geometricCenter = (decoded.width - 1) / 2;
+  assert.ok(
+    Math.abs(composition.centerX - geometricCenter) <= decoded.width * 0.03,
+    `chibi visual center is horizontally offset: ${composition.centerX.toFixed(2)}`,
+  );
+  assert.ok(
+    Math.abs(composition.leftPadding - composition.rightPadding) <= decoded.width * 0.05,
+    `chibi horizontal padding is unbalanced: ${composition.leftPadding}/${composition.rightPadding}`,
+  );
 });
 
 test("full mascot is a 1024x1536 RGBA PNG", async () => {
