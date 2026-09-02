@@ -4,6 +4,8 @@
 
 Web 的身份、项目任务与 `/projects/:projectId/knowledge` 资源/搜索连接本 API；现有通用文档、上传和问答原型仍连接 `mocks/docs-server.mjs`。Task 14 真实知识资源列表已交付；Task 15 真实知识搜索结果已交付，显示服务端排序摘录、文件类型、类型化 locator 定位信息、混合检索标签与关键词降级结果，并覆盖取消、错误、会话失效和访问权撤销状态。Task 16 搜索卡片内按需引用上下文与授权下载已交付：引用上下文以“前文 → 命中片段 → 后文”展示纯文本，重新展开会重新授权；下载只把新标签页导航到 Identity API，实时授权后由 `307` 重定向到短时效对象地址，Web 不缓存或读取最终预签名 URL。Web 上传、资源详情与重试/删除、全文格式化预览、生成式回答和 Mock 退场仍在后续任务。当前产品、架构和阶段路线以 [公开架构说明](../../docs/architecture.md) 为准。
 
+Web 壳与项目工作台的响应式/可访问性抛光，以及知识向导“岑宁”的 Q 版紧凑头像，均为客户端展示与验收更新，不新增 API 端点，也不扩展 Stage 3A API 交付边界。
+
 当前核心开发由 FastAPI、PostgreSQL 16/pgvector、S3 兼容 MinIO、独立知识 Worker、React/Vite Web 与文档 Node mock 共同组成；Redis 仍是规划中基础设施。API 默认绑定 `127.0.0.1:8080`，身份与知识数据不使用 SQLite 或内存仓储分叉。未来 Local Web、Compose 与 Helm 必须继续使用同一 `/api/v1` 契约、数据库迁移和权限规则。
 
 ## 当前工程命令
