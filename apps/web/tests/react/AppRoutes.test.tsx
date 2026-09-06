@@ -1,7 +1,7 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Profiler, useState } from "react";
+import { Profiler, StrictMode, useState } from "react";
 import { MemoryRouter, useNavigate, type NavigateFunction } from "react-router-dom";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
@@ -23,11 +23,146 @@ const IDENTITY: IdentityContext = {
   csrfToken: "csrf-test-token",
 };
 
+const KNOWLEDGE_PROJECT_ID = "00000000-0000-4000-8000-000000004001";
+const OTHER_KNOWLEDGE_PROJECT_ID = "00000000-0000-4000-8000-000000004002";
+const UPLOAD_BATCH_ID = "00000000-0000-4000-8000-000000008001";
+const UPLOAD_ID_1 = "00000000-0000-4000-8000-000000009001";
+const UPLOAD_ID_2 = "00000000-0000-4000-8000-000000009002";
+const UPLOAD_ITEM_ID_1 = "00000000-0000-4000-8000-000000010001";
+const UPLOAD_ITEM_ID_2 = "00000000-0000-4000-8000-000000010002";
+
 const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
     headers: { "Content-Type": "application/json" },
   });
+
+const writableResourcePage = (nextCursor: string | null = null) => ({
+  capabilities: { canWrite: true },
+  items: [],
+  nextCursor,
+});
+
+const uploadInstruction = (
+  uploadId: string,
+  itemId: string,
+  suffix: string,
+) => ({
+  uploadId,
+  itemId,
+  method: "PUT" as const,
+  url: `https://objects.invalid/${suffix}?signature=route-private`,
+  headers: {
+    "Content-Type": "application/pdf",
+    "x-upload-token": `route-token-${suffix}`,
+  },
+  expiresAt: "2026-09-04T10:00:00Z",
+});
+
+const uploadCreateResponse = (count = 1) => ({
+  batchId: UPLOAD_BATCH_ID,
+  uploads: [
+    uploadInstruction(UPLOAD_ID_1, UPLOAD_ITEM_ID_1, "upload-one"),
+    ...(count === 2
+      ? [uploadInstruction(UPLOAD_ID_2, UPLOAD_ITEM_ID_2, "upload-two")]
+      : []),
+  ],
+});
+
+const uploadCompleteResponse = (
+  uploadId = UPLOAD_ID_1,
+  itemId = UPLOAD_ITEM_ID_1,
+) => ({
+  uploadId,
+  batchId: UPLOAD_BATCH_ID,
+  itemId,
+  resourceId: null,
+  resourceVersionId: null,
+  status: "queued" as const,
+});
+
+const uploadBatchResponse = () => ({
+  id: UPLOAD_BATCH_ID,
+  status: "processing" as const,
+  itemCount: 2,
+  readyCount: 0,
+  failedCount: 0,
+  createdAt: "2026-09-04T09:00:00Z",
+  completedAt: null,
+  items: [
+    {
+      id: UPLOAD_ITEM_ID_1,
+      parentItemId: null,
+      normalizedPath: "first.pdf",
+      mediaType: "application/pdf",
+      sizeBytes: 5,
+      status: "processing" as const,
+      resourceId: null,
+      resourceVersionId: null,
+      errorCode: null,
+      errorDetail: null,
+      createdAt: "2026-09-04T09:00:00Z",
+      completedAt: null,
+    },
+    {
+      id: UPLOAD_ITEM_ID_2,
+      parentItemId: null,
+      normalizedPath: "second.pdf",
+      mediaType: "application/pdf",
+      sizeBytes: 6,
+      status: "awaiting_upload" as const,
+      resourceId: null,
+      resourceVersionId: null,
+      errorCode: null,
+      errorDetail: null,
+      createdAt: "2026-09-04T09:00:00Z",
+      completedAt: null,
+    },
+  ],
+});
+
+type RouteXhrHandler = ((event: ProgressEvent) => void) | null;
+
+interface RouteXhr {
+  status: number;
+  responseText: string;
+  withCredentials: boolean;
+  upload: { onprogress: RouteXhrHandler };
+  onload: RouteXhrHandler;
+  onerror: RouteXhrHandler;
+  onabort: RouteXhrHandler;
+  open: ReturnType<typeof vi.fn>;
+  setRequestHeader: ReturnType<typeof vi.fn>;
+  send: ReturnType<typeof vi.fn>;
+  abort: ReturnType<typeof vi.fn>;
+}
+
+function installRouteXhr(): RouteXhr[] {
+  const instances: RouteXhr[] = [];
+  vi.stubGlobal("XMLHttpRequest", vi.fn(function () {
+    const xhr: RouteXhr = {
+      status: 0,
+      responseText: "",
+      withCredentials: true,
+      upload: { onprogress: null },
+      onload: null,
+      onerror: null,
+      onabort: null,
+      open: vi.fn(),
+      setRequestHeader: vi.fn(),
+      send: vi.fn(),
+      abort: vi.fn(),
+    };
+    instances.push(xhr);
+    return xhr;
+  }));
+  return instances;
+}
+
+function finishRouteXhr(xhr: RouteXhr, status = 200): void {
+  xhr.status = status;
+  xhr.onload?.(new ProgressEvent("load"));
+}
 
 function knowledgeResource({
   id,
@@ -70,6 +205,50 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+const pendingResponseCleanups = new Set<() => void>();
+
+function trackedResponse(fallback: () => Response) {
+  const response = deferred<Response>();
+  const settle = response.resolve;
+  const cleanup = () => settle(fallback());
+  const resolve = (value: Response) => {
+    pendingResponseCleanups.delete(cleanup);
+    settle(value);
+  };
+  pendingResponseCleanups.add(cleanup);
+  return { promise: response.promise, resolve };
+}
+
+const trackedBatchResponse = () => trackedResponse(
+  () => jsonResponse(uploadBatchResponse()),
+);
+
+const trackedResourceResponse = () => trackedResponse(
+  () => jsonResponse(writableResourcePage()),
+);
+
+async function settleLateBatchResponse(
+  response: ReturnType<typeof trackedBatchResponse>,
+  forceRerender?: () => void,
+): Promise<void> {
+  await act(async () => {
+    response.resolve(jsonResponse(uploadBatchResponse()));
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+  forceRerender?.();
+}
+
+function expectQueriesNotToContain(
+  queryClient: ReturnType<typeof createAppQueryClient>,
+  staleTexts: readonly string[],
+): void {
+  expect(queryClient.getQueryCache().getAll().every((query) => {
+    const data = JSON.stringify(query.state.data) ?? "";
+    return staleTexts.every((text) => !data.includes(text));
+  })).toBe(true);
+}
+
 function fakeSessionApi(overrides: Partial<SessionApi> = {}): SessionApi {
   return {
     restore: async () => { throw new ApiError("http", "无会话", { status: 401, code: "session_invalid" }); },
@@ -107,12 +286,16 @@ function TestAppHarness({
   );
 }
 
-function renderTestRoutes(path: string, options: { restoredIdentity?: IdentityContext; sessionApi?: SessionApi } = {}) {
+function renderTestRoutes(path: string, options: {
+  restoredIdentity?: IdentityContext;
+  sessionApi?: SessionApi;
+  strictMode?: boolean;
+} = {}) {
   const queryClient = createAppQueryClient();
   const commitSnapshots: string[] = [];
   let controls: TestRouteControls | null = null;
 
-  const result = render(
+  const content = (
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={[path]}>
@@ -126,8 +309,9 @@ function renderTestRoutes(path: string, options: { restoredIdentity?: IdentityCo
           </SessionProvider>
         </MemoryRouter>
       </QueryClientProvider>
-    </ThemeProvider>,
+    </ThemeProvider>
   );
+  const result = render(options.strictMode ? <StrictMode>{content}</StrictMode> : content);
   function requireControls(): TestRouteControls {
     if (controls === null) throw new Error("测试路由控制器尚未挂载");
     return controls;
@@ -166,6 +350,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  for (const settle of pendingResponseCleanups) settle();
+  pendingResponseCleanups.clear();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -463,6 +649,8 @@ test("the project knowledge route loads the selected project inside the shared k
 
   expect(await screen.findByRole("heading", { level: 1, name: "项目知识" })).toBeInTheDocument();
   expect(await screen.findByRole("heading", { name: "还没有知识资料" })).toBeInTheDocument();
+  expect(screen.getByLabelText("上传知识资料")).toBeVisible();
+  expect(screen.queryByText("上传入口将在后续任务接入")).toBeNull();
   expect(screen.getByText("可维护资料")).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "项目任务" })).toHaveAttribute(
     "aria-current",
@@ -535,6 +723,7 @@ test("a read-only project reader can search real project knowledge", async () =>
   renderTestRoutes(`/projects/${projectId}/knowledge`, { restoredIdentity: IDENTITY });
 
   expect(await screen.findByText("只读访问")).toBeInTheDocument();
+  expect(screen.queryByLabelText("上传知识资料")).toBeNull();
   await user.type(screen.getByLabelText("搜索项目知识"), "只读检索");
   await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
   expect(await screen.findByText("只读权限仍可检索")).toBeInTheDocument();
@@ -553,6 +742,368 @@ test("a read-only project reader can search real project knowledge", async () =>
   expect(requests.some((request) => new URL(request.url).pathname.endsWith("/download")))
     .toBe(false);
 });
+
+test("a writable project creates an upload with the exact session and file contract", async () => {
+  const requests: Request[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    requests.push(request);
+    const pathname = new URL(request.url).pathname;
+    if (request.method === "GET" && pathname.endsWith("/knowledge/resources")) {
+      return jsonResponse(writableResourcePage());
+    }
+    if (request.method === "POST" && pathname.endsWith("/knowledge/uploads")) {
+      return jsonResponse(uploadCreateResponse(), 201);
+    }
+    throw new Error(`Unexpected request: ${request.method} ${pathname}`);
+  }));
+  const xhrs = installRouteXhr();
+  const user = userEvent.setup();
+  renderTestRoutes(`/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, {
+    restoredIdentity: IDENTITY,
+  });
+
+  const input = await screen.findByLabelText("上传知识资料");
+  await user.upload(
+    input,
+    new File(["route-upload"], "route-upload.pdf", { type: "application/pdf" }),
+  );
+  await user.click(screen.getByRole("button", { name: "开始上传" }));
+
+  const createRequest = await waitFor(() => {
+    const request = requests.find((candidate) =>
+      candidate.method === "POST" &&
+      new URL(candidate.url).pathname.endsWith("/knowledge/uploads")
+    );
+    expect(request).toBeDefined();
+    return request!;
+  });
+  expect(createRequest.credentials).toBe("include");
+  expect(createRequest.headers.get("X-CSRF-Token")).toBe("csrf-test-token");
+  expect(createRequest.headers.get("Content-Type")).toContain("application/json");
+  expect(new URL(createRequest.url).pathname).toBe(
+    `/api/v1/projects/${KNOWLEDGE_PROJECT_ID}/knowledge/uploads`,
+  );
+  await expect(createRequest.clone().json()).resolves.toEqual({
+    files: [{
+      fileName: "route-upload.pdf",
+      mediaType: "application/pdf",
+      sizeBytes: 12,
+      sha256: "79b61a7c915771540d733b359e806cceff41fcad0734aa75454f272a45f24ebe",
+    }],
+  });
+  await waitFor(() => expect(xhrs).toHaveLength(1));
+  expect(xhrs[0]?.open).toHaveBeenCalledWith(
+    "PUT",
+    "https://objects.invalid/upload-one?signature=route-private",
+    true,
+  );
+  expect(xhrs[0]?.withCredentials).toBe(false);
+});
+
+test("an upload-create 404 conceals the whole project knowledge workspace", async () => {
+  const requests: Request[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    requests.push(request);
+    if (request.method === "GET") return jsonResponse(writableResourcePage());
+    return jsonResponse({
+      code: "not_found",
+      message: "项目或知识资料不存在",
+      traceId: "trace-route-upload-create-404",
+    }, 404);
+  }));
+  const user = userEvent.setup();
+  const { queryClient } = renderTestRoutes(
+    `/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`,
+    { restoredIdentity: IDENTITY },
+  );
+
+  await user.upload(
+    await screen.findByLabelText("上传知识资料"),
+    new File(["create"], "create.pdf", { type: "application/pdf" }),
+  );
+  await user.click(screen.getByRole("button", { name: "开始上传" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("项目或知识资料不存在");
+  expect(screen.queryByLabelText("上传知识资料")).toBeNull();
+  expect(screen.queryByLabelText("搜索项目知识")).toBeNull();
+  expect(screen.queryByText("route-private")).toBeNull();
+  expect(queryClient.getQueryData([
+    "project-knowledge",
+    IDENTITY.organization.id,
+    KNOWLEDGE_PROJECT_ID,
+    "resources",
+  ])).toBeUndefined();
+  expect(requests).toHaveLength(2);
+});
+
+test("an upload-complete 404 stays local when a fresh resource check still succeeds", async () => {
+  const requests: Request[] = [];
+  let resourceRequests = 0;
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    requests.push(request);
+    const pathname = new URL(request.url).pathname;
+    if (request.method === "GET" && pathname.endsWith("/knowledge/resources")) {
+      resourceRequests += 1;
+      return jsonResponse(writableResourcePage());
+    }
+    if (pathname.endsWith("/knowledge/uploads")) {
+      return jsonResponse(uploadCreateResponse(), 201);
+    }
+    if (pathname.endsWith(`/knowledge/uploads/${UPLOAD_ID_1}/complete`)) {
+      return jsonResponse({
+        code: "not_found",
+        message: "项目或知识资料不存在",
+        traceId: "trace-route-upload-complete-local",
+      }, 404);
+    }
+    throw new Error(`Unexpected request: ${request.method} ${pathname}`);
+  }));
+  const xhrs = installRouteXhr();
+  const user = userEvent.setup();
+  renderTestRoutes(`/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, {
+    restoredIdentity: IDENTITY,
+  });
+
+  await user.upload(
+    await screen.findByLabelText("上传知识资料"),
+    new File(["complete"], "complete.pdf", { type: "application/pdf" }),
+  );
+  await user.click(screen.getByRole("button", { name: "开始上传" }));
+  const xhr = await waitFor(() => {
+    expect(xhrs).toHaveLength(1);
+    return xhrs[0]!;
+  });
+  act(() => finishRouteXhr(xhr));
+
+  expect((await screen.findByText("项目或知识资料不存在")).closest("[role=alert]"))
+    .not.toBeNull();
+  expect(screen.getByText("请求编号：trace-route-upload-complete-local")).toBeInTheDocument();
+  expect(screen.getByLabelText("上传知识资料")).toBeInTheDocument();
+  expect(screen.getByLabelText("搜索项目知识")).toBeInTheDocument();
+  expect(screen.getByText("可维护资料")).toBeInTheDocument();
+  expect(resourceRequests).toBe(2);
+  const completeRequest = requests.find((request) =>
+    new URL(request.url).pathname.endsWith(`/${UPLOAD_ID_1}/complete`)
+  );
+  expect(completeRequest?.credentials).toBe("include");
+  expect(completeRequest?.headers.get("X-CSRF-Token")).toBe("csrf-test-token");
+  await expect(completeRequest?.clone().text()).resolves.toBe("");
+});
+
+test("an upload-complete 404 conceals when the fresh resource boundary is also gone", async () => {
+  let resourceRequests = 0;
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    const pathname = new URL(request.url).pathname;
+    if (request.method === "GET" && pathname.endsWith("/knowledge/resources")) {
+      resourceRequests += 1;
+      return resourceRequests === 1
+        ? jsonResponse(writableResourcePage())
+        : jsonResponse({
+            code: "not_found",
+            message: "项目或知识资料不存在",
+            traceId: "trace-route-resource-recheck-404",
+          }, 404);
+    }
+    if (pathname.endsWith("/knowledge/uploads")) {
+      return jsonResponse(uploadCreateResponse(), 201);
+    }
+    if (pathname.endsWith(`/${UPLOAD_ID_1}/complete`)) {
+      return jsonResponse({
+        code: "not_found",
+        message: "项目或知识资料不存在",
+        traceId: "trace-route-upload-complete-conceal",
+      }, 404);
+    }
+    throw new Error(`Unexpected request: ${request.method} ${pathname}`);
+  }));
+  const xhrs = installRouteXhr();
+  const user = userEvent.setup();
+  const { queryClient } = renderTestRoutes(`/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, {
+    restoredIdentity: IDENTITY,
+  });
+
+  await screen.findByLabelText("上传知识资料");
+  const projectKey = [
+    "project-knowledge",
+    IDENTITY.organization.id,
+    KNOWLEDGE_PROJECT_ID,
+  ] as const;
+  queryClient.setQueryData([...projectKey, "search", "seeded", 10], {
+    retrievalMode: "hybrid",
+    results: [],
+  });
+  queryClient.setQueryData(
+    [...projectKey, "batch", "00000000-0000-4000-8000-000000008099"],
+    uploadBatchResponse(),
+  );
+  await user.upload(
+    screen.getByLabelText("上传知识资料"),
+    new File(["conceal"], "conceal.pdf", { type: "application/pdf" }),
+  );
+  await user.click(screen.getByRole("button", { name: "开始上传" }));
+  await waitFor(() => expect(xhrs).toHaveLength(1));
+  act(() => finishRouteXhr(xhrs[0]!));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("项目或知识资料不存在");
+  expect(screen.queryByLabelText("上传知识资料")).toBeNull();
+  expect(screen.queryByLabelText("搜索项目知识")).toBeNull();
+  expect(screen.queryByText("请求编号：trace-route-upload-complete-conceal")).toBeNull();
+  expect(screen.queryByText("trace-route-resource-recheck-404")).toBeNull();
+  expect(screen.queryByText("route-private")).toBeNull();
+  expect(resourceRequests).toBe(2);
+  expect(queryClient.getQueryCache().findAll({ queryKey: projectKey })).toHaveLength(0);
+});
+
+test("a batch 404 conceals after a fresh resource 404 and removes the project cache prefix", async () => {
+  const batchNotFound = trackedResponse(() => jsonResponse({
+    code: "not_found",
+    message: "项目或知识资料不存在",
+    traceId: "trace-route-batch-cleanup",
+  }, 404));
+  let resourceRequests = 0;
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    const pathname = new URL(request.url).pathname;
+    if (request.method === "GET" && pathname.endsWith("/knowledge/resources")) {
+      resourceRequests += 1;
+      return resourceRequests < 3
+        ? jsonResponse({
+            capabilities: { canWrite: true },
+            items: [knowledgeResource({
+              id: "00000000-0000-4000-8000-000000005095",
+              title: "批次撤权前资料.pdf",
+              mediaType: "application/pdf",
+              sizeBytes: 1024,
+              status: "ready",
+            })],
+            nextCursor: null,
+          })
+        : jsonResponse({
+            code: "not_found",
+            message: "项目或知识资料不存在",
+            traceId: "trace-route-batch-resource-404",
+          }, 404);
+    }
+    if (request.method === "GET" && pathname.includes(`/knowledge/batches/${UPLOAD_BATCH_ID}`)) {
+      return batchNotFound.promise;
+    }
+    if (pathname.endsWith("/knowledge/uploads")) {
+      return jsonResponse(uploadCreateResponse(), 201);
+    }
+    if (pathname.endsWith(`/${UPLOAD_ID_1}/complete`)) {
+      return jsonResponse(uploadCompleteResponse());
+    }
+    throw new Error(`Unexpected request: ${request.method} ${pathname}`);
+  }));
+  const xhrs = installRouteXhr();
+  const user = userEvent.setup();
+  const { queryClient } = renderTestRoutes(`/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, {
+    restoredIdentity: IDENTITY,
+  });
+  const projectKey = [
+    "project-knowledge",
+    IDENTITY.organization.id,
+    KNOWLEDGE_PROJECT_ID,
+  ] as const;
+
+  expect(await screen.findByText("批次撤权前资料.pdf")).toBeInTheDocument();
+  queryClient.setQueryData([...projectKey, "search", "batch-seed", 10], {
+    retrievalMode: "hybrid",
+    results: [],
+  });
+  queryClient.setQueryData(
+    [...projectKey, "batch", "00000000-0000-4000-8000-000000008098"],
+    uploadBatchResponse(),
+  );
+  await user.upload(
+    screen.getByLabelText("上传知识资料"),
+    new File(["batch"], "batch-404.pdf", { type: "application/pdf" }),
+  );
+  await user.click(screen.getByRole("button", { name: "开始上传" }));
+  await waitFor(() => expect(xhrs).toHaveLength(1));
+  act(() => finishRouteXhr(xhrs[0]!));
+  await waitFor(() => expect(resourceRequests).toBe(2));
+
+  await act(async () => {
+    batchNotFound.resolve(jsonResponse({
+      code: "not_found",
+      message: "项目或知识资料不存在",
+      traceId: "trace-route-batch-404",
+    }, 404));
+    await Promise.resolve();
+  });
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("项目或知识资料不存在");
+  expect(resourceRequests).toBe(3);
+  expect(screen.queryByLabelText("上传知识资料")).toBeNull();
+  expect(screen.queryByLabelText("搜索项目知识")).toBeNull();
+  expect(screen.queryByText("批次撤权前资料.pdf")).toBeNull();
+  expect(screen.queryByText("batch-404.pdf")).toBeNull();
+  expect(screen.queryByText("trace-route-batch-404")).toBeNull();
+  expect(screen.queryByText("trace-route-batch-resource-404")).toBeNull();
+  expect(screen.queryByText("route-private")).toBeNull();
+  expect(queryClient.getQueryCache().findAll({ queryKey: projectKey })).toHaveLength(0);
+});
+
+test.each(["create", "complete"] as const)(
+  "a session-invalid upload %s clears private data and navigates to login",
+  async (stage) => {
+    const requests: Request[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const request = input as Request;
+      requests.push(request);
+      const pathname = new URL(request.url).pathname;
+      if (request.method === "GET" && pathname.endsWith("/knowledge/resources")) {
+        return jsonResponse(writableResourcePage());
+      }
+      if (pathname.endsWith("/knowledge/uploads")) {
+        return stage === "create"
+          ? jsonResponse({
+              code: "session_invalid",
+              message: "会话已过期",
+              traceId: "trace-route-upload-create-401",
+            }, 401)
+          : jsonResponse(uploadCreateResponse(), 201);
+      }
+      if (pathname.endsWith(`/${UPLOAD_ID_1}/complete`)) {
+        return jsonResponse({
+          code: "session_invalid",
+          message: "会话已过期",
+          traceId: "trace-route-upload-complete-401",
+        }, 401);
+      }
+      throw new Error(`Unexpected request: ${request.method} ${pathname}`);
+    }));
+    const xhrs = installRouteXhr();
+    const user = userEvent.setup();
+    const { queryClient } = renderTestRoutes(
+      `/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`,
+      { restoredIdentity: IDENTITY },
+    );
+
+    await user.upload(
+      await screen.findByLabelText("上传知识资料"),
+      new File([stage], `${stage}.pdf`, { type: "application/pdf" }),
+    );
+    await user.click(screen.getByRole("button", { name: "开始上传" }));
+    if (stage === "complete") {
+      await waitFor(() => expect(xhrs).toHaveLength(1));
+      act(() => finishRouteXhr(xhrs[0]!));
+    }
+
+    expect(await screen.findByRole("heading", { name: "登录 Cairn" }))
+      .toBeInTheDocument();
+    expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
+    expect(queryClient.getMutationCache().getAll()).toHaveLength(0);
+    expect(screen.queryByLabelText("上传知识资料")).toBeNull();
+    expect(screen.queryByText(`${stage}.pdf`)).toBeNull();
+    expect(requests.every((request) => request.signal.aborted)).toBe(true);
+  },
+);
 
 test("a citation-only 404 keeps the project workspace and refreshes only resources", async () => {
   const projectId = "00000000-0000-4000-8000-000000004001";
@@ -1019,6 +1570,257 @@ test("project navigation aborts the old search and starts the new scope without 
   )).toBe(true);
 });
 
+test("project navigation aborts an active upload and its batch query without reusing files", async () => {
+  const batchResponse = trackedBatchResponse();
+  const requests: Request[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    requests.push(request);
+    const pathname = new URL(request.url).pathname;
+    if (request.method === "GET" && pathname.endsWith("/knowledge/resources")) {
+      return jsonResponse(writableResourcePage());
+    }
+    if (request.method === "GET" && pathname.includes("/knowledge/batches/")) {
+      return batchResponse.promise;
+    }
+    if (pathname.endsWith("/knowledge/uploads")) {
+      return jsonResponse(uploadCreateResponse(2), 201);
+    }
+    if (pathname.endsWith(`/${UPLOAD_ID_1}/complete`)) {
+      return jsonResponse(uploadCompleteResponse());
+    }
+    throw new Error(`Unexpected request: ${request.method} ${pathname}`);
+  }));
+  const xhrs = installRouteXhr();
+  const user = userEvent.setup();
+  const { forceRerender, navigate, queryClient } = renderTestRoutes(
+    `/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`,
+    { restoredIdentity: IDENTITY },
+  );
+
+  const input = await screen.findByLabelText("上传知识资料");
+  await user.upload(input, [
+    new File(["first"], "first.pdf", { type: "application/pdf" }),
+    new File(["second"], "second.pdf", { type: "application/pdf" }),
+  ]);
+  await user.click(screen.getByRole("button", { name: "开始上传" }));
+  await waitFor(() => expect(xhrs).toHaveLength(2));
+  act(() => finishRouteXhr(xhrs[0]!));
+  const batchRequest = await waitFor(() => {
+    const request = requests.find((candidate) =>
+      new URL(candidate.url).pathname.includes(`/knowledge/batches/${UPLOAD_BATCH_ID}`)
+    );
+    expect(request).toBeDefined();
+    return request!;
+  });
+
+  navigate(`/projects/${OTHER_KNOWLEDGE_PROJECT_ID}/knowledge`);
+
+  await waitFor(() => expect(batchRequest.signal.aborted).toBe(true));
+  expect(xhrs[1]?.abort).toHaveBeenCalledTimes(1);
+  expect(await screen.findByLabelText("上传知识资料")).toBeInTheDocument();
+  expect(screen.queryByText("first.pdf")).toBeNull();
+  expect(screen.queryByText("second.pdf")).toBeNull();
+  expect(requests.some((request) =>
+    new URL(request.url).pathname.includes(OTHER_KNOWLEDGE_PROJECT_ID)
+  )).toBe(true);
+
+  await settleLateBatchResponse(batchResponse, forceRerender);
+  expect(screen.queryByText("first.pdf")).toBeNull();
+  expect(screen.queryByText("second.pdf")).toBeNull();
+  expectQueriesNotToContain(queryClient, ["first.pdf", "second.pdf"]);
+});
+
+test("logout aborts an active upload and its batch query and clears private state", async () => {
+  const batchResponse = trackedBatchResponse();
+  const requests: Request[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    requests.push(request);
+    const pathname = new URL(request.url).pathname;
+    if (request.method === "GET" && pathname.endsWith("/knowledge/resources")) {
+      return jsonResponse(writableResourcePage());
+    }
+    if (request.method === "GET" && pathname.includes("/knowledge/batches/")) {
+      return batchResponse.promise;
+    }
+    if (pathname.endsWith("/knowledge/uploads")) {
+      return jsonResponse(uploadCreateResponse(2), 201);
+    }
+    if (pathname.endsWith(`/${UPLOAD_ID_1}/complete`)) {
+      return jsonResponse(uploadCompleteResponse());
+    }
+    throw new Error(`Unexpected request: ${request.method} ${pathname}`);
+  }));
+  const xhrs = installRouteXhr();
+  const user = userEvent.setup();
+  const { forceRerender, queryClient } = renderTestRoutes(
+    `/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`,
+    { restoredIdentity: IDENTITY },
+  );
+
+  await user.upload(await screen.findByLabelText("上传知识资料"), [
+    new File(["first"], "logout-first.pdf", { type: "application/pdf" }),
+    new File(["second"], "logout-second.pdf", { type: "application/pdf" }),
+  ]);
+  await user.click(screen.getByRole("button", { name: "开始上传" }));
+  await waitFor(() => expect(xhrs).toHaveLength(2));
+  act(() => finishRouteXhr(xhrs[0]!));
+  const batchRequest = await waitFor(() => {
+    const request = requests.find((candidate) =>
+      new URL(candidate.url).pathname.includes(`/knowledge/batches/${UPLOAD_BATCH_ID}`)
+    );
+    expect(request).toBeDefined();
+    return request!;
+  });
+
+  await user.click(screen.getByText("演示用户"));
+  await user.click(screen.getByRole("button", { name: "退出" }));
+
+  expect(await screen.findByRole("heading", { name: "登录 Cairn" })).toBeInTheDocument();
+  expect(batchRequest.signal.aborted).toBe(true);
+  expect(xhrs[1]?.abort).toHaveBeenCalledTimes(1);
+  expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
+  expect(queryClient.getMutationCache().getAll()).toHaveLength(0);
+  expect(screen.queryByText("logout-first.pdf")).toBeNull();
+  expect(screen.queryByText("logout-second.pdf")).toBeNull();
+
+  await settleLateBatchResponse(batchResponse, forceRerender);
+  expect(screen.queryByText("logout-first.pdf")).toBeNull();
+  expect(screen.queryByText("logout-second.pdf")).toBeNull();
+  expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
+});
+
+test.each([
+  {
+    boundary: "authenticated session",
+    nextIdentity: {
+      ...IDENTITY,
+      user: {
+        id: "00000000-0000-4000-8000-000000001002",
+        email: "next-session@cairn.dev",
+        displayName: "新会话用户",
+      },
+      membership: {
+        id: "00000000-0000-4000-8000-000000003002",
+        role: "member" as const,
+      },
+      csrfToken: "csrf-next-session",
+    },
+  },
+  {
+    boundary: "organization session",
+    nextIdentity: {
+      ...IDENTITY,
+      user: {
+        id: "00000000-0000-4000-8000-000000001003",
+        email: "next-org@cairn.dev",
+        displayName: "新组织用户",
+      },
+      organization: {
+        id: "00000000-0000-4000-8000-000000002002",
+        slug: "cairn-next-upload",
+        name: "Cairn Next Upload",
+      },
+      membership: {
+        id: "00000000-0000-4000-8000-000000003003",
+        role: "member" as const,
+      },
+      csrfToken: "csrf-next-organization",
+    },
+  },
+] satisfies Array<{ boundary: string; nextIdentity: IdentityContext }>)(
+  "$boundary transition aborts active upload work and exposes no prior session state",
+  async ({ nextIdentity }) => {
+    const batchResponse = trackedBatchResponse();
+    const requests: Request[] = [];
+    let transitioned = false;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const request = input as Request;
+      requests.push(request);
+      const pathname = new URL(request.url).pathname;
+      if (request.method === "GET" && pathname.endsWith("/knowledge/resources")) {
+        return jsonResponse({
+          capabilities: { canWrite: true },
+          items: [knowledgeResource({
+            id: transitioned
+              ? "00000000-0000-4000-8000-000000005094"
+              : "00000000-0000-4000-8000-000000005093",
+            title: transitioned ? "新会话资料.pdf" : "旧会话资料.pdf",
+            mediaType: "application/pdf",
+            sizeBytes: 1024,
+            status: "ready",
+          })],
+          nextCursor: null,
+        });
+      }
+      if (request.method === "GET" && pathname.includes("/knowledge/batches/")) {
+        return batchResponse.promise;
+      }
+      if (pathname.endsWith("/knowledge/uploads")) {
+        return jsonResponse(uploadCreateResponse(2), 201);
+      }
+      if (pathname.endsWith(`/${UPLOAD_ID_1}/complete`)) {
+        return jsonResponse(uploadCompleteResponse());
+      }
+      throw new Error(`Unexpected request: ${request.method} ${pathname}`);
+    }));
+    const xhrs = installRouteXhr();
+    const user = userEvent.setup();
+    const { establishSession, forceRerender, queryClient } = renderTestRoutes(
+      `/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`,
+      { restoredIdentity: IDENTITY },
+    );
+
+    expect(await screen.findByText("旧会话资料.pdf")).toBeInTheDocument();
+    await user.upload(screen.getByLabelText("上传知识资料"), [
+      new File(["first"], "old-session-first.pdf", { type: "application/pdf" }),
+      new File(["second"], "old-session-second.pdf", { type: "application/pdf" }),
+    ]);
+    await user.click(screen.getByRole("button", { name: "开始上传" }));
+    await waitFor(() => expect(xhrs).toHaveLength(2));
+    act(() => finishRouteXhr(xhrs[0]!));
+    const batchRequest = await waitFor(() => {
+      const request = requests.find((candidate) =>
+        new URL(candidate.url).pathname.includes(`/knowledge/batches/${UPLOAD_BATCH_ID}`)
+      );
+      expect(request).toBeDefined();
+      return request!;
+    });
+
+    transitioned = true;
+    establishSession(nextIdentity);
+
+    expect(await screen.findByText("新会话资料.pdf")).toBeInTheDocument();
+    expect(batchRequest.signal.aborted).toBe(true);
+    expect(xhrs[1]?.abort).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText("上传知识资料")).toBeInTheDocument();
+    expect(screen.queryByText("old-session-first.pdf")).toBeNull();
+    expect(screen.queryByText("old-session-second.pdf")).toBeNull();
+    expect(screen.queryByText("旧会话资料.pdf")).toBeNull();
+    expect(queryClient.getQueryCache().getAll().every((query) =>
+      !(JSON.stringify(query.state.data) ?? "").includes("旧会话")
+    )).toBe(true);
+    expect(queryClient.getQueryCache().findAll({
+      queryKey: [
+        "project-knowledge",
+        nextIdentity.organization.id,
+        KNOWLEDGE_PROJECT_ID,
+      ],
+    }).length).toBeGreaterThan(0);
+
+    await settleLateBatchResponse(batchResponse, forceRerender);
+    expect(screen.queryByText("old-session-first.pdf")).toBeNull();
+    expect(screen.queryByText("old-session-second.pdf")).toBeNull();
+    expectQueriesNotToContain(queryClient, [
+      "old-session-first.pdf",
+      "old-session-second.pdf",
+      "first.pdf",
+      "second.pdf",
+    ]);
+  },
+);
+
 test("organization transition clears an old search 404 without replaying its scope", async () => {
   const projectId = "00000000-0000-4000-8000-000000004001";
   const nextIdentity: IdentityContext = {
@@ -1469,6 +2271,808 @@ test("the project knowledge route renders resource metadata and every processing
   expect(within(uploadWithoutVersion as HTMLElement).queryByText("ZIP 内文件")).toBeNull();
 });
 
+test("resource details abort on collapse and reauthorize on every reopen", async () => {
+  const resourceId = "00000000-0000-4000-8000-000000005021";
+  const detail = knowledgeResource({
+    id: resourceId,
+    title: "重开授权手册.pdf",
+    mediaType: "application/pdf",
+    sizeBytes: 2048,
+    status: "ready",
+  });
+  const firstDetail = trackedResponse(() => jsonResponse(detail));
+  const detailRequests: Request[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    const pathname = new URL(request.url).pathname;
+    if (pathname.endsWith("/knowledge/resources")) {
+      return jsonResponse({ capabilities: { canWrite: false }, items: [detail], nextCursor: null });
+    }
+    if (pathname.endsWith(`/knowledge/resources/${resourceId}`)) {
+      detailRequests.push(request);
+      return detailRequests.length === 1 ? firstDetail.promise : jsonResponse(detail);
+    }
+    throw new Error(`Unexpected request: ${request.method} ${pathname}`);
+  }));
+  const user = userEvent.setup();
+
+  renderTestRoutes(`/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, { restoredIdentity: IDENTITY });
+
+  const row = (await screen.findByText(detail.title)).closest("li");
+  const toggle = within(row as HTMLElement).getByRole("button", { name: "查看资料详情" });
+  expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await user.click(toggle);
+  expect(toggle).toHaveAttribute("aria-expanded", "true");
+  expect(toggle.getAttribute("aria-controls")).toMatch(/^knowledge-resource-detail-/);
+  expect(screen.getByText("正在读取资料详情…")).toBeVisible();
+
+  await user.click(toggle);
+
+  await waitFor(() => expect(toggle).toHaveAttribute("aria-expanded", "false"));
+  expect(screen.queryByText("正在读取资料详情…")).toBeNull();
+  expect(detailRequests[0]?.signal.aborted).toBe(true);
+  expect(document.activeElement).toBe(toggle);
+  await user.click(toggle);
+  expect(await screen.findByRole("region", { name: `${detail.title} 资料详情` })).toBeVisible();
+  expect(detailRequests).toHaveLength(2);
+});
+
+test("a session-invalid resource detail expires the real session boundary", async () => {
+  const resourceId = "00000000-0000-4000-8000-000000005022";
+  const detail = knowledgeResource({
+    id: resourceId,
+    title: "会话失效详情.pdf",
+    mediaType: "application/pdf",
+    sizeBytes: 1024,
+    status: "ready",
+  });
+  const requests: Request[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    requests.push(request);
+    const pathname = new URL(request.url).pathname;
+    if (pathname.endsWith("/knowledge/resources")) {
+      return jsonResponse({ capabilities: { canWrite: false }, items: [detail], nextCursor: null });
+    }
+    return jsonResponse({
+      code: "session_invalid",
+      message: "会话已过期",
+      traceId: "trace-detail-session-401",
+    }, 401);
+  }));
+  const user = userEvent.setup();
+  const { queryClient } = renderTestRoutes(
+    `/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`,
+    { restoredIdentity: IDENTITY },
+  );
+
+  const row = (await screen.findByText(detail.title)).closest("li");
+  await user.click(within(row as HTMLElement).getByRole("button", { name: "查看资料详情" }));
+
+  expect(await screen.findByRole("heading", { name: "登录 Cairn" })).toBeInTheDocument();
+  expect(requests).toHaveLength(2);
+  expect(requests.every((request) => request.signal.aborted)).toBe(true);
+  expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
+  expect(screen.queryByText(detail.title)).toBeNull();
+});
+
+test("a writer retry refreshes the exact list and only marks existing search results stale", async () => {
+  const resourceId = "00000000-0000-4000-8000-000000005031";
+  const failed = knowledgeResource({
+    id: resourceId,
+    title: "等待人工重试.pdf",
+    mediaType: "application/pdf",
+    sizeBytes: 1024,
+    status: "failed",
+  });
+  const queued = { ...failed, updatedAt: "2026-09-06T05:00:00Z", latestVersion: {
+    ...failed.latestVersion!, status: "queued" as const, processingStartedAt: null,
+    errorCode: null, retryable: false,
+  } };
+  let listRequests = 0;
+  let searchRequests = 0;
+  const retryRequests: Request[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    const pathname = new URL(request.url).pathname;
+    if (request.method === "POST" && pathname.endsWith("/knowledge/search")) {
+      searchRequests += 1;
+      return jsonResponse({ retrievalMode: "hybrid", results: [{
+        resourceId,
+        resourceVersionId: failed.latestVersion!.id,
+        chunkId: "00000000-0000-4000-8000-000000007031",
+        title: failed.title,
+        mediaType: "application/pdf",
+        excerpt: "重试前仍可见的搜索结果",
+        locator: { type: "pdf", page: 1 },
+        score: 0.8,
+      }] });
+    }
+    if (request.method === "POST" && pathname.endsWith("/retry")) {
+      retryRequests.push(request);
+      return jsonResponse(queued);
+    }
+    if (pathname.endsWith(`/knowledge/resources/${resourceId}`)) return jsonResponse(failed);
+    if (pathname.endsWith("/knowledge/resources")) {
+      listRequests += 1;
+      return jsonResponse({ capabilities: { canWrite: true }, items: [
+        listRequests === 1 ? failed : queued,
+      ], nextCursor: null });
+    }
+    throw new Error(`Unexpected request: ${request.method} ${pathname}`);
+  }));
+  const user = userEvent.setup();
+  const { queryClient } = renderTestRoutes(
+    `/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`,
+    { restoredIdentity: IDENTITY },
+  );
+
+  const row = (await screen.findByText(failed.title)).closest("li")!;
+  await user.type(screen.getByLabelText("搜索项目知识"), "人工重试");
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+  expect(await screen.findByText("重试前仍可见的搜索结果")).toBeVisible();
+  await user.click(within(row).getByRole("button", { name: "查看资料详情" }));
+  await user.click(await screen.findByRole("button", { name: "重新处理失败版本" }));
+
+  await waitFor(() => expect(listRequests).toBe(2));
+  expect(retryRequests).toHaveLength(1);
+  expect(retryRequests[0]!.headers.get("X-CSRF-Token")).toBe(IDENTITY.csrfToken);
+  expect(searchRequests).toBe(1);
+  expect(screen.getByText("等待处理", { selector: "dd" })).toBeVisible();
+  expect(queryClient.getQueryState([
+    "project-knowledge", IDENTITY.organization.id, KNOWLEDGE_PROJECT_ID,
+    "search", "人工重试", 10,
+  ])).toMatchObject({ isInvalidated: true, fetchStatus: "idle" });
+});
+
+test("confirmed delete cancels reads before purging facts, resets visible search, and focuses its notice", async () => {
+  const resourceId = "00000000-0000-4000-8000-000000005032";
+  const survivorId = "00000000-0000-4000-8000-000000005033";
+  const target = knowledgeResource({
+    id: resourceId, title: "需要删除的资料.pdf", mediaType: "application/pdf",
+    sizeBytes: 1024, status: "failed",
+  });
+  const survivor = knowledgeResource({
+    id: survivorId, title: "继续保留的资料.pdf", mediaType: "application/pdf",
+    sizeBytes: 2048, status: "ready",
+  });
+  let listRequests = 0;
+  let searchRequests = 0;
+  let deleteRequests = 0;
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    const pathname = new URL(request.url).pathname;
+    if (request.method === "POST" && pathname.endsWith("/knowledge/search")) {
+      searchRequests += 1;
+      return jsonResponse({ retrievalMode: "hybrid", results: [{
+        resourceId,
+        resourceVersionId: target.latestVersion!.id,
+        chunkId: "00000000-0000-4000-8000-000000007032",
+        title: target.title,
+        mediaType: "application/pdf",
+        excerpt: "删除前可见搜索摘录",
+        locator: { type: "pdf", page: 2 },
+        score: 0.9,
+      }] });
+    }
+    if (request.method === "DELETE") {
+      deleteRequests += 1;
+      return new Response(null, { status: 204 });
+    }
+    if (pathname.endsWith(`/knowledge/resources/${resourceId}`)) return jsonResponse(target);
+    if (pathname.endsWith("/knowledge/resources")) {
+      listRequests += 1;
+      return jsonResponse({ capabilities: { canWrite: true }, items: [target, survivor], nextCursor: null });
+    }
+    throw new Error(`Unexpected request: ${request.method} ${pathname}`);
+  }));
+  const user = userEvent.setup();
+  const { queryClient } = renderTestRoutes(
+    `/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`,
+    { restoredIdentity: IDENTITY },
+  );
+  const row = (await screen.findByText(target.title)).closest("li")!;
+  await user.type(screen.getByLabelText("搜索项目知识"), "删除前查询");
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+  expect(await screen.findByText("删除前可见搜索摘录")).toBeVisible();
+  queryClient.setQueryData([
+    "project-knowledge", IDENTITY.organization.id, KNOWLEDGE_PROJECT_ID,
+    "citation-context", resourceId, target.latestVersion!.id,
+    "00000000-0000-4000-8000-000000007032",
+  ], { private: "target citation" });
+  queryClient.setQueryData([
+    "project-knowledge", IDENTITY.organization.id, OTHER_KNOWLEDGE_PROJECT_ID,
+    "resource", resourceId,
+  ], { private: "unrelated project" });
+  await user.click(within(row).getByRole("button", { name: "查看资料详情" }));
+  await user.click(await screen.findByRole("button", { name: "删除资料" }));
+  await user.click(screen.getByRole("button", { name: "确认删除资料" }));
+
+  const notice = await screen.findByRole("status", { name: "资料删除结果" });
+  expect(notice).toHaveTextContent(`已删除资料：${target.title}`);
+  await waitFor(() => expect(notice).toHaveFocus());
+  expect(screen.queryByText(target.title)).toBeNull();
+  expect(screen.getByText(survivor.title)).toBeVisible();
+  expect(screen.queryByText("删除前可见搜索摘录")).toBeNull();
+  expect(screen.getByLabelText("搜索项目知识")).toHaveValue("");
+  expect(deleteRequests).toBe(1);
+  expect(listRequests).toBe(1);
+  expect(searchRequests).toBe(1);
+  expect(queryClient.getQueryData([
+    "project-knowledge", IDENTITY.organization.id, KNOWLEDGE_PROJECT_ID,
+    "resource", resourceId,
+  ])).toBeUndefined();
+  expect(queryClient.getQueryData([
+    "project-knowledge", IDENTITY.organization.id, KNOWLEDGE_PROJECT_ID,
+    "citation-context", resourceId, target.latestVersion!.id,
+    "00000000-0000-4000-8000-000000007032",
+  ])).toBeUndefined();
+  expect(queryClient.getQueryData([
+    "project-knowledge", IDENTITY.organization.id, OTHER_KNOWLEDGE_PROJECT_ID,
+    "resource", resourceId,
+  ])).toEqual({ private: "unrelated project" });
+});
+
+test.each([
+  [200, true],
+  [404, false],
+] as const)("a mutation 404 rechecks the list and keeps only a still-readable workspace: list %s",
+  async (listStatus, workspaceRemains) => {
+    const resourceId = "00000000-0000-4000-8000-000000005034";
+    const target = knowledgeResource({
+      id: resourceId, title: "删除时权限变化.pdf", mediaType: "application/pdf",
+      sizeBytes: 1024, status: "failed",
+    });
+    let listRequests = 0;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const request = input as Request;
+      const pathname = new URL(request.url).pathname;
+      if (request.method === "DELETE") return jsonResponse({
+        code: "not_found", message: "资料不存在", traceId: "trace-delete-404",
+      }, 404);
+      if (pathname.endsWith(`/knowledge/resources/${resourceId}`)) return jsonResponse(target);
+      if (pathname.endsWith("/knowledge/resources")) {
+        listRequests += 1;
+        if (listRequests > 1 && listStatus === 404) return jsonResponse({
+          code: "not_found", message: "项目不存在", traceId: "trace-list-404",
+        }, 404);
+        return jsonResponse({ capabilities: { canWrite: listRequests === 1 }, items: [target], nextCursor: null });
+      }
+      throw new Error(`Unexpected request: ${request.method} ${pathname}`);
+    }));
+    const user = userEvent.setup();
+    renderTestRoutes(`/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, { restoredIdentity: IDENTITY });
+    const row = (await screen.findByText(target.title)).closest("li")!;
+    await user.click(within(row).getByRole("button", { name: "查看资料详情" }));
+    await user.click(await screen.findByRole("button", { name: "删除资料" }));
+    await user.click(screen.getByRole("button", { name: "确认删除资料" }));
+
+    await waitFor(() => expect(listRequests).toBe(2));
+    if (workspaceRemains) {
+      expect(screen.getByRole("region", { name: "项目知识工作区" })).toBeVisible();
+      expect(screen.getByText("只读访问")).toBeVisible();
+      expect(screen.getByText("该资料已不可用，正在重新检查项目知识访问权限。")).toBeVisible();
+      expect(screen.queryByRole("button", { name: "删除资料" })).toBeNull();
+    } else {
+      expect(await screen.findByRole("alert")).toHaveTextContent("项目不存在");
+      expect(screen.queryByText(target.title)).toBeNull();
+    }
+  });
+
+test("a 409 retry conflict refreshes the resource before another action is possible", async () => {
+  const resourceId = "00000000-0000-4000-8000-000000005035";
+  const failed = knowledgeResource({
+    id: resourceId, title: "冲突后刷新.pdf", mediaType: "application/pdf",
+    sizeBytes: 1024, status: "failed",
+  });
+  const refreshed = { ...failed, latestVersion: { ...failed.latestVersion!, retryable: false } };
+  let detailReads = 0;
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    const pathname = new URL(request.url).pathname;
+    if (request.method === "POST" && pathname.endsWith("/retry")) return jsonResponse({
+      code: "version_not_retryable", message: "该版本当前不能重试", traceId: "trace-retry-409",
+    }, 409);
+    if (pathname.endsWith(`/knowledge/resources/${resourceId}`)) {
+      detailReads += 1;
+      return jsonResponse(detailReads === 1 ? failed : refreshed);
+    }
+    if (pathname.endsWith("/knowledge/resources")) return jsonResponse({
+      capabilities: { canWrite: true }, items: [failed], nextCursor: null,
+    });
+    throw new Error(`Unexpected request: ${request.method} ${pathname}`);
+  }));
+  const user = userEvent.setup();
+  renderTestRoutes(`/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, { restoredIdentity: IDENTITY });
+  const row = (await screen.findByText(failed.title)).closest("li")!;
+  await user.click(within(row).getByRole("button", { name: "查看资料详情" }));
+  await user.click(await screen.findByRole("button", { name: "重新处理失败版本" }));
+
+  await waitFor(() => expect(detailReads).toBe(2));
+  expect(screen.getByText("该版本当前不能重试")).toBeVisible();
+  expect(screen.getByText("请求编号：trace-retry-409")).toBeVisible();
+  expect(screen.queryByRole("button", { name: "重新处理失败版本" })).toBeNull();
+  expect(screen.getByRole("button", { name: "删除资料" })).toBeEnabled();
+});
+
+test.each(["retry", "delete"] as const)(
+  "a session-invalid %s mutation expires the real SessionProvider boundary",
+  async (operation) => {
+    const resourceId = operation === "retry"
+      ? "00000000-0000-4000-8000-000000005036"
+      : "00000000-0000-4000-8000-000000005037";
+    const target = knowledgeResource({
+      id: resourceId, title: `${operation}-会话失效.pdf`, mediaType: "application/pdf",
+      sizeBytes: 1024, status: "failed",
+    });
+    const mutationRequests: Request[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const request = input as Request;
+      const pathname = new URL(request.url).pathname;
+      if (request.method === "POST" || request.method === "DELETE") {
+        mutationRequests.push(request);
+        return jsonResponse({
+          code: "session_invalid", message: "会话已过期", traceId: `trace-${operation}-401`,
+        }, 401);
+      }
+      if (pathname.endsWith(`/knowledge/resources/${resourceId}`)) return jsonResponse(target);
+      return jsonResponse({ capabilities: { canWrite: true }, items: [target], nextCursor: null });
+    }));
+    const user = userEvent.setup();
+    const { queryClient } = renderTestRoutes(
+      `/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, { restoredIdentity: IDENTITY },
+    );
+    const row = (await screen.findByText(target.title)).closest("li")!;
+    await user.click(within(row).getByRole("button", { name: "查看资料详情" }));
+    if (operation === "retry") {
+      await user.click(await screen.findByRole("button", { name: "重新处理失败版本" }));
+    } else {
+      await user.click(await screen.findByRole("button", { name: "删除资料" }));
+      await user.click(screen.getByRole("button", { name: "确认删除资料" }));
+    }
+
+    expect(await screen.findByRole("heading", { name: "登录 Cairn" })).toBeVisible();
+    expect(mutationRequests).toHaveLength(1);
+    expect(mutationRequests[0]!.signal.aborted).toBe(true);
+    expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
+    expect(queryClient.getMutationCache().getAll()).toHaveLength(0);
+  },
+);
+
+test("a project change aborts a pending delete and its late response cannot purge the new workspace", async () => {
+  const oldTarget = knowledgeResource({
+    id: "00000000-0000-4000-8000-000000005038", title: "旧项目待删除.pdf",
+    mediaType: "application/pdf", sizeBytes: 1024, status: "failed",
+  });
+  const newTarget = knowledgeResource({
+    id: "00000000-0000-4000-8000-000000005039", title: "新项目保留.pdf",
+    mediaType: "application/pdf", sizeBytes: 1024, status: "ready",
+  });
+  const lateDelete = trackedResponse(() => new Response(null, { status: 204 }));
+  let deleteRequest: Request | null = null;
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    const pathname = new URL(request.url).pathname;
+    if (request.method === "DELETE") {
+      deleteRequest = request;
+      return lateDelete.promise;
+    }
+    if (pathname.endsWith(`/knowledge/resources/${oldTarget.id}`)) return jsonResponse(oldTarget);
+    const selected = pathname.includes(OTHER_KNOWLEDGE_PROJECT_ID) ? newTarget : oldTarget;
+    return jsonResponse({ capabilities: { canWrite: true }, items: [selected], nextCursor: null });
+  }));
+  const user = userEvent.setup();
+  const rendered = renderTestRoutes(
+    `/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, { restoredIdentity: IDENTITY },
+  );
+  const row = (await screen.findByText(oldTarget.title)).closest("li")!;
+  await user.click(within(row).getByRole("button", { name: "查看资料详情" }));
+  await user.click(await screen.findByRole("button", { name: "删除资料" }));
+  await user.click(screen.getByRole("button", { name: "确认删除资料" }));
+  await waitFor(() => expect(deleteRequest).not.toBeNull());
+
+  rendered.navigate(`/projects/${OTHER_KNOWLEDGE_PROJECT_ID}/knowledge`);
+  expect(await screen.findByText(newTarget.title)).toBeVisible();
+  expect((deleteRequest as Request | null)?.signal.aborted).toBe(true);
+  await act(async () => lateDelete.resolve(new Response(null, { status: 204 })));
+  expect(screen.getByText(newTarget.title)).toBeVisible();
+  expect(screen.queryByRole("status", { name: "资料删除结果" })).toBeNull();
+});
+
+test("a same-project session generation change aborts retry and ignores its late success", async () => {
+  const oldTarget = knowledgeResource({
+    id: "00000000-0000-4000-8000-000000005040", title: "旧会话待重试.pdf",
+    mediaType: "application/pdf", sizeBytes: 1024, status: "failed",
+  });
+  const newTarget = knowledgeResource({
+    id: "00000000-0000-4000-8000-000000005041", title: "新会话同项目资料.pdf",
+    mediaType: "application/pdf", sizeBytes: 1024, status: "ready",
+  });
+  const queuedOld = { ...oldTarget, latestVersion: {
+    ...oldTarget.latestVersion!, status: "queued" as const, errorCode: null, retryable: false,
+  } };
+  const lateRetry = trackedResponse(() => jsonResponse(queuedOld));
+  let retryRequest: Request | null = null;
+  let listRequests = 0;
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    const pathname = new URL(request.url).pathname;
+    if (request.method === "POST" && pathname.endsWith("/retry")) {
+      retryRequest = request;
+      return lateRetry.promise;
+    }
+    if (pathname.endsWith(`/knowledge/resources/${oldTarget.id}`)) return jsonResponse(oldTarget);
+    listRequests += 1;
+    return jsonResponse({
+      capabilities: { canWrite: true },
+      items: [listRequests === 1 ? oldTarget : newTarget],
+      nextCursor: null,
+    });
+  }));
+  const user = userEvent.setup();
+  const rendered = renderTestRoutes(
+    `/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, { restoredIdentity: IDENTITY },
+  );
+  const row = (await screen.findByText(oldTarget.title)).closest("li")!;
+  await user.click(within(row).getByRole("button", { name: "查看资料详情" }));
+  await user.click(await screen.findByRole("button", { name: "重新处理失败版本" }));
+  await waitFor(() => expect(retryRequest).not.toBeNull());
+
+  rendered.establishSession({
+    ...IDENTITY,
+    user: { ...IDENTITY.user, id: "00000000-0000-4000-8000-000000001098" },
+  });
+
+  expect(await screen.findByText(newTarget.title)).toBeVisible();
+  expect((retryRequest as Request | null)?.signal.aborted).toBe(true);
+  await act(async () => lateRetry.resolve(jsonResponse(queuedOld)));
+  expect(screen.getByText(newTarget.title)).toBeVisible();
+  expect(screen.queryByText(oldTarget.title)).toBeNull();
+  expect(screen.queryByRole("status", { name: "资料删除结果" })).toBeNull();
+});
+
+test("closing and reopening the same resource aborts a mutation and never reveals its late result", async () => {
+  const target = knowledgeResource({
+    id: "00000000-0000-4000-8000-000000005042", title: "重开后重新授权.pdf",
+    mediaType: "application/pdf", sizeBytes: 1024, status: "failed",
+  });
+  const queued = { ...target, latestVersion: {
+    ...target.latestVersion!, status: "queued" as const, errorCode: null, retryable: false,
+  } };
+  const lateRetry = trackedResponse(() => jsonResponse(queued));
+  let retryRequest: Request | null = null;
+  let detailReads = 0;
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    const pathname = new URL(request.url).pathname;
+    if (request.method === "POST" && pathname.endsWith("/retry")) {
+      retryRequest = request;
+      return lateRetry.promise;
+    }
+    if (pathname.endsWith(`/knowledge/resources/${target.id}`)) {
+      detailReads += 1;
+      return jsonResponse(target);
+    }
+    return jsonResponse({ capabilities: { canWrite: true }, items: [target], nextCursor: null });
+  }));
+  const user = userEvent.setup();
+  renderTestRoutes(`/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, { restoredIdentity: IDENTITY });
+  const row = (await screen.findByText(target.title)).closest("li")!;
+  const toggle = within(row).getByRole("button", { name: "查看资料详情" });
+  await user.click(toggle);
+  await user.click(await screen.findByRole("button", { name: "重新处理失败版本" }));
+  await waitFor(() => expect(retryRequest).not.toBeNull());
+
+  await user.click(within(row).getByRole("button", { name: "收起资料详情" }));
+  expect((retryRequest as Request | null)?.signal.aborted).toBe(true);
+  await user.click(within(row).getByRole("button", { name: "查看资料详情" }));
+  expect(await screen.findByText("文件解析失败，请刷新状态或联系管理员。")).toBeVisible();
+  expect(detailReads).toBe(2);
+  await act(async () => lateRetry.resolve(jsonResponse(queued)));
+  expect(screen.getByText("处理失败", { selector: "dd" })).toBeVisible();
+  expect(screen.queryByText("等待处理", { selector: "dd" })).toBeNull();
+  expect(screen.getByRole("button", { name: "重新处理失败版本" })).toBeEnabled();
+});
+
+test.each(["retry", "delete"] as const)(
+  "StrictMode keeps a successful %s callback live after its setup probe",
+  async (operation) => {
+    const target = knowledgeResource({
+      id: operation === "retry"
+        ? "00000000-0000-4000-8000-000000005043"
+        : "00000000-0000-4000-8000-000000005044",
+      title: `StrictMode-${operation}.pdf`,
+      mediaType: "application/pdf",
+      sizeBytes: 1024,
+      status: "failed",
+    });
+    const queued = { ...target, latestVersion: {
+      ...target.latestVersion!, status: "queued" as const, processingStartedAt: null,
+      errorCode: null, retryable: false,
+    } };
+    const mutationRequests: Request[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const request = input as Request;
+      const pathname = new URL(request.url).pathname;
+      if (request.method === "POST" || request.method === "DELETE") {
+        mutationRequests.push(request);
+        return request.method === "POST"
+          ? jsonResponse(queued)
+          : new Response(null, { status: 204 });
+      }
+      if (pathname.endsWith(`/knowledge/resources/${target.id}`)) return jsonResponse(target);
+      return jsonResponse({ capabilities: { canWrite: true }, items: [target], nextCursor: null });
+    }));
+    const user = userEvent.setup();
+    renderTestRoutes(`/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, {
+      restoredIdentity: IDENTITY,
+      strictMode: true,
+    });
+    const row = (await screen.findByText(target.title)).closest("li")!;
+    await user.click(within(row).getByRole("button", { name: "查看资料详情" }));
+    if (operation === "retry") {
+      await user.click(await screen.findByRole("button", { name: "重新处理失败版本" }));
+      expect(await screen.findByText("等待处理", { selector: "dd" })).toBeVisible();
+    } else {
+      await user.click(await screen.findByRole("button", { name: "删除资料" }));
+      await user.click(screen.getByRole("button", { name: "确认删除资料" }));
+      expect(await screen.findByRole("status", { name: "资料删除结果" })).toHaveTextContent(
+        `已删除资料：${target.title}`,
+      );
+      expect(screen.queryByText(target.title)).toBeNull();
+    }
+    expect(mutationRequests).toHaveLength(1);
+  },
+);
+
+test.each(["retry", "delete"] as const)(
+  "a delayed old-session 401 from %s cannot expire the replacement session",
+  async (operation) => {
+    const oldTarget = knowledgeResource({
+      id: operation === "retry"
+        ? "00000000-0000-4000-8000-000000005045"
+        : "00000000-0000-4000-8000-000000005046",
+      title: `旧会话延迟401-${operation}.pdf`,
+      mediaType: "application/pdf",
+      sizeBytes: 1024,
+      status: "failed",
+    });
+    const newTarget = knowledgeResource({
+      id: operation === "retry"
+        ? "00000000-0000-4000-8000-000000005047"
+        : "00000000-0000-4000-8000-000000005048",
+      title: `替换会话保留-${operation}.pdf`,
+      mediaType: "application/pdf",
+      sizeBytes: 1024,
+      status: "ready",
+    });
+    const late401 = trackedResponse(() => jsonResponse({
+      code: "session_invalid", message: "旧会话已失效", traceId: `trace-old-${operation}-401`,
+    }, 401));
+    let mutationRequest: Request | null = null;
+    let listRequests = 0;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const request = input as Request;
+      const pathname = new URL(request.url).pathname;
+      if (request.method === "POST" || request.method === "DELETE") {
+        mutationRequest = request;
+        return late401.promise;
+      }
+      if (pathname.endsWith(`/knowledge/resources/${oldTarget.id}`)) return jsonResponse(oldTarget);
+      listRequests += 1;
+      return jsonResponse({
+        capabilities: { canWrite: true },
+        items: [listRequests === 1 ? oldTarget : newTarget],
+        nextCursor: null,
+      });
+    }));
+    const user = userEvent.setup();
+    const rendered = renderTestRoutes(
+      `/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, { restoredIdentity: IDENTITY },
+    );
+    const row = (await screen.findByText(oldTarget.title)).closest("li")!;
+    await user.click(within(row).getByRole("button", { name: "查看资料详情" }));
+    if (operation === "retry") {
+      await user.click(await screen.findByRole("button", { name: "重新处理失败版本" }));
+    } else {
+      await user.click(await screen.findByRole("button", { name: "删除资料" }));
+      await user.click(screen.getByRole("button", { name: "确认删除资料" }));
+    }
+    await waitFor(() => expect(mutationRequest).not.toBeNull());
+    rendered.establishSession({
+      ...IDENTITY,
+      user: { ...IDENTITY.user, id: "00000000-0000-4000-8000-000000001097" },
+    });
+    expect(await screen.findByText(newTarget.title)).toBeVisible();
+    expect((mutationRequest as Request | null)?.signal.aborted).toBe(true);
+
+    await act(async () => late401.resolve(jsonResponse({
+      code: "session_invalid", message: "旧会话已失效", traceId: `trace-old-${operation}-401`,
+    }, 401)));
+
+    expect(screen.getByText(newTarget.title)).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "登录 Cairn" })).toBeNull();
+    expect(screen.queryByText(oldTarget.title)).toBeNull();
+  },
+);
+
+test.each([
+  [200, true],
+  [404, false],
+])("a detail 404 rechecks the exact resource list and keeps the workspace only when it returns %s",
+  async (listRecheckStatus, workspaceRemains) => {
+    const resourceId = "00000000-0000-4000-8000-000000005023";
+    const detail = knowledgeResource({
+      id: resourceId,
+      title: "本地消失详情.pdf",
+      mediaType: "application/pdf",
+      sizeBytes: 1024,
+      status: "ready",
+    });
+    let listRequests = 0;
+    let searchRequests = 0;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const request = input as Request;
+      const pathname = new URL(request.url).pathname;
+      if (request.method === "POST") {
+        searchRequests += 1;
+        return jsonResponse({
+          retrievalMode: "hybrid",
+          results: [{
+            resourceId,
+            resourceVersionId: detail.latestVersion?.id,
+            chunkId: "00000000-0000-4000-8000-000000007023",
+            title: "详情撤销前结果",
+            mediaType: "application/pdf",
+            excerpt: "详情撤销前搜索摘录",
+            locator: { type: "pdf", page: 1 },
+            score: 0.9,
+          }],
+        });
+      }
+      if (pathname.endsWith(`/knowledge/resources/${resourceId}`)) {
+        return jsonResponse({
+          code: "not_found",
+          message: "资料不存在",
+          traceId: "trace-route-detail-404",
+        }, 404);
+      }
+      listRequests += 1;
+      if (listRequests > 1 && listRecheckStatus === 404) {
+        return jsonResponse({
+          code: "not_found",
+          message: "项目或知识资料不存在",
+          traceId: "trace-route-list-404",
+        }, 404);
+      }
+      return jsonResponse({ capabilities: { canWrite: false }, items: [detail], nextCursor: null });
+    }));
+    const user = userEvent.setup();
+
+    const { queryClient } = renderTestRoutes(
+      `/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`,
+      { restoredIdentity: IDENTITY },
+    );
+    const row = (await screen.findByText(detail.title)).closest("li");
+    await user.type(screen.getByLabelText("搜索项目知识"), "详情撤销前搜索");
+    await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+    expect(await screen.findByText("详情撤销前搜索摘录")).toBeVisible();
+    await user.click(within(row as HTMLElement).getByRole("button", { name: "查看资料详情" }));
+    await waitFor(() => expect(listRequests).toBe(2));
+
+    expect(searchRequests).toBe(1);
+    const searchState = queryClient.getQueryState([
+      "project-knowledge", IDENTITY.organization.id, KNOWLEDGE_PROJECT_ID,
+      "search", "详情撤销前搜索", 10,
+    ]);
+    expect(searchState).toMatchObject({ isInvalidated: true, fetchStatus: "idle" });
+    if (workspaceRemains) {
+      expect(await screen.findByText("该资料已不可用，正在重新检查项目知识访问权限。"))
+        .toBeVisible();
+      expect(screen.getByRole("region", { name: "项目知识工作区" })).toBeVisible();
+      expect(screen.getByText(detail.title)).toBeVisible();
+    } else {
+      expect(await screen.findByRole("alert")).toHaveTextContent("项目或知识资料不存在");
+      expect(screen.queryByText(detail.title)).toBeNull();
+      expect(screen.queryByLabelText("搜索项目知识")).toBeNull();
+    }
+  });
+
+test("a project transition aborts a pending detail and cannot reveal its late response", async () => {
+  const oldResource = knowledgeResource({
+    id: "00000000-0000-4000-8000-000000005024",
+    title: "旧项目详情.pdf",
+    mediaType: "application/pdf",
+    sizeBytes: 1024,
+    status: "ready",
+  });
+  const newResource = knowledgeResource({
+    id: "00000000-0000-4000-8000-000000005025",
+    title: "新项目资料.pdf",
+    mediaType: "application/pdf",
+    sizeBytes: 2048,
+    status: "queued",
+  });
+  const oldDetail = trackedResponse(() => jsonResponse(oldResource));
+  let oldDetailRequest: Request | null = null;
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    const pathname = new URL(request.url).pathname;
+    if (pathname.endsWith(`/knowledge/resources/${oldResource.id}`)) {
+      oldDetailRequest = request;
+      return oldDetail.promise;
+    }
+    const selected = pathname.includes(OTHER_KNOWLEDGE_PROJECT_ID) ? newResource : oldResource;
+    return jsonResponse({ capabilities: { canWrite: false }, items: [selected], nextCursor: null });
+  }));
+  const user = userEvent.setup();
+  const rendered = renderTestRoutes(
+    `/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`,
+    { restoredIdentity: IDENTITY },
+  );
+  const oldRow = (await screen.findByText(oldResource.title)).closest("li");
+  await user.click(within(oldRow as HTMLElement).getByRole("button", { name: "查看资料详情" }));
+  expect(screen.getByText("正在读取资料详情…")).toBeVisible();
+
+  rendered.navigate(`/projects/${OTHER_KNOWLEDGE_PROJECT_ID}/knowledge`);
+
+  expect(await screen.findByText(newResource.title)).toBeVisible();
+  expect((oldDetailRequest as Request | null)?.signal.aborted).toBe(true);
+  await act(async () => oldDetail.resolve(jsonResponse(oldResource)));
+  expect(screen.queryByText("旧项目详情.pdf", { selector: "strong" })).toBeNull();
+  expect(screen.queryByRole("link", { name: /下载资料/ })).toBeNull();
+});
+
+test("a same-project session generation change destroys authorized detail state", async () => {
+  const oldResource = knowledgeResource({
+    id: "00000000-0000-4000-8000-000000005026",
+    title: "旧会话授权详情.pdf",
+    mediaType: "application/pdf",
+    sizeBytes: 1024,
+    status: "ready",
+  });
+  const newResource = knowledgeResource({
+    id: "00000000-0000-4000-8000-000000005027",
+    title: "新会话资料.pdf",
+    mediaType: "application/pdf",
+    sizeBytes: 2048,
+    status: "queued",
+  });
+  let listRequests = 0;
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    const pathname = new URL(request.url).pathname;
+    if (pathname.endsWith(`/knowledge/resources/${oldResource.id}`)) {
+      return jsonResponse(oldResource);
+    }
+    listRequests += 1;
+    return jsonResponse({
+      capabilities: { canWrite: false },
+      items: [listRequests === 1 ? oldResource : newResource],
+      nextCursor: null,
+    });
+  }));
+  const user = userEvent.setup();
+  const rendered = renderTestRoutes(
+    `/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`,
+    { restoredIdentity: IDENTITY },
+  );
+  const oldRow = (await screen.findByText(oldResource.title)).closest("li");
+  await user.click(within(oldRow as HTMLElement).getByRole("button", { name: "查看资料详情" }));
+  expect(await screen.findByRole("link", { name: /下载资料.*新标签页/ })).toBeVisible();
+
+  rendered.establishSession({
+    ...IDENTITY,
+    user: { ...IDENTITY.user, id: "00000000-0000-4000-8000-000000001099" },
+  });
+
+  expect(await screen.findByText(newResource.title)).toBeVisible();
+  expect(screen.queryByText(oldResource.title)).toBeNull();
+  expect(screen.queryByRole("region", { name: `${oldResource.title} 资料详情` })).toBeNull();
+  expect(screen.queryByRole("link", { name: /下载资料/ })).toBeNull();
+  expect(listRequests).toBe(2);
+});
+
 test("the project knowledge route safely renders an RFC3339 leap second", async () => {
   const projectId = "00000000-0000-4000-8000-000000004001";
   vi.stubGlobal(
@@ -1549,6 +3153,145 @@ test("the project knowledge route appends cursor pages without replacing loaded 
   expect(new URL(requests[1]?.url ?? "").searchParams.get("cursor")).toBe(
     "cursor-second-page",
   );
+});
+
+test("a pagination capability downgrade removes upload UI and aborts active transfer state", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    const url = new URL(request.url);
+    if (request.method === "GET" && url.pathname.endsWith("/knowledge/resources")) {
+      return url.searchParams.get("cursor") === null
+        ? jsonResponse({
+            capabilities: { canWrite: true },
+            items: [knowledgeResource({
+              id: "00000000-0000-4000-8000-000000005091",
+              title: "权限切换资料.pdf",
+              mediaType: "application/pdf",
+              sizeBytes: 1024,
+              status: "ready",
+            })],
+            nextCursor: "cursor-read-only",
+          })
+        : jsonResponse({
+            capabilities: { canWrite: false },
+            items: [],
+            nextCursor: null,
+          });
+    }
+    if (url.pathname.endsWith("/knowledge/uploads")) {
+      return jsonResponse(uploadCreateResponse(), 201);
+    }
+    throw new Error(`Unexpected request: ${request.method} ${url.pathname}`);
+  }));
+  const xhrs = installRouteXhr();
+  const user = userEvent.setup();
+  renderTestRoutes(`/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, {
+    restoredIdentity: IDENTITY,
+  });
+
+  await user.upload(
+    await screen.findByLabelText("上传知识资料"),
+    new File(["pending"], "pending-capability.pdf", { type: "application/pdf" }),
+  );
+  await user.click(screen.getByRole("button", { name: "开始上传" }));
+  await waitFor(() => expect(xhrs).toHaveLength(1));
+  await user.click(screen.getByRole("button", { name: "加载更多知识资料" }));
+
+  expect(await screen.findByText("只读访问")).toBeInTheDocument();
+  expect(screen.queryByLabelText("上传知识资料")).toBeNull();
+  expect(screen.queryByText("pending-capability.pdf")).toBeNull();
+  expect(screen.getByLabelText("搜索项目知识")).toBeInTheDocument();
+  expect(xhrs[0]?.abort).toHaveBeenCalledTimes(1);
+});
+
+test("an upload-driven resource refetch revokes capability and stops upload and batch work", async () => {
+  const resourceRefetch = trackedResourceResponse();
+  const batchResponse = trackedBatchResponse();
+  const requests: Request[] = [];
+  let resourceRequests = 0;
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    requests.push(request);
+    const pathname = new URL(request.url).pathname;
+    if (request.method === "GET" && pathname.endsWith("/knowledge/resources")) {
+      resourceRequests += 1;
+      if (resourceRequests > 1) return resourceRefetch.promise;
+      return jsonResponse({
+        capabilities: { canWrite: true },
+        items: [knowledgeResource({
+          id: "00000000-0000-4000-8000-000000005092",
+          title: "仍可只读检索.pdf",
+          mediaType: "application/pdf",
+          sizeBytes: 1024,
+          status: "ready",
+        })],
+        nextCursor: null,
+      });
+    }
+    if (request.method === "GET" && pathname.includes("/knowledge/batches/")) {
+      return batchResponse.promise;
+    }
+    if (pathname.endsWith("/knowledge/uploads")) {
+      return jsonResponse(uploadCreateResponse(2), 201);
+    }
+    if (pathname.endsWith(`/${UPLOAD_ID_1}/complete`)) {
+      return jsonResponse(uploadCompleteResponse());
+    }
+    throw new Error(`Unexpected request: ${request.method} ${pathname}`);
+  }));
+  const xhrs = installRouteXhr();
+  const user = userEvent.setup();
+  const { forceRerender, queryClient } = renderTestRoutes(`/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, {
+    restoredIdentity: IDENTITY,
+  });
+
+  expect(await screen.findByText("仍可只读检索.pdf")).toBeInTheDocument();
+  await user.upload(screen.getByLabelText("上传知识资料"), [
+    new File(["first"], "refetch-first.pdf", { type: "application/pdf" }),
+    new File(["second"], "refetch-second.pdf", { type: "application/pdf" }),
+  ]);
+  await user.click(screen.getByRole("button", { name: "开始上传" }));
+  await waitFor(() => expect(xhrs).toHaveLength(2));
+  act(() => finishRouteXhr(xhrs[0]!));
+  const batchRequest = await waitFor(() => {
+    expect(resourceRequests).toBe(2);
+    const request = requests.find((candidate) =>
+      new URL(candidate.url).pathname.includes(`/knowledge/batches/${UPLOAD_BATCH_ID}`)
+    );
+    expect(request).toBeDefined();
+    return request!;
+  });
+
+  resourceRefetch.resolve(jsonResponse({
+    capabilities: { canWrite: false },
+    items: [knowledgeResource({
+      id: "00000000-0000-4000-8000-000000005092",
+      title: "仍可只读检索.pdf",
+      mediaType: "application/pdf",
+      sizeBytes: 1024,
+      status: "ready",
+    })],
+    nextCursor: null,
+  }));
+
+  expect(await screen.findByText("只读访问")).toBeInTheDocument();
+  expect(screen.getByText("仍可只读检索.pdf")).toBeInTheDocument();
+  expect(screen.getByLabelText("搜索项目知识")).toBeInTheDocument();
+  expect(screen.queryByLabelText("上传知识资料")).toBeNull();
+  expect(screen.queryByText("refetch-first.pdf")).toBeNull();
+  expect(screen.queryByText("refetch-second.pdf")).toBeNull();
+  expect(xhrs[1]?.abort).toHaveBeenCalledTimes(1);
+  expect(batchRequest.signal.aborted).toBe(true);
+
+  await settleLateBatchResponse(batchResponse, forceRerender);
+  expect(screen.queryByText("refetch-first.pdf")).toBeNull();
+  expect(screen.queryByText("refetch-second.pdf")).toBeNull();
+  expectQueriesNotToContain(queryClient, [
+    "refetch-first.pdf",
+    "refetch-second.pdf",
+    "first.pdf",
+    "second.pdf",
+  ]);
 });
 
 test.each([

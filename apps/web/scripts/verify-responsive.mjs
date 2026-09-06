@@ -56,7 +56,7 @@ const RESPONSIVE_TASKS = {
 };
 
 const KNOWLEDGE_RESOURCE_PAGE = {
-  capabilities: { canWrite: false },
+  capabilities: { canWrite: true },
   items: [
     {
       id: "00000000-0000-4000-8000-000000005001",
@@ -120,7 +120,7 @@ const KNOWLEDGE_RESOURCE_PAGE = {
     },
     {
       id: "00000000-0000-4000-8000-000000005004",
-      title: "损坏报告.pdf",
+      title: `${"NoWhitespaceFailedResourceBoundary".repeat(6)}.pdf`,
       sourceType: "upload",
       createdAt: "2026-08-21T02:00:00Z",
       updatedAt: "2026-08-22T02:00:00Z",
@@ -140,6 +140,29 @@ const KNOWLEDGE_RESOURCE_PAGE = {
     },
   ],
   nextCursor: "responsive-next-page",
+};
+
+const KNOWLEDGE_RESOURCE_DETAIL = {
+  ...KNOWLEDGE_RESOURCE_PAGE.items[0],
+  latestVersion: {
+    ...KNOWLEDGE_RESOURCE_PAGE.items[0].latestVersion,
+    status: "ready",
+    processingStartedAt: "2026-08-21T02:01:00Z",
+    readyAt: "2026-08-21T02:03:00Z",
+  },
+};
+
+const KNOWLEDGE_FAILED_RESOURCE_DETAIL = KNOWLEDGE_RESOURCE_PAGE.items[3];
+const KNOWLEDGE_RETRIED_RESOURCE_DETAIL = {
+  ...KNOWLEDGE_FAILED_RESOURCE_DETAIL,
+  updatedAt: "2026-08-22T02:05:00Z",
+  latestVersion: {
+    ...KNOWLEDGE_FAILED_RESOURCE_DETAIL.latestVersion,
+    status: "queued",
+    errorCode: null,
+    retryable: false,
+    processingStartedAt: null,
+  },
 };
 
 const KNOWLEDGE_SEARCH_RESPONSE = {
@@ -209,6 +232,106 @@ const KNOWLEDGE_SEARCH_ERROR_MESSAGE =
   "KnowledgeSearchInfrastructureUnavailableKnowledgeSearchInfrastructureUnavailableKnowledgeSearchInfrastructureUnavailableKnowledgeSearchInfrastructureUnavailable";
 const KNOWLEDGE_SEARCH_TRACE_ID =
   "trace-knowledge-search-503-ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+const KNOWLEDGE_UPLOAD_BATCH_ID = "00000000-0000-4000-8000-000000008001";
+const KNOWLEDGE_UPLOAD_LONG_NAME = `${"NoWhitespaceUploadBoundary".repeat(8)}.pdf`;
+const KNOWLEDGE_UPLOAD_FILES = [
+  { name: KNOWLEDGE_UPLOAD_LONG_NAME, mimeType: "application/pdf", buffer: Buffer.alloc(10, "p") },
+  { name: "跨区域恢复资料包.zip", mimeType: "application/zip", buffer: Buffer.alloc(10, "z") },
+  { name: "值班交接与回滚说明.md", mimeType: "text/markdown", buffer: Buffer.alloc(10, "m") },
+];
+const KNOWLEDGE_UPLOAD_INSTRUCTIONS = KNOWLEDGE_UPLOAD_FILES.map((_file, index) => ({
+  uploadId: `00000000-0000-4000-8000-0000000081${String(index + 1).padStart(2, "0")}`,
+  itemId: `00000000-0000-4000-8000-0000000091${String(index + 1).padStart(2, "0")}`,
+  method: "PUT",
+  url: `https://objects.invalid/responsive-${index + 1}?signature=private-responsive`,
+  headers: { "x-upload-token": `private-responsive-${index + 1}` },
+  expiresAt: "2026-09-05T10:00:00Z",
+}));
+const KNOWLEDGE_UPLOAD_CHILD_LONG_PATH =
+  `archive/${"NestedNoWhitespacePathBoundary".repeat(8)}.md`;
+const KNOWLEDGE_UPLOAD_CHILD_ERROR =
+  "压缩包中的损坏条目无法解析，请移除该文件后重新上传。";
+const KNOWLEDGE_UPLOAD_BATCH = {
+  id: KNOWLEDGE_UPLOAD_BATCH_ID,
+  status: "completed_with_errors",
+  itemCount: 5,
+  readyCount: 3,
+  failedCount: 2,
+  createdAt: "2026-09-05T09:00:00Z",
+  completedAt: "2026-09-05T09:01:00Z",
+  items: [
+    {
+      id: KNOWLEDGE_UPLOAD_INSTRUCTIONS[0].itemId,
+      parentItemId: null,
+      normalizedPath: KNOWLEDGE_UPLOAD_LONG_NAME,
+      mediaType: "application/pdf",
+      sizeBytes: 3,
+      status: "ready",
+      resourceId: "00000000-0000-4000-8000-000000005101",
+      resourceVersionId: "00000000-0000-4000-8000-000000006101",
+      errorCode: null,
+      errorDetail: null,
+      createdAt: "2026-09-05T09:00:00Z",
+      completedAt: "2026-09-05T09:01:00Z",
+    },
+    {
+      id: KNOWLEDGE_UPLOAD_INSTRUCTIONS[1].itemId,
+      parentItemId: null,
+      normalizedPath: "跨区域恢复资料包.zip",
+      mediaType: "application/zip",
+      sizeBytes: 3,
+      status: "failed",
+      resourceId: null,
+      resourceVersionId: null,
+      errorCode: "archive_partial_failure",
+      errorDetail: "资料包中有一个条目处理失败。",
+      createdAt: "2026-09-05T09:00:00Z",
+      completedAt: "2026-09-05T09:01:00Z",
+    },
+    {
+      id: KNOWLEDGE_UPLOAD_INSTRUCTIONS[2].itemId,
+      parentItemId: null,
+      normalizedPath: "值班交接与回滚说明.md",
+      mediaType: "text/markdown",
+      sizeBytes: 8,
+      status: "ready",
+      resourceId: "00000000-0000-4000-8000-000000005103",
+      resourceVersionId: "00000000-0000-4000-8000-000000006103",
+      errorCode: null,
+      errorDetail: null,
+      createdAt: "2026-09-05T09:00:00Z",
+      completedAt: "2026-09-05T09:01:00Z",
+    },
+    {
+      id: "00000000-0000-4000-8000-000000009201",
+      parentItemId: KNOWLEDGE_UPLOAD_INSTRUCTIONS[1].itemId,
+      normalizedPath: "archive/区域恢复清单.md",
+      mediaType: "text/markdown",
+      sizeBytes: 128,
+      status: "ready",
+      resourceId: "00000000-0000-4000-8000-000000005201",
+      resourceVersionId: "00000000-0000-4000-8000-000000006201",
+      errorCode: null,
+      errorDetail: null,
+      createdAt: "2026-09-05T09:00:00Z",
+      completedAt: "2026-09-05T09:01:00Z",
+    },
+    {
+      id: "00000000-0000-4000-8000-000000009202",
+      parentItemId: KNOWLEDGE_UPLOAD_INSTRUCTIONS[1].itemId,
+      normalizedPath: KNOWLEDGE_UPLOAD_CHILD_LONG_PATH,
+      mediaType: "text/markdown",
+      sizeBytes: 96,
+      status: "failed",
+      resourceId: null,
+      resourceVersionId: null,
+      errorCode: "parse_failed",
+      errorDetail: KNOWLEDGE_UPLOAD_CHILD_ERROR,
+      createdAt: "2026-09-05T09:00:00Z",
+      completedAt: "2026-09-05T09:01:00Z",
+    },
+  ],
+};
 const TASK_TRANSITION_TRACE_ID = "trace-responsive-task-transition-503";
 const TASK_TRANSITION_ERROR_MESSAGE = "任务状态更新失败，请稍后重试";
 
@@ -299,7 +422,290 @@ async function readLayout(page) {
   });
 }
 
-async function checkKnowledgeResourceLayout(page, expect, screenshotDir, viewport, themeValue) {
+async function readKnowledgeUploadLayout(page) {
+  return page.evaluate(() => {
+    const surface = document.querySelector(".knowledge-upload-batch");
+    const surfaceRect = surface?.getBoundingClientRect();
+    const measure = (selector) => [...document.querySelectorAll(selector)].map((element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        selector,
+        right: rect.right,
+        clientWidth: element.clientWidth,
+        scrollWidth: element.scrollWidth,
+      };
+    });
+    const targets = [
+      ...document.querySelectorAll(
+        ".knowledge-upload-drop-region input[type='file'], .knowledge-upload-actions button",
+      ),
+    ].filter((element) => element.checkVisibility()).map((element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        name: element.getAttribute("aria-label") ?? element.textContent.trim(),
+        width: rect.width,
+        height: rect.height,
+      };
+    });
+    return {
+      fileCount: document.querySelectorAll(".knowledge-upload-file").length,
+      fileNames: [...document.querySelectorAll(".knowledge-upload-file-name")]
+        .map((element) => element.textContent.trim()),
+      surfaceInsideViewport:
+        surfaceRect != null && surfaceRect.left >= 0 && surfaceRect.right <= innerWidth,
+      metrics: [
+        ...measure(".knowledge-upload-batch"),
+        ...measure(".knowledge-upload-drop-region"),
+        ...measure(".knowledge-upload-file"),
+        ...measure(".knowledge-upload-file-heading"),
+        ...measure(".knowledge-upload-file-name"),
+        ...measure(".knowledge-upload-file-error"),
+        ...measure(".knowledge-upload-child"),
+        ...measure(".knowledge-upload-child-path"),
+      ],
+      targets,
+    };
+  });
+}
+
+function expectKnowledgeUploadLayout(layout, viewport, expect, state) {
+  expect(layout.surfaceInsideViewport, `${viewport.name} ${state}上传区超出视口`);
+  const overflowing = layout.metrics.filter(({ right, scrollWidth, clientWidth }) =>
+    right > viewport.width + 0.5 || scrollWidth > clientWidth
+  );
+  expect(
+    overflowing.length === 0,
+    `${viewport.name} ${state}上传内容横向溢出：${overflowing
+      .map(({ selector, right, scrollWidth, clientWidth }) =>
+        `${selector} right=${right.toFixed(1)} scroll=${scrollWidth}/client=${clientWidth}`)
+      .join(" / ")}`,
+  );
+  const undersized = layout.targets.filter(({ width, height }) => width < 44 || height < 44);
+  expect(
+    undersized.length === 0,
+    `${viewport.name} ${state}上传操作目标不足 44x44px：${undersized
+      .map(({ name, width, height }) => `${name} (${width.toFixed(1)}x${height.toFixed(1)})`)
+      .join(" / ")}`,
+  );
+}
+
+async function checkKnowledgeUploadLayout(page, expect, screenshotDir, viewport, themeValue) {
+  await page.evaluate(() => {
+    window.__responsiveNativeXhr = window.XMLHttpRequest;
+    window.__responsiveUploadReleased = false;
+    window.__responsiveUploadRequests = [];
+    class ResponsiveUploadXhr {
+      status = 0;
+      responseText = "";
+      withCredentials = true;
+      upload = { onprogress: null };
+      onload = null;
+      onerror = null;
+      onabort = null;
+      method = "";
+      url = "";
+      headers = {};
+      file = null;
+
+      open(method, url) {
+        this.method = method;
+        this.url = url;
+      }
+
+      setRequestHeader(name, value) {
+        this.headers[name] = value;
+      }
+
+      send(file) {
+        this.file = file;
+        window.__responsiveUploadRequests.push(this);
+        queueMicrotask(() => {
+          this.upload.onprogress?.({
+            loaded: Math.max(1, Math.round(file.size * 0.4)),
+            total: file.size,
+            lengthComputable: true,
+          });
+          if (window.__responsiveUploadReleased) this.finish();
+        });
+      }
+
+      abort() {
+        this.onabort?.(new ProgressEvent("abort"));
+      }
+
+      finish() {
+        if (this.status !== 0) return;
+        this.status = 200;
+        this.onload?.(new ProgressEvent("load"));
+      }
+    }
+    window.XMLHttpRequest = ResponsiveUploadXhr;
+    window.__releaseResponsiveUploads = () => {
+      window.__responsiveUploadReleased = true;
+      for (const request of window.__responsiveUploadRequests) request.finish();
+    };
+  });
+
+  const input = page.locator(".knowledge-upload-drop-region input[type='file']");
+  await input.setInputFiles(KNOWLEDGE_UPLOAD_FILES);
+  await page.waitForSelector(".knowledge-upload-file-list");
+  const selectedLayout = await readKnowledgeUploadLayout(page);
+  expect(
+    selectedLayout.fileCount === 3 &&
+      selectedLayout.fileNames.join("|") === KNOWLEDGE_UPLOAD_FILES.map(({ name }) => name).join("|"),
+    `${viewport.name} 未形成按选择顺序呈现的 3 文件密集状态`,
+  );
+  expectKnowledgeUploadLayout(selectedLayout, viewport, expect, "文件选择");
+  await input.focus();
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Shift+Tab");
+  const inputFocus = await input.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      focusVisible: element.matches(":focus-visible"),
+      outlineStyle: style.outlineStyle,
+      outlineWidth: Number.parseFloat(style.outlineWidth),
+    };
+  });
+  expect(
+    inputFocus.focusVisible && inputFocus.outlineStyle !== "none" && inputFocus.outlineWidth > 0,
+    `${viewport.name} 上传文件选择器缺少可见键盘焦点`,
+  );
+  const selectedScreenshot = await page.locator(".knowledge-upload-batch").screenshot({
+    path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-upload-selected.png`),
+  });
+  expect(selectedScreenshot.byteLength > 100, `${viewport.name} 文件选择截图为空`);
+
+  await page.getByRole("button", { name: "开始上传" }).click();
+  await page.waitForFunction(() =>
+    document.querySelectorAll('.knowledge-upload-progress progress[value="40"]').length === 2
+  );
+  const progressLayout = await readKnowledgeUploadLayout(page);
+  expectKnowledgeUploadLayout(progressLayout, viewport, expect, "40% 进度");
+  const progressAppearance = await page.locator(".knowledge-upload-progress progress").first()
+    .evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        value: element.value,
+        accentColor: style.accentColor,
+        backgroundColor: style.backgroundColor,
+        width: element.getBoundingClientRect().width,
+      };
+    });
+  expect(progressAppearance.value === 40, `${viewport.name} 上传进度不是 40%`);
+  expect(progressAppearance.width > 0, `${viewport.name} 上传进度没有可见宽度`);
+  expect(
+    progressAppearance.accentColor !== "auto" &&
+      progressAppearance.backgroundColor !== "rgba(0, 0, 0, 0)",
+    `${viewport.name} ${themeValue} 上传进度缺少主题化前景或轨道`,
+  );
+  expect(
+    await page.getByText("40%", { exact: true }).first().isVisible(),
+    `${viewport.name} 上传进度缺少可见百分比`,
+  );
+  const progressScreenshot = await page.locator(".knowledge-upload-batch").screenshot({
+    path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-upload-progress.png`),
+  });
+  expect(progressScreenshot.byteLength > 100, `${viewport.name} 40% 进度截图为空`);
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const reducedMotion = await page.locator(".knowledge-upload-drop-region").evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      animationName: style.animationName,
+      transitionMilliseconds: style.transitionDuration.split(",").map((duration) =>
+        duration.endsWith("ms")
+          ? Number.parseFloat(duration)
+          : Number.parseFloat(duration) * 1000
+      ),
+    };
+  });
+  expect(reducedMotion.animationName === "none", `${viewport.name} 减少动画时上传区仍有动画`);
+  expect(
+    reducedMotion.transitionMilliseconds.every((duration) => duration <= 0.01),
+    `${viewport.name} 减少动画时上传区仍有可见过渡`,
+  );
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+
+  await page.evaluate(() => window.__releaseResponsiveUploads());
+  await page.waitForSelector(".knowledge-upload-child-list");
+  await page.getByText("Worker 已完成本批次处理，部分文件处理失败。").waitFor();
+  const completedLayout = await readKnowledgeUploadLayout(page);
+  expectKnowledgeUploadLayout(completedLayout, viewport, expect, "部分失败");
+  expect(
+    await page.getByText(KNOWLEDGE_UPLOAD_CHILD_LONG_PATH, { exact: true }).isVisible(),
+    `${viewport.name} 未完整显示 ZIP 长子路径`,
+  );
+  expect(
+    await page.getByText(KNOWLEDGE_UPLOAD_CHILD_ERROR, { exact: true }).isVisible(),
+    `${viewport.name} 未显示 ZIP 子条目安全错误`,
+  );
+  const uploadText = await page.locator(".knowledge-upload-batch").textContent();
+  expect(!uploadText.includes("private-responsive"), `${viewport.name} 上传区泄露临时能力`);
+  expect(!uploadText.includes(KNOWLEDGE_UPLOAD_BATCH_ID), `${viewport.name} 上传区泄露内部批次 ID`);
+  const refresh = page.getByRole("button", { name: "刷新处理状态" });
+  await input.focus();
+  await page.keyboard.press("Tab");
+  expect(
+    await refresh.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return element.matches(":focus-visible") && style.outlineStyle !== "none" &&
+        Number.parseFloat(style.outlineWidth) > 0;
+    }),
+    `${viewport.name} 上传操作缺少可见键盘焦点`,
+  );
+  const transport = await page.evaluate(() => window.__responsiveUploadRequests.map((request) => ({
+    method: request.method,
+    withCredentials: request.withCredentials,
+    bodyName: request.file?.name,
+    headerNames: Object.keys(request.headers),
+  })));
+  expect(transport.length === 3, `${viewport.name} 应直传 3 个文件，实际 ${transport.length}`);
+  expect(
+    transport.every(({ method, withCredentials, bodyName, headerNames }) =>
+      method === "PUT" && withCredentials === false &&
+      KNOWLEDGE_UPLOAD_FILES.some(({ name }) => name === bodyName) &&
+      headerNames.includes("x-upload-token")
+    ),
+    `${viewport.name} 直传方法、凭据、文件体或签名头错误`,
+  );
+  const controls = page.locator(
+    ".knowledge-upload-drop-region input[type='file'], .knowledge-upload-actions button:not(:disabled)",
+  );
+  for (let index = 0; index < await controls.count(); index += 1) {
+    const control = controls.nth(index);
+    await control.evaluate((element) => element.scrollIntoView({ block: "center", inline: "nearest" }));
+    const reachable = await control.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      const hit = document.elementFromPoint(centerX, centerY);
+      return centerX >= 0 && centerX <= innerWidth && centerY >= 0 && centerY <= innerHeight &&
+        (hit === element || (hit instanceof Element && hit.closest("button, input") === element));
+    });
+    expect(reachable, `${viewport.name} 上传控件 ${index + 1} 被固定界面遮挡或无法命中`);
+  }
+  const completedScreenshot = await page.locator(".knowledge-upload-batch").screenshot({
+    path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-upload-partial.png`),
+  });
+  expect(completedScreenshot.byteLength > 100, `${viewport.name} 部分失败截图为空`);
+  await page.evaluate(() => {
+    window.XMLHttpRequest = window.__responsiveNativeXhr;
+  });
+}
+
+async function checkKnowledgeResourceLayout(
+  page,
+  expect,
+  screenshotDir,
+  viewport,
+  themeValue,
+  operationState,
+) {
+  operationState.retryRequests = 0;
+  operationState.deleteRequests = 0;
+  operationState.searchRequests = 0;
+  operationState.failNextDelete = false;
   await page.goto(
     `${new URL(page.url()).origin}/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`,
     { waitUntil: "networkidle" },
@@ -333,6 +739,119 @@ async function checkKnowledgeResourceLayout(page, expect, screenshotDir, viewpor
     layout.undersizedTargets.length === 0,
     `${viewport.name} 项目知识页存在小于 44px 的交互目标：${layout.undersizedTargets.join(" / ")}`,
   );
+
+  const detailRow = page.locator(".knowledge-resource", {
+    hasText: KNOWLEDGE_RESOURCE_DETAIL.title,
+  });
+  const detailToggle = detailRow.getByRole("button", { name: "查看资料详情" });
+  const detailRequest = page.waitForRequest((request) =>
+    request.method() === "GET" &&
+    new URL(request.url()).pathname.endsWith(`/knowledge/resources/${KNOWLEDGE_RESOURCE_DETAIL.id}`)
+  );
+  await detailToggle.click();
+  const expandedRequest = await detailRequest;
+  expect(
+    expandedRequest.headers()["x-csrf-token"] === undefined,
+    `${viewport.name} 资料详情 GET 不应要求 CSRF 头`,
+  );
+  const detailPanel = page.getByRole("region", {
+    name: `${KNOWLEDGE_RESOURCE_DETAIL.title} 资料详情`,
+  });
+  await detailPanel.waitFor();
+  const refreshDetail = detailPanel.getByRole("button", { name: "刷新资料状态" });
+  const downloadDetail = detailPanel.getByRole("link", {
+    name: "下载资料（在新标签页打开）",
+  });
+  for (const [label, control] of [
+    ["手动刷新", refreshDetail],
+    ["下载", downloadDetail],
+  ]) {
+    await control.focus();
+    expect(await control.evaluate((element) => document.activeElement === element),
+      `${viewport.name} 资料详情${label}控件无法获得键盘焦点`);
+    const reachability = await control.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      const hit = document.elementFromPoint(centerX, centerY);
+      return {
+        height: rect.height,
+        width: rect.width,
+        reachable: hit === element || (hit instanceof Element && element.contains(hit)),
+      };
+    });
+    expect(reachability.width >= 44 && reachability.height >= 44,
+      `${viewport.name} 资料详情${label}控件小于 44px`);
+    expect(reachability.reachable, `${viewport.name} 资料详情${label}控件无法命中`);
+  }
+  expect(
+    new URL(await downloadDetail.getAttribute("href"), page.url()).pathname ===
+      `/api/v1/projects/${KNOWLEDGE_PROJECT_ID}/knowledge/resources/${KNOWLEDGE_RESOURCE_DETAIL.id}/download`,
+    `${viewport.name} 资料详情下载未指向 Identity API`,
+  );
+  expect(
+    (await downloadDetail.textContent())?.includes("在新标签页打开"),
+    `${viewport.name} 资料详情下载缺少明确的新标签页文案`,
+  );
+  const detailLayout = await detailPanel.evaluate((panel) => {
+    const rect = panel.getBoundingClientRect();
+    const grid = panel.querySelector(".knowledge-resource-detail-grid");
+    const download = panel.querySelector(".knowledge-resource-download");
+    const toggle = panel.parentElement?.querySelector(".knowledge-resource-toggle");
+    return {
+      insideViewport: rect.left >= 0 && rect.right <= innerWidth,
+      columnCount: grid === null ? 0 : getComputedStyle(grid).gridTemplateColumns.split(" ").length,
+      text: panel.textContent,
+      downloadTarget: download?.getAttribute("target"),
+      downloadRel: download?.getAttribute("rel"),
+      controlledId: toggle?.getAttribute("aria-controls"),
+      panelId: panel.id,
+      expanded: toggle?.getAttribute("aria-expanded"),
+    };
+  });
+  expect(detailLayout.insideViewport, `${viewport.name} 资料详情超出视口`);
+  expect(
+    detailLayout.columnCount === (viewport.width === 360 ? 1 : viewport.width === 768 ? 2 : 3),
+    `${viewport.name} 资料详情列数错误：${detailLayout.columnCount}`,
+  );
+  expect(detailLayout.text.includes("上传文件"), `${viewport.name} 资料详情缺少来源`);
+  expect(detailLayout.text.includes("可检索"), `${viewport.name} 资料详情缺少最新状态`);
+  expect(detailLayout.text.includes("状态仅在手动刷新时更新"), `${viewport.name} 资料详情缺少刷新说明`);
+  expect(!detailLayout.text.includes("a".repeat(64)), `${viewport.name} 资料详情泄露 SHA256`);
+  expect(detailLayout.downloadTarget === "_blank", `${viewport.name} 资料下载未打开新标签页`);
+  expect(detailLayout.downloadRel === "noopener noreferrer", `${viewport.name} 资料下载缺少安全 rel`);
+  expect(
+    detailLayout.controlledId === detailLayout.panelId && detailLayout.expanded === "true",
+    `${viewport.name} 资料详情展开控件缺少有效 aria 关联`,
+  );
+  const expandedResourceLayout = await readLayout(page);
+  expect(expandedResourceLayout.overflow <= 0, `${viewport.name} 展开资料详情横向溢出`);
+  expect(
+    expandedResourceLayout.undersizedTargets.length === 0,
+    `${viewport.name} 资料详情存在小于 44px 的交互目标：${expandedResourceLayout.undersizedTargets.join(" / ")}`,
+  );
+  await page.screenshot({
+    path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-resource-detail.png`),
+    fullPage: true,
+  });
+  await detailRow.getByRole("button", { name: "收起资料详情" }).click();
+  await detailPanel.waitFor({ state: "detached" });
+  const collapsedToggle = detailRow.getByRole("button", { name: "查看资料详情" });
+  expect(await collapsedToggle.getAttribute("aria-expanded") === "false",
+    `${viewport.name} 资料详情未收起`);
+  expect(await collapsedToggle.evaluate((button) => document.activeElement === button),
+    `${viewport.name} 收起资料详情后焦点未保留在控件上`);
+  const reopenedRequest = page.waitForRequest((request) =>
+    request.method() === "GET" &&
+    new URL(request.url()).pathname.endsWith(`/knowledge/resources/${KNOWLEDGE_RESOURCE_DETAIL.id}`)
+  );
+  await collapsedToggle.click();
+  await reopenedRequest;
+  await page.getByRole("region", {
+    name: `${KNOWLEDGE_RESOURCE_DETAIL.title} 资料详情`,
+  }).waitFor();
+
+  await checkKnowledgeUploadLayout(page, expect, screenshotDir, viewport, themeValue);
 
   await page.getByLabel("搜索项目知识").fill("跨区域故障恢复");
   await page.getByRole("button", { name: "搜索项目知识" }).click();
@@ -531,6 +1050,93 @@ async function checkKnowledgeResourceLayout(page, expect, screenshotDir, viewpor
 
   await page.screenshot({
     path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-knowledge-error.png`),
+    fullPage: true,
+  });
+
+  const failedRow = page.locator(".knowledge-resource", {
+    hasText: KNOWLEDGE_FAILED_RESOURCE_DETAIL.title,
+  });
+  await failedRow.getByRole("button", { name: "查看资料详情" }).click();
+  const failedPanel = page.getByRole("region", {
+    name: `${KNOWLEDGE_FAILED_RESOURCE_DETAIL.title} 资料详情`,
+  });
+  await failedPanel.waitFor();
+  const retryAction = failedPanel.getByRole("button", { name: "重新处理失败版本" });
+  const deleteAction = failedPanel.getByRole("button", { name: "删除资料" });
+  for (const [label, control] of [["重试", retryAction], ["删除", deleteAction]]) {
+    await control.focus();
+    const actionState = await control.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      const hit = document.elementFromPoint(centerX, centerY);
+      return {
+        focused: document.activeElement === element,
+        width: rect.width,
+        height: rect.height,
+        reachable: hit === element || (hit instanceof Element && element.contains(hit)),
+      };
+    });
+    expect(actionState.focused, `${viewport.name} 资料${label}操作无法获得焦点`);
+    expect(actionState.width >= 44 && actionState.height >= 44,
+      `${viewport.name} 资料${label}操作小于 44px`);
+    expect(actionState.reachable, `${viewport.name} 资料${label}操作无法命中`);
+  }
+
+  await deleteAction.click();
+  const confirmation = page.getByRole("group", { name: "确认删除资料" });
+  await confirmation.waitFor();
+  const confirmationText = await confirmation.textContent();
+  expect(confirmationText.includes(KNOWLEDGE_FAILED_RESOURCE_DETAIL.title),
+    `${viewport.name} 删除确认未命名当前资料`);
+  expect(confirmationText.includes("项目知识和搜索结果") && confirmationText.includes("不会立即物理清除"),
+    `${viewport.name} 删除确认缺少影响与保留说明`);
+  const confirmationLayout = await readLayout(page);
+  expect(confirmationLayout.overflow <= 0, `${viewport.name} 删除确认造成横向溢出`);
+  expect(confirmationLayout.undersizedTargets.length === 0,
+    `${viewport.name} 删除确认存在小于 44px 的目标：${confirmationLayout.undersizedTargets.join(" / ")}`);
+  await confirmation.getByRole("button", { name: "取消删除" }).click();
+  expect(operationState.deleteRequests === 0, `${viewport.name} 取消删除仍发送 DELETE`);
+  await page.waitForFunction(
+    (element) => document.activeElement === element,
+    await deleteAction.elementHandle(),
+  );
+
+  await retryAction.click();
+  await failedPanel.getByText("等待处理", { exact: true }).waitFor();
+  expect(operationState.retryRequests === 1, `${viewport.name} 显式重试请求次数错误`);
+  expect(await failedPanel.getByRole("button", { name: "删除资料" }).isEnabled(),
+    `${viewport.name} 重试成功后删除操作不可用`);
+
+  const searchRequestsBeforeDelete = operationState.searchRequests;
+  await failedPanel.getByRole("button", { name: "删除资料" }).click();
+  operationState.failNextDelete = true;
+  await page.getByRole("button", { name: "确认删除资料" }).click();
+  await failedPanel.getByText("资料删除暂时失败，请重试", { exact: true }).waitFor();
+  expect(await failedRow.isVisible(), `${viewport.name} 删除失败后资料被错误隐藏`);
+  expect(await failedPanel.getByText("请求编号：trace-responsive-delete-503", { exact: true }).isVisible(),
+    `${viewport.name} 删除失败缺少请求编号`);
+
+  await page.getByRole("button", { name: "确认删除资料" }).click();
+  const deleteNotice = page.getByRole("status", { name: "资料删除结果" });
+  await deleteNotice.waitFor();
+  await page.waitForFunction(
+    (element) => document.activeElement === element,
+    await deleteNotice.elementHandle(),
+  );
+  expect(!(await failedRow.isVisible()), `${viewport.name} 删除成功后资料仍可见`);
+  expect(await page.getByLabel("搜索项目知识").inputValue() === "",
+    `${viewport.name} 删除成功后搜索输入未清空`);
+  expect(operationState.searchRequests === searchRequestsBeforeDelete,
+    `${viewport.name} 删除成功触发了自动搜索 POST`);
+  expect(operationState.deleteRequests === 2,
+    `${viewport.name} 删除失败与手动重试应各发送一次 DELETE`);
+  const operationLayout = await readLayout(page);
+  expect(operationLayout.overflow <= 0, `${viewport.name} 资料操作造成横向溢出`);
+  expect(operationLayout.undersizedTargets.length === 0,
+    `${viewport.name} 资料操作存在小于 44px 的目标：${operationLayout.undersizedTargets.join(" / ")}`);
+  await page.screenshot({
+    path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-resource-delete.png`),
     fullPage: true,
   });
   await page.getByRole("link", { name: "知识文档" }).click();
@@ -1074,6 +1680,12 @@ export async function checkResponsiveFoundation({
   waitForAuthenticated,
 }) {
   let projectsScenario = "populated";
+  const knowledgeOperationState = {
+    retryRequests: 0,
+    deleteRequests: 0,
+    searchRequests: 0,
+    failNextDelete: false,
+  };
   await page.route(/\/api\/v1\/projects(?:\?.*)?$/, async (route) => {
     await route.fulfill({
       json: {
@@ -1110,13 +1722,111 @@ export async function checkResponsiveFoundation({
     });
   });
   await page.route(
-    `**/api/v1/projects/${KNOWLEDGE_PROJECT_ID}/knowledge/resources*`,
+    `**/api/v1/projects/${KNOWLEDGE_PROJECT_ID}/knowledge/uploads`,
+    async (route) => {
+      const request = route.request();
+      expect(request.method() === "POST", "创建知识上传批次必须使用 POST");
+      expect(request.headers()["x-csrf-token"], "创建知识上传批次必须携带 CSRF token");
+      const body = request.postDataJSON();
+      expect(body.files?.length === 3, `知识上传批次应包含 3 个文件，实际 ${body.files?.length}`);
+      expect(
+        body.files?.map(({ fileName }) => fileName).join("|") ===
+          KNOWLEDGE_UPLOAD_FILES.map(({ name }) => name).join("|"),
+        "知识上传批次必须保留文件选择顺序",
+      );
+      await route.fulfill({
+        status: 201,
+        json: {
+          batchId: KNOWLEDGE_UPLOAD_BATCH_ID,
+          uploads: KNOWLEDGE_UPLOAD_INSTRUCTIONS,
+        },
+      });
+    },
+  );
+  await page.route(
+    `**/api/v1/projects/${KNOWLEDGE_PROJECT_ID}/knowledge/uploads/*/complete`,
+    async (route) => {
+      const request = route.request();
+      expect(request.method() === "POST", "确认知识上传必须使用 POST");
+      expect(request.headers()["x-csrf-token"], "确认知识上传必须携带 CSRF token");
+      const uploadId = new URL(request.url()).pathname.split("/").at(-2);
+      const instruction = KNOWLEDGE_UPLOAD_INSTRUCTIONS.find((candidate) =>
+        candidate.uploadId === uploadId
+      );
+      expect(instruction !== undefined, `确认了未知上传 ${uploadId}`);
+      await route.fulfill({
+        json: {
+          uploadId: instruction.uploadId,
+          batchId: KNOWLEDGE_UPLOAD_BATCH_ID,
+          itemId: instruction.itemId,
+          resourceId: null,
+          resourceVersionId: null,
+          status: "queued",
+        },
+      });
+    },
+  );
+  await page.route(
+    `**/api/v1/projects/${KNOWLEDGE_PROJECT_ID}/knowledge/batches/${KNOWLEDGE_UPLOAD_BATCH_ID}`,
+    async (route) => {
+      expect(route.request().method() === "GET", "查询知识上传批次必须使用 GET");
+      await route.fulfill({ json: KNOWLEDGE_UPLOAD_BATCH });
+    },
+  );
+  await page.route(
+    new RegExp(`/api/v1/projects/${KNOWLEDGE_PROJECT_ID}/knowledge/resources(?:\\?.*)?$`),
     (route) => route.fulfill({ json: KNOWLEDGE_RESOURCE_PAGE }),
+  );
+  await page.route(
+    `**/api/v1/projects/${KNOWLEDGE_PROJECT_ID}/knowledge/resources/${KNOWLEDGE_RESOURCE_DETAIL.id}`,
+    async (route) => {
+      expect(route.request().method() === "GET", "资料详情必须使用 GET");
+      await route.fulfill({ json: KNOWLEDGE_RESOURCE_DETAIL });
+    },
+  );
+  await page.route(
+    `**/api/v1/projects/${KNOWLEDGE_PROJECT_ID}/knowledge/resources/${KNOWLEDGE_FAILED_RESOURCE_DETAIL.id}`,
+    async (route) => {
+      const request = route.request();
+      if (request.method() === "GET") {
+        await route.fulfill({ json: KNOWLEDGE_FAILED_RESOURCE_DETAIL });
+        return;
+      }
+      expect(request.method() === "DELETE", "删除知识资料必须使用 DELETE");
+      expect(request.headers()["x-csrf-token"], "删除知识资料必须携带 CSRF token");
+      knowledgeOperationState.deleteRequests += 1;
+      if (knowledgeOperationState.failNextDelete) {
+        knowledgeOperationState.failNextDelete = false;
+        await route.fulfill({
+          status: 503,
+          headers: { "X-Request-ID": "trace-responsive-delete-503" },
+          json: {
+            message: "资料删除暂时失败，请重试",
+            code: "database_unavailable",
+            traceId: "trace-responsive-delete-503",
+          },
+        });
+        return;
+      }
+      await route.fulfill({ status: 204, body: "" });
+    },
+  );
+  await page.route(
+    `**/api/v1/projects/${KNOWLEDGE_PROJECT_ID}/knowledge/resources/${KNOWLEDGE_FAILED_RESOURCE_DETAIL.id}/versions/${KNOWLEDGE_FAILED_RESOURCE_DETAIL.latestVersion.id}/retry`,
+    async (route) => {
+      const request = route.request();
+      expect(request.method() === "POST", "重新处理失败版本必须使用 POST");
+      expect(request.headers()["x-csrf-token"], "重新处理失败版本必须携带 CSRF token");
+      expect(request.postData() === null, "重新处理失败版本不应发送请求体");
+      knowledgeOperationState.retryRequests += 1;
+      await route.fulfill({ status: 200, json: KNOWLEDGE_RETRIED_RESOURCE_DETAIL });
+    },
   );
   await page.route(
     `**/api/v1/projects/${KNOWLEDGE_PROJECT_ID}/knowledge/search`,
     async (route) => {
       const request = route.request();
+      knowledgeOperationState.searchRequests += 1;
       expect(request.method() === "POST", "知识搜索必须使用 POST");
       expect(request.headers()["x-csrf-token"], "知识搜索必须携带 CSRF token");
       const body = request.postDataJSON();
@@ -1274,7 +1984,14 @@ export async function checkResponsiveFoundation({
         },
       });
 
-      await checkKnowledgeResourceLayout(page, expect, screenshotDir, viewport, themeValue);
+      await checkKnowledgeResourceLayout(
+        page,
+        expect,
+        screenshotDir,
+        viewport,
+        themeValue,
+        knowledgeOperationState,
+      );
 
       await page.selectOption("#scenario", "empty");
       await page.click("#load-btn");
