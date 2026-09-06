@@ -23,6 +23,7 @@ export interface KnowledgeSearchProps {
   csrfToken: string;
   sessionSignal: AbortSignal;
   onAccessUnavailable(error: ApiError): void;
+  resourceDeletion?: { revision: number; title: string } | null;
 }
 
 export function presentKnowledgeSearchError(error: unknown): {
@@ -53,6 +54,7 @@ export function KnowledgeSearch({
   csrfToken,
   sessionSignal,
   onAccessUnavailable,
+  resourceDeletion = null,
 }: KnowledgeSearchProps) {
   const queryClient = useQueryClient();
   const inputId = useId();
@@ -62,6 +64,7 @@ export function KnowledgeSearch({
   const [notice, setNotice] = useState<string | null>(null);
   const [search, setSearch] = useState<SubmittedKnowledgeSearch | null>(null);
   const [resultTreeRevision, setResultTreeRevision] = useState(0);
+  const appliedDeletionRevision = useRef(0);
   const onAccessUnavailableRef = useRef(onAccessUnavailable);
   const deliveredAccessErrorsRef = useRef(new WeakSet<ApiError>());
   const query = useKnowledgeSearchQuery({
@@ -71,6 +74,19 @@ export function KnowledgeSearch({
     csrfToken,
     sessionSignal,
   });
+
+  useLayoutEffect(() => {
+    if (
+      resourceDeletion === null ||
+      resourceDeletion.revision === appliedDeletionRevision.current
+    ) return;
+    appliedDeletionRevision.current = resourceDeletion.revision;
+    setDraft("");
+    setValidationError(null);
+    setSearch(null);
+    setResultTreeRevision((current) => current + 1);
+    setNotice(`资料“${resourceDeletion.title}”已删除，搜索已清空。`);
+  }, [resourceDeletion]);
 
   useLayoutEffect(() => {
     onAccessUnavailableRef.current = onAccessUnavailable;

@@ -5,6 +5,11 @@ import {
   fetchKnowledgeChunkContext,
   fetchKnowledgeResources,
 } from "../../src/api/knowledge.ts";
+import {
+  knowledgeContractError,
+  knowledgeRequestError,
+  knowledgeResponseError,
+} from "../../src/api/knowledgeRequest.ts";
 
 const PROJECT_ID = "00000000-0000-4000-8000-000000004001";
 const RESOURCE_ID = "00000000-0000-4000-8000-000000005001";
@@ -34,6 +39,44 @@ afterEach(() => {
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
   vi.resetModules();
+});
+
+test("shared knowledge response errors preserve normalized HTTP metadata", () => {
+  const response = new Response(null, {
+    status: 503,
+    headers: { "X-Request-ID": "trace-helper", "Retry-After": "23" },
+  });
+
+  expect(knowledgeResponseError({
+    code: "database_unavailable",
+    message: "知识服务暂时不可用",
+    traceId: "trace-body-helper",
+  }, response, "GET /knowledge/helper")).toMatchObject({
+    kind: "http",
+    status: 503,
+    code: "database_unavailable",
+    message: "知识服务暂时不可用",
+    traceId: "trace-body-helper",
+    retryAfterSeconds: 23,
+    context: "GET /knowledge/helper",
+  });
+});
+
+test("shared knowledge request and contract errors retain safe established messages", () => {
+  const controller = new AbortController();
+  controller.abort();
+
+  expect(knowledgeRequestError({ secret: "hidden" }, "GET /knowledge/helper", controller.signal))
+    .toMatchObject({ kind: "aborted", message: "请求已被取消" });
+  expect(knowledgeRequestError({ secret: "hidden" }, "GET /knowledge/helper", new AbortController().signal))
+    .toMatchObject({ kind: "network", message: "无法连接服务器，请检查网络" });
+
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
+  expect(knowledgeContractError("GET /knowledge/helper")).toMatchObject({
+    kind: "contract",
+    message: "服务器返回的数据格式不正确，请联系管理员",
+    context: "GET /knowledge/helper",
+  });
 });
 
 test("fetches a schema-valid citation context from the generated client", async () => {

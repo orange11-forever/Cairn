@@ -24,8 +24,8 @@ export default defineConfig({
     // 知道每层能证明什么、不能证明什么，比测试数量重要。
     environment: "jsdom",
 
-    // 只收 tests/react/。tests/web/ 归 node --test，两边不重叠。
-    include: ["tests/react/**/*.test.tsx"],
+    // 只收 tests/react/ 的 TypeScript 测试。tests/web/ 归 node --test，两边不重叠。
+    include: ["tests/react/**/*.test.{ts,tsx}"],
 
     // 每个测试文件跑前先执行：装 jest-dom 的断言、每个测试后清理 DOM。
     setupFiles: ["tests/react/setup.ts"],

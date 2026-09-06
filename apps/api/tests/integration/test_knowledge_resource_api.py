@@ -6,11 +6,13 @@ from uuid import UUID, uuid4
 import pytest
 from cairn_api.app import create_app
 from cairn_api.audit.models import AuditLog
+from cairn_api.auth.models import AuthSession
 from cairn_api.auth.schemas import IdentityContextResponse
 from cairn_api.authorization.models import ResourceAclEntry
 from cairn_api.authorization.policy import AuthorizationPolicy
 from cairn_api.authorization.types import MembershipRole, ProjectPermission
 from cairn_api.db.session import Database
+from cairn_api.errors import ErrorBody
 from cairn_api.knowledge import repository, resource_service
 from cairn_api.knowledge.models import (
     IngestionBatch,
@@ -28,12 +30,15 @@ from cairn_api.knowledge.models import (
     UploadSession,
 )
 from cairn_api.knowledge.object_store import ObjectStat, ObjectStoreUnavailable
+from cairn_api.knowledge.schemas import KnowledgeResourceResponse, KnowledgeVersionResponse
 from cairn_api.maintenance.upload_cleanup import run_upload_cleanup
 from cairn_api.projects.models import OutboxEvent, Project
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from httpx2 import Response
+from sqlalchemy import func, select, update
+from sqlalchemy.exc import OperationalError
 
-from .authorization_helpers import seed_actor
+from .authorization_helpers import APP_ORIGIN, seed_actor
 from .knowledge_helpers import (
     MemoryObjectStore,
     knowledge_client,
@@ -119,6 +124,196 @@ def _seed_ready_resource(
             )
         )
     return resource_id, version_id, chunk_ids
+
+
+def _assert_detail_boundary(
+    response: Response,
+    *,
+    request_id: str,
+    status_code: int,
+) -> None:
+    assert response.status_code == status_code
+    assert response.headers["x-request-id"] == request_id
+    assert response.headers["cache-control"] == "private, no-store"
+    assert response.headers["access-control-allow-origin"] == APP_ORIGIN
+    assert response.headers["access-control-allow-credentials"] == "true"
+    assert {
+        value.strip().lower()
+        for value in response.headers["access-control-expose-headers"].split(",")
+    } == {"retry-after", "x-request-id"}
+
+
+def _assert_detail_error(
+    response: Response,
+    *,
+    request_id: str,
+    status_code: int,
+    code: str,
+    message: str,
+) -> None:
+    _assert_detail_boundary(response, request_id=request_id, status_code=status_code)
+    body = response.json()
+    assert set(body) == {"message", "code", "traceId"}
+    assert ErrorBody.model_validate({
+        "message": body["message"],
+        "code": body["code"],
+        "trace_id": body["traceId"],
+    }).model_dump(by_alias=True, mode="json") == body
+    assert body == {"message": message, "code": code, "traceId": request_id}
+
+
+@pytest.mark.integration
+def test_resource_detail_get_matches_schema_and_protected_headers(
+    database: Database,
+    test_database_url: str,
+) -> None:
+    actor = seed_actor(database, MembershipRole.MEMBER)
+    project_id = seed_project(database, actor, permission="read")
+    resource_id, version_id, _chunk_ids = _seed_ready_resource(
+        database,
+        org_id=actor.organization_id,
+        project_id=project_id,
+        title="详情边界.pdf",
+        created_at=datetime(2026, 9, 6, 1, 0, tzinfo=UTC),
+    )
+    with knowledge_client(
+        knowledge_settings(test_database_url), database, actor, MemoryObjectStore()
+    ) as client:
+        response = client.get(
+            f"/api/v1/projects/{project_id}/knowledge/resources/{resource_id}",
+            headers={"X-Request-ID": "req-resource-detail-success"},
+        )
+
+    _assert_detail_boundary(
+        response,
+        request_id="req-resource-detail-success",
+        status_code=200,
+    )
+    body = response.json()
+    assert set(body) == {"id", "title", "sourceType", "createdAt", "updatedAt", "latestVersion"}
+    assert body["id"] == str(resource_id)
+    assert isinstance(body["latestVersion"], dict)
+    version_body = body["latestVersion"]
+    assert set(version_body) == {
+        "id", "sourceType", "mediaType", "sizeBytes", "sha256", "status", "errorCode",
+        "retryable", "createdAt", "processingStartedAt", "readyAt",
+    }
+    version = KnowledgeVersionResponse.model_validate({
+        "id": version_body["id"],
+        "source_type": version_body["sourceType"],
+        "media_type": version_body["mediaType"],
+        "size_bytes": version_body["sizeBytes"],
+        "sha256": version_body["sha256"],
+        "status": version_body["status"],
+        "error_code": version_body["errorCode"],
+        "retryable": version_body["retryable"],
+        "created_at": version_body["createdAt"],
+        "processing_started_at": version_body["processingStartedAt"],
+        "ready_at": version_body["readyAt"],
+    })
+    parsed = KnowledgeResourceResponse.model_validate({
+        "id": body["id"],
+        "title": body["title"],
+        "source_type": body["sourceType"],
+        "created_at": body["createdAt"],
+        "updated_at": body["updatedAt"],
+        "latest_version": version,
+    })
+    assert parsed.id == resource_id
+    assert version.id == version_id
+    assert "objectKey" not in response.text
+
+
+@pytest.mark.integration
+def test_resource_detail_validation_auth_and_not_found_are_safe_and_traced(
+    database: Database,
+    test_database_url: str,
+) -> None:
+    actor = seed_actor(database, MembershipRole.MEMBER)
+    project_id = seed_project(database, actor, permission="read")
+    settings = knowledge_settings(test_database_url)
+    with knowledge_client(settings, database, actor, MemoryObjectStore()) as client:
+        validation = client.get(
+            f"/api/v1/projects/{project_id}/knowledge/resources/not-a-uuid",
+            headers={"X-Request-ID": "req-resource-detail-validation"},
+        )
+        missing = client.get(
+            f"/api/v1/projects/{project_id}/knowledge/resources/{uuid4()}",
+            headers={"X-Request-ID": "req-resource-detail-missing"},
+        )
+    with TestClient(
+        create_app(settings, database, MemoryObjectStore()), raise_server_exceptions=False
+    ) as client:
+        unauthenticated = client.get(
+            f"/api/v1/projects/{project_id}/knowledge/resources/{uuid4()}",
+            headers={"Origin": APP_ORIGIN, "X-Request-ID": "req-resource-detail-auth"},
+        )
+
+    _assert_detail_error(
+        validation,
+        request_id="req-resource-detail-validation",
+        status_code=422,
+        code="validation_error",
+        message="请求参数无效",
+    )
+    _assert_detail_error(
+        missing,
+        request_id="req-resource-detail-missing",
+        status_code=404,
+        code="not_found",
+        message="资源不存在",
+    )
+    _assert_detail_error(
+        unauthenticated,
+        request_id="req-resource-detail-auth",
+        status_code=401,
+        code="session_invalid",
+        message="会话无效或已过期",
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    ("failure", "status_code", "code", "message"),
+    [
+        (OperationalError("SELECT resource", {}, Exception("database offline")), 503,
+         "database_unavailable", "数据库暂时不可用"),
+        (RuntimeError("private resource failure"), 500, "internal_error", "服务器内部错误"),
+    ],
+)
+def test_resource_detail_database_and_unexpected_failures_are_safe_and_traced(
+    failure: Exception,
+    status_code: int,
+    code: str,
+    message: str,
+    monkeypatch: pytest.MonkeyPatch,
+    database: Database,
+    test_database_url: str,
+) -> None:
+    actor = seed_actor(database, MembershipRole.MEMBER)
+    project_id = seed_project(database, actor, permission="read")
+
+    def fail(*_args: object, **_kwargs: object) -> None:
+        raise failure
+
+    monkeypatch.setattr(repository, "get_resource_observation", fail)
+    request_id = f"req-resource-detail-{status_code}"
+    with knowledge_client(
+        knowledge_settings(test_database_url), database, actor, MemoryObjectStore()
+    ) as client:
+        response = client.get(
+            f"/api/v1/projects/{project_id}/knowledge/resources/{uuid4()}",
+            headers={"X-Request-ID": request_id},
+        )
+
+    _assert_detail_error(
+        response,
+        request_id=request_id,
+        status_code=status_code,
+        code=code,
+        message=message,
+    )
+    assert "private resource failure" not in response.text
 
 
 @pytest.mark.integration
@@ -293,7 +488,8 @@ def test_uploaded_draft_status_is_observable_and_exhausted_failure_is_retryable(
         )
         retried = client.post(
             f"/api/v1/projects/{project_id}/knowledge/resources/{resource_id}/versions/"
-            f"{version_id}/retry"
+            f"{version_id}/retry",
+            headers={"X-Request-ID": "req-resource-retry-success"},
         )
 
     assert queued_list.status_code == queued_detail.status_code == 200
@@ -310,7 +506,41 @@ def test_uploaded_draft_status_is_observable_and_exhausted_failure_is_retryable(
     assert failed_version["errorCode"] == "ingestion_retry_exhausted"
     assert failed_version["retryable"] is True
     assert retried.status_code == 200
-    assert retried.json()["latestVersion"]["status"] == "queued"
+    _assert_detail_boundary(
+        retried,
+        request_id="req-resource-retry-success",
+        status_code=200,
+    )
+    retried_body = retried.json()
+    assert set(retried_body) == {
+        "id", "title", "sourceType", "createdAt", "updatedAt", "latestVersion"
+    }
+    retried_version_body = retried_body["latestVersion"]
+    assert isinstance(retried_version_body, dict)
+    retried_version = KnowledgeVersionResponse.model_validate({
+        "id": retried_version_body["id"],
+        "source_type": retried_version_body["sourceType"],
+        "media_type": retried_version_body["mediaType"],
+        "size_bytes": retried_version_body["sizeBytes"],
+        "sha256": retried_version_body["sha256"],
+        "status": retried_version_body["status"],
+        "error_code": retried_version_body["errorCode"],
+        "retryable": retried_version_body["retryable"],
+        "created_at": retried_version_body["createdAt"],
+        "processing_started_at": retried_version_body["processingStartedAt"],
+        "ready_at": retried_version_body["readyAt"],
+    })
+    retried_resource = KnowledgeResourceResponse.model_validate({
+        "id": retried_body["id"],
+        "title": retried_body["title"],
+        "source_type": retried_body["sourceType"],
+        "created_at": retried_body["createdAt"],
+        "updated_at": retried_body["updatedAt"],
+        "latest_version": retried_version,
+    })
+    assert retried_resource.id == resource_id
+    assert retried_version.id == version_id
+    assert retried_version_body["status"] == "queued"
     with database.session_factory() as session:
         resource = session.get(KnowledgeResource, resource_id)
         job = session.scalar(select(IngestionJob).where(IngestionJob.target_id == version_id))
@@ -392,7 +622,10 @@ def test_batch_detail_contains_zip_children_and_resource_delete_is_immediate(
         knowledge_settings(test_database_url), database, actor, MemoryObjectStore()
     ) as client:
         batch = client.get(f"/api/v1/projects/{project_id}/knowledge/batches/{batch_id}")
-        deleted = client.delete(f"/api/v1/projects/{project_id}/knowledge/resources/{resource_id}")
+        deleted = client.delete(
+            f"/api/v1/projects/{project_id}/knowledge/resources/{resource_id}",
+            headers={"X-Request-ID": "req-resource-delete-success"},
+        )
         deleted_again = client.delete(
             f"/api/v1/projects/{project_id}/knowledge/resources/{resource_id}"
         )
@@ -411,6 +644,12 @@ def test_batch_detail_contains_zip_children_and_resource_delete_is_immediate(
     assert children[0]["errorCode"] == "unsupported_media_type"
     assert children[0]["errorDetail"] == "不支持的归档条目"
     assert deleted.status_code == deleted_again.status_code == 204
+    _assert_detail_boundary(
+        deleted,
+        request_id="req-resource-delete-success",
+        status_code=204,
+    )
+    assert deleted.content == b""
     assert listing.json()["items"] == []
     assert detail.status_code == context.status_code == download.status_code == 404
 
@@ -458,6 +697,9 @@ def test_resource_routes_enforce_live_read_write_matrix(
         title="权限矩阵.pdf",
         created_at=datetime.now(UTC),
     )
+    matrix_case = f"{role.value}-{permission or 'none'}"
+    retry_request_id = f"req-resource-matrix-retry-{matrix_case}"
+    delete_request_id = f"req-resource-matrix-delete-{matrix_case}"
     with knowledge_client(
         knowledge_settings(test_database_url), database, actor, MemoryObjectStore()
     ) as client:
@@ -472,18 +714,45 @@ def test_resource_routes_enforce_live_read_write_matrix(
         )
         retry = client.post(
             f"/api/v1/projects/{project_id}/knowledge/resources/{resource_id}/versions/"
-            f"{version_id}/retry"
+            f"{version_id}/retry",
+            headers={"X-Request-ID": retry_request_id},
         )
-        deleted = client.delete(f"/api/v1/projects/{project_id}/knowledge/resources/{resource_id}")
+        deleted = client.delete(
+            f"/api/v1/projects/{project_id}/knowledge/resources/{resource_id}",
+            headers={"X-Request-ID": delete_request_id},
+        )
 
     expected_read = 200 if can_read else 404
     assert listing.status_code == detail.status_code == context.status_code == expected_read
     assert download.status_code == (307 if can_read else 404)
     if can_read:
         assert listing.json()["capabilities"] == {"canWrite": can_write}
-    expected_mutation = 409 if can_write else 404
-    assert retry.status_code == expected_mutation
-    assert deleted.status_code == (204 if can_write else 404)
+    if can_write:
+        _assert_detail_error(
+            retry,
+            request_id=retry_request_id,
+            status_code=409,
+            code="version_not_retryable",
+            message="该版本不可重试",
+        )
+        _assert_detail_boundary(
+            deleted,
+            request_id=delete_request_id,
+            status_code=204,
+        )
+        assert deleted.content == b""
+    else:
+        for response, request_id in (
+            (retry, retry_request_id),
+            (deleted, delete_request_id),
+        ):
+            _assert_detail_error(
+                response,
+                request_id=request_id,
+                status_code=404,
+                code="not_found",
+                message="资源不存在",
+            )
 
 
 @pytest.mark.integration
@@ -617,7 +886,27 @@ def test_resource_routes_require_session_and_mutation_csrf(
             f"/api/v1/projects/{project_id}/knowledge/resources",
             headers={"X-Request-ID": "req-resource-session"},
         )
+        missing_session_retry = client.post(
+            f"/api/v1/projects/{project_id}/knowledge/resources/{resource_id}/versions/"
+            f"{version_id}/retry",
+            headers={
+                "Origin": APP_ORIGIN,
+                "X-CSRF-Token": "csrf-without-session",
+                "X-Request-ID": "req-resource-retry-no-session-csrf",
+            },
+        )
+        missing_session_delete = client.delete(
+            f"/api/v1/projects/{project_id}/knowledge/resources/{resource_id}",
+            headers={
+                "Origin": APP_ORIGIN,
+                "X-CSRF-Token": "csrf-without-session",
+                "X-Request-ID": "req-resource-delete-no-session-csrf",
+            },
+        )
     with knowledge_client(settings, database, actor, MemoryObjectStore()) as client:
+        valid_csrf_token = client.headers["X-CSRF-Token"]
+        valid_session_token = client.cookies.get(settings.session_cookie_name)
+        assert valid_session_token is not None
         client.headers.pop("Origin")
         client.headers.pop("X-CSRF-Token")
         retry = client.post(
@@ -629,9 +918,62 @@ def test_resource_routes_require_session_and_mutation_csrf(
             f"/api/v1/projects/{project_id}/knowledge/resources/{resource_id}",
             headers={"X-Request-ID": "req-resource-csrf-delete"},
         )
+        trusted_origin_retry = client.post(
+            f"/api/v1/projects/{project_id}/knowledge/resources/{resource_id}/versions/"
+            f"{version_id}/retry",
+            headers={
+                "Origin": APP_ORIGIN,
+                "X-CSRF-Token": "invalid-csrf",
+                "X-Request-ID": "req-resource-cors-csrf-retry",
+            },
+        )
+        trusted_origin_delete = client.delete(
+            f"/api/v1/projects/{project_id}/knowledge/resources/{resource_id}",
+            headers={
+                "Origin": APP_ORIGIN,
+                "X-CSRF-Token": "invalid-csrf",
+                "X-Request-ID": "req-resource-cors-csrf-delete",
+            },
+        )
+        with database.session_factory.begin() as session:
+            session.execute(
+                update(AuthSession)
+                .where(AuthSession.user_id == actor.user_id)
+                .values(revoked_at=datetime.now(UTC))
+            )
+        revoked_session_retry = client.post(
+            f"/api/v1/projects/{project_id}/knowledge/resources/{resource_id}/versions/"
+            f"{version_id}/retry",
+            headers={
+                "Origin": APP_ORIGIN,
+                "Cookie": f"{settings.session_cookie_name}={valid_session_token}",
+                "X-CSRF-Token": valid_csrf_token,
+                "X-Request-ID": "req-resource-retry-session",
+            },
+        )
+        revoked_session_delete = client.delete(
+            f"/api/v1/projects/{project_id}/knowledge/resources/{resource_id}",
+            headers={
+                "Origin": APP_ORIGIN,
+                "Cookie": f"{settings.session_cookie_name}={valid_session_token}",
+                "X-CSRF-Token": valid_csrf_token,
+                "X-Request-ID": "req-resource-delete-session",
+            },
+        )
 
     assert unauthenticated.status_code == 401
     assert unauthenticated.json()["traceId"] == "req-resource-session"
+    for response, request_id in (
+        (missing_session_retry, "req-resource-retry-no-session-csrf"),
+        (missing_session_delete, "req-resource-delete-no-session-csrf"),
+    ):
+        _assert_detail_error(
+            response,
+            request_id=request_id,
+            status_code=403,
+            code="csrf_failed",
+            message="请求来源或 CSRF 令牌无效",
+        )
     for response, trace_id in (
         (retry, "req-resource-csrf-retry"),
         (deleted, "req-resource-csrf-delete"),
@@ -643,6 +985,119 @@ def test_resource_routes_require_session_and_mutation_csrf(
             "traceId": trace_id,
         }
         assert response.headers["x-request-id"] == trace_id
+        assert response.headers["cache-control"] == "private, no-store"
+        assert "access-control-allow-origin" not in response.headers
+        assert "access-control-allow-credentials" not in response.headers
+    for response, request_id in (
+        (trusted_origin_retry, "req-resource-cors-csrf-retry"),
+        (trusted_origin_delete, "req-resource-cors-csrf-delete"),
+    ):
+        _assert_detail_error(
+            response,
+            request_id=request_id,
+            status_code=403,
+            code="csrf_failed",
+            message="请求来源或 CSRF 令牌无效",
+        )
+    for response, request_id in (
+        (revoked_session_retry, "req-resource-retry-session"),
+        (revoked_session_delete, "req-resource-delete-session"),
+    ):
+        _assert_detail_error(
+            response,
+            request_id=request_id,
+            status_code=401,
+            code="session_invalid",
+            message="会话无效或已过期",
+        )
+
+
+@pytest.mark.integration
+def test_resource_mutation_validation_is_safe_traced_and_schema_stable(
+    database: Database,
+    test_database_url: str,
+) -> None:
+    actor = seed_actor(database, MembershipRole.OWNER)
+    project_id = seed_project(database, actor, permission=None)
+    settings = knowledge_settings(test_database_url)
+    with knowledge_client(settings, database, actor, MemoryObjectStore()) as client:
+        retry = client.post(
+            f"/api/v1/projects/{project_id}/knowledge/resources/not-a-uuid/versions/"
+            f"{uuid4()}/retry",
+            headers={"X-Request-ID": "req-resource-retry-validation"},
+        )
+        deleted = client.delete(
+            f"/api/v1/projects/{project_id}/knowledge/resources/not-a-uuid",
+            headers={"X-Request-ID": "req-resource-delete-validation"},
+        )
+
+    for response, request_id in (
+        (retry, "req-resource-retry-validation"),
+        (deleted, "req-resource-delete-validation"),
+    ):
+        _assert_detail_error(
+            response,
+            request_id=request_id,
+            status_code=422,
+            code="validation_error",
+            message="请求参数无效",
+        )
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    ("failure", "status_code", "code", "message"),
+    [
+        (
+            OperationalError("SELECT retry", {}, Exception("database offline")),
+            503,
+            "database_unavailable",
+            "数据库暂时不可用",
+        ),
+        (RuntimeError("private retry failure"), 500, "internal_error", "服务器内部错误"),
+    ],
+)
+def test_resource_retry_infrastructure_and_unexpected_failures_are_safe_and_traced(
+    failure: Exception,
+    status_code: int,
+    code: str,
+    message: str,
+    monkeypatch: pytest.MonkeyPatch,
+    database: Database,
+    test_database_url: str,
+) -> None:
+    actor = seed_actor(database, MembershipRole.OWNER)
+    project_id = seed_project(database, actor, permission=None)
+    resource_id, version_id, _chunk_ids = _seed_ready_resource(
+        database,
+        org_id=actor.organization_id,
+        project_id=project_id,
+        title="重试故障边界.pdf",
+        created_at=datetime.now(UTC),
+    )
+
+    def fail(*_args: object, **_kwargs: object) -> None:
+        raise failure
+
+    monkeypatch.setattr(repository, "get_resource_version_job_for_update", fail)
+    request_id = f"req-resource-retry-{status_code}"
+    with knowledge_client(
+        knowledge_settings(test_database_url), database, actor, MemoryObjectStore()
+    ) as client:
+        response = client.post(
+            f"/api/v1/projects/{project_id}/knowledge/resources/{resource_id}/versions/"
+            f"{version_id}/retry",
+            headers={"X-Request-ID": request_id},
+        )
+
+    _assert_detail_error(
+        response,
+        request_id=request_id,
+        status_code=status_code,
+        code=code,
+        message=message,
+    )
+    assert "private retry failure" not in response.text
 
 
 @pytest.mark.integration
@@ -1146,14 +1601,13 @@ def test_delete_unexpected_audit_failure_rolls_back_and_returns_traced_500(
             headers={"X-Request-ID": "req-delete-audit-failure"},
         )
 
-    assert response.status_code == 500
-    assert response.json() == {
-        "message": "服务器内部错误",
-        "code": "internal_error",
-        "traceId": "req-delete-audit-failure",
-    }
-    assert response.headers["x-request-id"] == "req-delete-audit-failure"
-    assert response.headers["cache-control"] == "private, no-store"
+    _assert_detail_error(
+        response,
+        request_id="req-delete-audit-failure",
+        status_code=500,
+        code="internal_error",
+        message="服务器内部错误",
+    )
     with database.session_factory() as session:
         resource = session.get(KnowledgeResource, resource_id)
         assert resource is not None and resource.deleted_at is None
@@ -1165,3 +1619,43 @@ def test_delete_unexpected_audit_failure_rolls_back_and_returns_traced_500(
             )
             == 0
         )
+
+
+@pytest.mark.integration
+def test_delete_database_failure_preserves_resource_and_returns_traced_503(
+    monkeypatch: pytest.MonkeyPatch,
+    database: Database,
+    test_database_url: str,
+) -> None:
+    actor = seed_actor(database, MembershipRole.OWNER)
+    project_id = seed_project(database, actor, permission=None)
+    resource_id, _version_id, _chunk_ids = _seed_ready_resource(
+        database,
+        org_id=actor.organization_id,
+        project_id=project_id,
+        title="删除数据库故障.pdf",
+        created_at=datetime.now(UTC),
+    )
+
+    def fail(*_args: object, **_kwargs: object) -> None:
+        raise OperationalError("UPDATE resource", {}, Exception("database offline"))
+
+    monkeypatch.setattr(repository, "soft_delete_resource", fail)
+    with knowledge_client(
+        knowledge_settings(test_database_url), database, actor, MemoryObjectStore()
+    ) as client:
+        response = client.delete(
+            f"/api/v1/projects/{project_id}/knowledge/resources/{resource_id}",
+            headers={"X-Request-ID": "req-delete-database-failure"},
+        )
+
+    _assert_detail_error(
+        response,
+        request_id="req-delete-database-failure",
+        status_code=503,
+        code="database_unavailable",
+        message="数据库暂时不可用",
+    )
+    with database.session_factory() as session:
+        resource = session.get(KnowledgeResource, resource_id)
+        assert resource is not None and resource.deleted_at is None
