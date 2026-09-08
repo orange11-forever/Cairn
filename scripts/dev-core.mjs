@@ -14,7 +14,6 @@ const REPOSITORY_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const NEVER = new Promise(() => undefined);
 const SERVICES = Object.freeze([
   { task: "dev:api", readyUrl: "http://127.0.0.1:8080/ready" },
-  { task: "mock:web", readyUrl: "http://localhost:8787/health" },
   { task: "dev:web", readyUrl: "http://localhost:5500/" },
 ]);
 
@@ -24,7 +23,6 @@ function coreEnvironment(baseEnvironment = process.env) {
     APP_URL: "http://localhost:5500",
     CORS_ORIGINS: "http://localhost:5500",
     VITE_IDENTITY_API_URL: "http://localhost:8080",
-    VITE_MOCK_API_URL: "http://localhost:8787",
   };
 }
 

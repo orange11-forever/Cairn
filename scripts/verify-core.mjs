@@ -56,14 +56,12 @@ export function resolveVerificationConfig(
   );
   const apiPort = readPort(environment, "CAIRN_VERIFY_API_PORT", 58080);
   const webPort = readPort(environment, "CAIRN_VERIFY_WEB_PORT", 55500);
-  const mockPort = readPort(environment, "CAIRN_VERIFY_MOCK_PORT", 58787);
   const proxyPort = readPort(environment, "CAIRN_VERIFY_PROXY_PORT", 58443);
   const databaseUrl =
     `postgresql+psycopg://cairn:cairn-local-only@127.0.0.1:${databasePort}/cairn_test`;
   const objectStoreEndpoint = `http://127.0.0.1:${minioPort}`;
   const apiOrigin = `http://localhost:${apiPort}`;
   const webOrigin = `http://localhost:${webPort}`;
-  const mockOrigin = `http://localhost:${mockPort}`;
   const productionProxyOrigin = `https://localhost:${proxyPort}`;
   const productionApiOrigin = `https://localhost:${apiPort}`;
   const productionWebOrigin = `https://localhost:${webPort}`;
@@ -92,12 +90,10 @@ export function resolveVerificationConfig(
     minioConsolePort,
     apiPort,
     webPort,
-    mockPort,
     proxyPort,
     databaseUrl,
     apiOrigin,
     webOrigin,
-    mockOrigin,
     productionProxyOrigin,
     productionApiOrigin,
     productionWebOrigin,
@@ -121,7 +117,6 @@ export function resolveVerificationConfig(
       CAIRN_TEST_S3_ENDPOINT_URL: objectStoreEndpoint,
       CAIRN_VERIFY_API_PORT: String(apiPort),
       CAIRN_VERIFY_IDENTITY_ORIGIN: apiOrigin,
-      CAIRN_VERIFY_MOCK_PORT: String(mockPort),
       CAIRN_VERIFY_PROXY_PORT: String(proxyPort),
       CAIRN_VERIFY_POSTGRES_PORT: String(databasePort),
       CAIRN_VERIFY_MINIO_CONSOLE_PORT: String(minioConsolePort),
@@ -133,7 +128,6 @@ export function resolveVerificationConfig(
       POSTGRES_PASSWORD: "cairn-local-only",
       POSTGRES_USER: "cairn",
       VITE_IDENTITY_API_URL: apiOrigin,
-      VITE_MOCK_API_URL: mockOrigin,
     },
   };
 }

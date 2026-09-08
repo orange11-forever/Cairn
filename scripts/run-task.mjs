@@ -9,15 +9,12 @@ const PNPM = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const UV = process.platform === "win32" ? "uv.exe" : "uv";
 
 const TASKS = Object.freeze({
-  "test:contracts": [PNPM, ["--filter", "@cairn/contracts", "test"]],
-  "typecheck:contracts": [PNPM, ["--filter", "@cairn/contracts", "typecheck"]],
   "generate:sdk": [process.execPath, ["scripts/generate-sdk.mjs"]],
   "check:sdk": [process.execPath, ["scripts/generate-sdk.mjs", "--check"]],
   "test:sdk": [PNPM, ["--filter", "@cairn/sdk", "test"]],
   "typecheck:sdk": [PNPM, ["--filter", "@cairn/sdk", "typecheck"]],
   "dev:web": [PNPM, ["--filter", "cairn-web", "dev"]],
   "dev:core": [process.execPath, ["scripts/dev-core.mjs"]],
-  "mock:web": [PNPM, ["--filter", "cairn-web", "mock"]],
   "test:web": [PNPM, ["--filter", "cairn-web", "test"]],
   "typecheck:web": [PNPM, ["--filter", "cairn-web", "typecheck"]],
   "build:web": [PNPM, ["--filter", "cairn-web", "build"]],

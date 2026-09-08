@@ -5,14 +5,6 @@ import { MascotFigure } from "./MascotFigure.tsx";
 import type { MascotState } from "./MascotFigure.tsx";
 
 const PAGE_COPY = {
-  documents: {
-    title: "知识文档助手",
-    description: "我会陪你查看资料状态，并在上传或处理出现问题时给出下一步提示。",
-  },
-  ask: {
-    title: "知识问答助手",
-    description: "我会根据当前知识文档检索答案，并把可核对的引用整理在回复中。",
-  },
   projects: {
     title: "项目任务助手",
     description: "我会陪你查看项目任务，并提示当前状态可以执行的下一步操作。",
@@ -27,7 +19,7 @@ export function MascotAssistant({
   page,
   defaultState = "idle",
 }: {
-  page: "documents" | "projects" | "knowledge" | "ask";
+  page: "projects" | "knowledge";
   defaultState?: MascotState;
 }) {
   const [open, setOpen] = useState(false);

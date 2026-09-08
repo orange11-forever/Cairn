@@ -12,18 +12,14 @@ export function AppShell({ identity, onLogout, logoutError }: { identity: Identi
   const { pathname } = useLocation();
   const [wordmarkFailed, setWordmarkFailed] = useState(false);
   const normalizedPathname = pathname.replace(/\/+$/, "") || "/";
-  const page = normalizedPathname === "/ask"
-    ? "ask"
-    : normalizedPathname.endsWith("/knowledge")
+  const page = normalizedPathname.endsWith("/knowledge")
       ? "knowledge"
-      : normalizedPathname === "/projects"
-        ? "projects"
-        : "documents";
+      : "projects";
 
   return (
     <div className="app-shell">
       <header className="product-header">
-        <Link className="product-brand" to="/documents">
+        <Link className="product-brand" to="/projects">
           {wordmarkFailed ? (
             <span>Cairn</span>
           ) : (

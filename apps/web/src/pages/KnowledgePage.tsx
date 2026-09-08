@@ -1,7 +1,7 @@
 import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
-import { BookOpenText, CalendarDays, FileText, HardDrive, PackageOpen } from "lucide-react";
+import { ArrowLeft, BookOpenText, CalendarDays, FileText, HardDrive, PackageOpen } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Navigate, useParams } from "react-router-dom";
+import { Link, Navigate, useParams } from "react-router-dom";
 
 import { ApiError } from "../api/errors.ts";
 import type { KnowledgeResource, KnowledgeResourcePage } from "../api/knowledge.ts";
@@ -29,6 +29,15 @@ const UPDATED_DATE_FORMAT = new Intl.DateTimeFormat("zh-CN", {
   month: "long",
   day: "numeric",
 });
+
+function ProjectsLink() {
+  return (
+    <Link aria-label="返回项目" className="task-knowledge-link" to="/projects">
+      <ArrowLeft aria-hidden="true" size={17} strokeWidth={1.8} />
+      <span>返回项目</span>
+    </Link>
+  );
+}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error && error.message.trim()
@@ -100,6 +109,7 @@ function KnowledgeAccessUnavailable({ error }: { error: ApiError }) {
         eyebrow="项目范围知识"
         title="项目知识"
         description="管理当前项目的资料、处理状态与检索入口。"
+        actions={<ProjectsLink />}
       />
       <div className="knowledge-state knowledge-state-error">
         <p role="alert">{errorMessage(error)}</p>
@@ -228,6 +238,7 @@ function KnowledgeWorkspaceContent({
         eyebrow="项目范围知识"
         title="项目知识"
         description="管理当前项目的资料、处理状态与检索入口。"
+        actions={<ProjectsLink />}
         status={capabilities === undefined ? undefined : (
           <span className="knowledge-access">
             {capabilities.canWrite ? "可维护资料" : "只读访问"}

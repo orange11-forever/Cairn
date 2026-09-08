@@ -40,23 +40,21 @@ test("dev core migrates and seeds before starting managed services", async () =>
   });
 
   assert.equal(result, 0);
-  assert.deepEqual(events.slice(0, 5), [
+  assert.deepEqual(events.slice(0, 4), [
     "task:db:migrate",
     "task:db:seed",
     "start:dev:api",
-    "start:mock:web",
     "start:dev:web",
   ]);
-  assert.deepEqual(events.slice(5), [
+  assert.deepEqual(events.slice(4), [
     "ready:http://127.0.0.1:8080/ready",
-    "ready:http://localhost:8787/health",
     "ready:http://localhost:5500/",
   ]);
   for (const environment of environments) {
     assert.equal(environment.APP_URL, "http://localhost:5500");
     assert.equal(environment.CORS_ORIGINS, "http://localhost:5500");
     assert.equal(environment.VITE_IDENTITY_API_URL, "http://localhost:8080");
-    assert.equal(environment.VITE_MOCK_API_URL, "http://localhost:8787");
+    assert.equal(environment.VITE_MOCK_API_URL, undefined);
   }
 });
 
@@ -89,7 +87,6 @@ test("a child failure stops every started sibling", async () => {
   const never = new Promise(() => undefined);
   const children = [
     fakeChild("dev:api", failed.promise),
-    fakeChild("mock:web", never),
     fakeChild("dev:web", never),
   ];
   let started = 0;
@@ -112,11 +109,11 @@ test("a child failure stops every started sibling", async () => {
   failed.resolve({ code: 1, signal: null });
 
   assert.equal(await completion, 1);
-  assert.deepEqual(children.map((child) => child.stopCalls), [1, 1, 1]);
+  assert.deepEqual(children.map((child) => child.stopCalls), [1, 1]);
 });
 
 test("readiness failure stops every started service", async () => {
-  const children = [fakeChild("dev:api"), fakeChild("mock:web"), fakeChild("dev:web")];
+  const children = [fakeChild("dev:api"), fakeChild("dev:web")];
   let started = 0;
 
   const result = await runDevCore({
@@ -130,5 +127,5 @@ test("readiness failure stops every started service", async () => {
   });
 
   assert.equal(result, 1);
-  assert.deepEqual(children.map((child) => child.stopCalls), [1, 1, 1]);
+  assert.deepEqual(children.map((child) => child.stopCalls), [1, 1]);
 });

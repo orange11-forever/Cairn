@@ -51,7 +51,6 @@ test("all package metadata declares ISC", async () => {
   const nodeManifestPaths = [
     "package.json",
     "apps/web/package.json",
-    "packages/contracts/package.json",
     "packages/sdk/package.json",
   ];
 

@@ -50,7 +50,6 @@ test("verification database and service ports are configurable", () => {
     CAIRN_VERIFY_MINIO_CONSOLE_PORT: "59199",
     CAIRN_VERIFY_API_PORT: "58099",
     CAIRN_VERIFY_WEB_PORT: "55099",
-    CAIRN_VERIFY_MOCK_PORT: "58799",
   }, { projectName: "cairn-verify-fixed-deadbeef" });
 
   assert.equal(config.projectName, "cairn-verify-fixed-deadbeef");
@@ -60,7 +59,9 @@ test("verification database and service ports are configurable", () => {
   assert.equal(config.environment.CAIRN_TEST_S3_ENDPOINT_URL, "http://127.0.0.1:59099");
   assert.equal(config.apiOrigin, "http://localhost:58099");
   assert.equal(config.webOrigin, "http://localhost:55099");
-  assert.equal(config.mockOrigin, "http://localhost:58799");
+  assert.equal(config.mockOrigin, undefined);
+  assert.equal(config.environment.CAIRN_VERIFY_MOCK_PORT, undefined);
+  assert.equal(config.environment.VITE_MOCK_API_URL, undefined);
   assert.match(config.databaseUrl, /127\.0\.0\.1:55499\/cairn_test$/);
 });
 

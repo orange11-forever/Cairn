@@ -234,6 +234,7 @@ test("renders hostile error text and falls back to the X-Request-ID as text", as
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
     code: "gateway_failure",
     message: HOSTILE_ERROR_MESSAGE,
+    traceId: "",
   }), {
     status: 502,
     headers: {
