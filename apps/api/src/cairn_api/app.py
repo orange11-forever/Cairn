@@ -113,6 +113,7 @@ def create_app(
                     api_key=current_settings.answer_api_key.get_secret_value(),
                     model=current_settings.answer_model,
                     timeout_seconds=current_settings.answer_timeout_seconds,
+                    protocol=current_settings.answer_protocol,
                 )
                 _application.state.answer_provider = owned_answer
             yield

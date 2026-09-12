@@ -2,15 +2,44 @@ import json
 import time
 from dataclasses import asdict, dataclass
 from typing import Literal, Protocol, cast
-from urllib.parse import urlsplit
 from uuid import UUID
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from cairn_api.knowledge.answer_protocols import (
+    AnswerProtocol,
+    AnswerProtocolError,
+    build_answer_request,
+    extract_answer_text,
+)
+
 MAX_ANSWER_RESPONSE_BYTES = 256 * 1024
 MAX_ANSWER_PARAGRAPHS = 8
 MAX_ANSWER_TEXT_CODEPOINTS = 6000
+ANSWER_JSON_SCHEMA: dict[str, object] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["status", "paragraphs"],
+    "properties": {
+        "status": {"type": "string", "enum": ["answered", "insufficient_evidence"]},
+        "paragraphs": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["text", "citationIds"],
+                "properties": {
+                    "text": {"type": "string"},
+                    "citationIds": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                },
+            },
+        },
+    },
+}
 
 
 class AnswerProviderUnavailable(Exception):
@@ -81,21 +110,22 @@ class OpenAIAnswerProvider:
         api_key: str,
         model: str,
         timeout_seconds: float,
+        protocol: AnswerProtocol = "openai-compatible",
         client: httpx.Client | None = None,
     ) -> None:
         if not api_key.strip() or not model.strip() or not 0 < timeout_seconds <= 60:
             raise ValueError("answer provider configuration is invalid")
-        parsed = urlsplit(base_url)
-        if (
-            parsed.scheme not in {"http", "https"}
-            or not parsed.hostname
-            or parsed.username is not None
-            or parsed.password is not None
-            or parsed.query
-            or parsed.fragment
-        ):
-            raise ValueError("answer provider URL is invalid")
-        self._endpoint = f"{base_url.rstrip('/')}/chat/completions"
+        build_answer_request(
+            protocol=protocol,
+            base_url=base_url,
+            api_key=api_key,
+            model=model,
+            system_prompt="JSON",
+            user_content="{}",
+            answer_schema=ANSWER_JSON_SCHEMA,
+        )
+        self._protocol = protocol
+        self._base_url = base_url
         self._api_key = api_key
         self._model = model
         self._timeout_seconds = timeout_seconds
@@ -109,28 +139,24 @@ class OpenAIAnswerProvider:
             {key: value for key, value in asdict(item).items() if key != "chunk_id"}
             for item in evidence
         ]
+        provider_request = build_answer_request(
+            protocol=self._protocol,
+            base_url=self._base_url,
+            api_key=self._api_key,
+            model=self._model,
+            system_prompt=SYSTEM_PROMPT,
+            user_content=json.dumps(
+                {"question": question, "evidence": public_evidence}, ensure_ascii=False
+            ),
+            answer_schema=ANSWER_JSON_SCHEMA,
+        )
         started = time.monotonic()
         try:
             with self._client.stream(
                 "POST",
-                self._endpoint,
-                headers={"Authorization": f"Bearer {self._api_key}"},
-                json={
-                    "model": self._model,
-                    "stream": False,
-                    "response_format": {"type": "json_object"},
-                    "max_tokens": 2048,
-                    "messages": [
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {
-                            "role": "user",
-                            "content": json.dumps(
-                                {"question": question, "evidence": public_evidence},
-                                ensure_ascii=False,
-                            ),
-                        },
-                    ],
-                },
+                provider_request.endpoint,
+                headers=provider_request.headers,
+                json=provider_request.body,
             ) as response:
                 response.raise_for_status()
                 content = bytearray()
@@ -148,34 +174,23 @@ class OpenAIAnswerProvider:
 
         try:
             outer = cast(object, json.loads(content))
-            if not isinstance(outer, dict):
-                raise AnswerProviderInvalidResponse()
-            outer_body = cast(dict[str, object], outer)
-            choices_value = outer_body.get("choices")
-            if not isinstance(choices_value, list):
-                raise AnswerProviderInvalidResponse()
-            choices = cast(list[object], choices_value)
-            if len(choices) != 1 or not isinstance(choices[0], dict):
-                raise AnswerProviderInvalidResponse()
-            choice = cast(dict[str, object], choices[0])
-            message = choice.get("message")
-            if choice.get("finish_reason") != "stop" or not isinstance(message, dict):
-                raise AnswerProviderInvalidResponse()
-            typed_message = cast(dict[str, object], message)
-            if (
-                typed_message.get("tool_calls")
-                or typed_message.get("refusal")
-                or not isinstance(typed_message.get("content"), str)
-            ):
-                raise AnswerProviderInvalidResponse()
-            answer = ProviderAnswer.model_validate_json(cast(str, typed_message["content"]))
+            answer_text = extract_answer_text(protocol=self._protocol, payload=outer)
+            answer = ProviderAnswer.model_validate_json(answer_text)
             known = {item.id for item in evidence}
             if any(not set(paragraph.citation_ids) <= known for paragraph in answer.paragraphs):
                 raise AnswerProviderInvalidResponse()
             return answer
         except AnswerProviderInvalidResponse:
             raise
-        except (KeyError, RecursionError, TypeError, UnicodeError, ValueError, ValidationError):
+        except (
+            AnswerProtocolError,
+            KeyError,
+            RecursionError,
+            TypeError,
+            UnicodeError,
+            ValueError,
+            ValidationError,
+        ):
             raise AnswerProviderInvalidResponse() from None
 
     def close(self) -> None:

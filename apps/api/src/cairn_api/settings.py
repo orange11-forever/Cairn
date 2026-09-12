@@ -110,6 +110,9 @@ class Settings(BaseSettings):
     answer_base_url: AnyHttpUrl | None = Field(default=None, validation_alias="ANSWER_BASE_URL")
     answer_api_key: SecretStr | None = Field(default=None, validation_alias="ANSWER_API_KEY")
     answer_model: str | None = Field(default=None, validation_alias="ANSWER_MODEL")
+    answer_protocol: Literal["openai-compatible", "openai-responses", "anthropic", "gemini"] = (
+        Field(default="openai-compatible", validation_alias="ANSWER_PROTOCOL")
+    )
     answer_timeout_seconds: float = Field(
         default=30.0, gt=0, le=60, validation_alias="ANSWER_TIMEOUT_SECONDS"
     )

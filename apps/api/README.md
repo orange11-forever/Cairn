@@ -2,7 +2,7 @@
 
 `apps/api` 是根 uv workspace 中可安装、可独立启动的 FastAPI package，现已提供 PostgreSQL 组织身份、Cookie 会话、组织 RBAC、项目 ACL、项目任务、审计、事务性 Outbox、有界 SSE、Stage 3A Task 1–11 知识上传与资源生命周期、Task 12 项目范围混合搜索和 Task 18 资源操作契约，以及配置、请求 ID、统一错误、健康检查和 OpenAPI。Agent 执行和完整 Provider 治理能力仍在后续阶段。
 
-Web 的身份、项目任务与项目知识资源、搜索、单轮生成式回答、引用上下文和上传连接本 API。核心验证使用本地确定性 Embedding/回答 Provider，不访问外部模型。流式/多轮问答仍在后续任务。当前产品、架构和阶段路线以 [公开架构说明](../../docs/architecture.md) 为准。
+Web 的身份、项目任务与项目知识资源、搜索、单轮生成式回答、引用上下文和上传连接本 API。回答协议支持 `openai-compatible`（DeepSeek、Qwen、Kimi、GLM）、`openai-responses`（GPT Responses）、`anthropic`（Claude Messages）与 `gemini`（Gemini GenerateContent）；GPT 也可使用 Chat Completions。模型 ID 由部署配置，须确认具体模型的结构化 JSON 能力。核心验证使用本地确定性 Embedding/回答 Provider，不访问外部模型。流式/多轮问答仍在后续任务。当前产品、架构和阶段路线以 [公开架构说明](../../docs/architecture.md) 为准。
 
 Task 18A Web 资源详情已交付：资源行按需内联展开，通过生成 SDK、Cookie credentials 和真实 `GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}` 读取详情。收起会取消请求并销毁局部详情，项目切换或会话代际变化同样取消并销毁旧状态；重新展开和手动刷新都会重新授权，请求中及离线等待期间隐藏旧详情和下载，并禁用自动重连刷新，不进行周期轮询。详情展示安全元数据与处理状态，并把已知失败码映射为安全中文错误指引；仅 `latestVersion.status=ready` 时提供指向 Identity API 的新标签页下载，Web 不读取或缓存最终预签名 URL。详情 `404` 会重新检查当前资源列表，并只把当前搜索标记 stale，不自动重跑搜索；资源列表仍为 `200` 时保留工作区，列表 `404` 才隐藏工作区。
 
