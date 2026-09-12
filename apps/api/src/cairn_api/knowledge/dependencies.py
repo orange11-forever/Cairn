@@ -2,6 +2,7 @@ from typing import Annotated, cast
 
 from fastapi import Depends, Request
 
+from cairn_api.knowledge.answer_provider import AnswerProvider
 from cairn_api.knowledge.object_store import ObjectStore
 from cairn_api.knowledge.search_service import SearchEmbeddingClient
 
@@ -23,4 +24,17 @@ def get_embedding_client(request: Request) -> SearchEmbeddingClient:
 EmbeddingClientDependency = Annotated[SearchEmbeddingClient, Depends(get_embedding_client)]
 
 
-__all__ = ["EmbeddingClientDependency", "get_embedding_client", "get_object_store"]
+def get_answer_provider(request: Request) -> AnswerProvider | None:
+    return cast(AnswerProvider | None, getattr(request.app.state, "answer_provider", None))
+
+
+AnswerProviderDependency = Annotated[AnswerProvider | None, Depends(get_answer_provider)]
+
+
+__all__ = [
+    "AnswerProviderDependency",
+    "EmbeddingClientDependency",
+    "get_answer_provider",
+    "get_embedding_client",
+    "get_object_store",
+]

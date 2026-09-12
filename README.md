@@ -11,7 +11,7 @@
 </p>
 
 > [!IMPORTANT]
-> Cairn 当前交付前沿为 Stage 3A Task 20。真实 PostgreSQL 16/pgvector、S3 兼容 MinIO、独立 Worker、项目工作台和项目知识工作区已交付。`dev:core` 与 `verify:core` 现在托管本地确定性假 Embedding、API、Worker 和 Web；浏览器验收覆盖真实预签名上传、Worker 索引、混合搜索、引用上下文与授权下载。默认验证不访问外网，也不需要真实 Provider 密钥。全文格式化预览、生成式回答和周期性资源详情轮询仍在后续任务。
+> Cairn 已在真实 PostgreSQL/pgvector 知识链路上交付项目范围单轮生成式知识问答。`verify:core` 使用确定性本地回答 Provider；`dev:core` 的问答需显式配置 `ANSWER_BASE_URL`、`ANSWER_API_KEY` 和 `ANSWER_MODEL`，未配置时其他知识功能仍可用。浏览器验收覆盖上传、索引、混合搜索、生成回答、引用上下文与授权下载；默认验证不访问外网或真实 Provider。流式/多轮问答、连接器和全文格式化预览仍在后续任务。
 >
 > Task 15 真实知识搜索结果已交付，展示服务端排序的摘录、文件类型、类型化 locator 定位信息、混合检索标签与关键词降级结果，并覆盖取消、错误、会话失效和访问权撤销状态。Task 16 搜索卡片内按需引用上下文与授权下载已交付：引用上下文以“前文 → 命中片段 → 后文”展示纯文本，重新展开会重新授权；下载只把新标签页导航到 Identity API，实时授权后由 `307` 重定向到短时效对象地址，Web 不缓存或读取最终预签名 URL。
 >
@@ -31,7 +31,7 @@
 | API / SDK | FastAPI 已提供会话、项目/任务、RBAC/ACL、知识摄取、资源与混合搜索契约；生成 SDK 导出 OpenAPI schema 与运行时校验器，Web API 适配器使用该校验器检查身份、项目/任务和知识响应，并对 OpenAPI `date-time` 字段执行运行时校验。 |
 | Worker | 独立 Worker 已进入知识摄取核心链路；Python Worker 通过 PostgreSQL 持久化任务完成受限归档、解析、切分、Embedding 与原子索引发布。 |
 | 基础设施 | 核心开发链路使用 PostgreSQL 16/pgvector 与 S3 兼容 MinIO；Redis、正式 Compose/Helm 部署和 OpenTelemetry 仍在规划。 |
-| 延后 | 全文格式化预览、生成式回答、周期性资源详情轮询、连接器、Agent 执行和完整模型 Provider 策略层尚未交付。 |
+| 延后 | 全文格式化预览、流式/多轮问答、周期性资源详情轮询、连接器、Agent 执行和完整模型 Provider 策略层尚未交付。 |
 
 ## Stage 3A Task 1–20 已交付边界
 
@@ -112,13 +112,14 @@ Stage 3A Task 1–12 在项目授权边界内提供上传批次状态、资源�
 | 重新授权并下载 | `GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}/download` |
 | 读取命中切片及前后文 | `GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}/chunks/{chunk_id}` |
 | 权限过滤的关键词/向量混合搜索 | `POST /api/v1/projects/{project_id}/knowledge/search` |
+| 生成带核验引用的单轮回答 | `POST /api/v1/projects/{project_id}/knowledge/answers` |
 
 ## 显式延后
 
 - 完整阶段/里程碑编辑 UI、React Flow/ELK 图编辑、拖拽 Kanban 和时间线可视化延后；
 - Outbox worker 发布、长连接重连 SSE、Redis fan-out、评论、通知和任务执行延后；
 - 群组、邀请和成员移除未实现；ACL 管理 UI 与成员管理 UI 未实现；
-- Bearer/OIDC 延后；知识摄取与项目范围混合搜索 API、真实 Web 知识资源、Task 18 详情与操作、搜索、引用上下文/授权下载及上传批次已交付。全文格式化预览、生成式回答和周期性详情轮询仍在后续任务；连接器、Agent 执行和完整模型 Provider 策略层尚未交付。
+- Bearer/OIDC 延后；知识摄取、项目搜索和单轮生成式回答已交付。全文格式化预览、流式/多轮问答和周期性详情轮询仍在后续任务；连接器、Agent 执行和完整模型 Provider 策略层尚未交付。
 
 ## 核心能力
 
@@ -264,7 +265,7 @@ pnpm dev:api
 
 API 现已提供 PostgreSQL 与对象存储 readiness、登录、会话恢复、注销、当前组织、项目任务、成员角色、项目 ACL 与上述知识资源和混合搜索接口。登录失败限制由 PostgreSQL 持久化：同一规范化邮箱在 15 分钟窗口内最多失败 5 次，同一来源 IP 最多失败 30 次，达到阈值后阻止 15 分钟；表中仅保存使用 `CAIRN_AUTH_RATE_LIMIT_SECRET` 生成的 HMAC 摘要，不保存明文邮箱或 IP。项目知识页真实上传使用 Identity API 与对象存储。
 
-当前切片不包含 Bearer/OIDC、群组、邀请、成员移除、ACL/成员管理 UI、全文格式化预览、生成式回答、周期性资源详情轮询、连接器、Agent 任务执行或完整 AI Provider 策略层。Task 20 核心摄取闭环已交付；AI Provider 与外部 Agent 接入必须建立在组织、权限、审计、项目和知识基础完成之后，不能绕过这些边界提前扩展。
+当前切片不包含 Bearer/OIDC、群组、邀请、成员移除、ACL/成员管理 UI、全文格式化预览、流式/多轮问答、周期性资源详情轮询、连接器、Agent 任务执行或完整 AI Provider 策略层。
 
 可按需清理过期或已撤销的认证状态：
 

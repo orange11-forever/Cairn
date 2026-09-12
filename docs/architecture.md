@@ -4,13 +4,14 @@
 
 ## 当前已交付
 
-当前交付前沿为 Stage 3A Task 1–20。
+当前交付前沿为 Stage 3A Task 1–20，并包含项目知识单轮生成式回答。
 
 - React 19、TypeScript 与 Vite 构成 Web 客户端；登录后默认进入 `/projects`，身份、项目、任务与 `/projects/:projectId/knowledge` 的资源、按需详情、搜索、按需引用上下文、授权下载和真实上传批次连接真实 FastAPI。旧 `/documents` 与 `/ask` 书签重定向到项目工作台。
 - FastAPI 采用模块化单体边界，提供 Cookie 会话、组织身份与 RBAC、项目 ACL、成员角色管理、项目任务、追加式审计、事务性 Outbox、有界 SSE，以及项目授权下的知识上传与资源生命周期 API。
 - PostgreSQL 16/pgvector 与 S3 兼容 MinIO 当前已使用：PostgreSQL 保存业务事实、持久化摄取任务、知识资源、切片和向量，MinIO 保存原始对象与 ZIP 展开产物；生成的 TypeScript SDK 对齐 OpenAPI。Redis 仍是规划中基础设施。
 - Stage 3A Task 1–11 的独立 Worker 已交付，用租约和心跳处理受限归档展开、文档解析、结构化切分、OpenAI 兼容 1024 维 Embedding 与原子索引发布。
-- Stage 3A Task 12–18 已交付项目范围混合搜索、真实知识工作区、资源/详情/搜索/引用/下载、上传批次和资源操作。Task 19 已移除旧 Node mock、通用文档/问答产品路径和手写 contracts workspace；Task 20 交付本地确定性假 Embedding、活动 Profile 初始化、核心 Worker 生命周期和真实浏览器摄取闭环。全文格式化预览、生成式回答和周期性资源详情轮询仍在后续任务；群组、邀请、成员移除、ACL/成员管理 UI、连接器、Agent 执行和完整模型 Provider 策略层尚未实现。
+- 项目知识单轮回答复用混合搜索与共享限流，在模型调用前后核验全部证据及 `read` 权限，并返回服务器分配的 `S1`–`S6` 引用。真实部署通过可选 `ANSWER_*` 接入 OpenAI-compatible JSON 模式；缺失配置时其余 API 保持可用。流式、多轮、历史持久化、网页检索和连接器尚未实现。
+- 全文格式化预览、流式/多轮问答与周期性详情轮询仍在后续任务。
 
 Task 18A Web 资源详情已交付：资源行按需内联展开，通过生成 SDK、Cookie credentials 和真实 `GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}` 读取详情。收起会取消请求并销毁局部详情，项目切换或会话代际变化同样取消并销毁旧状态；重新展开和手动刷新都会重新授权，请求中及离线等待期间隐藏旧详情和下载，并禁用自动重连刷新，不进行周期轮询。详情展示安全元数据与处理状态，并把已知失败码映射为安全中文错误指引；仅 `latestVersion.status=ready` 时提供指向 Identity API 的新标签页下载，Web 不读取或缓存最终预签名 URL。详情 `404` 会重新检查当前资源列表，并只把当前搜索标记 stale，不自动重跑搜索；资源列表仍为 `200` 时保留工作区，列表 `404` 才隐藏工作区。
 

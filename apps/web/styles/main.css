@@ -2226,7 +2226,8 @@ summary:focus-visible {
   }
 }
 
-.knowledge-search {
+.knowledge-search,
+.knowledge-answers {
   overflow: hidden;
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
@@ -2235,7 +2236,8 @@ summary:focus-visible {
 
 .knowledge-search-heading,
 .knowledge-search-form,
-.knowledge-search-output {
+.knowledge-search-output,
+.knowledge-answer-output {
   padding: var(--space-4) var(--space-5);
 }
 
@@ -2274,7 +2276,8 @@ summary:focus-visible {
   align-items: start;
 }
 
-.knowledge-search textarea {
+.knowledge-search textarea,
+.knowledge-answers textarea {
   width: 100%;
   min-height: 88px;
   resize: vertical;
@@ -2286,7 +2289,8 @@ summary:focus-visible {
   font: inherit;
 }
 
-.knowledge-search textarea:focus-visible {
+.knowledge-search textarea:focus-visible,
+.knowledge-answers textarea:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--color-accent) 45%, transparent);
   outline-offset: 2px;
 }
@@ -2364,6 +2368,58 @@ summary:focus-visible {
 
 .knowledge-search-excerpt {
   white-space: pre-wrap;
+}
+
+.knowledge-answer-output {
+  border-top: 1px solid var(--color-border);
+  min-height: 3.5rem;
+}
+
+.knowledge-answer-result {
+  display: grid;
+  gap: 1.1rem;
+}
+
+.knowledge-answer-note,
+.knowledge-answer-inline-citations,
+.knowledge-answer-source-heading span {
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+}
+
+.knowledge-answer-paragraphs {
+  display: grid;
+  gap: 0.9rem;
+  font-size: 1rem;
+  line-height: 1.75;
+}
+
+.knowledge-answer-inline-citations {
+  margin-top: 0.3rem;
+}
+
+.knowledge-answer-insufficient {
+  border-left: 3px solid var(--color-accent-strong);
+  padding-left: 1rem;
+}
+
+.knowledge-answer-sources {
+  display: grid;
+  gap: 0.8rem;
+  margin: 0;
+  padding-left: 1.4rem;
+}
+
+.knowledge-answer-sources > li {
+  border-top: 1px solid var(--color-border);
+  padding-top: 0.8rem;
+}
+
+.knowledge-answer-source-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
 }
 
 .knowledge-citation-toggle,
@@ -2879,7 +2935,8 @@ summary:focus-visible {
   .knowledge-pagination,
   .knowledge-search-heading,
   .knowledge-search-form,
-  .knowledge-search-output {
+  .knowledge-search-output,
+  .knowledge-answer-output {
     padding-inline: var(--space-4);
   }
 
@@ -2890,6 +2947,11 @@ summary:focus-visible {
   }
 
   .knowledge-search-result-heading {
+    display: grid;
+    justify-items: start;
+  }
+
+  .knowledge-answer-source-heading {
     display: grid;
     justify-items: start;
   }

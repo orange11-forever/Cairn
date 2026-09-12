@@ -6,6 +6,7 @@ import { Link, Navigate, useParams } from "react-router-dom";
 import { ApiError } from "../api/errors.ts";
 import type { KnowledgeResource, KnowledgeResourcePage } from "../api/knowledge.ts";
 import { KnowledgeSearch } from "../components/knowledge/KnowledgeSearch.tsx";
+import { KnowledgeAnswers } from "../components/knowledge/KnowledgeAnswers.tsx";
 import { KnowledgeResourceDetails } from "../components/knowledge/KnowledgeResourceDetails.tsx";
 import { KnowledgeUploadBatch } from "../components/knowledge/KnowledgeUploadBatch.tsx";
 import { WorkspaceHeader } from "../components/WorkspaceHeader.tsx";
@@ -282,6 +283,18 @@ function KnowledgeWorkspaceContent({
           csrfToken={csrfToken}
           sessionSignal={signal}
           onAccessUnavailable={onSearchAccessUnavailable}
+        />
+      ) : null}
+
+      {!accessUnavailable && resources.data !== undefined ? (
+        <KnowledgeAnswers
+          key={`answers:${organizationId}:${projectId}`}
+          organizationId={organizationId}
+          projectId={projectId}
+          csrfToken={csrfToken}
+          sessionSignal={signal}
+          onAccessUnavailable={onSearchAccessUnavailable}
+          resourceDeletion={resourceDeletion}
         />
       ) : null}
 

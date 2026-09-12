@@ -15,7 +15,13 @@ from cairn_api.auth.dependencies import (
 from cairn_api.auth.service import RequestAuditContext
 from cairn_api.db.session import get_db
 from cairn_api.errors import ErrorBody
-from cairn_api.knowledge.dependencies import EmbeddingClientDependency, get_object_store
+from cairn_api.knowledge.answer_schemas import KnowledgeAnswerRequest, KnowledgeAnswerResponse
+from cairn_api.knowledge.answer_service import KnowledgeAnswerService
+from cairn_api.knowledge.dependencies import (
+    AnswerProviderDependency,
+    EmbeddingClientDependency,
+    get_object_store,
+)
 from cairn_api.knowledge.object_store import ObjectStore
 from cairn_api.knowledge.resource_service import KnowledgeResourceService
 from cairn_api.knowledge.schemas import (
@@ -106,6 +112,51 @@ SEARCH_ERRORS: dict[int | str, dict[str, Any]] = {
     500: _error("服务器内部错误"),
     503: _error("数据库或 Embedding 服务暂时不可用"),
 }
+ANSWER_ERRORS: dict[int | str, dict[str, Any]] = {
+    **SEARCH_ERRORS,
+    409: _error("项目知识在生成期间发生变化"),
+    503: _error("数据库、Embedding 或生成式回答服务暂时不可用"),
+}
+
+
+@router.post(
+    "/projects/{project_id}/knowledge/answers",
+    response_model=KnowledgeAnswerResponse,
+    responses={
+        200: {"description": "项目知识生成式回答", "headers": REQUEST_ID_HEADER},
+        **ANSWER_ERRORS,
+    },
+    dependencies=[Depends(require_mutation_csrf)],
+    openapi_extra=CSRF_REQUIRED_OPENAPI,
+)
+def answer_knowledge(
+    project_id: UUID,
+    payload: KnowledgeAnswerRequest,
+    identity: CurrentIdentity,
+    session: SessionDependency,
+    embedding_client: EmbeddingClientDependency,
+    answer_provider: AnswerProviderDependency,
+    audit: AuditContext,
+    settings: SettingsDependency,
+) -> KnowledgeAnswerResponse:
+    search_service = KnowledgeSearchService(
+        session,
+        embedding_client,
+        user_limit=settings.search_user_limit_per_minute,
+        org_limit=settings.search_org_limit_per_minute,
+        audit_secret=settings.search_audit_secret.get_secret_value(),
+    )
+    return KnowledgeAnswerService(
+        session,
+        search_service,
+        answer_provider,
+        audit_secret=settings.search_audit_secret.get_secret_value(),
+    ).answer(
+        identity=identity,
+        project_id=project_id,
+        question=payload.question,
+        audit=audit,
+    )
 
 
 @router.post(

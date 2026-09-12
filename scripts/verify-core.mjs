@@ -96,6 +96,9 @@ export function resolveVerificationConfig(
     EMBEDDING_DIM: "1024",
     EMBEDDING_MODEL: "text-embedding-v4",
     EMBEDDING_PROVIDER: "local-fake",
+    ANSWER_API_KEY: "local-fake-verification-answer-key",
+    ANSWER_BASE_URL: `${embeddingOrigin}/v1`,
+    ANSWER_MODEL: "local-fake-answer",
     VITE_IDENTITY_API_URL: productionProxyOrigin,
   };
 
@@ -151,6 +154,9 @@ export function resolveVerificationConfig(
       EMBEDDING_DIM: "1024",
       EMBEDDING_MODEL: "text-embedding-v4",
       EMBEDDING_PROVIDER: "local-fake",
+      ANSWER_API_KEY: "local-fake-verification-answer-key",
+      ANSWER_BASE_URL: `${embeddingOrigin}/v1`,
+      ANSWER_MODEL: "local-fake-answer",
       POSTGRES_DB: "cairn_test",
       POSTGRES_PASSWORD: "cairn-local-only",
       POSTGRES_USER: "cairn",

@@ -23,6 +23,8 @@ test("fake provider HTTP boundary returns stable safe responses", async () => {
     EMBEDDING_MODEL: "boundary-model",
     EMBEDDING_DIM: "1024",
     EMBEDDING_BATCH_SIZE: "10",
+    ANSWER_API_KEY: "answer-key",
+    ANSWER_MODEL: "answer-model",
   });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -43,6 +45,25 @@ test("fake provider HTTP boundary returns stable safe responses", async () => {
     assert.equal(success.status, 200);
     const successBody = await success.json();
     assert.equal(successBody.data[0].embedding.length, 1024);
+
+    const answer = await fetch(`${origin}/v1/chat/completions`, {
+      method: "POST",
+      headers: { authorization: "Bearer answer-key", "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "answer-model", stream: false, response_format: { type: "json_object" },
+        max_tokens: 2048,
+        messages: [
+          { role: "system", content: "JSON answer" },
+          { role: "user", content: JSON.stringify({ question: "何时交付？", evidence: [{ id: "S1", text: "9月30日交付" }] }) },
+        ],
+      }),
+    });
+    assert.equal(answer.status, 200);
+    const answerBody = await answer.json();
+    assert.deepEqual(JSON.parse(answerBody.choices[0].message.content), {
+      status: "answered",
+      paragraphs: [{ text: "9月30日交付", citationIds: ["S1"] }],
+    });
 
     for (const boundary of [
       { headers: { "content-type": "application/json" }, body: "{}", status: 401, code: "unauthorized" },

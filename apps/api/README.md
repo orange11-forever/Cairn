@@ -2,7 +2,7 @@
 
 `apps/api` 是根 uv workspace 中可安装、可独立启动的 FastAPI package，现已提供 PostgreSQL 组织身份、Cookie 会话、组织 RBAC、项目 ACL、项目任务、审计、事务性 Outbox、有界 SSE、Stage 3A Task 1–11 知识上传与资源生命周期、Task 12 项目范围混合搜索和 Task 18 资源操作契约，以及配置、请求 ID、统一错误、健康检查和 OpenAPI。Agent 执行和完整 Provider 治理能力仍在后续阶段。
 
-Web 的身份、项目任务与 `/projects/:projectId/knowledge` 资源/详情/搜索/引用上下文/授权下载、上传批次及资源操作连接本 API。Task 20 已把本地假 Embedding、API、Worker 与真实浏览器摄取验收纳入核心命令；默认验证不访问外部 Provider。全文格式化预览、生成式回答和周期性资源详情轮询仍在后续任务。当前产品、架构和阶段路线以 [公开架构说明](../../docs/architecture.md) 为准。
+Web 的身份、项目任务与项目知识资源、搜索、单轮生成式回答、引用上下文和上传连接本 API。核心验证使用本地确定性 Embedding/回答 Provider，不访问外部模型。流式/多轮问答仍在后续任务。当前产品、架构和阶段路线以 [公开架构说明](../../docs/architecture.md) 为准。
 
 Task 18A Web 资源详情已交付：资源行按需内联展开，通过生成 SDK、Cookie credentials 和真实 `GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}` 读取详情。收起会取消请求并销毁局部详情，项目切换或会话代际变化同样取消并销毁旧状态；重新展开和手动刷新都会重新授权，请求中及离线等待期间隐藏旧详情和下载，并禁用自动重连刷新，不进行周期轮询。详情展示安全元数据与处理状态，并把已知失败码映射为安全中文错误指引；仅 `latestVersion.status=ready` 时提供指向 Identity API 的新标签页下载，Web 不读取或缓存最终预签名 URL。详情 `404` 会重新检查当前资源列表，并只把当前搜索标记 stale，不自动重跑搜索；资源列表仍为 `200` 时保留工作区，列表 `404` 才隐藏工作区。
 
@@ -152,7 +152,7 @@ Cookie 会话下的 `POST`/`PATCH`/`PUT`/`DELETE` 命令要求合法 Origin 和�
 
 - 完整阶段/里程碑编辑 UI、React Flow/ELK 图编辑、拖拽 Kanban 和时间线可视化延后。
 - Outbox worker 发布、长连接重连 SSE、Redis fan-out、评论、通知和任务执行延后。
-- 群组、邀请、成员移除、ACL/成员管理 UI、Bearer/OIDC、连接器、Agent 执行和完整模型 Provider 策略层延后。全文格式化预览、生成式回答和周期性资源详情轮询仍在后续任务。
+- 群组、邀请、成员移除、ACL/成员管理 UI、Bearer/OIDC、连接器、Agent 执行和完整模型 Provider 策略层延后。全文格式化预览、流式/多轮问答和周期性资源详情轮询仍在后续任务。
 
 ## Stage 3A Task 1–20 知识摄取、资源操作与搜索契约
 
@@ -172,6 +172,7 @@ Cookie 会话下的 `POST`/`PATCH`/`PUT`/`DELETE` 命令要求合法 Origin 和�
 | `GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}/download` | `307` + `Location` | 重新检查项目 `read` 权限后重定向到短时效对象 URL |
 | `GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}/chunks/{chunk_id}` | `200 ChunkContextResponse` | 返回命中切片、结构化 locator 和同版本前后文 |
 | `POST /api/v1/projects/{project_id}/knowledge/search` | `200 KnowledgeSearchResponse` | 在项目授权边界内返回混合检索结果、模式与可追溯引用 |
+| `POST /api/v1/projects/{project_id}/knowledge/answers` | `200 KnowledgeAnswerResponse` | 复用最多 6 条授权搜索证据，返回单轮回答与 `S1`–`S6` 核验引用 |
 
 资源列表 `limit` 范围为 1–100、默认 50，客户端只能将 `nextCursor` 原样作为下次 `cursor`。下载端点不代理对象内容：它会在每次请求中重新授权和写入读取审计，然后返回 `307` 短时效 S3/MinIO URL。
 
@@ -203,7 +204,7 @@ Cookie 会话下的 `POST`/`PATCH`/`PUT`/`DELETE` 命令要求合法 Origin 和�
 
 ## 后续数据模型不变量
 
-以下内容同时记录已交付的授权和 Stage 3A Task 1–20 知识边界，以及后续阶段必须遵守的设计约束；全文格式化预览、生成式回答和周期性资源详情轮询仍在后续任务，连接器、Agent 或完整 Provider 治理能力尚未实现。
+以下内容同时记录已交付的授权和知识边界，以及后续阶段必须遵守的设计约束；全文格式化预览、流式/多轮问答和周期性资源详情轮询仍在后续任务，连接器、Agent 或完整 Provider 治理能力尚未实现。
 
 ### 1. 组织是租户边界
 

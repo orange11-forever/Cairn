@@ -158,6 +158,22 @@ async function checkCoreKnowledgeIngestion() {
     "真实上传应由 Worker 处理为 ready",
   );
 
+  const answers = page.getByRole("region", { name: "项目知识问答" });
+  await answers.getByLabel("向项目知识提问", { exact: true }).fill(`资料里提到了什么：${CORE_PHRASE}`);
+  await answers.getByRole("button", { name: "生成回答" }).click();
+  const generated = answers.getByRole("region", { name: "生成式回答" });
+  await generated.waitFor({ timeout: 30_000 });
+  expect(
+    await generated.locator(".knowledge-answer-paragraphs").getByText(CORE_PHRASE, { exact: false }).isVisible(),
+    "生成回答应包含上传资料中的依据",
+  );
+  expect(await generated.getByText(/S1 · task20-核心摄取验收\.txt/).isVisible(), "生成回答应显示核验后的来源");
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.screenshot({ path: join(SHOT_DIR, "knowledge-answer-desktop.png"), fullPage: true });
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.screenshot({ path: join(SHOT_DIR, "knowledge-answer-mobile.png"), fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 900 });
+
   await page.getByLabel("搜索项目知识", { exact: true }).fill(CORE_PHRASE);
   await page.getByRole("button", { name: "搜索项目知识" }).click();
   await page.getByText("混合检索", { exact: true }).waitFor({ timeout: 30_000 });
@@ -165,8 +181,9 @@ async function checkCoreKnowledgeIngestion() {
     await page.locator(".knowledge-search-result").filter({ hasText: CORE_PHRASE }).count() > 0,
     "真实搜索应返回上传文件中的精确短语",
   );
-  await page.getByRole("button", { name: "查看引用上下文" }).first().click();
-  const context = page.locator(".knowledge-citation-context-success");
+  const search = page.getByRole("region", { name: "项目知识检索" });
+  await search.getByRole("button", { name: "查看引用上下文" }).first().click();
+  const context = search.locator(".knowledge-citation-context-success");
   await context.waitFor({ timeout: 30_000 });
   expect(await context.getByText(CORE_PHRASE, { exact: false }).isVisible(), "引用上下文应包含命中文本");
   expect(/第\s*\d+(?:[–-]\d+)?\s*行/.test(await context.innerText()), "文本引用应显示行号 locator");

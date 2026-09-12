@@ -95,6 +95,8 @@ function json(response, status, body) {
 export function createFakeEmbeddingServer(environment = process.env) {
   const apiKey = environment.EMBEDDING_API_KEY ?? "local-fake-embedding-key";
   const model = environment.EMBEDDING_MODEL ?? "text-embedding-v4";
+  const answerApiKey = environment.ANSWER_API_KEY ?? "local-fake-answer-key";
+  const answerModel = environment.ANSWER_MODEL ?? "local-fake-answer";
   const dimensions = integer(environment, "EMBEDDING_DIM", 1024, { maximum: 4096 });
   const maximumBatchSize = integer(environment, "EMBEDDING_BATCH_SIZE", 10, { maximum: 10 });
   return createServer(async (request, response) => {
@@ -103,7 +105,7 @@ export function createFakeEmbeddingServer(environment = process.env) {
         json(response, 200, { status: "ok" });
         return;
       }
-      if (request.method !== "POST" || request.url !== "/v1/embeddings") {
+      if (request.method !== "POST" || !["/v1/embeddings", "/v1/chat/completions"].includes(request.url)) {
         json(response, 404, { error: { message: "not found" } });
         return;
       }
@@ -111,10 +113,38 @@ export function createFakeEmbeddingServer(environment = process.env) {
           !== "application/json") {
         throw new ProviderRequestError(415, "unsupported_media_type", "content type must be application/json");
       }
+      const body = await readJson(request);
+      if (request.url === "/v1/chat/completions") {
+        if (request.headers.authorization !== `Bearer ${answerApiKey}`) {
+          throw new ProviderRequestError(401, "unauthorized", "invalid authorization");
+        }
+        if (
+          body === null || typeof body !== "object" || Array.isArray(body) ||
+          body.model !== answerModel || body.stream !== false ||
+          body.response_format?.type !== "json_object" || body.max_tokens !== 2048 ||
+          body.tools !== undefined || !Array.isArray(body.messages) || body.messages.length !== 2
+        ) throw invalid("invalid_answer_request", "invalid answer request");
+        let prompt;
+        try { prompt = JSON.parse(body.messages[1]?.content); } catch { throw invalid("invalid_answer_prompt"); }
+        const evidence = Array.isArray(prompt?.evidence) ? prompt.evidence : [];
+        const first = evidence.find((item) =>
+          item !== null && typeof item === "object" && /^S[1-6]$/.test(item.id) &&
+          typeof item.text === "string" && item.text.length > 0
+        );
+        const generated = first === undefined
+          ? { status: "insufficient_evidence", paragraphs: [] }
+          : { status: "answered", paragraphs: [{ text: first.text, citationIds: [first.id] }] };
+        json(response, 200, {
+          choices: [{ finish_reason: "stop", message: {
+            role: "assistant", content: JSON.stringify(generated),
+          } }],
+        });
+        return;
+      }
       const inputs = validateEmbeddingRequest({
         authorization: request.headers.authorization,
         expectedApiKey: apiKey,
-        body: await readJson(request),
+        body,
         expectedModel: model,
         expectedDimensions: dimensions,
         maximumBatchSize,

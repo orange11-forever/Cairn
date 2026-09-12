@@ -206,9 +206,7 @@ def test_knowledge_credentials_are_redacted_from_settings_representations() -> N
         ),
     ],
 )
-def test_production_rejects_example_knowledge_secrets(
-    field_name: str, example_value: str
-) -> None:
+def test_production_rejects_example_knowledge_secrets(field_name: str, example_value: str) -> None:
     with pytest.raises(ValidationError, match="example"):
         production_settings(**{field_name: example_value})
 
@@ -218,9 +216,7 @@ def test_production_rejects_example_knowledge_secrets(
     ["object_store_access_key", "object_store_secret_key"],
 )
 @pytest.mark.parametrize("value", ["", " \t "])
-def test_production_rejects_blank_object_store_credentials(
-    field_name: str, value: str
-) -> None:
+def test_production_rejects_blank_object_store_credentials(field_name: str, value: str) -> None:
     with pytest.raises(ValidationError, match="object-store.*blank"):
         production_settings(**{field_name: value})
 
@@ -256,6 +252,26 @@ def test_production_counts_search_audit_secret_length_in_utf8_bytes() -> None:
     settings = production_settings(search_audit_secret="密" * 16)
 
     assert settings.search_audit_secret.get_secret_value() == "密" * 16
+
+
+def test_answer_provider_is_disabled_when_configuration_is_absent_or_partial() -> None:
+    """Break caught: optional answer configuration prevents the rest of the API starting."""
+    assert Settings().answer_base_url is None
+    partial = Settings.model_validate({"answer_base_url": "http://127.0.0.1:58081/v1"})
+    assert str(partial.answer_base_url).rstrip("/") == "http://127.0.0.1:58081/v1"
+    assert partial.answer_api_key is None
+    assert partial.answer_model is None
+
+
+@pytest.mark.parametrize(
+    "url", ["https://answers.example/v1?region=cn", "https://answers.example/v1#internal"]
+)
+def test_answer_base_url_rejects_query_and_fragment_even_when_configuration_is_partial(
+    url: str,
+) -> None:
+    """Break caught: a partial answer URL defers malformed endpoint validation to first use."""
+    with pytest.raises(ValidationError, match="query or fragment"):
+        Settings.model_validate({"answer_base_url": url})
 
 
 def test_production_rejects_blank_embedding_api_key() -> None:
@@ -365,7 +381,10 @@ def test_production_rejects_http_cors_origin() -> None:
         )
 
 
-@pytest.mark.parametrize("secret", ["", "short", "local-development-auth-rate-limit-secret-change-before-deploying-32-bytes"])
+@pytest.mark.parametrize(
+    "secret",
+    ["", "short", "local-development-auth-rate-limit-secret-change-before-deploying-32-bytes"],
+)
 def test_production_rejects_missing_short_or_example_rate_limit_secret(secret: str) -> None:
     with pytest.raises(ValidationError):
         production_settings(
@@ -399,4 +418,7 @@ def test_production_accepts_https_values_and_normalizes_origins() -> None:
     )
     assert str(settings.app_url) == "https://cairn.example/"
     assert settings.cors_origins == ["https://frontend.example"]
-    assert [str(network) for network in settings.trusted_proxy_cidrs] == ["10.0.0.0/8", "2001:db8::/32"]
+    assert [str(network) for network in settings.trusted_proxy_cidrs] == [
+        "10.0.0.0/8",
+        "2001:db8::/32",
+    ]
