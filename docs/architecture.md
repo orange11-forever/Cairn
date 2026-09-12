@@ -4,13 +4,13 @@
 
 ## 当前已交付
 
-当前交付前沿为 Stage 3A Task 1–19。
+当前交付前沿为 Stage 3A Task 1–20。
 
 - React 19、TypeScript 与 Vite 构成 Web 客户端；登录后默认进入 `/projects`，身份、项目、任务与 `/projects/:projectId/knowledge` 的资源、按需详情、搜索、按需引用上下文、授权下载和真实上传批次连接真实 FastAPI。旧 `/documents` 与 `/ask` 书签重定向到项目工作台。
 - FastAPI 采用模块化单体边界，提供 Cookie 会话、组织身份与 RBAC、项目 ACL、成员角色管理、项目任务、追加式审计、事务性 Outbox、有界 SSE，以及项目授权下的知识上传与资源生命周期 API。
 - PostgreSQL 16/pgvector 与 S3 兼容 MinIO 当前已使用：PostgreSQL 保存业务事实、持久化摄取任务、知识资源、切片和向量，MinIO 保存原始对象与 ZIP 展开产物；生成的 TypeScript SDK 对齐 OpenAPI。Redis 仍是规划中基础设施。
 - Stage 3A Task 1–11 的独立 Worker 已交付，用租约和心跳处理受限归档展开、文档解析、结构化切分、OpenAI 兼容 1024 维 Embedding 与原子索引发布。
-- Stage 3A Task 12–18 已交付项目范围混合搜索、真实知识工作区、资源/详情/搜索/引用/下载、上传批次和资源操作。Task 19 已移除旧 Node mock、通用文档/问答产品路径和手写 contracts workspace，Web 统一使用生成 SDK 校验网络契约。全文格式化预览、生成式回答、周期性资源详情轮询与核心 Worker/假 Embedding 浏览器摄取编排仍在后续任务；群组、邀请、成员移除、ACL/成员管理 UI、连接器、Agent 执行和完整模型 Provider 策略层尚未实现。
+- Stage 3A Task 12–18 已交付项目范围混合搜索、真实知识工作区、资源/详情/搜索/引用/下载、上传批次和资源操作。Task 19 已移除旧 Node mock、通用文档/问答产品路径和手写 contracts workspace；Task 20 交付本地确定性假 Embedding、活动 Profile 初始化、核心 Worker 生命周期和真实浏览器摄取闭环。全文格式化预览、生成式回答和周期性资源详情轮询仍在后续任务；群组、邀请、成员移除、ACL/成员管理 UI、连接器、Agent 执行和完整模型 Provider 策略层尚未实现。
 
 Task 18A Web 资源详情已交付：资源行按需内联展开，通过生成 SDK、Cookie credentials 和真实 `GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}` 读取详情。收起会取消请求并销毁局部详情，项目切换或会话代际变化同样取消并销毁旧状态；重新展开和手动刷新都会重新授权，请求中及离线等待期间隐藏旧详情和下载，并禁用自动重连刷新，不进行周期轮询。详情展示安全元数据与处理状态，并把已知失败码映射为安全中文错误指引；仅 `latestVersion.status=ready` 时提供指向 Identity API 的新标签页下载，Web 不读取或缓存最终预签名 URL。详情 `404` 会重新检查当前资源列表，并只把当前搜索标记 stale，不自动重跑搜索；资源列表仍为 `200` 时保留工作区，列表 `404` 才隐藏工作区。
 
@@ -49,6 +49,7 @@ Task 18B 资源操作已交付：仅最新资源列表声明 `canWrite` 且 `lat
 - Stage 3A Task 17：真实上传批次（已交付）。`/projects/:projectId/knowledge` 仅向 `canWrite` 用户提供文件选择和拖放，最多 20 个文件先完成校验与 SHA-256 摘要，再以最多 2 个并发 `PUT` 直传对象存储并显示逐文件进度，随后调用 `complete` 确认；批次每 2 秒跟踪一次，终止或首次查询满 5 分钟后停止自动跟踪，保留手动刷新且不伪造处理失败。取消只停止当前浏览器操作，已确认的服务端任务仍会继续；可重试的传输或 `complete` 失败使用全新批次与预签名 URL，`contract` 错误不允许重试。
 - Stage 3A Task 18A：Web 资源详情（已交付），包含按需真实 GET、收起取消与局部状态销毁、项目/会话隔离、重新展开/手动刷新重新授权、离线隐藏、无自动重连刷新或周期轮询、安全中文失败指引、ready-only Identity API 新标签页下载，以及 detail 404 后精确资源列表重检和搜索 stale/no-POST 边界。
 - Stage 3A Task 18B：资源操作（已交付），仅最新资源列表 `canWrite` 且 `latestVersion.status=failed`、服务端返回 `latestVersion.retryable=true` 时提供带 CSRF 的请求 `resource_id`/`version_id` 精确重试，成功严格为 `200` 且返回体 `id` 匹配请求 `resource_id`、`latestVersion.id` 匹配请求 `version_id`；行内命名软删除确认取消零请求，确认严格为 `204` 空响应。无自动 mutation 重试/离线回放，取消不承诺回滚；删除先取消相关读取，再清理当前项目列表/详情/引用/搜索缓存而不自动 `POST`，并保留其他项目和上传跟踪，覆盖迟到 `401`、列表重检、冲突刷新和契约恢复边界。
-- Stage 3A Task 19：Mock 产品路径退场（已交付），包含默认项目入口、旧 `/documents`/`/ask` 兼容重定向、生成 SDK 错误校验，以及 Node mock 与手写 contracts workspace 移除。完整 Worker/假 Embedding 浏览器摄取编排延后至 Task 20。
+- Stage 3A Task 19：Mock 产品路径退场（已交付），包含默认项目入口、旧 `/documents`/`/ask` 兼容重定向、生成 SDK 错误校验，以及 Node mock 与手写 contracts workspace 移除。
+- Stage 3A Task 20：核心摄取验收（已交付），`dev:core`/`verify:core` 托管本地假 Embedding、API 与 Worker，以真实 MinIO 签名 PUT 验证上传、ready、混合检索、行号引用上下文和授权下载；默认验证不需要外网或 Provider 密钥。
 
 后续 Agent、模型 Provider 和工作流能力必须建立在租户、权限、审计和知识边界之上，不能绕过这些基础能力提前接入生产数据。

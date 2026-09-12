@@ -16,7 +16,7 @@ pnpm worker:preflight
 - `pnpm worker:once` 执行完整启动预检后，最多处理一个当前可租用任务，适合调试和调度器单次触发。
 - `pnpm worker:preflight` 只检查配置、PostgreSQL 连接与必需 profile 表、S3/MinIO bucket、活动 Embedding Profile 以及 OpenAI 兼容 Embedding Provider 响应，不租用任务。
 
-`pnpm infra:up` 先启动 PostgreSQL 16/pgvector 和 MinIO 并初始化 bucket/CORS。Worker 不由 `pnpm dev:core` 托管，需要单独启停。
+`pnpm infra:up` 先启动 PostgreSQL 16/pgvector 和 MinIO 并初始化 bucket/CORS。`pnpm dev:core` 会幂等初始化兼容的活动 Embedding Profile，并托管本地确定性假 Embedding、API、Worker 与 Web；Worker 提前退出会使核心命令失败。`pnpm dev:worker` 仍可用于单独调试。
 
 ## 持久化任务契约
 

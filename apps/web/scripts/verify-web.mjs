@@ -45,6 +45,9 @@ const WEB_PORT = readPort("CAIRN_VERIFY_WEB_PORT", 5500);
 const WEB = `http://localhost:${WEB_PORT}`;
 const IDENTITY_ORIGIN = readOrigin("CAIRN_VERIFY_IDENTITY_ORIGIN");
 const IDENTITY_READY = `${IDENTITY_ORIGIN}/ready`;
+const OBJECT_STORE_ORIGIN = readOrigin("CAIRN_OBJECT_STORE_PUBLIC_ENDPOINT_URL");
+const CORE_PROJECT_ID = "00000000-0000-4000-8000-000000004001";
+const CORE_PHRASE = "松针协议确认跨区域恢复完成";
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 
 let web = null;
@@ -53,6 +56,7 @@ let page = null;
 let failed = false;
 const jsErrors = [];
 const requests = [];
+const objectStorePuts = [];
 
 function expect(condition, message) {
   if (condition) return;
@@ -122,6 +126,60 @@ async function checkCompatibilityRoutes() {
   }
 }
 
+async function checkCoreKnowledgeIngestion() {
+  const fileName = "task20-核心摄取验收.txt";
+  const content = Buffer.from(
+    `核心摄取验收\n${CORE_PHRASE}\nThis bilingual source proves upload, indexing, retrieval, citation, and download.\n`,
+    "utf8",
+  );
+  await page.goto(`${WEB}/projects/${CORE_PROJECT_ID}/knowledge`, { waitUntil: "networkidle" });
+  await page.waitForSelector(".knowledge-page");
+  await page.getByLabel("上传知识资料", { exact: true }).setInputFiles({
+    name: fileName,
+    mimeType: "text/plain",
+    buffer: content,
+  });
+  await page.getByRole("button", { name: "开始上传" }).click();
+  await page.locator('.knowledge-upload-file[data-phase="ready"]').waitFor({
+    timeout: 120_000,
+  });
+  const signedPut = objectStorePuts.find((request) => request.method() === "PUT");
+  expect(signedPut !== undefined, "浏览器应向配置的 MinIO origin 发出真实 PUT");
+  if (signedPut !== undefined) {
+    const signedUrl = new URL(signedPut.url());
+    const headers = await signedPut.allHeaders();
+    expect(signedUrl.origin === OBJECT_STORE_ORIGIN, "上传 PUT 应只发往配置的 MinIO origin");
+    expect(signedUrl.searchParams.has("X-Amz-Signature"), "上传 PUT 应使用签名查询参数");
+    expect(headers.cookie === undefined, "对象存储 PUT 不应携带 Identity Cookie");
+    expect(headers.authorization === undefined, "对象存储 PUT 不应携带 Identity Authorization");
+  }
+  expect(
+    await page.getByText("Worker 处理完成，可用于知识检索", { exact: true }).isVisible(),
+    "真实上传应由 Worker 处理为 ready",
+  );
+
+  await page.getByLabel("搜索项目知识", { exact: true }).fill(CORE_PHRASE);
+  await page.getByRole("button", { name: "搜索项目知识" }).click();
+  await page.getByText("混合检索", { exact: true }).waitFor({ timeout: 30_000 });
+  expect(
+    await page.locator(".knowledge-search-result").filter({ hasText: CORE_PHRASE }).count() > 0,
+    "真实搜索应返回上传文件中的精确短语",
+  );
+  await page.getByRole("button", { name: "查看引用上下文" }).first().click();
+  const context = page.locator(".knowledge-citation-context-success");
+  await context.waitFor({ timeout: 30_000 });
+  expect(await context.getByText(CORE_PHRASE, { exact: false }).isVisible(), "引用上下文应包含命中文本");
+  expect(/第\s*\d+(?:[–-]\d+)?\s*行/.test(await context.innerText()), "文本引用应显示行号 locator");
+
+  const downloadHref = await context
+    .getByRole("link", { name: "下载原文件（新标签页）" })
+    .getAttribute("href");
+  expect(downloadHref !== null, "引用上下文应提供授权下载入口");
+  const downloadResponse = await page.request.get(new URL(downloadHref, WEB).href);
+  expect(downloadResponse.ok(), `授权下载应成功，实际 ${downloadResponse.status()}`);
+  expect((await downloadResponse.body()).equals(content), "授权下载应返回刚上传的原始字节");
+}
+
 try {
   await assertPortAvailable(WEB_PORT);
   const previewInvocation = spawnInvocation(pnpm, [
@@ -143,7 +201,10 @@ try {
 
   browser = await chromium.launch();
   page = await browser.newPage();
-  page.on("request", (request) => requests.push(request.url()));
+  page.on("request", (request) => {
+    requests.push(request.url());
+    if (new URL(request.url()).origin === OBJECT_STORE_ORIGIN) objectStorePuts.push(request);
+  });
   page.on("console", (message) => {
     if (message.type() === "error" && !message.text().includes("Failed to load resource")) {
       jsErrors.push(message.text());
@@ -156,8 +217,9 @@ try {
   await checkLoginBoundary();
   await login();
   await checkAuthenticatedShell();
+  await checkCoreKnowledgeIngestion();
 
-  await page.reload({ waitUntil: "networkidle" });
+  await page.goto(`${WEB}/projects`, { waitUntil: "networkidle" });
   await waitForAuthenticated();
   await checkCompatibilityRoutes();
 

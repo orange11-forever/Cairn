@@ -2,7 +2,7 @@
 
 `apps/api` 是根 uv workspace 中可安装、可独立启动的 FastAPI package，现已提供 PostgreSQL 组织身份、Cookie 会话、组织 RBAC、项目 ACL、项目任务、审计、事务性 Outbox、有界 SSE、Stage 3A Task 1–11 知识上传与资源生命周期、Task 12 项目范围混合搜索和 Task 18 资源操作契约，以及配置、请求 ID、统一错误、健康检查和 OpenAPI。Agent 执行和完整 Provider 治理能力仍在后续阶段。
 
-Web 的身份、项目任务与 `/projects/:projectId/knowledge` 资源/详情/搜索/引用上下文/授权下载、上传批次及资源操作连接本 API。Task 19 已移除旧通用文档、上传与问答 Node mock；登录后默认进入 `/projects`，旧 `/documents` 与 `/ask` 书签重定向到项目工作台。全文格式化预览、生成式回答、周期性资源详情轮询和核心 Worker/假 Embedding 浏览器摄取闭环仍在后续任务。当前产品、架构和阶段路线以 [公开架构说明](../../docs/architecture.md) 为准。
+Web 的身份、项目任务与 `/projects/:projectId/knowledge` 资源/详情/搜索/引用上下文/授权下载、上传批次及资源操作连接本 API。Task 20 已把本地假 Embedding、API、Worker 与真实浏览器摄取验收纳入核心命令；默认验证不访问外部 Provider。全文格式化预览、生成式回答和周期性资源详情轮询仍在后续任务。当前产品、架构和阶段路线以 [公开架构说明](../../docs/architecture.md) 为准。
 
 Task 18A Web 资源详情已交付：资源行按需内联展开，通过生成 SDK、Cookie credentials 和真实 `GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}` 读取详情。收起会取消请求并销毁局部详情，项目切换或会话代际变化同样取消并销毁旧状态；重新展开和手动刷新都会重新授权，请求中及离线等待期间隐藏旧详情和下载，并禁用自动重连刷新，不进行周期轮询。详情展示安全元数据与处理状态，并把已知失败码映射为安全中文错误指引；仅 `latestVersion.status=ready` 时提供指向 Identity API 的新标签页下载，Web 不读取或缓存最终预签名 URL。详情 `404` 会重新检查当前资源列表，并只把当前搜索标记 stale，不自动重跑搜索；资源列表仍为 `200` 时保留工作区，列表 `404` 才隐藏工作区。
 
@@ -37,13 +37,13 @@ uv run --package cairn-api pyright
 uv build --package cairn-api
 ```
 
-API 默认监听 `127.0.0.1:8080`，提供 `/health`、`/ready`、身份与知识接口、`/docs` 和 `/openapi.json`。日常完整开发流程应从仓库根目录运行 `pnpm infra:up` 和 `pnpm dev:core`；`infra:up` 会启动 pgvector PostgreSQL 与 MinIO，并初始化 bucket/CORS。Worker 用 `pnpm dev:worker` 作为独立进程运行；停止 `dev:core` 不会停止 Worker，也不会删除 PostgreSQL 或 MinIO 开发卷。
+API 默认监听 `127.0.0.1:8080`，提供 `/health`、`/ready`、身份与知识接口、`/docs` 和 `/openapi.json`。日常完整开发流程应从仓库根目录运行 `pnpm infra:up` 和 `pnpm dev:core`；`infra:up` 会启动 pgvector PostgreSQL 与 MinIO，并初始化 bucket/CORS，`dev:core` 会幂等初始化 1024 维活动 Embedding Profile 并托管本地假 Embedding、API、Worker 与 Web。停止 `dev:core` 会停止这些子进程，但不会删除 PostgreSQL 或 MinIO 开发卷。
 
 Docker Desktop 必须保持运行。生产环境必须使用 HTTPS `APP_URL`/`CORS_ORIGINS`、启用安全 Cookie，并分别提供至少 32 字节且不能复用的 `CAIRN_CSRF_SECRET` 与 `CAIRN_AUTH_RATE_LIMIT_SECRET`。将直接连接的可信反向代理网段以逗号分隔配置到 `CAIRN_TRUSTED_PROXY_CIDRS`；代理必须覆盖外部请求携带的 `Forwarded`/`X-Forwarded-*`，Uvicorn 不代替应用解析这些请求头。
 
 ## 当前能力边界
 
-当前 Web 交付前沿为 Stage 3A Task 1–19；Task 19 只移除旧 Mock 产品路径并统一生成 SDK 校验，不新增 API、OpenAPI 或 SDK 功能。
+当前 Web 交付前沿为 Stage 3A Task 1–20；Task 20 交付核心 Worker/假 Embedding 浏览器摄取编排，不新增 API、OpenAPI 或 SDK 功能。
 
 - 已实现：组织、用户、成员关系、Argon2id 密码、Cookie 会话、CSRF、PostgreSQL 登录限流、当前组织查询、项目、任务、任务依赖、状态机、追加式审计、事务性 Outbox 和有界 SSE 查询。
 - 阶段 2.5A 已交付项目范围的组织 RBAC、规范化 ACL、成员角色列表与更新 API。
@@ -56,7 +56,8 @@ Docker Desktop 必须保持运行。生产环境必须使用 HTTPS `APP_URL`/`CO
 - Stage 3A Task 17 真实上传批次已交付：`/projects/:projectId/knowledge` 仅向 `canWrite` 用户提供文件选择和拖放，最多 20 个文件先完成校验与 SHA-256 摘要，再以最多 2 个并发 `PUT` 直传对象存储并显示逐文件进度，随后调用 `complete` 确认；批次每 2 秒跟踪一次，终止或首次查询满 5 分钟后停止自动跟踪，保留手动刷新且不伪造处理失败。取消只停止当前浏览器操作，已确认的服务端任务仍会继续；可重试的传输或 `complete` 失败使用全新批次与预签名 URL，`contract` 错误不允许重试。
 - Stage 3A Task 18A Web 资源详情已交付：读写成员都可按需读取详情；收起/项目/会话变化销毁局部授权状态，重新展开和手动刷新重新授权，离线等待隐藏旧数据且不自动重连刷新或周期轮询；ready 最新版本才显示安全下载入口。
 - Stage 3A Task 18B 资源操作已交付：仅最新资源列表 `canWrite` 且 `latestVersion.status=failed`、服务端返回 `latestVersion.retryable=true` 时提供带 CSRF 的请求 `resource_id`/`version_id` 精确重试，成功严格为 `200` 且返回体 `id` 匹配请求 `resource_id`、`latestVersion.id` 匹配请求 `version_id`；行内命名软删除确认取消零请求，确认严格为 `204` 空响应。无自动 mutation 重试或离线回放，取消不承诺回滚；删除先取消当前项目相关读取，再清理当前项目列表/详情/引用缓存和搜索结果而不自动 `POST`，保留其他项目和上传跟踪，并覆盖迟到 `401` 不使新会话失效、`404` 列表重检、`409` 详情刷新和契约错误手动恢复。
-- Stage 3A Task 19 Mock 退场已交付：默认项目入口、旧书签重定向、生成 SDK 错误校验，以及 Node mock 和手写 contracts workspace 移除。Task 20 将补充核心 Worker/假 Embedding 浏览器摄取编排。
+- Stage 3A Task 19 Mock 退场已交付：默认项目入口、旧书签重定向、生成 SDK 错误校验，以及 Node mock 和手写 contracts workspace 移除。
+- Stage 3A Task 20 核心摄取验收已交付：`dev:core`/`verify:core` 托管本地确定性假 Embedding、API 与 Worker，浏览器验证签名上传、ready、混合检索、行号上下文和授权下载。
 - 对象存储公开 `PUT` URL 必须与 Web 页面使用不同 origin；客户端拒绝同源上传 URL，避免浏览器自动携带同源 Cookie。对象存储 `PUT` 不携带 Identity credentials；预签名上传 URL 与签名 headers 仅存于局部运行时，不进入 DOM、Query/Mutation 缓存、日志或浏览器存储。文件与 ZIP 子条目展示安全状态和局部错误，完成确认及批次终止时刷新资源列表，搜索仅标记 stale，不自动重跑。取消、路由切换、批次替换和会话失效会停止未完成的浏览器操作；自动跟踪超时保留已知 queued/processing 事实，显示“后台仍在处理”并允许手动刷新。
 - `Bearer/OIDC`：未实现。
 - 群组、邀请、成员移除、ACL 管理 UI 与成员管理 UI：未实现。
@@ -64,7 +65,7 @@ Docker Desktop 必须保持运行。生产环境必须使用 HTTPS `APP_URL`/`CO
 
 登录限流使用固定的 15 分钟窗口：规范化邮箱最多失败 5 次，来源 IP 最多失败 30 次，达到阈值后阻止 15 分钟。`auth_rate_limits` 只保存以 `CAIRN_AUTH_RATE_LIMIT_SECRET` 生成的 HMAC-SHA-256 摘要，不保存明文邮箱或 IP；限流数据库操作失败时登录会关闭并返回 `503 database_unavailable`。
 
-`pnpm auth:cleanup` 分批、幂等删除过期/已撤销会话和失效限流桶，保留有效会话、活动窗口和全部审计记录。演示种子只允许在开发和测试环境运行；生产配置拒绝演示种子、示例密钥、HTTP Origin 和不安全 Cookie。停止 `pnpm dev:core` 只停止 API 与 Web 进程，不删除 PostgreSQL 开发卷。
+`pnpm auth:cleanup` 分批、幂等删除过期/已撤销会话和失效限流桶，保留有效会话、活动窗口和全部审计记录。演示种子只允许在开发和测试环境运行；生产配置拒绝演示种子、示例密钥、HTTP Origin 和不安全 Cookie。停止 `pnpm dev:core` 会停止假 Embedding、API、Worker 与 Web，不删除 PostgreSQL 或 MinIO 开发卷。
 
 `uv run --package cairn-api cairn-api upload-cleanup` 分批租用过期上传会话，删除孤立上传对象并持久化可审计的终态；数据库或对象存储失败会以非零退出码暴露，便于定时任务重试。
 
@@ -151,9 +152,9 @@ Cookie 会话下的 `POST`/`PATCH`/`PUT`/`DELETE` 命令要求合法 Origin 和�
 
 - 完整阶段/里程碑编辑 UI、React Flow/ELK 图编辑、拖拽 Kanban 和时间线可视化延后。
 - Outbox worker 发布、长连接重连 SSE、Redis fan-out、评论、通知和任务执行延后。
-- 群组、邀请、成员移除、ACL/成员管理 UI、Bearer/OIDC、连接器、Agent 执行和完整模型 Provider 策略层延后。全文格式化预览、生成式回答、周期性资源详情轮询和完整 Worker 浏览器摄取闭环仍在后续任务。
+- 群组、邀请、成员移除、ACL/成员管理 UI、Bearer/OIDC、连接器、Agent 执行和完整模型 Provider 策略层延后。全文格式化预览、生成式回答和周期性资源详情轮询仍在后续任务。
 
-## Stage 3A Task 1–19 知识摄取、资源操作与搜索契约
+## Stage 3A Task 1–20 知识摄取、资源操作与搜索契约
 
 这些端点继承 Cookie 会话和项目授权。上传批次、上传完成、手动重试和删除是 mutation，都要求合法 Cookie Origin 和会话绑定的 `X-CSRF-Token`。项目或知识资源不存在、跨组织或权限不足时使用统一的不泄露 `404 not_found`，不通过错误差异暴露资源存在性。
 
@@ -195,13 +196,14 @@ Cookie 会话下的 `POST`/`PATCH`/`PUT`/`DELETE` 命令要求合法 Origin 和�
 | 3A Task 17 | 已完成真实项目知识上传批次，含校验/摘要、直传进度、complete、批次/ZIP 状态、取消、有界跟踪、手动刷新与全新批次传输/确认重试 |
 | 3A Task 18A | 已完成 Web 资源详情只读闭环：按需 GET、取消与项目/会话隔离、重新授权、离线隐藏、手动刷新、ready-only Identity API 下载和局部 404 列表重检 |
 | 3A Task 18B | 已完成资源操作闭环：可写且服务端声明失败版本可重试时的精确版本重试，行内命名软删除确认与严格 `204` 空响应；无自动 mutation 重试/离线回放，删除取消相关读取并清理当前项目列表、详情、引用和搜索而不自动 `POST`，保留其他项目与上传跟踪，且覆盖会话、列表重检、冲突刷新和契约恢复边界 |
-| 3A Task 19 | 已完成 Mock 退场：默认 `/projects`、旧书签重定向、生成 SDK 错误校验及旧 Node mock/contracts workspace 移除；Worker/假 Embedding 完整浏览器摄取编排延后至 Task 20 |
+| 3A Task 19 | 已完成 Mock 退场：默认 `/projects`、旧书签重定向、生成 SDK 错误校验及旧 Node mock/contracts workspace 移除 |
+| 3A Task 20 | 已完成核心 Worker/本地假 Embedding 生命周期和真实浏览器上传、索引、混合检索、引用上下文与授权下载闭环 |
 | 4 | Agent、模型策略、运行、预算、审批与 AgentRunner 契约 |
 | 5-6 | 外部编程 Agent、代码智能、OIDC/SAML、配额、审计查询和部署治理 |
 
 ## 后续数据模型不变量
 
-以下内容同时记录已交付的授权和 Stage 3A Task 1–19 知识边界，以及后续阶段必须遵守的设计约束；全文格式化预览、生成式回答、周期性资源详情轮询和完整 Worker 浏览器摄取编排仍在后续任务，连接器、Agent 或 Provider 能力尚未实现。
+以下内容同时记录已交付的授权和 Stage 3A Task 1–20 知识边界，以及后续阶段必须遵守的设计约束；全文格式化预览、生成式回答和周期性资源详情轮询仍在后续任务，连接器、Agent 或完整 Provider 治理能力尚未实现。
 
 ### 1. 组织是租户边界
 

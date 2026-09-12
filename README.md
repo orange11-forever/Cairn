@@ -11,7 +11,7 @@
 </p>
 
 > [!IMPORTANT]
-> Cairn 当前交付前沿为 Stage 3A Task 19。真实 PostgreSQL 16/pgvector、S3 兼容 MinIO、独立 Worker、项目工作台和项目知识工作区已交付。Task 19 以 `/projects` 作为登录后默认入口，将旧 `/documents` 与 `/ask` 书签安全重定向到项目工作台，并移除了 Node mock、旧通用文档/问答界面和手写 `@cairn/contracts`；Web 网络契约统一由 OpenAPI 生成的 `@cairn/sdk` 校验。全文格式化预览、生成式回答、周期性资源详情轮询，以及由核心命令托管 Worker/假 Embedding 的完整浏览器摄取闭环仍在后续任务。
+> Cairn 当前交付前沿为 Stage 3A Task 20。真实 PostgreSQL 16/pgvector、S3 兼容 MinIO、独立 Worker、项目工作台和项目知识工作区已交付。`dev:core` 与 `verify:core` 现在托管本地确定性假 Embedding、API、Worker 和 Web；浏览器验收覆盖真实预签名上传、Worker 索引、混合搜索、引用上下文与授权下载。默认验证不访问外网，也不需要真实 Provider 密钥。全文格式化预览、生成式回答和周期性资源详情轮询仍在后续任务。
 >
 > Task 15 真实知识搜索结果已交付，展示服务端排序的摘录、文件类型、类型化 locator 定位信息、混合检索标签与关键词降级结果，并覆盖取消、错误、会话失效和访问权撤销状态。Task 16 搜索卡片内按需引用上下文与授权下载已交付：引用上下文以“前文 → 命中片段 → 后文”展示纯文本，重新展开会重新授权；下载只把新标签页导航到 Identity API，实时授权后由 `307` 重定向到短时效对象地址，Web 不缓存或读取最终预签名 URL。
 >
@@ -31,9 +31,9 @@
 | API / SDK | FastAPI 已提供会话、项目/任务、RBAC/ACL、知识摄取、资源与混合搜索契约；生成 SDK 导出 OpenAPI schema 与运行时校验器，Web API 适配器使用该校验器检查身份、项目/任务和知识响应，并对 OpenAPI `date-time` 字段执行运行时校验。 |
 | Worker | 独立 Worker 已进入知识摄取核心链路；Python Worker 通过 PostgreSQL 持久化任务完成受限归档、解析、切分、Embedding 与原子索引发布。 |
 | 基础设施 | 核心开发链路使用 PostgreSQL 16/pgvector 与 S3 兼容 MinIO；Redis、正式 Compose/Helm 部署和 OpenTelemetry 仍在规划。 |
-| 延后 | 全文格式化预览、生成式回答、周期性资源详情轮询、核心 Worker/假 Embedding 浏览器摄取闭环、连接器、Agent 执行和完整模型 Provider 策略层尚未交付。 |
+| 延后 | 全文格式化预览、生成式回答、周期性资源详情轮询、连接器、Agent 执行和完整模型 Provider 策略层尚未交付。 |
 
-## Stage 3A Task 1–19 已交付边界
+## Stage 3A Task 1–20 已交付边界
 
 共享 API 契约、响应式 Web 与真实身份基础已经完成。阶段 2 已完成并交付项目、任务、依赖、状态机、事务性 Outbox 和有界 SSE 查询；Cairn 已完成阶段 2.5A，交付组织角色、项目 ACL 与成员角色管理 API；Stage 3A Task 1–11 已交付文件摄取和可发布索引基础，Task 12 混合搜索 API、Task 13 Web 知识工作区基础、Task 14 真实知识资源列表与 Task 15 真实知识搜索结果均已交付。Task 16 搜索卡片内按需引用上下文与授权下载已交付。Task 17 真实上传批次已交付。
 
@@ -118,7 +118,7 @@ Stage 3A Task 1–12 在项目授权边界内提供上传批次状态、资源�
 - 完整阶段/里程碑编辑 UI、React Flow/ELK 图编辑、拖拽 Kanban 和时间线可视化延后；
 - Outbox worker 发布、长连接重连 SSE、Redis fan-out、评论、通知和任务执行延后；
 - 群组、邀请和成员移除未实现；ACL 管理 UI 与成员管理 UI 未实现；
-- Bearer/OIDC 延后；知识摄取与项目范围混合搜索 API、真实 Web 知识资源、Task 18 详情与操作、搜索、引用上下文/授权下载及上传批次已交付。全文格式化预览、生成式回答、周期性详情轮询和完整 Worker 浏览器闭环仍在后续任务；连接器、Agent 执行和完整模型 Provider 策略层尚未交付。
+- Bearer/OIDC 延后；知识摄取与项目范围混合搜索 API、真实 Web 知识资源、Task 18 详情与操作、搜索、引用上下文/授权下载及上传批次已交付。全文格式化预览、生成式回答和周期性详情轮询仍在后续任务；连接器、Agent 执行和完整模型 Provider 策略层尚未交付。
 
 ## 核心能力
 
@@ -227,7 +227,7 @@ pnpm infra:up
 pnpm dev:core
 ```
 
-`pnpm infra:up` 启动 PostgreSQL 16/pgvector 和 MinIO，并幂等初始化对象存储 bucket 与 CORS。需要处理摄取任务时，在另一终端启动独立 Worker：
+`pnpm infra:up` 启动 PostgreSQL 16/pgvector 和 MinIO，并幂等初始化对象存储 bucket 与 CORS。`pnpm dev:core` 随后执行迁移、对象存储与活动 Embedding Profile 幂等初始化和演示种子，并托管本地假 Embedding、API、Worker 与 Web。Worker 也可独立调试：
 
 ```bash
 pnpm worker:preflight
@@ -240,7 +240,7 @@ pnpm dev:worker
 - Web：`http://localhost:5500`
 - Identity API：`http://127.0.0.1:8080`
 
-`pnpm dev:core` 会先执行迁移和幂等演示种子，再托管 API 与 Web；Worker 依然是独立进程。演示身份只允许在开发或测试环境写入；生产环境会拒绝演示种子、示例 CSRF 密钥和不安全 Cookie。按 `Ctrl+C` 停止该命令只终止 API 与 Web，不删除 PostgreSQL 或 MinIO 开发卷；再次启动会复用已有数据。
+`pnpm dev:core` 会等待假 Embedding、API 和 Web 就绪，并把 Worker 或其他子进程的提前退出视为失败。演示身份只允许在开发或测试环境写入；生产环境会拒绝演示种子、示例 CSRF 密钥和不安全 Cookie。按 `Ctrl+C` 停止该命令会终止其托管的全部子进程，不删除 PostgreSQL 或 MinIO 开发卷；再次启动会复用已有数据。
 
 若本机 5432 已被其他 PostgreSQL 占用，可让 `CAIRN_POSTGRES_PORT` 与 `DATABASE_URL` 同时改用同一个空闲端口；不要只改其中一项。
 
@@ -264,7 +264,7 @@ pnpm dev:api
 
 API 现已提供 PostgreSQL 与对象存储 readiness、登录、会话恢复、注销、当前组织、项目任务、成员角色、项目 ACL 与上述知识资源和混合搜索接口。登录失败限制由 PostgreSQL 持久化：同一规范化邮箱在 15 分钟窗口内最多失败 5 次，同一来源 IP 最多失败 30 次，达到阈值后阻止 15 分钟；表中仅保存使用 `CAIRN_AUTH_RATE_LIMIT_SECRET` 生成的 HMAC 摘要，不保存明文邮箱或 IP。项目知识页真实上传使用 Identity API 与对象存储。
 
-当前切片不包含 Bearer/OIDC、群组、邀请、成员移除、ACL/成员管理 UI、全文格式化预览、生成式回答、周期性资源详情轮询、核心 Worker/假 Embedding 浏览器摄取闭环、连接器、Agent 任务执行或完整 AI Provider 策略层。Task 18 资源详情与操作和 Task 19 Mock 退场已交付；AI Provider 与外部 Agent 接入必须建立在组织、权限、审计、项目和知识基础完成之后，不能绕过这些边界提前扩展。
+当前切片不包含 Bearer/OIDC、群组、邀请、成员移除、ACL/成员管理 UI、全文格式化预览、生成式回答、周期性资源详情轮询、连接器、Agent 任务执行或完整 AI Provider 策略层。Task 20 核心摄取闭环已交付；AI Provider 与外部 Agent 接入必须建立在组织、权限、审计、项目和知识基础完成之后，不能绕过这些边界提前扩展。
 
 可按需清理过期或已撤销的认证状态：
 
@@ -287,9 +287,9 @@ pnpm verify:core
 pnpm verify
 ```
 
-`pnpm verify:core` 会创建独立 Compose project 和临时 PostgreSQL/MinIO 卷，执行对象存储初始化与往返、迁移、真实 API 集成测试、SDK 漂移检查、生产构建与 Chromium 登录闭环。最后一段验收会用 OpenSSL 生成仅供本次运行使用的 localhost 证书，在 HTTPS 反向代理后启动生产配置 API，并验证 CORS、Secure/HttpOnly/SameSite Cookie、会话恢复、CSRF 注销和可信来源 IP。临时证书、进程及 Compose project 会在成功、失败或信号中断后清理；该命令不会接触开发数据库和卷。
+`pnpm verify:core` 会创建独立 Compose project 和临时 PostgreSQL/MinIO 卷，执行迁移、对象存储与活动 Embedding Profile 初始化、API/Worker 集成测试和 SDK 漂移检查，然后启动本地假 Embedding、API 与 Worker。Chromium 通过真实签名 PUT 上传中英文文本，等待 Worker 发布索引，再验证混合搜索、行号引用上下文和授权下载。最后一段验收继续验证生产构建和 HTTPS 反向代理后的 CORS、Cookie、CSRF 与可信来源 IP。临时证书、进程及 Compose project 会在成功、失败或信号中断后清理；该命令不会接触开发数据库和卷，也不使用外部 Provider 或真实密钥。
 
-`pnpm verify` 是完整的跨 package 门禁：它覆盖 OpenAPI 生成 SDK 测试与漂移检查、Web、API、Worker、Ruff、Pyright、发行包构建与最后的真实核心验证。浏览器部分使用生产构建，覆盖登录、刷新恢复、组织显示、注销、兼容路由、360/768/1280 像素布局、亮暗主题、真实项目与项目知识导航、上传、搜索、引用上下文、资源重试/删除、长内容换行、触摸目标、无横向溢出和品牌像素契约。Worker package 测试覆盖租约、归档、解析、切分、Embedding 与原子索引语义；真实核心验证覆盖 pgvector、MinIO 对象往返、项目范围混合搜索和知识 API/SDK 一致性。Task 20 将补充核心命令托管 Worker/假 Embedding 的完整浏览器摄取闭环。
+`pnpm verify` 是完整的跨 package 门禁：它覆盖 OpenAPI 生成 SDK 测试与漂移检查、Web、API、Worker、Ruff、Pyright、发行包构建与最后的真实核心验证。浏览器部分使用生产构建，覆盖登录、刷新恢复、组织显示、注销、兼容路由、360/768/1280 像素布局、亮暗主题、真实项目与项目知识导航、上传、搜索、引用上下文、资源重试/删除、长内容换行、触摸目标、无横向溢出和品牌像素契约。Worker package 测试覆盖租约、归档、解析、切分、Embedding 与原子索引语义；真实核心验证覆盖 pgvector、MinIO 签名对象往返、Worker 摄取、项目范围混合搜索和知识 API/SDK 一致性。
 
 也可以使用 `pnpm test:sdk`、`pnpm typecheck:sdk`、`pnpm check:sdk`、`pnpm test:web`、`pnpm test:api`、`pnpm typecheck:web`、`pnpm typecheck:api`、`pnpm test:worker`、`pnpm lint:worker`、`pnpm typecheck:worker`、`pnpm build:web` 和 `pnpm build:api` 分别检查单个 package 或生成契约。
 

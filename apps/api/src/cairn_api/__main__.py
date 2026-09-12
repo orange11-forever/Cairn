@@ -2,6 +2,7 @@ import sys
 
 import uvicorn
 
+from cairn_api.knowledge.embedding_profile import run_embedding_profile_bootstrap
 from cairn_api.knowledge.object_store import bootstrap_object_store
 from cairn_api.maintenance.auth_cleanup import run_auth_cleanup
 from cairn_api.maintenance.upload_cleanup import run_upload_cleanup_command
@@ -23,9 +24,11 @@ def main() -> int:
             return 0
         finally:
             object_store.close()
+    if sys.argv[1:] == ["embedding-profile-bootstrap"]:
+        return run_embedding_profile_bootstrap(Settings())
     if len(sys.argv) > 1:
         print(
-            "Usage: cairn-api [auth-cleanup|upload-cleanup|object-store-bootstrap]",
+            "Usage: cairn-api [auth-cleanup|upload-cleanup|object-store-bootstrap|embedding-profile-bootstrap]",
             file=sys.stderr,
         )
         return 2

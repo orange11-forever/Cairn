@@ -57,7 +57,7 @@ PostgreSQL 16 集成、生产构建、Chromium 和认证代理验证。CI 不复
 
 任何安装或验证步骤非零退出都会使 job 失败。工作流不使用 `continue-on-error`，也不自动重试测试。
 
-`verify:core` 负责正常失败路径下的 Compose 项目、容器、网络和卷清理。任务取消或 runner 异常退出时，
+`verify:core` 负责正常失败路径下先停止本地假 Embedding、API、Worker 与 Web 子进程，再清理唯一生成的 Compose 项目、容器、网络和卷。任务取消或 runner 异常退出时，
 GitHub-hosted 临时 runner 被整体销毁，因此不会污染后续运行。
 
 ## 验收

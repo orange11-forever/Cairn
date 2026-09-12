@@ -34,6 +34,15 @@ const TASKS = Object.freeze({
     ["run", "--package", "cairn-api", "alembic", "-c", "apps/api/alembic.ini", "upgrade", "head"],
   ],
   "db:seed": [UV, ["run", "--package", "cairn-api", "python", "-m", "cairn_api.seed"]],
+  "object-store-bootstrap": [
+    UV,
+    ["run", "--package", "cairn-api", "cairn-api", "object-store-bootstrap"],
+  ],
+  "embedding-profile-bootstrap": [
+    UV,
+    ["run", "--package", "cairn-api", "cairn-api", "embedding-profile-bootstrap"],
+  ],
+  "dev:embedding": [process.execPath, ["scripts/fake-embedding.mjs"]],
   "dev:worker": ["uv", ["run", "--package", "cairn-worker", "cairn-worker", "serve"]],
   "worker:once": ["uv", ["run", "--package", "cairn-worker", "cairn-worker", "--once"]],
   "worker:preflight": [

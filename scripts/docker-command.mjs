@@ -29,22 +29,29 @@ function containerProxyUrl(value) {
   }
 }
 
-function probeDocker(command, env) {
+function probeDocker(command, env, signal) {
   return new Promise((resolve) => {
     const child = spawn(command, ["version", "--format", "{{.Server.Version}}"], {
       env,
       shell: false,
       stdio: "ignore",
     });
+    const onAbort = () => child.kill();
+    if (signal?.aborted) onAbort();
+    else signal?.addEventListener("abort", onAbort, { once: true });
+    const finish = (result) => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve(result);
+    };
     child.once("error", (error) => {
       if (error?.code === "ENOENT") {
-        resolve({ clientFound: false, engineReachable: false });
+        finish({ clientFound: false, engineReachable: false });
         return;
       }
-      resolve({ clientFound: true, engineReachable: false, error });
+      finish({ clientFound: true, engineReachable: false, error });
     });
     child.once("exit", (code) => {
-      resolve({ clientFound: true, engineReachable: code === 0 });
+      finish({ clientFound: true, engineReachable: code === 0 });
     });
   });
 }
@@ -73,7 +80,8 @@ export class DockerEngineUnavailableError extends Error {
 export async function resolveDockerCommand({
   env = process.env,
   platform = process.platform,
-  probe = (candidate) => probeDocker(candidate, env),
+  signal,
+  probe = (candidate) => probeDocker(candidate, env, signal),
 } = {}) {
   const native = platform === "win32" ? "docker.exe" : "docker";
   const candidates = [env.CAIRN_DOCKER_COMMAND, native, "docker.exe"].filter(Boolean);
@@ -82,9 +90,11 @@ export async function resolveDockerCommand({
   let clientFound = false;
   let probeFailure;
   for (const candidate of unique) {
+    if (signal?.aborted) throw new Error("Docker discovery aborted");
     attempts.push(candidate);
     try {
       const outcome = await probe(candidate);
+      if (signal?.aborted) throw new Error("Docker discovery aborted");
       if (outcome === true) return candidate;
       if (outcome === false) continue;
       clientFound ||= outcome.clientFound;
