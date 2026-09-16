@@ -11,7 +11,7 @@
 </p>
 
 > [!IMPORTANT]
-> Cairn 已在真实 PostgreSQL/pgvector 知识链路上交付项目范围单轮生成式知识问答。`verify:core` 使用确定性本地回答 Provider；`dev:core` 的问答需显式配置 `ANSWER_BASE_URL`、`ANSWER_API_KEY` 和 `ANSWER_MODEL`，未配置时其他知识功能仍可用。浏览器验收覆盖上传、索引、混合搜索、生成回答、引用上下文与授权下载；默认验证不访问外网或真实 Provider。流式/多轮问答、连接器和全文格式化预览仍在后续任务。
+> Cairn 已在真实 PostgreSQL/pgvector 知识链路上交付项目范围单轮生成式知识问答。`verify:core` 使用确定性本地回答 Provider；`dev:core` 的问答需显式配置 `ANSWER_BASE_URL`、`ANSWER_API_KEY`、`ANSWER_MODEL`，并通过 `ANSWER_PROTOCOL` 选择协议，未配置时其他知识功能仍可用。浏览器验收覆盖上传、索引、混合搜索、生成回答、引用上下文与授权下载；默认验证不访问外网或真实 Provider。流式/多轮问答、连接器同步和全文格式化预览仍在后续任务。
 >
 > Task 15 真实知识搜索结果已交付，展示服务端排序的摘录、文件类型、类型化 locator 定位信息、混合检索标签与关键词降级结果，并覆盖取消、错误、会话失效和访问权撤销状态。Task 16 搜索卡片内按需引用上下文与授权下载已交付：引用上下文以“前文 → 命中片段 → 后文”展示纯文本，重新展开会重新授权；下载只把新标签页导航到 Identity API，实时授权后由 `307` 重定向到短时效对象地址，Web 不缓存或读取最终预签名 URL。
 >
@@ -28,10 +28,28 @@
 | 边界 | 当前状态 |
 |---|---|
 | Web | 项目知识页已接入真实上传批次和 Task 18A 资源详情；详情按需读取、重新授权、离线隐藏旧数据且仅 ready 版本提供安全下载。提供校验、SHA-256 绑定直传进度、complete、批次状态、停止自动跟踪、手动刷新和全新批次上传重试。身份、项目/任务和项目知识工作区连接真实 FastAPI；知识资源列表展示元数据、处理状态、只读权限和游标续页，项目知识搜索展示服务端排序摘录、文件类型、类型化 locator、混合检索/关键词降级模式，并在搜索卡片内按需展开“前文 → 命中片段 → 后文”纯文本和打开授权下载。重新展开会重新授权；下载只把新标签页导航到 Identity API，由实时授权后的 `307` 进入短时效对象地址，Web 不缓存或读取最终预签名 URL。应用壳与项目工作台已完成响应式和可访问性抛光；知识向导“岑宁”使用透明全身图和视觉居中的 Q 版紧凑头像，项目选择控件与当前任务区域建立明确关联，独立状态区域播报选择变化，验收覆盖 360、768、1280 像素及亮暗主题。查询和变更请求返回规范化 `401 session_invalid` 时，统一清理本地会话与查询缓存、重置变更缓存并回到登录页。 |
-| API / SDK | FastAPI 已提供会话、项目/任务、RBAC/ACL、知识摄取、资源与混合搜索契约；生成 SDK 导出 OpenAPI schema 与运行时校验器，Web API 适配器使用该校验器检查身份、项目/任务和知识响应，并对 OpenAPI `date-time` 字段执行运行时校验。 |
+| API / SDK | FastAPI 已提供会话、项目/任务、RBAC/ACL、知识摄取、资源、混合搜索和带引用的单轮回答契约；生成 SDK 导出 OpenAPI schema 与运行时校验器，Web API 适配器使用该校验器检查身份、项目/任务和知识响应，并对 OpenAPI `date-time` 字段执行运行时校验。 |
+| 项目知识问答 | 基于当前项目授权资料生成单轮回答；模型调用前后重新核验权限与证据，引用可展开上下文并授权下载。支持 Chat Completions、Responses、Claude Messages 和 Gemini GenerateContent 协议，真实厂商密钥联调仍需部署者完成。 |
 | Worker | 独立 Worker 已进入知识摄取核心链路；Python Worker 通过 PostgreSQL 持久化任务完成受限归档、解析、切分、Embedding 与原子索引发布。 |
 | 基础设施 | 核心开发链路使用 PostgreSQL 16/pgvector 与 S3 兼容 MinIO；Redis、正式 Compose/Helm 部署和 OpenTelemetry 仍在规划。 |
 | 延后 | 全文格式化预览、流式/多轮问答、周期性资源详情轮询、连接器、Agent 执行和完整模型 Provider 策略层尚未交付。 |
+
+## 多模型问答与飞书接入进度
+
+项目知识页已提供单轮问答。模型协议由 `ANSWER_PROTOCOL` 配置，模型 ID、端点和密钥分别由 `ANSWER_MODEL`、`ANSWER_BASE_URL` 和 `ANSWER_API_KEY` 配置：
+
+| 协议 | 接入目标 |
+|---|---|
+| `openai-compatible`（默认） | DeepSeek、Qwen、Kimi、GLM，以及支持 Chat Completions 的 GPT 模型或兼容服务 |
+| `openai-responses` | GPT Responses |
+| `anthropic` | Claude Messages |
+| `gemini` | Gemini GenerateContent |
+
+具体模型必须支持相应的结构化 JSON 输出。当前验收使用确定性本地 Provider 和协议测试，未使用各厂商真实密钥联网测试；更换模型时需验证目标模型的实际能力。配置与 API 边界见 [API 说明](apps/api/README.md)。
+
+Stage 3B 首个切片为 Worker 包中的飞书新版文档读取客户端：自建应用凭证获取与缓存、指定文档的标题/版本/纯文本读取、有界响应、版本变化检测和安全失败分类。它是内部接入基础，知识工作区暂不提供飞书同步入口，也不自动读取外部文档。前后版本检查不能保证飞书服务端原子快照。
+
+后续依次接入管理员配置、来源与项目绑定、来源权限策略、持久化同步及版本幂等、删除/撤权传播和管理界面。使用方式见 [Worker 说明](apps/worker/README.md)，范围与验收要求见[飞书读取基础设计](docs/stage-3b-feishu-reader-design.md)。
 
 ## Stage 3A Task 1–20 已交付边界
 

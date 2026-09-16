@@ -10,7 +10,7 @@
 - FastAPI 采用模块化单体边界，提供 Cookie 会话、组织身份与 RBAC、项目 ACL、成员角色管理、项目任务、追加式审计、事务性 Outbox、有界 SSE，以及项目授权下的知识上传与资源生命周期 API。
 - PostgreSQL 16/pgvector 与 S3 兼容 MinIO 当前已使用：PostgreSQL 保存业务事实、持久化摄取任务、知识资源、切片和向量，MinIO 保存原始对象与 ZIP 展开产物；生成的 TypeScript SDK 对齐 OpenAPI。Redis 仍是规划中基础设施。
 - Stage 3A Task 1–11 的独立 Worker 已交付，用租约和心跳处理受限归档展开、文档解析、结构化切分、OpenAI 兼容 1024 维 Embedding 与原子索引发布。
-- 项目知识单轮回答复用混合搜索与共享限流，在模型调用前后核验全部证据及 `read` 权限，并返回服务器分配的 `S1`–`S6` 引用。真实部署通过可选 `ANSWER_*` 接入 OpenAI-compatible JSON 模式；缺失配置时其余 API 保持可用。流式、多轮、历史持久化、网页检索和连接器尚未实现。
+- 项目知识单轮回答复用混合搜索与共享限流，在模型调用前后核验全部证据及 `read` 权限，并返回服务器分配的 `S1`–`S6` 引用。真实部署通过可选 `ANSWER_*` 配置接入 Chat Completions、Responses、Claude Messages 或 Gemini GenerateContent 的结构化 JSON 输出；缺失配置时其余 API 保持可用。流式、多轮、历史持久化、网页检索和连接器同步尚未实现。
 - 全文格式化预览、流式/多轮问答与周期性详情轮询仍在后续任务。
 
 Task 18A Web 资源详情已交付：资源行按需内联展开，通过生成 SDK、Cookie credentials 和真实 `GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}` 读取详情。收起会取消请求并销毁局部详情，项目切换或会话代际变化同样取消并销毁旧状态；重新展开和手动刷新都会重新授权，请求中及离线等待期间隐藏旧详情和下载，并禁用自动重连刷新，不进行周期轮询。详情展示安全元数据与处理状态，并把已知失败码映射为安全中文错误指引；仅 `latestVersion.status=ready` 时提供指向 Identity API 的新标签页下载，Web 不读取或缓存最终预签名 URL。详情 `404` 会重新检查当前资源列表，并只把当前搜索标记 stale，不自动重跑搜索；资源列表仍为 `200` 时保留工作区，列表 `404` 才隐藏工作区。
@@ -37,6 +37,8 @@ Task 18B 资源操作已交付：仅最新资源列表声明 `canWrite` 且 `lat
 7. 向量与索引记录携带版本化 embedding profile；模型或分块策略变化不覆盖旧索引事实。
 
 ## 阶段路线
+
+下一阶段为 Stage 3B 飞书连接器，范围与接入顺序见[飞书读取基础设计](stage-3b-feishu-reader-design.md)。首个切片建立自建应用凭证和单篇新版文档读取边界；管理员配置、来源与项目绑定、持久化同步、版本幂等、删除/撤权传播和来源权限策略随后接入。当前知识工作区尚不能直接同步飞书文档。
 
 - 阶段 2.5.0：许可证、公开架构、跨平台仓库规则与受 CI 保护的 PR 流程。
 - 阶段 2.5A：RBAC/ACL（已交付），包含组织角色、项目 ACL、成员角色 API、concealment、CSRF，以及权限变化与审计/Outbox 的事务一致性。
