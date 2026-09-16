@@ -1,13 +1,11 @@
-import { FileText, FolderKanban, MessageCircle } from "lucide-react";
+import { FolderKanban } from "lucide-react";
 import { NavLink } from "react-router-dom";
 
 import { navigationItems } from "../app/navigation.ts";
 
 export function PrimaryNavigation() {
   const icons = {
-    "/documents": FileText,
     "/projects": FolderKanban,
-    "/ask": MessageCircle,
   } as const;
 
   return (

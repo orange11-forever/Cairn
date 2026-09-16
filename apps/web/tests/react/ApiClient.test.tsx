@@ -14,7 +14,7 @@ const IDENTITY = {
   csrfToken: "csrf-test-token",
 };
 
-test("HTTP errors preserve code and traceId from the normalized body", async () => {
+test("identity HTTP errors preserve a complete generated ErrorBody", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async () =>
@@ -29,9 +29,9 @@ test("HTTP errors preserve code and traceId from the normalized body", async () 
     ),
   );
 
-  const { request } = await import("../../src/api/client.ts");
+  const { restoreSession } = await import("../../src/api/auth.ts");
 
-  await expect(request("/api/v1/probe")).rejects.toMatchObject({
+  await expect(restoreSession(new AbortController().signal)).rejects.toMatchObject({
     kind: "http",
     status: 429,
     message: "配额已用完",
@@ -40,21 +40,23 @@ test("HTTP errors preserve code and traceId from the normalized body", async () 
   });
 });
 
-test("HTTP errors use X-Request-ID when the body has no traceId", async () => {
+test("partial identity error bodies use the safe fallback and cannot impersonate session_invalid", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async () =>
-      new Response(JSON.stringify({ message: "服务器内部错误", code: "internal_error" }), {
-        status: 500,
+      new Response(JSON.stringify({ message: "会话失效", code: "session_invalid" }), {
+        status: 401,
         headers: { "Content-Type": "application/json", "X-Request-ID": "trace-header-456" },
       }),
     ),
   );
 
-  const { request } = await import("../../src/api/client.ts");
+  const { restoreSession } = await import("../../src/api/auth.ts");
 
-  await expect(request("/api/v1/probe")).rejects.toMatchObject({
-    code: "internal_error",
+  await expect(restoreSession(new AbortController().signal)).rejects.toMatchObject({
+    status: 401,
+    message: "服务器返回 401",
+    code: "http_error",
     traceId: "trace-header-456",
   });
 });
@@ -120,41 +122,4 @@ test("identity requests reject malformed successful responses", async () => {
     kind: "contract",
     context: "GET /api/v1/session",
   });
-});
-
-test("mock requests use the mock origin without credentials", async () => {
-  vi.stubEnv("VITE_MOCK_API_URL", "http://mock.test");
-  const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
-    calls.push([input, options]);
-    return Response.json({ ok: true });
-  });
-  vi.stubGlobal("fetch", fetchMock);
-
-  const { request } = await import("../../src/api/client.ts");
-
-  await request("/api/v1/probe");
-
-  const [url, options] = calls[0] ?? [];
-  expect(url).toBeDefined();
-  if (url === undefined) return;
-  expect(new URL(String(url)).origin).toBe("http://mock.test");
-  expect(options?.credentials).toBeUndefined();
-});
-
-test("mock requests retain the legacy VITE_API_URL fallback", async () => {
-  vi.stubEnv("VITE_API_URL", "http://legacy-mock.test");
-  const calls: Array<RequestInfo | URL> = [];
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (input: RequestInfo | URL) => {
-      calls.push(input);
-      return Response.json({ ok: true });
-    }),
-  );
-
-  const { request } = await import("../../src/api/client.ts");
-  await request("/api/v1/probe");
-
-  expect(new URL(String(calls[0])).origin).toBe("http://legacy-mock.test");
 });

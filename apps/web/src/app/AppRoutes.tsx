@@ -3,8 +3,6 @@ import type { IdentityContext } from "../api/auth.ts";
 
 import { AuthenticatedLayout } from "../components/AuthenticatedLayout.tsx";
 import { LoginForm } from "../components/LoginForm.tsx";
-import { AskPage } from "../pages/AskPage.tsx";
-import { DocumentsPage } from "../pages/DocumentsPage.tsx";
 import { KnowledgePage } from "../pages/KnowledgePage.tsx";
 import { ProjectsPage } from "../pages/ProjectsPage.tsx";
 import { useSession } from "../session/SessionContext.tsx";
@@ -13,11 +11,11 @@ function LoginRoute() {
   const { status, establishSession } = useSession();
   const navigate = useNavigate();
 
-  if (status === "authenticated") return <Navigate to="/documents" replace />;
+  if (status === "authenticated") return <Navigate to="/projects" replace />;
 
   function handleSuccess(identity: IdentityContext) {
     establishSession(identity);
-    navigate("/documents", { replace: true });
+    navigate("/projects", { replace: true });
   }
 
   return <LoginForm onSuccess={handleSuccess} />;
@@ -32,7 +30,7 @@ function RequireSession() {
 function FallbackRoute() {
   const { status } = useSession();
 
-  return <Navigate to={status === "anonymous" ? "/login" : "/documents"} replace />;
+  return <Navigate to={status === "anonymous" ? "/login" : "/projects"} replace />;
 }
 
 export function AppRoutes() {
@@ -59,10 +57,10 @@ export function AppRoutes() {
       <Route path="/login" element={<LoginRoute />} />
       <Route element={<RequireSession />}>
         <Route element={<AuthenticatedLayout />}>
-          <Route path="/documents" element={<DocumentsPage />} />
           <Route path="/projects" element={<ProjectsPage />} />
           <Route path="/projects/:projectId/knowledge" element={<KnowledgePage />} />
-          <Route path="/ask" element={<AskPage />} />
+          <Route path="/documents" element={<Navigate to="/projects" replace />} />
+          <Route path="/ask" element={<Navigate to="/projects" replace />} />
         </Route>
       </Route>
       <Route path="*" element={<FallbackRoute />} />

@@ -113,6 +113,7 @@ def test_openapi_contains_only_approved_paths(client: TestClient) -> None:
         "/api/v1/projects/{project_id}/acl/{principal_type}/{principal_id}",
         "/api/v1/projects/{project_id}/events",
         "/api/v1/projects/{project_id}/knowledge/search",
+        "/api/v1/projects/{project_id}/knowledge/answers",
         "/api/v1/projects/{project_id}/knowledge/uploads",
         "/api/v1/projects/{project_id}/knowledge/uploads/{upload_id}/complete",
         "/api/v1/projects/{project_id}/knowledge/batches/{batch_id}",
@@ -147,6 +148,29 @@ def test_openapi_search_declares_bounded_csrf_rate_limit_and_embedding_contract(
     ]
     assert request_schema.endswith("/KnowledgeSearchRequest")
     assert response_schema.endswith("/KnowledgeSearchResponse")
+
+
+def test_openapi_answer_declares_strict_single_turn_contract() -> None:
+    """Break caught: the answer route omits CSRF/errors or drifts from generated schemas."""
+    schema = create_app().openapi()
+    operation = schema["paths"][
+        "/api/v1/projects/{project_id}/knowledge/answers"
+    ]["post"]
+    request = schema["components"]["schemas"]["KnowledgeAnswerRequest"]
+    csrf = next(
+        parameter for parameter in operation["parameters"] if parameter["name"] == "X-CSRF-Token"
+    )
+
+    assert csrf["required"] is True
+    assert request["additionalProperties"] is False
+    assert request["properties"]["question"]["minLength"] == 3
+    assert request["properties"]["question"]["maxLength"] == 500
+    assert set(operation["responses"]) == {
+        "200", "401", "403", "404", "409", "422", "429", "500", "503"
+    }
+    assert operation["responses"]["200"]["content"]["application/json"]["schema"][
+        "$ref"
+    ].endswith("/KnowledgeAnswerResponse")
 
 
 def test_openapi_ready_declares_success_and_dependency_failure_contracts() -> None:

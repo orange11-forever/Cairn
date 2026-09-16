@@ -365,9 +365,7 @@ async function readLayout(page) {
   return page.evaluate(() => {
     const nav = document.querySelector(".primary-nav");
     const workspace = document.querySelector("main.workspace");
-    const panel = document.querySelector(
-      ".documents-panel, .assistant-panel, .knowledge-page, .projects-page",
-    );
+    const panel = document.querySelector(".knowledge-page, .projects-page");
     const brandImage = document.querySelector(".product-brand img");
     const navRect = nav?.getBoundingClientRect();
     const brandImageRect = brandImage?.getBoundingClientRect();
@@ -1139,8 +1137,8 @@ async function checkKnowledgeResourceLayout(
     path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-resource-delete.png`),
     fullPage: true,
   });
-  await page.getByRole("link", { name: "知识文档" }).click();
-  await page.waitForSelector(".documents-panel");
+  await page.getByRole("link", { name: "返回项目" }).click();
+  await page.waitForSelector(".projects-page");
 }
 
 async function checkProjectsLayout({
@@ -1877,47 +1875,47 @@ export async function checkResponsiveFoundation({
       ["夜间", "dark"],
     ]) {
       await chooseTheme(page, themeLabel);
-      await page.getByRole("link", { name: "知识文档" }).click();
-      await page.waitForSelector(".documents-panel");
+      await page.goto(`${new URL(page.url()).origin}/projects`, { waitUntil: "networkidle" });
+      await page.waitForSelector(".projects-page");
 
-      const documents = await readLayout(page);
-      expect(documents.theme === themeValue, `${viewport.name} 应使用 ${themeValue} 主题`);
-      expect(documents.overflow <= 0, `${viewport.name} 文档页横向溢出 ${documents.overflow}px`);
-      expect(documents.panelInsideViewport, `${viewport.name} 文档面板超出视口`);
+      const projectsLayout = await readLayout(page);
+      expect(projectsLayout.theme === themeValue, `${viewport.name} 应使用 ${themeValue} 主题`);
+      expect(projectsLayout.overflow <= 0, `${viewport.name} 项目页横向溢出 ${projectsLayout.overflow}px`);
+      expect(projectsLayout.panelInsideViewport, `${viewport.name} 项目面板超出视口`);
       expect(
-        documents.workspaceOverflowX !== "scroll",
-        `${viewport.name} 文档工作区不应强制横向滚动`,
+        projectsLayout.workspaceOverflowX !== "scroll",
+        `${viewport.name} 项目工作区不应强制横向滚动`,
       );
-      expect(documents.activeLabel?.includes("文档"), `${viewport.name} 文档导航未激活`);
+      expect(projectsLayout.activeLabel?.includes("项目"), `${viewport.name} 项目导航未激活`);
       expect(
-        Number.isFinite(documents.brandImageWidth) &&
-          Number.isFinite(documents.brandImageHeight) &&
-          Number.isFinite(documents.brandImageNaturalWidth) &&
-          Number.isFinite(documents.brandImageNaturalHeight) &&
+        Number.isFinite(projectsLayout.brandImageWidth) &&
+          Number.isFinite(projectsLayout.brandImageHeight) &&
+          Number.isFinite(projectsLayout.brandImageNaturalWidth) &&
+          Number.isFinite(projectsLayout.brandImageNaturalHeight) &&
           Math.abs(
-            documents.brandImageWidth / documents.brandImageHeight -
-              documents.brandImageNaturalWidth / documents.brandImageNaturalHeight,
+            projectsLayout.brandImageWidth / projectsLayout.brandImageHeight -
+              projectsLayout.brandImageNaturalWidth / projectsLayout.brandImageNaturalHeight,
           ) < 0.01 &&
-          documents.brandImageBorderWidth === "0px" &&
-          documents.brandImageObjectFit === "contain",
-        `${viewport.name} 顶栏 wordmark 应保持横向比例且没有控件式边框，实际为 ${documents.brandImageWidth}x${documents.brandImageHeight}、边框 ${documents.brandImageBorderWidth}、适配 ${documents.brandImageObjectFit}`,
+          projectsLayout.brandImageBorderWidth === "0px" &&
+          projectsLayout.brandImageObjectFit === "contain",
+        `${viewport.name} 顶栏 wordmark 应保持横向比例且没有控件式边框，实际为 ${projectsLayout.brandImageWidth}x${projectsLayout.brandImageHeight}、边框 ${projectsLayout.brandImageBorderWidth}、适配 ${projectsLayout.brandImageObjectFit}`,
       );
       expect(
-        documents.undersizedTargets.length === 0,
-        `${viewport.name} 文档页存在小于 44px 的交互目标：${documents.undersizedTargets.join(" / ")}`,
+        projectsLayout.undersizedTargets.length === 0,
+        `${viewport.name} 项目页存在小于 44px 的交互目标：${projectsLayout.undersizedTargets.join(" / ")}`,
       );
       expect(
         await page.getByRole("button", { name: "打开岑宁助手" }).isVisible(),
         `${viewport.name} 看板娘助手入口不可见`,
       );
-      const documentImages = await readImageHealth(page);
-      expectHealthyImages(documentImages, expect, `${viewport.name} 文档页`);
-      expectThumbnailMascots(documentImages, expect, `${viewport.name} 文档页`);
-      const documentsScreenshot = await page.screenshot({
-        path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-documents.png`),
+      const projectImages = await readImageHealth(page);
+      expectHealthyImages(projectImages, expect, `${viewport.name} 项目页`);
+      expectThumbnailMascots(projectImages, expect, `${viewport.name} 项目页`);
+      const projectsScreenshot = await page.screenshot({
+        path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-projects.png`),
         fullPage: true,
       });
-      const brandAppearance = await readProductBrandAppearance(page, documentsScreenshot);
+      const brandAppearance = await readProductBrandAppearance(page, projectsScreenshot);
       expect(
         brandAppearance.imageBackgroundPixel.every(
           (channel, index) =>
@@ -1993,61 +1991,18 @@ export async function checkResponsiveFoundation({
         knowledgeOperationState,
       );
 
-      await page.selectOption("#scenario", "empty");
-      await page.click("#load-btn");
-      await page.waitForFunction(() =>
-        document.querySelector("#status-bar")?.textContent.includes("还没有文档"),
-      );
-      expect(
-        await page.getByRole("heading", { name: "建立知识空间" }).isVisible(),
-        `${viewport.name} 文档空态缺少看板娘提示`,
-      );
-      await page.screenshot({
-        path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-documents-empty.png`),
-        fullPage: true,
-      });
-
-      await page.getByRole("link", { name: "知识问答" }).click();
-      await page.waitForSelector(".assistant-panel");
-      const ask = await readLayout(page);
-      expect(ask.overflow <= 0, `${viewport.name} 问答页横向溢出 ${ask.overflow}px`);
-      expect(ask.panelInsideViewport, `${viewport.name} 问答面板超出视口`);
-      expect(ask.activeLabel?.includes("问答"), `${viewport.name} 问答导航未激活`);
-      expect(
-        ask.undersizedTargets.length === 0,
-        `${viewport.name} 问答页存在小于 44px 的交互目标：${ask.undersizedTargets.join(" / ")}`,
-      );
-      const askImages = await readImageHealth(page);
-      expectHealthyImages(askImages, expect, `${viewport.name} 问答页`);
-      expectThumbnailMascots(askImages, expect, `${viewport.name} 问答页`);
-
-      await page.screenshot({
-        path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-ask-empty.png`),
-        fullPage: true,
-      });
-
-      await page.fill("#question", "值班故障如何升级？");
-      await page.click('.question-form button[type="submit"]');
-      await page.waitForSelector('[data-role="pending"]');
-      await page.screenshot({
-        path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-ask-pending.png`),
-        fullPage: true,
-      });
-      await page.getByRole("button", { name: "停止生成" }).click();
-      await page.waitForSelector('[data-role="pending"]', { state: "detached" });
-
       if (viewport.width < 600) {
-        expect(ask.navPosition === "fixed", "手机导航必须固定在视口底部");
+        expect(projectsLayout.navPosition === "fixed", "手机导航必须固定在视口底部");
         expect(
-          ask.navBottom !== null && Math.abs(ask.navBottom - ask.viewportHeight) < 1,
+          projectsLayout.navBottom !== null && Math.abs(projectsLayout.navBottom - projectsLayout.viewportHeight) < 1,
           "手机导航必须贴合视口底部",
         );
         expect(
-          ask.workspacePaddingBottom > ask.navHeight,
+          projectsLayout.workspacePaddingBottom > projectsLayout.navHeight,
           "手机工作区必须为底部导航预留空间",
         );
       } else {
-        expect(ask.navPosition !== "fixed", `${viewport.name} 不应使用固定底部导航`);
+        expect(projectsLayout.navPosition !== "fixed", `${viewport.name} 不应使用固定底部导航`);
       }
 
       await logout();

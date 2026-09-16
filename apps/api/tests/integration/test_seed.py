@@ -5,7 +5,8 @@ from cairn_api.auth.models import User
 from cairn_api.auth.security import hash_password, verify_password
 from cairn_api.db.session import Database
 from cairn_api.organizations.models import Membership, Organization
-from cairn_api.seed import seed_demo_identity
+from cairn_api.projects.models import Project
+from cairn_api.seed import seed_demo_identity, seed_demo_project
 from cairn_api.settings import Settings
 from sqlalchemy import Engine, func, select, update
 
@@ -72,6 +73,25 @@ def test_demo_seed_does_not_overwrite_changed_user_fields(
     assert user is not None
     assert user.display_name == "本地用户"
     assert user.password_hash == changed_hash
+
+
+@pytest.mark.integration
+def test_demo_project_seed_is_explicit_and_idempotent(
+    database: Database,
+    migrated_engine: Engine,
+    development_settings: Settings,
+) -> None:
+    seed_demo_identity(development_settings, database)
+    with database.session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(Project)) == 0
+
+    seed_demo_project(development_settings, database)
+    seed_demo_project(development_settings, database)
+    with database.session_factory() as session:
+        project = session.scalar(select(Project))
+        assert session.scalar(select(func.count()).select_from(Project)) == 1
+    assert project is not None
+    assert project.id == UUID("00000000-0000-4000-8000-000000004001")
 
 
 @pytest.mark.integration

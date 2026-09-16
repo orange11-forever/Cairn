@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 from cairn_api.app import create_app
 from cairn_api.authorization.models import ResourceAclEntry
 from cairn_api.db.session import Database
+from cairn_api.knowledge.answer_provider import AnswerProvider
 from cairn_api.knowledge.object_store import (
     ObjectNotFound,
     ObjectStat,
@@ -150,9 +151,10 @@ def knowledge_client(
     actor: SeededActor,
     object_store: ObjectStore,
     embedding_client: SearchEmbeddingClient | None = None,
+    answer_provider: AnswerProvider | None = None,
 ) -> Generator[TestClient, None, None]:
     with TestClient(
-        create_app(settings, database, object_store, embedding_client),
+        create_app(settings, database, object_store, embedding_client, answer_provider),
         raise_server_exceptions=False,
     ) as client:
         response = client.post(

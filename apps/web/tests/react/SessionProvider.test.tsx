@@ -15,13 +15,7 @@ const IDENTITY = {
   membership: { id: "00000000-0000-4000-8000-000000003001", role: "owner" },
   csrfToken: "csrf-test-token",
 } satisfies IdentityContext;
-const USER = IDENTITY.user;
-
-const DOC = {
-  id: "00000000-0000-4000-8000-000000000001",
-  title: "产品需求文档",
-  status: "completed" as const,
-};
+const PRIVATE_PROJECT_KEY = ["projects", IDENTITY.organization.id, "page", null] as const;
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -35,7 +29,7 @@ test("query retry policy retries one transient ApiError and never retries contra
 
 test("logout aborts the session, clears queries, and replaces the URL", async () => {
   const queryClient = createAppQueryClient();
-  queryClient.setQueryData(["documents", USER.id, "success"], { documents: [DOC], dropped: 0 });
+  queryClient.setQueryData(PRIVATE_PROJECT_KEY, { items: [{ name: "私有项目" }], nextCursor: null });
   const observedSignal = { current: null as AbortSignal | null };
   const events: string[] = [];
   const originalCancelQueries = queryClient.cancelQueries.bind(queryClient);
@@ -61,7 +55,7 @@ test("logout aborts the session, clears queries, and replaces the URL", async ()
       <>
         <button onClick={() => void logout()}>logout</button>
         <output>{location.pathname}</output>
-        <output>{query.getQueryData(["documents", USER.id, "success"]) === undefined ? "empty" : "filled"}</output>
+        <output>{query.getQueryData(PRIVATE_PROJECT_KEY) === undefined ? "empty" : "filled"}</output>
       </>
     );
   }
@@ -69,7 +63,7 @@ test("logout aborts the session, clears queries, and replaces the URL", async ()
   const user = userEvent.setup();
   render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={["/documents"]}>
+      <MemoryRouter initialEntries={["/projects"]}>
         <SessionProvider restoredIdentity={IDENTITY} sessionApi={{ restore: async () => IDENTITY, logout: async () => undefined }}>
           <Harness />
         </SessionProvider>
@@ -82,7 +76,7 @@ test("logout aborts the session, clears queries, and replaces the URL", async ()
 
   expect(observedSignal.current?.aborted).toBe(true);
   expect(events.slice(0, 3)).toEqual(["queries:cancel", "session:abort", "queries:clear"]);
-  expect(queryClient.getQueryData(["documents", USER.id, "success"])).toBeUndefined();
+  expect(queryClient.getQueryData(PRIVATE_PROJECT_KEY)).toBeUndefined();
   cancelQueries.mockRestore();
   clear.mockRestore();
 });

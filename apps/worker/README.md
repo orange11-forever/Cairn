@@ -16,7 +16,7 @@ pnpm worker:preflight
 - `pnpm worker:once` 执行完整启动预检后，最多处理一个当前可租用任务，适合调试和调度器单次触发。
 - `pnpm worker:preflight` 只检查配置、PostgreSQL 连接与必需 profile 表、S3/MinIO bucket、活动 Embedding Profile 以及 OpenAI 兼容 Embedding Provider 响应，不租用任务。
 
-`pnpm infra:up` 先启动 PostgreSQL 16/pgvector 和 MinIO 并初始化 bucket/CORS。Worker 不由 `pnpm dev:core` 托管，需要单独启停。
+`pnpm infra:up` 先启动 PostgreSQL 16/pgvector 和 MinIO 并初始化 bucket/CORS。`pnpm dev:core` 会幂等初始化兼容的活动 Embedding Profile，并托管本地确定性假 Embedding、API、Worker 与 Web；Worker 提前退出会使核心命令失败。`pnpm dev:worker` 仍可用于单独调试。
 
 ## 持久化任务契约
 
@@ -35,6 +35,24 @@ pnpm worker:preflight
 
 Worker 通过 OpenAI 兼容 `/embeddings` 接口分批生成严格 1024 维向量。Embedding Profile 记录 provider、model、dimensions、distance metric、chunking/index config 与 version；每个向量都绑定 profile，不兼容的活动 profile 会在 preflight 或写入前失败。新切片、关键词搜索文档和 pgvector 向量在所有解析与 Embedding 成功后原子替换目标版本的旧索引，部分结果不会成为已发布版本。
 
+## 飞书文档读取边界
+
+`cairn_worker.feishu.FeishuDocumentClient` 是一个可独立调用的内部读取器。它使用服务端自建应用凭证读取一个明确的飞书新版文档 ID，并返回标题、revision、原样纯文本和内容 SHA-256。调用方应从环境或密钥管理设施读取凭证，例如：
+
+```python
+import os
+
+from cairn_worker.feishu import FeishuDocumentClient
+
+client = FeishuDocumentClient(
+    app_id=os.environ["FEISHU_APP_ID"],
+    app_secret=os.environ["FEISHU_APP_SECRET"],
+)
+snapshot = client.read_document(os.environ["FEISHU_DOCUMENT_ID"])
+```
+
+此读取器尚未接入 Worker 任务、持久化、项目来源权限或用户界面，也没有生产凭证配置入口，因此当前不构成用户可操作的飞书同步功能。读取流程在正文前后核对 metadata，但飞书纯文本接口不绑定 revision，不能据此声称获得服务端原子快照；后续同步层仍须处理重试、幂等、来源 ACL、撤权和删除传播。
+
 ## 对象存储与回滚边界
 
 Worker 以流式/有界方式从 S3/MinIO 读取源对象。ZIP 子项写入对象存储后才在 PostgreSQL 中注册；如果数据库事务回滚或租约所有权丢失，只对本次新建且尚未被任何持久化版本引用的对象执行最大努力清理。清理失败不会伪造数据库提交，可由孤立对象维护边界后续处理。
@@ -46,7 +64,7 @@ Worker 以流式/有界方式从 S3/MinIO 读取源对象。ZIP 子项写入对�
 - 提供或执行 Task 12 混合搜索查询；
 - 执行 Temporal Agent 工作流、模型对话或 AgentRunner 调度；
 - 执行资源软删除之后的对象/索引清除传播；
-- 同步 GitHub、Wiki、云盘等连接器或处理外部来源删除传播。
+- 同步飞书、GitHub、Wiki、云盘等连接器或处理外部来源删除传播。
 
 ## 质量检查
 

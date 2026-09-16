@@ -65,7 +65,7 @@ test("Web tooling belongs to apps/web", async () => {
   assert.equal(web.scripts.test, "node scripts/run-tests.mjs");
   assert.equal(web.scripts.verify, "node scripts/run-verification.mjs");
   assert.match(web.dependencies["@tanstack/react-query"], /^5\./);
-  assert.equal(web.dependencies["@cairn/contracts"], "workspace:*");
+  assert.equal(web.dependencies["@cairn/contracts"], undefined);
   assert.match(web.dependencies["react-router-dom"], /^7\./);
 
   for (const moved of ["apiError.ts", "conversations.ts", "primitives.ts", "users.ts"]) {
@@ -74,12 +74,7 @@ test("Web tooling belongs to apps/web", async () => {
     );
   }
 
-  const contracts = JSON.parse(
-    await readFile(join(REPOSITORY_ROOT, "packages/contracts/package.json"), "utf8"),
-  );
-  assert.equal(contracts.name, "@cairn/contracts");
-  assert.equal(contracts.exports["."].default, "./src/index.ts");
-
+  await assert.rejects(readFile(join(REPOSITORY_ROOT, "packages/contracts/package.json"), "utf8"));
 });
 
 test("Python tooling resolves both API and worker package trees", async () => {

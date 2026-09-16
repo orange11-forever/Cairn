@@ -11,6 +11,12 @@ import {
   runCoreVerification,
 } from "../../../../scripts/verify-core.mjs";
 
+function deferred() {
+  let resolve;
+  const promise = new Promise((next) => { resolve = next; });
+  return { promise, resolve };
+}
+
 test("MinIO verification stage invokes the daemon-backed smoke", async () => {
   const calls = [];
   const runner = createStageRunner(
@@ -49,8 +55,9 @@ test("verification database and service ports are configurable", () => {
     CAIRN_VERIFY_MINIO_PORT: "59099",
     CAIRN_VERIFY_MINIO_CONSOLE_PORT: "59199",
     CAIRN_VERIFY_API_PORT: "58099",
+    CAIRN_VERIFY_EMBEDDING_PORT: "58199",
     CAIRN_VERIFY_WEB_PORT: "55099",
-    CAIRN_VERIFY_MOCK_PORT: "58799",
+    CAIRN_VERIFY_PROXY_PORT: "58499",
   }, { projectName: "cairn-verify-fixed-deadbeef" });
 
   assert.equal(config.projectName, "cairn-verify-fixed-deadbeef");
@@ -59,8 +66,15 @@ test("verification database and service ports are configurable", () => {
   assert.equal(config.environment.CAIRN_OBJECT_STORE_ENDPOINT_URL, "http://127.0.0.1:59099");
   assert.equal(config.environment.CAIRN_TEST_S3_ENDPOINT_URL, "http://127.0.0.1:59099");
   assert.equal(config.apiOrigin, "http://localhost:58099");
+  assert.equal(config.embeddingOrigin, "http://127.0.0.1:58199");
   assert.equal(config.webOrigin, "http://localhost:55099");
-  assert.equal(config.mockOrigin, "http://localhost:58799");
+  assert.equal(config.mockOrigin, undefined);
+  assert.equal(config.environment.CAIRN_VERIFY_MOCK_PORT, undefined);
+  assert.equal(config.environment.VITE_MOCK_API_URL, undefined);
+  assert.equal(config.environment.EMBEDDING_BASE_URL, "http://127.0.0.1:58199/v1");
+  assert.equal(config.environment.EMBEDDING_PROVIDER, "local-fake");
+  assert.equal(config.environment.EMBEDDING_DIM, "1024");
+  assert.equal(config.environment.CAIRN_OBJECT_STORE_BUCKET, "cairn-test");
   assert.match(config.databaseUrl, /127\.0\.0\.1:55499\/cairn_test$/);
 });
 
@@ -142,18 +156,23 @@ test("successful verification follows the required stage order", async () => {
     "postgres",
     "minio",
   ]);
-  assert.deepEqual(stages.slice(0, 2), ["object-store-bootstrap", "minio"]);
   assert.deepEqual(stages, [
+    "migrate",
     "object-store-bootstrap",
     "minio",
-    "migrate",
-    "integration",
+    "embedding-profile-bootstrap",
+    "api-integration",
+    "worker-integration",
+    "runtime-profile-bootstrap",
     "seed",
     "sdk",
+    "embedding",
+    "worker-preflight",
     "api",
+    "worker",
     "web-build",
-    "production",
     "browser",
+    "production",
   ]);
   assert.deepEqual(composeCalls.at(-1), [
     "-p",
@@ -281,4 +300,100 @@ test("shutdown still removes the Compose project when child shutdown throws", as
   assert.equal(await shutdown.shutdown(null), 1);
   assert.deepEqual(events, ["stop-children", "compose-down"]);
   assert.deepEqual(errors, ["Failed to stop verification children: Error: child stop failed"]);
+});
+
+test("fake Embedding readiness and Worker early exit fail verification", async () => {
+  for (const failingService of ["embedding", "worker"]) {
+    const failure = deferred();
+    const verification = runCoreVerification({
+      projectName: `cairn-test-${failingService}-exit`,
+      compose: async () => 0,
+      run: async (stage) => {
+        if (stage === failingService) {
+          queueMicrotask(() => failure.resolve({ code: 0, signal: null }));
+          return { completion: failure.promise, stop: async () => undefined };
+        }
+        if (stage === "web-build" && failingService === "worker") {
+          return new Promise(() => undefined);
+        }
+        return 0;
+      },
+      waitForUrl: async (url) => {
+        if (failingService === "embedding" && url.endsWith("/health")) {
+          return new Promise(() => undefined);
+        }
+      },
+      reportError: () => undefined,
+    });
+    assert.equal(await verification, 1, failingService);
+  }
+});
+
+test("termination interrupts managed readiness and still cleans Compose", async () => {
+  const stop = deferred();
+  const composeCalls = [];
+  const verification = runCoreVerification({
+    projectName: "cairn-test-readiness-signal",
+    compose: async (args) => { composeCalls.push(args); return 0; },
+    run: async (stage) => {
+      if (stage !== "embedding") return 0;
+      queueMicrotask(() => stop.resolve({ requested: true, signal: "SIGTERM" }));
+      return { completion: new Promise(() => undefined), stop: async () => undefined };
+    },
+    waitForUrl: async () => new Promise(() => undefined),
+    termination: stop.promise,
+    reportError: () => undefined,
+  });
+  assert.equal(await verification, 1);
+  assert.deepEqual(composeCalls.at(-1), [
+    "-p", "cairn-test-readiness-signal", "down", "--volumes", "--remove-orphans",
+  ]);
+});
+
+test("managed exit after the final stage cannot be reported as success", async () => {
+  const workerExit = deferred();
+  const never = new Promise(() => undefined);
+  const exitCode = await runCoreVerification({
+    projectName: "cairn-test-final-boundary",
+    compose: async () => 0,
+    run: async (stage) => {
+      if (stage === "embedding" || stage === "api") {
+        return { completion: never, stop: async () => undefined };
+      }
+      if (stage === "worker") {
+        return { completion: workerExit.promise, stop: async () => undefined };
+      }
+      if (stage === "production") {
+        setImmediate(() => workerExit.resolve({ code: 0, signal: null }));
+      }
+      return 0;
+    },
+    waitForUrl: async () => undefined,
+    reportError: () => undefined,
+  });
+  assert.equal(exitCode, 1);
+});
+
+test("termination stops a late Compose startup before isolated cleanup", async () => {
+  const stop = deferred();
+  const composeCalls = [];
+  let startupStops = 0;
+  const verification = runCoreVerification({
+    projectName: "cairn-test-compose-signal",
+    compose: async (args) => { composeCalls.push(args); return 0; },
+    startCompose: async () => {
+      queueMicrotask(() => stop.resolve({ requested: true, signal: "SIGTERM" }));
+      return {
+        completion: new Promise(() => undefined),
+        stop: async () => { startupStops += 1; },
+      };
+    },
+    termination: stop.promise,
+    reportError: () => undefined,
+  });
+  assert.equal(await verification, 1);
+  assert.equal(startupStops, 1);
+  assert.deepEqual(composeCalls, [[
+    "-p", "cairn-test-compose-signal", "down", "--volumes", "--remove-orphans",
+  ]]);
 });

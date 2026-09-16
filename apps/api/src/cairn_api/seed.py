@@ -7,6 +7,7 @@ from cairn_api.auth.models import User
 from cairn_api.auth.security import hash_password, normalize_email
 from cairn_api.db.session import Database
 from cairn_api.organizations.models import Membership, Organization
+from cairn_api.projects.models import Project
 from cairn_api.settings import Settings
 
 DEMO_USER_ID = UUID("00000000-0000-4000-8000-000000001001")
@@ -14,6 +15,7 @@ DEMO_ORGANIZATION_ID = UUID("00000000-0000-4000-8000-000000002001")
 DEMO_MEMBERSHIP_ID = UUID("00000000-0000-4000-8000-000000003001")
 DEMO_EMAIL = "demo@cairn.dev"
 DEMO_PASSWORD = "cairn-demo-2026"
+DEMO_PROJECT_ID = UUID("00000000-0000-4000-8000-000000004001")
 
 
 def seed_demo_identity(settings: Settings, database: Database) -> None:
@@ -31,9 +33,7 @@ def seed_demo_identity(settings: Settings, database: Database) -> None:
             )
             .on_conflict_do_nothing()
         )
-        organization = session.scalar(
-            select(Organization).where(Organization.slug == "cairn-demo")
-        )
+        organization = session.scalar(select(Organization).where(Organization.slug == "cairn-demo"))
         if organization is None:
             raise RuntimeError("demo organization could not be created")
 
@@ -65,11 +65,33 @@ def seed_demo_identity(settings: Settings, database: Database) -> None:
         )
 
 
+def seed_demo_project(settings: Settings, database: Database) -> None:
+    if settings.environment == "production":
+        raise RuntimeError("demo project seed is disabled in production")
+    with database.session_factory.begin() as session:
+        organization = session.scalar(
+            select(Organization).where(Organization.slug == "cairn-demo")
+        )
+        if organization is None:
+            raise RuntimeError("demo identity must be seeded before the demo project")
+        session.execute(
+            insert(Project)
+            .values(
+                id=DEMO_PROJECT_ID,
+                org_id=organization.id,
+                name="核心摄取验收",
+                description="用于本地上传、索引、检索、引用与下载闭环验证。",
+            )
+            .on_conflict_do_nothing()
+        )
+
+
 def main() -> None:
     settings = Settings()
     database = Database(settings.database_url)
     try:
         seed_demo_identity(settings, database)
+        seed_demo_project(settings, database)
         with database.session_factory() as session:
             organization_id = session.scalar(
                 select(Organization.id).where(Organization.slug == "cairn-demo")

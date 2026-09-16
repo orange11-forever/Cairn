@@ -193,6 +193,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/knowledge/answers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Answer Knowledge */
+        post: operations["answer_knowledge_api_v1_projects__project_id__knowledge_answers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/knowledge/batches/{batch_id}": {
         parameters: {
             query?: never;
@@ -702,6 +719,65 @@ export interface components {
          * @enum {string}
          */
         IngestionItemStatus: "awaiting_upload" | "queued" | "processing" | "ready" | "failed";
+        /** KnowledgeAnswerCitation */
+        KnowledgeAnswerCitation: {
+            /**
+             * Chunkid
+             * Format: uuid
+             */
+            chunkId: string;
+            /** Excerpt */
+            excerpt: string;
+            /** Id */
+            id: string;
+            /** Locator */
+            locator: components["schemas"]["PdfLocator"] | components["schemas"]["DocxLocator"] | components["schemas"]["PptxLocator"] | components["schemas"]["XlsxLocator"] | components["schemas"]["CsvLocator"] | components["schemas"]["HtmlLocator"] | components["schemas"]["TextLocator"];
+            /** Mediatype */
+            mediaType: string;
+            /**
+             * Resourceid
+             * Format: uuid
+             */
+            resourceId: string;
+            /**
+             * Resourceversionid
+             * Format: uuid
+             */
+            resourceVersionId: string;
+            /** Score */
+            score: number;
+            /** Title */
+            title: string;
+        };
+        /** KnowledgeAnswerParagraph */
+        KnowledgeAnswerParagraph: {
+            /** Citationids */
+            citationIds: string[];
+            /** Text */
+            text: string;
+        };
+        /** KnowledgeAnswerRequest */
+        KnowledgeAnswerRequest: {
+            /** Question */
+            question: string;
+        };
+        /** KnowledgeAnswerResponse */
+        KnowledgeAnswerResponse: {
+            /** Citations */
+            citations: components["schemas"]["KnowledgeAnswerCitation"][];
+            /** Paragraphs */
+            paragraphs: components["schemas"]["KnowledgeAnswerParagraph"][];
+            /**
+             * Retrievalmode
+             * @enum {string}
+             */
+            retrievalMode: "hybrid" | "keyword_fallback";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "answered" | "insufficient_evidence";
+        };
         /** KnowledgeCapabilities */
         KnowledgeCapabilities: {
             /** Canwrite */
@@ -1998,6 +2074,145 @@ export interface operations {
             /** @description 数据库暂时不可用 */
             503: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    answer_knowledge_api_v1_projects__project_id__knowledge_answers_post: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Session-bound CSRF token returned by login or session restore. */
+                "X-CSRF-Token": string;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgeAnswerRequest"];
+            };
+        };
+        responses: {
+            /** @description 项目知识生成式回答 */
+            200: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeAnswerResponse"];
+                };
+            };
+            /** @description 会话无效 */
+            401: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求来源或 CSRF 令牌无效 */
+            403: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目不存在或不可访问 */
+            404: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目知识在生成期间发生变化 */
+            409: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 搜索请求无效 */
+            422: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 搜索请求过于频繁 */
+            429: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 当前搜索限流窗口剩余秒数 */
+                    "Retry-After"?: number;
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 数据库、Embedding 或生成式回答服务暂时不可用 */
+            503: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
                     [name: string]: unknown;
                 };
                 content: {

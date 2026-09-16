@@ -1,4 +1,4 @@
-import { ApiErrorResponseSchema } from "@cairn/contracts";
+import { matchesComponentSchema } from "@cairn/sdk";
 
 export interface ParsedApiErrorResponse {
   message: string;
@@ -10,13 +10,12 @@ export function parseApiErrorResponse(
   body: unknown,
   fallback: ParsedApiErrorResponse,
 ): ParsedApiErrorResponse {
-  const parsed = ApiErrorResponseSchema.safeParse(body);
-  if (!parsed.success) return fallback;
+  if (!matchesComponentSchema("ErrorBody", body)) return fallback;
 
-  const message = parsed.data.message?.trim();
+  const message = body.message.trim();
   return {
     message: message ? message : fallback.message,
-    code: parsed.data.code?.trim() || fallback.code,
-    traceId: parsed.data.traceId?.trim() || fallback.traceId,
+    code: body.code.trim() || fallback.code,
+    traceId: body.traceId.trim() || fallback.traceId,
   };
 }

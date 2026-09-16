@@ -104,10 +104,17 @@ class Settings(BaseSettings):
         validation_alias="CAIRN_SEARCH_ORG_LIMIT_PER_MINUTE",
     )
     search_audit_secret: SecretStr = Field(
-        default=SecretStr(
-            "local-development-search-audit-secret-change-before-deploying-32-bytes"
-        ),
+        default=SecretStr("local-development-search-audit-secret-change-before-deploying-32-bytes"),
         validation_alias="CAIRN_SEARCH_AUDIT_SECRET",
+    )
+    answer_base_url: AnyHttpUrl | None = Field(default=None, validation_alias="ANSWER_BASE_URL")
+    answer_api_key: SecretStr | None = Field(default=None, validation_alias="ANSWER_API_KEY")
+    answer_model: str | None = Field(default=None, validation_alias="ANSWER_MODEL")
+    answer_protocol: Literal["openai-compatible", "openai-responses", "anthropic", "gemini"] = (
+        Field(default="openai-compatible", validation_alias="ANSWER_PROTOCOL")
+    )
+    answer_timeout_seconds: float = Field(
+        default=30.0, gt=0, le=60, validation_alias="ANSWER_TIMEOUT_SECONDS"
     )
     bind_host: str = Field(default="127.0.0.1", validation_alias="CAIRN_BIND_HOST")
     http_port: int = Field(default=8080, ge=1, le=65535, validation_alias="CAIRN_HTTP_PORT")
@@ -174,6 +181,16 @@ class Settings(BaseSettings):
                 embedding_is_loopback = False
         if self.embedding_base_url.scheme != "https" and not embedding_is_loopback:
             raise ValueError("production Embedding URL requires HTTPS or a loopback-only host")
+        if self.answer_base_url is not None:
+            answer_host = (self.answer_base_url.host or "").removeprefix("[").removesuffix("]")
+            answer_is_loopback = answer_host.lower() == "localhost"
+            if not answer_is_loopback:
+                try:
+                    answer_is_loopback = ip_address(answer_host).is_loopback
+                except ValueError:
+                    answer_is_loopback = False
+            if self.answer_base_url.scheme != "https" and not answer_is_loopback:
+                raise ValueError("production answer URL requires HTTPS or a loopback-only host")
         if len(self.auth_rate_limit_secret.encode("utf-8")) < 32:
             raise ValueError("production requires an auth rate-limit secret of at least 32 bytes")
         if self.auth_rate_limit_secret in {
@@ -208,11 +225,21 @@ class Settings(BaseSettings):
         "object_store_endpoint_url",
         "object_store_public_endpoint_url",
         "embedding_base_url",
+        "answer_base_url",
     )
     @classmethod
-    def reject_url_credentials(cls, value: AnyHttpUrl) -> AnyHttpUrl:
+    def reject_url_credentials(cls, value: AnyHttpUrl | None) -> AnyHttpUrl | None:
+        if value is None:
+            return None
         if value.username is not None or value.password is not None:
             raise ValueError("service URLs cannot contain credentials")
+        return value
+
+    @field_validator("answer_base_url")
+    @classmethod
+    def reject_answer_url_query_or_fragment(cls, value: AnyHttpUrl | None) -> AnyHttpUrl | None:
+        if value is not None and (value.query is not None or value.fragment is not None):
+            raise ValueError("ANSWER_BASE_URL cannot contain a query or fragment")
         return value
 
     @field_validator(
@@ -228,6 +255,23 @@ class Settings(BaseSettings):
             raise ValueError("knowledge setting cannot be blank")
         return normalized
 
+    @field_validator("answer_model")
+    @classmethod
+    def reject_blank_answer_model(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("answer model cannot be blank")
+        return normalized
+
+    @field_validator("answer_api_key")
+    @classmethod
+    def reject_blank_answer_api_key(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is not None and not value.get_secret_value().strip():
+            raise ValueError("answer API key cannot be blank")
+        return value
+
     @field_validator("embedding_dimensions")
     @classmethod
     def require_stage_3a_embedding_dimensions(cls, value: int) -> int:
@@ -242,7 +286,11 @@ class Settings(BaseSettings):
             return None
         if value.username is not None or value.password is not None:
             raise ValueError("APP_URL cannot contain credentials")
-        if value.path not in (None, "", "/") or value.query is not None or value.fragment is not None:
+        if (
+            value.path not in (None, "", "/")
+            or value.query is not None
+            or value.fragment is not None
+        ):
             raise ValueError("APP_URL must be an origin without path, query, or fragment")
         return value
 
@@ -277,16 +325,20 @@ class Settings(BaseSettings):
             parsed = origin_adapter.validate_python(origin)
             if parsed.username is not None or parsed.password is not None:
                 raise ValueError("CORS_ORIGINS cannot contain credentials")
-            if parsed.path not in (None, "", "/") or parsed.query is not None or parsed.fragment is not None:
-                raise ValueError("CORS_ORIGINS entries must be origins without path, query, or fragment")
+            if (
+                parsed.path not in (None, "", "/")
+                or parsed.query is not None
+                or parsed.fragment is not None
+            ):
+                raise ValueError(
+                    "CORS_ORIGINS entries must be origins without path, query, or fragment"
+                )
             normalized_origins.append(str(parsed).rstrip("/"))
         return normalized_origins
 
     @field_validator("trusted_proxy_cidrs", mode="before")
     @classmethod
-    def parse_trusted_proxy_networks(
-        cls, value: object
-    ) -> tuple[IPv4Network | IPv6Network, ...]:
+    def parse_trusted_proxy_networks(cls, value: object) -> tuple[IPv4Network | IPv6Network, ...]:
         if value is None or value == "":
             return ()
         if isinstance(value, str):
@@ -294,14 +346,15 @@ class Settings(BaseSettings):
         elif isinstance(value, list):
             raw = cast(list[str], value)
         elif isinstance(value, tuple) and all(
-            isinstance(item, (IPv4Network, IPv6Network))
-            for item in cast(tuple[object, ...], value)
+            isinstance(item, (IPv4Network, IPv6Network)) for item in cast(tuple[object, ...], value)
         ):
             return cast(tuple[IPv4Network | IPv6Network, ...], value)
         elif isinstance(value, tuple):
             raw = list(cast(tuple[str, ...], value))
         else:
-            raise ValueError("CAIRN_TRUSTED_PROXY_CIDRS must be a comma-separated string or string list")
+            raise ValueError(
+                "CAIRN_TRUSTED_PROXY_CIDRS must be a comma-separated string or string list"
+            )
         try:
             return parse_trusted_proxy_cidrs(raw)
         except ValueError as exc:

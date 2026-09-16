@@ -10,9 +10,6 @@ importers:
 
   apps/web:
     dependencies:
-      '@cairn/contracts':
-        specifier: workspace:*
-        version: link:../../packages/contracts
       '@cairn/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -77,16 +74,6 @@ importers:
       vitest:
         specifier: 4.1.10
         version: 4.1.10(jsdom@30.0.1)(vite@7.1.12)
-
-  packages/contracts:
-    dependencies:
-      zod:
-        specifier: 4.1.12
-        version: 4.1.12
-    devDependencies:
-      typescript:
-        specifier: 5.9.3
-        version: 5.9.3
 
   packages/sdk:
     dependencies:

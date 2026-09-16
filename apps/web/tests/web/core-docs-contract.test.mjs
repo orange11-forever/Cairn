@@ -183,7 +183,7 @@ function assertTask16PublicDelivery(document, documentName) {
 }
 
 function assertTask17PublicDelivery(document, documentName) {
-  assert.match(document, /Stage 3A Task 1–18/, documentName + " must publish the current Task 18 frontier");
+  assert.match(document, /Stage 3A Task 1–20/, documentName + " must publish the current Task 20 frontier");
   assert.doesNotMatch(document, /Task 1–16/, documentName + " must not retain a stale frontier");
   const statement = findTaskStatement(document, documentName, "Task 17", /真实上传批次/);
   for (const [capability, pattern] of [
@@ -204,7 +204,7 @@ function assertTask17PublicDelivery(document, documentName) {
   assert.match(document, /搜索仅标记 stale，不自动重跑/);
   assert.match(
     document,
-    /全文格式化预览、生成式回答和 Mock 退场仍在后续任务/,
+    /全文格式化预览[^\n]*流式\/多轮问答[^\n]*(?:后续|延后)/,
     documentName + " must retain deferred product work",
   );
   assert.doesNotMatch(
@@ -214,16 +214,21 @@ function assertTask17PublicDelivery(document, documentName) {
   );
   assert.doesNotMatch(
     document,
-    /(?:全文格式化预览|生成式回答|Mock 退场)[^；。\n]*(?:已交付|已完成)/,
+    /全文格式化预览[^；。\n]*(?:已交付|已完成)/,
     documentName + " must not present deferred Web capabilities as delivered",
+  );
+  assert.doesNotMatch(
+    document,
+    /流式\/多轮问答[^；。\n]*(?:已交付|已完成)/,
+    documentName + " must not present deferred answer capabilities as delivered",
   );
 }
 
 function assertTask18APublicDelivery(document, documentName) {
   assert.match(
     document,
-    /Stage 3A Task 1–18/,
-    documentName + " must publish the current Task 18 frontier",
+    /Stage 3A Task 1–20/,
+    documentName + " must publish the current Task 20 frontier",
   );
   const statement = findTaskStatement(document, documentName, "Task 18A", /Web 资源详情/);
   for (const [capability, pattern] of [
@@ -245,7 +250,7 @@ function assertTask18APublicDelivery(document, documentName) {
   }
   assert.doesNotMatch(
     document,
-    /(?:全文格式化预览|生成式回答|Mock 退场)[^；。\n]*(?:已交付|已完成)/,
+    /全文格式化预览[^；。\n]*(?:已交付|已完成)/,
   );
 }
 
@@ -268,7 +273,7 @@ function assertTask18BPublicDelivery(document, documentName) {
   ]) {
     assert.match(statement, pattern, documentName + " must retain " + capability);
   }
-  assert.match(document, /全文格式化预览、生成式回答和 Mock 退场仍在后续任务/);
+  assert.match(document, /全文格式化预览[^\n]*流式\/多轮问答[^\n]*(?:后续|延后)/);
 }
 
 test("endpoint inventory does not infer parent routes from child route text", () => {
@@ -322,7 +327,7 @@ test("root README publishes a concise current delivery snapshot", async () => {
   assert.match(apiSdkBoundary, /Web API 适配器[^|]*OpenAPI `date-time`[^|]*校验/);
   assert.match(
     readme,
-    /全文格式化预览[^\n]*生成式回答[^\n]*Mock[^\n]*(?:后续|尚未|延后)/,
+    /全文格式化预览[^\n]*流式\/多轮问答[^\n]*(?:后续|尚未|延后)/,
   );
   assert.doesNotMatch(readme, /搜索结果[^；。\n]*(?:后续|尚未|延后)/);
   assert.match(readme, /```text\nCairn\n├── apps\//);
@@ -404,7 +409,7 @@ test("public documentation preserves Task 17 upload contracts at the Task 18A fr
 test("Task 17 delivery checks reject stale upload deferrals, unsafe retries, and overclaims", async () => {
   const document = await readFile(new URL("README.md", repositoryRoot), "utf8");
   for (const [before, after] of [
-    ["Task 1–18", "Task 1–16"],
+    ["Task 1–20", "Task 1–16"],
     ["全新批次与预签名 URL", "旧批次与预签名 URL"],
     ["5 分钟", "无限期"],
     ["不携带 Identity credentials", "携带 Identity credentials"],
@@ -418,8 +423,7 @@ test("Task 17 delivery checks reject stale upload deferrals, unsafe retries, and
   for (const falseClaim of [
     "Web 上传仍在后续任务。",
     "全文格式化预览已交付。",
-    "生成式回答已交付。",
-    "Mock 退场已完成。",
+    "流式/多轮问答已交付。",
   ]) {
     assert.throws(() => assertTask17PublicDelivery(document + "\n" + falseClaim, "mutated README"));
   }
@@ -485,7 +489,7 @@ test("API documentation binds all ten knowledge routes to their response contrac
   // no-body delete and redirect Location contracts are weakened.
   const readme = await readFile(new URL("apps/api/README.md", repositoryRoot), "utf8");
 
-  assert.match(readme, /## Stage 3A Task 1–18 知识摄取、资源操作与搜索契约/);
+  assert.match(readme, /## Stage 3A Task 1–20 知识摄取、资源操作与搜索契约/);
   assertKnowledgeEndpointContracts(readme, "apps/api/README.md");
 });
 

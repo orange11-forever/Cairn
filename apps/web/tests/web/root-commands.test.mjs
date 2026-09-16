@@ -23,16 +23,13 @@ const APPROVED_SCRIPTS = [
   "infra:up",
   "lint:api",
   "lint:worker",
-  "mock:web",
   "test",
   "test:api",
-  "test:contracts",
   "test:sdk",
   "test:web",
   "test:worker",
   "typecheck",
   "typecheck:api",
-  "typecheck:contracts",
   "typecheck:sdk",
   "typecheck:web",
   "typecheck:worker",
@@ -83,15 +80,15 @@ test("root commands are allowlisted and shell neutral", async () => {
   assert.equal(root.scripts["verify:core"], "node scripts/run-task.mjs verify:core");
   assert.equal(
     root.scripts.test,
-    "node scripts/run-tasks.mjs test:contracts test:sdk test:web test:api test:worker",
+    "node scripts/run-tasks.mjs test:sdk test:web test:api test:worker",
   );
   assert.equal(
     root.scripts.typecheck,
-    "node scripts/run-tasks.mjs typecheck:contracts typecheck:sdk typecheck:web typecheck:api typecheck:worker",
+    "node scripts/run-tasks.mjs typecheck:sdk typecheck:web typecheck:api typecheck:worker",
   );
   assert.equal(
     root.scripts.verify,
-    "node scripts/run-tasks.mjs test:contracts typecheck:contracts test:sdk typecheck:sdk check:sdk test:web typecheck:web test:api lint:api typecheck:api build:api test:worker lint:worker typecheck:worker verify:core",
+    "node scripts/run-tasks.mjs test:sdk typecheck:sdk check:sdk test:web typecheck:web test:api lint:api typecheck:api build:api test:worker lint:worker typecheck:worker verify:core",
   );
 
   for (const [name, command] of Object.entries(root.scripts)) {

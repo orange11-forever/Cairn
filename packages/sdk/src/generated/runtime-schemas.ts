@@ -639,6 +639,186 @@ export const componentSchemas = {
     "title": "IngestionItemStatus",
     "type": "string"
   },
+  "KnowledgeAnswerCitation": {
+    "additionalProperties": false,
+    "properties": {
+      "chunkId": {
+        "format": "uuid",
+        "title": "Chunkid",
+        "type": "string"
+      },
+      "excerpt": {
+        "title": "Excerpt",
+        "type": "string"
+      },
+      "id": {
+        "pattern": "^S[1-6]$",
+        "title": "Id",
+        "type": "string"
+      },
+      "locator": {
+        "discriminator": {
+          "mapping": {
+            "csv": "#/components/schemas/CsvLocator",
+            "docx": "#/components/schemas/DocxLocator",
+            "html": "#/components/schemas/HtmlLocator",
+            "markdown": "#/components/schemas/TextLocator",
+            "pdf": "#/components/schemas/PdfLocator",
+            "pptx": "#/components/schemas/PptxLocator",
+            "text": "#/components/schemas/TextLocator",
+            "xlsx": "#/components/schemas/XlsxLocator"
+          },
+          "propertyName": "type"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/PdfLocator"
+          },
+          {
+            "$ref": "#/components/schemas/DocxLocator"
+          },
+          {
+            "$ref": "#/components/schemas/PptxLocator"
+          },
+          {
+            "$ref": "#/components/schemas/XlsxLocator"
+          },
+          {
+            "$ref": "#/components/schemas/CsvLocator"
+          },
+          {
+            "$ref": "#/components/schemas/HtmlLocator"
+          },
+          {
+            "$ref": "#/components/schemas/TextLocator"
+          }
+        ],
+        "title": "Locator"
+      },
+      "mediaType": {
+        "title": "Mediatype",
+        "type": "string"
+      },
+      "resourceId": {
+        "format": "uuid",
+        "title": "Resourceid",
+        "type": "string"
+      },
+      "resourceVersionId": {
+        "format": "uuid",
+        "title": "Resourceversionid",
+        "type": "string"
+      },
+      "score": {
+        "title": "Score",
+        "type": "number"
+      },
+      "title": {
+        "title": "Title",
+        "type": "string"
+      }
+    },
+    "required": [
+      "resourceId",
+      "resourceVersionId",
+      "chunkId",
+      "title",
+      "mediaType",
+      "excerpt",
+      "locator",
+      "score",
+      "id"
+    ],
+    "title": "KnowledgeAnswerCitation",
+    "type": "object"
+  },
+  "KnowledgeAnswerParagraph": {
+    "additionalProperties": false,
+    "properties": {
+      "citationIds": {
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 6,
+        "minItems": 1,
+        "title": "Citationids",
+        "type": "array"
+      },
+      "text": {
+        "maxLength": 1000,
+        "minLength": 1,
+        "title": "Text",
+        "type": "string"
+      }
+    },
+    "required": [
+      "text",
+      "citationIds"
+    ],
+    "title": "KnowledgeAnswerParagraph",
+    "type": "object"
+  },
+  "KnowledgeAnswerRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "question": {
+        "maxLength": 500,
+        "minLength": 3,
+        "title": "Question",
+        "type": "string"
+      }
+    },
+    "required": [
+      "question"
+    ],
+    "title": "KnowledgeAnswerRequest",
+    "type": "object"
+  },
+  "KnowledgeAnswerResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "citations": {
+        "items": {
+          "$ref": "#/components/schemas/KnowledgeAnswerCitation"
+        },
+        "maxItems": 6,
+        "title": "Citations",
+        "type": "array"
+      },
+      "paragraphs": {
+        "items": {
+          "$ref": "#/components/schemas/KnowledgeAnswerParagraph"
+        },
+        "maxItems": 8,
+        "title": "Paragraphs",
+        "type": "array"
+      },
+      "retrievalMode": {
+        "enum": [
+          "hybrid",
+          "keyword_fallback"
+        ],
+        "title": "Retrievalmode",
+        "type": "string"
+      },
+      "status": {
+        "enum": [
+          "answered",
+          "insufficient_evidence"
+        ],
+        "title": "Status",
+        "type": "string"
+      }
+    },
+    "required": [
+      "status",
+      "retrievalMode",
+      "paragraphs",
+      "citations"
+    ],
+    "title": "KnowledgeAnswerResponse",
+    "type": "object"
+  },
   "KnowledgeCapabilities": {
     "properties": {
       "canWrite": {

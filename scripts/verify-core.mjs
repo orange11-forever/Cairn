@@ -12,16 +12,22 @@ const COMPOSE_FILE = resolve(REPOSITORY_ROOT, "deploy/compose/core.yml");
 const UV = process.platform === "win32" ? "uv.exe" : "uv";
 const NEVER = new Promise(() => undefined);
 const STAGES = Object.freeze([
+  "migrate",
   "object-store-bootstrap",
   "minio",
-  "migrate",
-  "integration",
+  "embedding-profile-bootstrap",
+  "api-integration",
+  "worker-integration",
+  "runtime-profile-bootstrap",
   "seed",
   "sdk",
+  "embedding",
+  "worker-preflight",
   "api",
+  "worker",
   "web-build",
-  "production",
   "browser",
+  "production",
 ]);
 
 function readPort(environment, name, fallback) {
@@ -55,15 +61,19 @@ export function resolveVerificationConfig(
     59001,
   );
   const apiPort = readPort(environment, "CAIRN_VERIFY_API_PORT", 58080);
+  const embeddingPort = readPort(environment, "CAIRN_VERIFY_EMBEDDING_PORT", 58081);
   const webPort = readPort(environment, "CAIRN_VERIFY_WEB_PORT", 55500);
-  const mockPort = readPort(environment, "CAIRN_VERIFY_MOCK_PORT", 58787);
   const proxyPort = readPort(environment, "CAIRN_VERIFY_PROXY_PORT", 58443);
+  const ports = [databasePort, minioPort, minioConsolePort, apiPort, embeddingPort, webPort, proxyPort];
+  if (new Set(ports).size !== ports.length) {
+    throw new Error("verification service ports must be distinct");
+  }
   const databaseUrl =
     `postgresql+psycopg://cairn:cairn-local-only@127.0.0.1:${databasePort}/cairn_test`;
   const objectStoreEndpoint = `http://127.0.0.1:${minioPort}`;
   const apiOrigin = `http://localhost:${apiPort}`;
+  const embeddingOrigin = `http://127.0.0.1:${embeddingPort}`;
   const webOrigin = `http://localhost:${webPort}`;
-  const mockOrigin = `http://localhost:${mockPort}`;
   const productionProxyOrigin = `https://localhost:${proxyPort}`;
   const productionApiOrigin = `https://localhost:${apiPort}`;
   const productionWebOrigin = `https://localhost:${webPort}`;
@@ -81,7 +91,14 @@ export function resolveVerificationConfig(
     CAIRN_SESSION_COOKIE_SECURE: "true",
     CAIRN_TRUSTED_PROXY_CIDRS: "127.0.0.0/8,::1/128",
     CORS_ORIGINS: productionWebOrigin,
-    EMBEDDING_API_KEY: "proxy-verification-embedding-key",
+    EMBEDDING_API_KEY: "local-fake-verification-key",
+    EMBEDDING_BASE_URL: `${embeddingOrigin}/v1`,
+    EMBEDDING_DIM: "1024",
+    EMBEDDING_MODEL: "text-embedding-v4",
+    EMBEDDING_PROVIDER: "local-fake",
+    ANSWER_API_KEY: "local-fake-verification-answer-key",
+    ANSWER_BASE_URL: `${embeddingOrigin}/v1`,
+    ANSWER_MODEL: "local-fake-answer",
     VITE_IDENTITY_API_URL: productionProxyOrigin,
   };
 
@@ -91,13 +108,13 @@ export function resolveVerificationConfig(
     minioPort,
     minioConsolePort,
     apiPort,
+    embeddingPort,
     webPort,
-    mockPort,
     proxyPort,
     databaseUrl,
     apiOrigin,
+    embeddingOrigin,
     webOrigin,
-    mockOrigin,
     productionProxyOrigin,
     productionApiOrigin,
     productionWebOrigin,
@@ -108,9 +125,11 @@ export function resolveVerificationConfig(
       CAIRN_CSRF_SECRET: "test-only-csrf-secret-with-at-least-32-bytes",
       CAIRN_ENVIRONMENT: "test",
       CAIRN_HTTP_PORT: String(apiPort),
+      CAIRN_EMBEDDING_PORT: String(embeddingPort),
       CAIRN_MINIO_CONSOLE_PORT: String(minioConsolePort),
       CAIRN_MINIO_PORT: String(minioPort),
       CAIRN_OBJECT_STORE_ACCESS_KEY: "proxy-verification-object-store-access",
+      CAIRN_OBJECT_STORE_BUCKET: "cairn-test",
       CAIRN_OBJECT_STORE_ENDPOINT_URL: objectStoreEndpoint,
       CAIRN_OBJECT_STORE_PUBLIC_ENDPOINT_URL: objectStoreEndpoint,
       CAIRN_OBJECT_STORE_SECRET_KEY: "proxy-verification-object-store-secret",
@@ -120,8 +139,8 @@ export function resolveVerificationConfig(
       CAIRN_TEST_CORS_ORIGIN: webOrigin,
       CAIRN_TEST_S3_ENDPOINT_URL: objectStoreEndpoint,
       CAIRN_VERIFY_API_PORT: String(apiPort),
+      CAIRN_VERIFY_EMBEDDING_PORT: String(embeddingPort),
       CAIRN_VERIFY_IDENTITY_ORIGIN: apiOrigin,
-      CAIRN_VERIFY_MOCK_PORT: String(mockPort),
       CAIRN_VERIFY_PROXY_PORT: String(proxyPort),
       CAIRN_VERIFY_POSTGRES_PORT: String(databasePort),
       CAIRN_VERIFY_MINIO_CONSOLE_PORT: String(minioConsolePort),
@@ -129,11 +148,21 @@ export function resolveVerificationConfig(
       CAIRN_VERIFY_WEB_PORT: String(webPort),
       CORS_ORIGINS: webOrigin,
       DATABASE_URL: databaseUrl,
+      EMBEDDING_API_KEY: "local-fake-verification-key",
+      EMBEDDING_BASE_URL: `${embeddingOrigin}/v1`,
+      EMBEDDING_BATCH_SIZE: "10",
+      EMBEDDING_DIM: "1024",
+      EMBEDDING_MODEL: "text-embedding-v4",
+      EMBEDDING_PROVIDER: "local-fake",
+      ANSWER_API_KEY: "local-fake-verification-answer-key",
+      ANSWER_BASE_URL: `${embeddingOrigin}/v1`,
+      ANSWER_MODEL: "local-fake-answer",
       POSTGRES_DB: "cairn_test",
       POSTGRES_PASSWORD: "cairn-local-only",
       POSTGRES_USER: "cairn",
+      CAIRN_AUTH_RATE_LIMIT_SECRET: "verification-rate-limit-secret-at-least-32-bytes",
+      CAIRN_SEARCH_AUDIT_SECRET: "verification-search-audit-secret-at-least-32-bytes",
       VITE_IDENTITY_API_URL: apiOrigin,
-      VITE_MOCK_API_URL: mockOrigin,
     },
   };
 }
@@ -193,15 +222,28 @@ export function createProcessManager({
 
 function createCompose(config, processManager) {
   let dockerCommandPromise;
-  return async (args) => {
-    dockerCommandPromise ??= resolveDockerCommand({ env: config.environment });
-    const dockerCommand = await dockerCommandPromise;
+  const command = async (signal) => {
+    dockerCommandPromise ??= resolveDockerCommand({ env: config.environment, signal });
+    return dockerCommandPromise;
+  };
+  const compose = async (args) => {
+    const dockerCommand = await command();
     return processManager.run(
       dockerCommand,
       ["compose", "-f", COMPOSE_FILE, ...args],
       { env: config.environment },
     );
   };
+  compose.start = async (args, { signal } = {}) => {
+    const dockerCommand = await command(signal);
+    if (signal?.aborted) throw new Error("Compose startup aborted");
+    return processManager.start(
+      dockerCommand,
+      ["compose", "-f", COMPOSE_FILE, ...args],
+      { env: config.environment },
+    );
+  };
+  return compose;
 }
 
 export function createStageRunner(config, processManager) {
@@ -228,7 +270,9 @@ export function createStageRunner(config, processManager) {
       );
     }
     if (stage === "migrate") return nodeTask("db:migrate");
-    if (stage === "integration") {
+    if (stage === "embedding-profile-bootstrap") return nodeTask("embedding-profile-bootstrap");
+    if (stage === "runtime-profile-bootstrap") return nodeTask("embedding-profile-bootstrap");
+    if (stage === "api-integration") {
       const integrationEnvironment = { ...config.environment };
       delete integrationEnvironment.CORS_ORIGINS;
       return processManager.run(
@@ -246,8 +290,34 @@ export function createStageRunner(config, processManager) {
         { env: integrationEnvironment },
       );
     }
+    if (stage === "worker-integration") {
+      const integrationEnvironment = { ...config.environment };
+      delete integrationEnvironment.CORS_ORIGINS;
+      return processManager.run(
+        UV,
+        [
+          "run",
+          "--package",
+          "cairn-worker",
+          "pytest",
+          "apps/worker/tests/integration",
+          "-q",
+          "-m",
+          "integration",
+        ],
+        { env: integrationEnvironment },
+      );
+    }
     if (stage === "seed") return nodeTask("db:seed");
     if (stage === "sdk") return nodeTask("check:sdk");
+    if (stage === "embedding") {
+      return processManager.start(
+        process.execPath,
+        ["scripts/fake-embedding.mjs"],
+        { env: config.environment },
+      );
+    }
+    if (stage === "worker-preflight") return nodeTask("worker:preflight");
     if (stage === "api") {
       return processManager.start(
         UV,
@@ -256,23 +326,30 @@ export function createStageRunner(config, processManager) {
       );
     }
     if (stage === "web-build") return nodeTask("build:web");
+    if (stage === "worker") {
+      return processManager.start(
+        UV,
+        ["run", "--package", "cairn-worker", "cairn-worker", "serve"],
+        { env: config.environment },
+      );
+    }
     if (stage === "production") {
-      return processManager.run(
+      const buildCode = await processManager.run(
         process.execPath,
         ["apps/web/scripts/verify-production-build.mjs"],
         { env: config.environment },
       );
-    }
-    if (stage === "browser") {
-      const browserCode = await processManager.run(
-        process.execPath,
-        ["apps/web/scripts/verify-web.mjs"],
-        { env: config.environment },
-      );
-      if (browserCode !== 0) return browserCode;
+      if (buildCode !== 0) return buildCode;
       return processManager.run(
         process.execPath,
         ["scripts/verify-auth-proxy.mjs"],
+        { env: config.environment },
+      );
+    }
+    if (stage === "browser") {
+      return processManager.run(
+        process.execPath,
+        ["apps/web/scripts/verify-web.mjs"],
         { env: config.environment },
       );
     }
@@ -300,7 +377,7 @@ export function createShutdownController({
       requested = true;
       resolveTermination({ requested: true, signal });
     },
-    shutdown(api) {
+    shutdown(api, cleanupCompose = true) {
       shutdownPromise ??= (async () => {
         let exitCode = 0;
         if (api !== null) {
@@ -317,18 +394,20 @@ export function createShutdownController({
           reportError(`Failed to stop verification children: ${String(error)}`);
           exitCode = 1;
         }
-        try {
-          const cleanupCode = await compose([
-            "-p",
-            projectName,
-            "down",
-            "--volumes",
-            "--remove-orphans",
-          ]);
-          if (cleanupCode !== 0) exitCode = cleanupCode;
-        } catch (error) {
-          reportError(`Failed to clean verification Compose project: ${String(error)}`);
-          exitCode = 1;
+        if (cleanupCompose) {
+          try {
+            const cleanupCode = await compose([
+              "-p",
+              projectName,
+              "down",
+              "--volumes",
+              "--remove-orphans",
+            ]);
+            if (cleanupCode !== 0) exitCode = cleanupCode;
+          } catch (error) {
+            reportError(`Failed to clean verification Compose project: ${String(error)}`);
+            exitCode = 1;
+          }
         }
         return exitCode;
       })();
@@ -337,16 +416,24 @@ export function createShutdownController({
   };
 }
 
-async function waitForManagedApi(api, readyUrl, waitForUrl) {
+async function waitForManagedService(service, managed, readyUrl, waitForUrl, termination) {
   const result = await Promise.race([
     waitForUrl(readyUrl).then(() => ({ ready: true })),
-    api.completion.then((completion) => ({ ready: false, completion })),
+    ...managed.map((candidate) => candidate.process.completion.then((completion) => ({
+      ready: false,
+      exited: candidate.name,
+      completion,
+    }))),
+    termination,
   ]);
+  if (result?.requested === true) return false;
   if (!result.ready) {
     throw new Error(
-      `Verification API exited before readiness (code=${result.completion.code}, signal=${result.completion.signal})`,
+      `Verification ${result.exited ?? service.name} exited before ${service.name} readiness `
+      + `(code=${result.completion.code}, signal=${result.completion.signal})`,
     );
   }
+  return true;
 }
 
 export async function runCoreVerification(options = {}) {
@@ -355,6 +442,10 @@ export async function runCoreVerification(options = {}) {
   });
   const processManager = options.processManager ?? createProcessManager();
   const compose = options.compose ?? createCompose(config, processManager);
+  const startCompose = options.startCompose ?? compose.start ?? (async (args) => ({
+    completion: compose(args).then((code) => ({ code, signal: null })),
+    stop: async () => undefined,
+  }));
   const run = options.run ?? createStageRunner(config, processManager);
   const waitForUrl = options.waitForUrl ?? waitForServer;
   const reportError = options.reportError ?? console.error;
@@ -367,10 +458,13 @@ export async function runCoreVerification(options = {}) {
   const termination = options.termination ?? shutdown.termination ?? NEVER;
   const signals = options.handleSignals ? installSignalHandlers(shutdown) : null;
   let api = null;
+  const managed = [];
+  let composeStarted = false;
   let exitCode = 0;
 
   try {
-    exitCode = await compose([
+    const startupAbort = new AbortController();
+    const startupPromise = startCompose([
       "-p",
       config.projectName,
       "up",
@@ -379,31 +473,89 @@ export async function runCoreVerification(options = {}) {
       "--wait",
       "postgres",
       "minio",
+    ], { signal: startupAbort.signal });
+    const startup = await Promise.race([
+      startupPromise.then((process) => ({ process })),
+      termination,
     ]);
+    if (startup?.requested === true) {
+      startupAbort.abort();
+      try {
+        const lateProcess = await startupPromise;
+        composeStarted = true;
+        await lateProcess.stop();
+      } catch {
+        // Abort during Docker discovery means no Compose project was started.
+      }
+      exitCode = 1;
+    } else {
+      composeStarted = true;
+      const startupResult = await Promise.race([startup.process.completion, termination]);
+      if (startupResult?.requested === true) await startup.process.stop();
+      exitCode = startupResult.signal === null ? (startupResult.code ?? 1) : 1;
+    }
     if (exitCode === 0) {
       for (const stage of STAGES) {
         const stageResult = await Promise.race([
           run(stage, config),
           termination,
+          ...managed.map((service) => service.process.completion.then((completion) => ({
+            earlyExit: service.name,
+            completion,
+          }))),
         ]);
         if (stageResult?.requested === true) {
           exitCode = 1;
           break;
         }
-        if (stage === "api" && typeof stageResult === "object") {
-          api = stageResult;
-          await waitForManagedApi(api, `${config.apiOrigin}/ready`, waitForUrl);
+        if (stageResult?.earlyExit !== undefined) {
+          const completion = stageResult.completion;
+          throw new Error(
+            `Verification ${stageResult.earlyExit} exited early (code=${completion.code}, signal=${completion.signal})`,
+          );
+        }
+        if (["embedding", "api", "worker"].includes(stage) && typeof stageResult === "object") {
+          const service = { name: stage, process: stageResult };
+          managed.push(service);
+          if (stage === "api") api = stageResult;
+          if (stage === "embedding") {
+            if (!await waitForManagedService(
+              service, managed, `${config.embeddingOrigin}/health`, waitForUrl, termination,
+            )) {
+              exitCode = 1;
+              break;
+            }
+          }
+          if (stage === "api") {
+            if (!await waitForManagedService(
+              service, managed, `${config.apiOrigin}/ready`, waitForUrl, termination,
+            )) {
+              exitCode = 1;
+              break;
+            }
+          }
           continue;
         }
         exitCode = stageResult;
         if (exitCode !== 0) break;
+      }
+      if (exitCode === 0 && managed.length > 0) {
+        const boundary = await Promise.race([
+          termination,
+          ...managed.map((service) => service.process.completion.then((completion) => ({
+            earlyExit: service.name,
+            completion,
+          }))),
+          new Promise((resolveBoundary) => setImmediate(() => resolveBoundary({ stable: true }))),
+        ]);
+        if (boundary?.requested === true || boundary?.earlyExit !== undefined) exitCode = 1;
       }
     }
   } catch (error) {
     reportError(error instanceof Error ? error.message : String(error));
     exitCode = 1;
   } finally {
-    const cleanupCode = await shutdown.shutdown(api);
+    const cleanupCode = await shutdown.shutdown(api, composeStarted);
     if (cleanupCode !== 0) exitCode = cleanupCode;
     signals?.dispose();
   }

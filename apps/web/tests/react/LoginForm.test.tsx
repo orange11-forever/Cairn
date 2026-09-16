@@ -201,7 +201,11 @@ describe("字段校验", () => {
 
 describe("服务端错误", () => {
   test("401 显示在表单级别，不挂在某个字段上", async () => {
-    stubFetch(async () => jsonResponse({ message: "邮箱或密码不正确" }, 401));
+    stubFetch(async () => jsonResponse({
+      code: "invalid_credentials",
+      message: "邮箱或密码不正确",
+      traceId: "trace-login-invalid-credentials",
+    }, 401));
 
     const user = userEvent.setup();
     const onSuccess = vi.fn();

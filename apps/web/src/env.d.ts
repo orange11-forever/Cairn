@@ -4,7 +4,7 @@
 //
 // `vite/client` 把 `import.meta.env` 声明成一个索引签名（任意 key 都返回 string），
 // 于是打错名字不会报错——写 `VITE_API_UEL` 会安静地得到 undefined，
-// 然后 `?? "http://localhost:8787"` 兜底生效，看起来一切正常，
+// 然后本地默认地址兜底生效，看起来一切正常，
 // 而实际上你配的那个后端地址从来没被用上。
 //
 // 显式列出每一个变量之后，打错名字是**编译错误**，而且有自动补全。
@@ -31,10 +31,6 @@ interface ImportMetaEnv {
  * Defaults to the local FastAPI identity service when omitted.
  */
   readonly VITE_IDENTITY_API_URL?: string;
-  /** Mock documents, uploads, and conversations API base URL. */
-  readonly VITE_MOCK_API_URL?: string;
-  /** Legacy alias retained while deployments migrate to VITE_MOCK_API_URL. */
-  readonly VITE_API_URL?: string;
 }
 
 interface ImportMeta {

@@ -17,6 +17,7 @@ from cairn_api.authorization.router import router as authorization_router
 from cairn_api.db.errors import DATABASE_UNAVAILABLE_ERRORS
 from cairn_api.db.session import Database
 from cairn_api.errors import ApiProblem, ErrorBody, error_response
+from cairn_api.knowledge.answer_provider import AnswerProvider, OpenAIAnswerProvider
 from cairn_api.knowledge.object_store import (
     Boto3ObjectStore,
     ObjectStore,
@@ -79,6 +80,7 @@ def create_app(
     database: Database | None = None,
     object_store: ObjectStore | None = None,
     embedding_client: SearchEmbeddingClient | None = None,
+    answer_provider: AnswerProvider | None = None,
 ) -> FastAPI:
     current_settings = settings or Settings()
     current_database = database or Database(current_settings.database_url)
@@ -88,6 +90,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(_application: FastAPI) -> AsyncGenerator[None]:
         owned_embedding: OpenAIQueryEmbeddingClient | None = None
+        owned_answer: OpenAIAnswerProvider | None = None
         try:
             if _application.state.embedding_client is None:
                 owned_embedding = OpenAIQueryEmbeddingClient(
@@ -99,6 +102,20 @@ def create_app(
                     timeout_seconds=current_settings.embedding_timeout_seconds,
                 )
                 _application.state.embedding_client = owned_embedding
+            if (
+                _application.state.answer_provider is None
+                and current_settings.answer_base_url is not None
+                and current_settings.answer_api_key is not None
+                and current_settings.answer_model is not None
+            ):
+                owned_answer = OpenAIAnswerProvider(
+                    base_url=str(current_settings.answer_base_url),
+                    api_key=current_settings.answer_api_key.get_secret_value(),
+                    model=current_settings.answer_model,
+                    timeout_seconds=current_settings.answer_timeout_seconds,
+                    protocol=current_settings.answer_protocol,
+                )
+                _application.state.answer_provider = owned_answer
             yield
         finally:
             try:
@@ -107,8 +124,12 @@ def create_app(
                 try:
                     current_object_store.close()
                 finally:
-                    if owned_embedding is not None:
-                        owned_embedding.close()
+                    try:
+                        if owned_embedding is not None:
+                            owned_embedding.close()
+                    finally:
+                        if owned_answer is not None:
+                            owned_answer.close()
 
     application = CairnFastAPI(title="Cairn API", version=__version__, lifespan=lifespan)
     application.cairn_cors_origins = tuple(current_settings.cors_origins)
@@ -116,6 +137,7 @@ def create_app(
     application.state.database = current_database
     application.state.object_store = current_object_store
     application.state.embedding_client = embedding_client
+    application.state.answer_provider = answer_provider
 
     @application.exception_handler(ApiProblem)
     async def api_problem_handler(  # pyright: ignore[reportUnusedFunction]

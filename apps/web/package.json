@@ -9,7 +9,6 @@
     "test:unit": "node scripts/run-unit-tests.mjs",
     "test:react": "vitest run",
     "typecheck": "tsc --noEmit",
-    "mock": "node mocks/docs-server.mjs",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview --port 5500 --strictPort",
@@ -37,7 +36,6 @@
   },
   "dependencies": {
     "@cairn/sdk": "workspace:*",
-    "@cairn/contracts": "workspace:*",
     "@tanstack/react-query": "5.101.4",
     "lucide-react": "^1.28.0",
     "react": "19.2.8",

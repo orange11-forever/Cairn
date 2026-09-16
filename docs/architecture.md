@@ -4,13 +4,14 @@
 
 ## 当前已交付
 
-当前交付前沿为 Stage 3A Task 1–18。
+当前交付前沿为 Stage 3A Task 1–20，并包含项目知识单轮生成式回答。
 
-- React 19、TypeScript 与 Vite 构成 Web 客户端；身份、项目、任务与 `/projects/:projectId/knowledge` 的资源、按需详情、搜索、按需引用上下文、授权下载和真实上传批次连接真实 FastAPI，旧通用文档、Mock 上传和问答仍连接 Node mock。
+- React 19、TypeScript 与 Vite 构成 Web 客户端；登录后默认进入 `/projects`，身份、项目、任务与 `/projects/:projectId/knowledge` 的资源、按需详情、搜索、按需引用上下文、授权下载和真实上传批次连接真实 FastAPI。旧 `/documents` 与 `/ask` 书签重定向到项目工作台。
 - FastAPI 采用模块化单体边界，提供 Cookie 会话、组织身份与 RBAC、项目 ACL、成员角色管理、项目任务、追加式审计、事务性 Outbox、有界 SSE，以及项目授权下的知识上传与资源生命周期 API。
 - PostgreSQL 16/pgvector 与 S3 兼容 MinIO 当前已使用：PostgreSQL 保存业务事实、持久化摄取任务、知识资源、切片和向量，MinIO 保存原始对象与 ZIP 展开产物；生成的 TypeScript SDK 对齐 OpenAPI。Redis 仍是规划中基础设施。
 - Stage 3A Task 1–11 的独立 Worker 已交付，用租约和心跳处理受限归档展开、文档解析、结构化切分、OpenAI 兼容 1024 维 Embedding 与原子索引发布。
-- Stage 3A Task 12 项目范围混合搜索 API 已交付；Task 13 Web 知识工作区基础已交付，包含受保护的项目知识路由、真实资源分页、`canWrite` 权限状态展示与搜索请求/query 边界。Task 14 真实知识资源列表已交付，包含资源元数据、处理状态、只读提示和游标续页。Task 15 真实知识搜索结果已交付，按服务端顺序展示摘录、文件类型、类型化 locator 定位信息与混合检索/关键词降级标签，并处理取消、错误、会话失效和访问权撤销状态。Task 16 搜索卡片内按需引用上下文与授权下载已交付：上下文以“前文 → 命中片段 → 后文”展示纯文本，重新展开会重新授权；下载只把新标签页导航到 Identity API，实时授权后由 `307` 重定向到短时效对象地址，Web 不缓存或读取最终预签名 URL。Task 17 真实上传批次已交付：`/projects/:projectId/knowledge` 仅向 `canWrite` 用户提供文件选择和拖放，最多 20 个文件先完成校验与 SHA-256 摘要，再以最多 2 个并发 `PUT` 直传对象存储并显示逐文件进度，随后调用 `complete` 确认；批次每 2 秒跟踪一次，终止或首次查询满 5 分钟后停止自动跟踪，保留手动刷新且不伪造处理失败。取消只停止当前浏览器操作，已确认的服务端任务仍会继续；可重试的传输或 `complete` 失败使用全新批次与预签名 URL，`contract` 错误不允许重试。全文格式化预览、生成式回答和 Mock 退场仍在后续任务；群组、邀请、成员移除、ACL/成员管理 UI、连接器、Agent 执行和完整模型 Provider 策略层尚未实现。
+- 项目知识单轮回答复用混合搜索与共享限流，在模型调用前后核验全部证据及 `read` 权限，并返回服务器分配的 `S1`–`S6` 引用。真实部署通过可选 `ANSWER_*` 配置接入 Chat Completions、Responses、Claude Messages 或 Gemini GenerateContent 的结构化 JSON 输出；缺失配置时其余 API 保持可用。流式、多轮、历史持久化、网页检索和连接器同步尚未实现。
+- 全文格式化预览、流式/多轮问答与周期性详情轮询仍在后续任务。
 
 Task 18A Web 资源详情已交付：资源行按需内联展开，通过生成 SDK、Cookie credentials 和真实 `GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}` 读取详情。收起会取消请求并销毁局部详情，项目切换或会话代际变化同样取消并销毁旧状态；重新展开和手动刷新都会重新授权，请求中及离线等待期间隐藏旧详情和下载，并禁用自动重连刷新，不进行周期轮询。详情展示安全元数据与处理状态，并把已知失败码映射为安全中文错误指引；仅 `latestVersion.status=ready` 时提供指向 Identity API 的新标签页下载，Web 不读取或缓存最终预签名 URL。详情 `404` 会重新检查当前资源列表，并只把当前搜索标记 stale，不自动重跑搜索；资源列表仍为 `200` 时保留工作区，列表 `404` 才隐藏工作区。
 
@@ -37,6 +38,8 @@ Task 18B 资源操作已交付：仅最新资源列表声明 `canWrite` 且 `lat
 
 ## 阶段路线
 
+下一阶段为 Stage 3B 飞书连接器，范围与接入顺序见[飞书读取基础设计](stage-3b-feishu-reader-design.md)。首个切片建立自建应用凭证和单篇新版文档读取边界；管理员配置、来源与项目绑定、持久化同步、版本幂等、删除/撤权传播和来源权限策略随后接入。当前知识工作区尚不能直接同步飞书文档。
+
 - 阶段 2.5.0：许可证、公开架构、跨平台仓库规则与受 CI 保护的 PR 流程。
 - 阶段 2.5A：RBAC/ACL（已交付），包含组织角色、项目 ACL、成员角色 API、concealment、CSRF，以及权限变化与审计/Outbox 的事务一致性。
 - Stage 3A Task 1–11：知识摄取基础（已交付），包含 Worker、S3/MinIO、Resource/ResourceVersion、解析、分块、Embedding 与原子索引发布。
@@ -44,10 +47,12 @@ Task 18B 资源操作已交付：仅最新资源列表声明 `canWrite` 且 `lat
 - Stage 3A Task 13：真实 Web 知识工作区基础（已交付），包含受保护路由、资源分页与搜索 query 边界。
 - Stage 3A Task 14：真实知识资源列表（已交付），包含标题、文件类型、大小、更新时间、处理状态、只读提示和游标续页。
 - Stage 3A Task 15：真实知识搜索结果（已交付），包含服务端排序摘录、文件类型、类型化 locator、混合检索/关键词降级标签与取消/错误/会话/访问权撤销状态。
-- Stage 3A Task 16：搜索卡片内按需引用上下文与授权下载（已交付），前文、命中片段和后文以纯文本展示，重新展开会重新授权；下载只导航到 Identity API，经实时授权后 `307` 到短时效对象地址并在新标签页打开，Web 不缓存或读取最终预签名 URL。全文格式化预览、生成式回答和 Mock 退场仍在后续任务。
+- Stage 3A Task 16：搜索卡片内按需引用上下文与授权下载（已交付），前文、命中片段和后文以纯文本展示，重新展开会重新授权；下载在新标签页中只导航到 Identity API，实时授权后由 `307` 重定向到短时效对象地址，Web 不缓存或读取最终预签名 URL。
 
-- Stage 3A Task 17：真实上传批次（已交付），含可写项目选择/拖放、校验/摘要、直传进度、complete、批次与 ZIP 状态、取消、五分钟有界跟踪、手动刷新和全新批次传输/确认重试。
+- Stage 3A Task 17：真实上传批次（已交付）。`/projects/:projectId/knowledge` 仅向 `canWrite` 用户提供文件选择和拖放，最多 20 个文件先完成校验与 SHA-256 摘要，再以最多 2 个并发 `PUT` 直传对象存储并显示逐文件进度，随后调用 `complete` 确认；批次每 2 秒跟踪一次，终止或首次查询满 5 分钟后停止自动跟踪，保留手动刷新且不伪造处理失败。取消只停止当前浏览器操作，已确认的服务端任务仍会继续；可重试的传输或 `complete` 失败使用全新批次与预签名 URL，`contract` 错误不允许重试。
 - Stage 3A Task 18A：Web 资源详情（已交付），包含按需真实 GET、收起取消与局部状态销毁、项目/会话隔离、重新展开/手动刷新重新授权、离线隐藏、无自动重连刷新或周期轮询、安全中文失败指引、ready-only Identity API 新标签页下载，以及 detail 404 后精确资源列表重检和搜索 stale/no-POST 边界。
 - Stage 3A Task 18B：资源操作（已交付），仅最新资源列表 `canWrite` 且 `latestVersion.status=failed`、服务端返回 `latestVersion.retryable=true` 时提供带 CSRF 的请求 `resource_id`/`version_id` 精确重试，成功严格为 `200` 且返回体 `id` 匹配请求 `resource_id`、`latestVersion.id` 匹配请求 `version_id`；行内命名软删除确认取消零请求，确认严格为 `204` 空响应。无自动 mutation 重试/离线回放，取消不承诺回滚；删除先取消相关读取，再清理当前项目列表/详情/引用/搜索缓存而不自动 `POST`，并保留其他项目和上传跟踪，覆盖迟到 `401`、列表重检、冲突刷新和契约恢复边界。
+- Stage 3A Task 19：Mock 产品路径退场（已交付），包含默认项目入口、旧 `/documents`/`/ask` 兼容重定向、生成 SDK 错误校验，以及 Node mock 与手写 contracts workspace 移除。
+- Stage 3A Task 20：核心摄取验收（已交付），`dev:core`/`verify:core` 托管本地假 Embedding、API 与 Worker，以真实 MinIO 签名 PUT 验证上传、ready、混合检索、行号引用上下文和授权下载；默认验证不需要外网或 Provider 密钥。
 
 后续 Agent、模型 Provider 和工作流能力必须建立在租户、权限、审计和知识边界之上，不能绕过这些基础能力提前接入生产数据。

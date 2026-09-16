@@ -13,6 +13,7 @@ from typing import Any, Protocol, Self
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
+from cairn_api.db.metadata import load_model_metadata
 from cairn_api.db.session import Database
 from cairn_api.knowledge.models import EmbeddingProfile, EmbeddingProfileStatus, JobKind
 from cairn_api.knowledge.object_store import Boto3ObjectStore, ObjectStore
@@ -33,6 +34,8 @@ from cairn_worker.leases import (
     fail_job,
     renew_lease,
 )
+
+load_model_metadata()
 
 REQUIRED_JOB_KINDS = frozenset({JobKind.EXPAND_ARCHIVE, JobKind.INDEX_RESOURCE_VERSION})
 _WORKER_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")

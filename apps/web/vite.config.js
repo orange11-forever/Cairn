@@ -35,7 +35,7 @@ export default defineConfig({
   // 一份配置管全套，Docker Compose 也是从仓库根读。
   //
   // 不设这一项的后果是**静默失效**：根目录的 .env 被无声忽略，
-  // VITE_API_URL 永远是 undefined，然后 client.ts 的 ?? 兜底生效，
+  // VITE_IDENTITY_API_URL 会静默缺失，然后浏览器连接本地默认地址。
   // 于是"配了但没生效"——而页面看起来完全正常，只是连的是 localhost。
   // 这类"兜底值掩盖了配置没读到"的问题非常难查，所以宁可显式写明。
   envDir: REPOSITORY_ROOT,

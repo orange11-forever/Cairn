@@ -5,7 +5,7 @@ import { describe, expect, test } from "vitest";
 
 import { MascotAssistant } from "../../src/components/MascotAssistant.tsx";
 
-function renderAssistant(page: "documents" | "ask" = "documents") {
+function renderAssistant(page: "projects" | "knowledge" = "projects") {
   return render(
     <MemoryRouter>
       <MascotAssistant page={page} />
@@ -14,7 +14,7 @@ function renderAssistant(page: "documents" | "ask" = "documents") {
 }
 
 describe("MascotAssistant", () => {
-  test("opens with document context and closes with Escape", async () => {
+  test("opens with project context and closes with Escape", async () => {
     const user = userEvent.setup();
     renderAssistant();
 
@@ -27,7 +27,7 @@ describe("MascotAssistant", () => {
 
     await user.click(trigger);
     const dialog = screen.getByRole("dialog", { name: "岑宁助手" });
-    expect(dialog).toHaveTextContent("知识文档");
+    expect(dialog).toHaveTextContent("项目任务助手");
     expect(within(dialog).getByRole("img", { name: "岑宁，Cairn 助手" })).toHaveAttribute(
       "data-variant",
       "half",
@@ -43,12 +43,12 @@ describe("MascotAssistant", () => {
     expect(trigger).toHaveFocus();
   });
 
-  test("uses question context and closes after an outside click", async () => {
+  test("uses project knowledge context and closes after an outside click", async () => {
     const user = userEvent.setup();
-    renderAssistant("ask");
+    renderAssistant("knowledge");
 
     await user.click(screen.getByRole("button", { name: "打开岑宁助手" }));
-    expect(screen.getByRole("dialog", { name: "岑宁助手" })).toHaveTextContent("知识问答");
+    expect(screen.getByRole("dialog", { name: "岑宁助手" })).toHaveTextContent("项目知识助手");
 
     await user.click(document.body);
     expect(screen.queryByRole("dialog", { name: "岑宁助手" })).toBeNull();
