@@ -384,6 +384,7 @@ def build_runtime_handlers(
     settings: Settings | None = None,
 ) -> dict[JobKind, JobHandler]:
     from cairn_worker.archive import build_archive_handler
+    from cairn_worker.feishu_sync import build_feishu_sync_handler
     from cairn_worker.indexing import build_index_handler
 
     configured = settings or Settings()
@@ -391,6 +392,10 @@ def build_runtime_handlers(
     handlers.setdefault(
         JobKind.INDEX_RESOURCE_VERSION,
         build_index_handler(object_store, OpenAIEmbeddingClient.from_settings(configured)),
+    )
+    handlers.setdefault(
+        JobKind.SYNC_FEISHU_SOURCE,
+        build_feishu_sync_handler(object_store=object_store),
     )
     handlers[JobKind.EXPAND_ARCHIVE] = build_archive_handler(
         object_store=object_store,

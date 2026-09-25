@@ -1,4 +1,4 @@
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Iterable, Sequence
 from contextlib import asynccontextmanager
 from typing import Literal
 
@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
+from starlette.routing import BaseRoute, Match, Router
 from starlette.types import ASGIApp
 
 from cairn_api import __version__
@@ -25,6 +26,7 @@ from cairn_api.knowledge.object_store import (
 )
 from cairn_api.knowledge.router import router as knowledge_router
 from cairn_api.knowledge.search_service import OpenAIQueryEmbeddingClient, SearchEmbeddingClient
+from cairn_api.knowledge.source_router import router as knowledge_source_router
 from cairn_api.logging import configure_app_logging
 from cairn_api.middleware import RequestIdMiddleware, new_request_id
 from cairn_api.organizations.router import router as organizations_router
@@ -68,6 +70,15 @@ class CairnFastAPI(FastAPI):
                 expose_headers=["X-Request-ID", "Retry-After"],
             )
         return RequestIdMiddleware(application)
+
+
+def _leaf_routes(routes: Sequence[BaseRoute]) -> Iterable[BaseRoute]:
+    for route in routes:
+        original_router = getattr(route, "original_router", None)
+        if isinstance(original_router, Router):
+            yield from _leaf_routes(original_router.routes)
+        else:
+            yield route
 
 
 def get_request_id(request: Request) -> str:
@@ -166,8 +177,13 @@ def create_app(
         }.get(exc.status_code, ("http_error", "请求失败"))
         headers = None
         if exc.status_code == 405 and exc.headers is not None:
-            allow = exc.headers.get("Allow")
-            if allow is not None:
+            allowed_methods: set[str] = set()
+            for route in _leaf_routes(request.app.routes):
+                match, _child_scope = route.matches(request.scope)
+                if match is Match.PARTIAL:
+                    allowed_methods.update(getattr(route, "methods", set()))
+            allow = ", ".join(sorted(allowed_methods)) or exc.headers.get("Allow")
+            if allow:
                 headers = {"Allow": allow}
         return error_response(
             status_code=exc.status_code,
@@ -277,6 +293,7 @@ def create_app(
     application.include_router(authorization_router)
     application.include_router(projects_router)
     application.include_router(knowledge_router)
+    application.include_router(knowledge_source_router)
 
     return application
 

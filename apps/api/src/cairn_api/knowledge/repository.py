@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import exists, false, func, or_, select
 from sqlalchemy.orm import Session, aliased
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -24,6 +24,7 @@ from cairn_api.knowledge.models import (
     ResourceVersionStatus,
     UploadSession,
 )
+from cairn_api.knowledge.source_access import source_access_filter
 from cairn_api.pagination import decode_cursor, encode_cursor
 from cairn_api.projects.models import OutboxEvent
 
@@ -67,6 +68,44 @@ def get_batch_detail(
     batch_id: UUID,
     access_filter: ColumnElement[bool],
 ) -> tuple[IngestionBatch, list[IngestionItem]] | None:
+    linked_item = aliased(IngestionItem)
+    linked_resource = aliased(KnowledgeResource)
+    linked_version = aliased(KnowledgeResourceVersion)
+    has_invalid_linked_source = exists(
+        select(1)
+        .select_from(linked_item)
+        .outerjoin(
+            linked_resource,
+            (linked_resource.org_id == linked_item.org_id)
+            & (linked_resource.project_id == linked_item.project_id)
+            & (linked_resource.id == linked_item.resource_id),
+        )
+        .outerjoin(
+            linked_version,
+            (linked_version.org_id == linked_item.org_id)
+            & (linked_version.project_id == linked_item.project_id)
+            & (linked_version.resource_id == linked_item.resource_id)
+            & (linked_version.id == linked_item.resource_version_id),
+        )
+        .where(
+            linked_item.org_id == IngestionBatch.org_id,
+            linked_item.project_id == IngestionBatch.project_id,
+            linked_item.batch_id == IngestionBatch.id,
+            or_(
+                linked_item.resource_id.is_not(None),
+                linked_item.resource_version_id.is_not(None),
+            ),
+            func.coalesce(
+                source_access_filter(
+                    org_id=org_id,
+                    project_id=project_id,
+                    resource=linked_resource,
+                    version=linked_version,
+                ),
+                false(),
+            ).is_(False),
+        )
+    )
     rows = session.execute(
         select(IngestionBatch, IngestionItem)
         .outerjoin(
@@ -79,6 +118,7 @@ def get_batch_detail(
             IngestionBatch.org_id == org_id,
             IngestionBatch.project_id == project_id,
             IngestionBatch.id == batch_id,
+            ~has_invalid_linked_source,
             access_filter,
         )
         .order_by(IngestionItem.created_at, IngestionItem.id)
@@ -112,6 +152,7 @@ def list_resources(
             KnowledgeResource.org_id == org_id,
             KnowledgeResource.project_id == project_id,
             KnowledgeResource.deleted_at.is_(None),
+            source_access_filter(org_id=org_id, project_id=project_id),
             access_filter,
         )
     )
@@ -159,6 +200,7 @@ def get_active_resource(
             KnowledgeResource.project_id == project_id,
             KnowledgeResource.id == resource_id,
             KnowledgeResource.deleted_at.is_(None),
+            source_access_filter(org_id=org_id, project_id=project_id),
             access_filter,
         )
     ).one_or_none()
@@ -190,6 +232,7 @@ def get_resource_observation(
             KnowledgeResource.project_id == project_id,
             KnowledgeResource.id == resource_id,
             KnowledgeResource.deleted_at.is_(None),
+            source_access_filter(org_id=org_id, project_id=project_id),
             access_filter,
         )
     ).one_or_none()
@@ -207,43 +250,32 @@ def get_resource_version_job_for_update(
     resource_id: UUID,
     version_id: UUID,
 ) -> tuple[KnowledgeResource, KnowledgeResourceVersion, IngestionJob] | None:
-    resource = session.scalar(
-        select(KnowledgeResource)
+    row = session.execute(
+        select(KnowledgeResource, KnowledgeResourceVersion, IngestionJob)
+        .join(
+            KnowledgeResourceVersion,
+            (KnowledgeResourceVersion.org_id == KnowledgeResource.org_id)
+            & (KnowledgeResourceVersion.project_id == KnowledgeResource.project_id)
+            & (KnowledgeResourceVersion.resource_id == KnowledgeResource.id),
+        )
+        .join(
+            IngestionJob,
+            (IngestionJob.org_id == KnowledgeResourceVersion.org_id)
+            & (IngestionJob.project_id == KnowledgeResourceVersion.project_id)
+            & (IngestionJob.job_kind == JobKind.INDEX_RESOURCE_VERSION)
+            & (IngestionJob.target_id == KnowledgeResourceVersion.id),
+        )
         .where(
             KnowledgeResource.org_id == org_id,
             KnowledgeResource.project_id == project_id,
             KnowledgeResource.id == resource_id,
             KnowledgeResource.deleted_at.is_(None),
-        )
-        .with_for_update()
-    )
-    if resource is None:
-        return None
-    version = session.scalar(
-        select(KnowledgeResourceVersion)
-        .where(
-            KnowledgeResourceVersion.org_id == org_id,
-            KnowledgeResourceVersion.project_id == project_id,
-            KnowledgeResourceVersion.resource_id == resource_id,
             KnowledgeResourceVersion.id == version_id,
+            source_access_filter(org_id=org_id, project_id=project_id),
         )
-        .with_for_update()
-    )
-    if version is None:
-        return None
-    job = session.scalar(
-        select(IngestionJob)
-        .where(
-            IngestionJob.org_id == org_id,
-            IngestionJob.project_id == project_id,
-            IngestionJob.job_kind == JobKind.INDEX_RESOURCE_VERSION,
-            IngestionJob.target_id == version_id,
-        )
-        .with_for_update()
-    )
-    if job is None:
-        return None
-    return resource, version, job
+        .with_for_update(of=(KnowledgeResource, KnowledgeResourceVersion, IngestionJob))
+    ).one_or_none()
+    return None if row is None else (row[0], row[1], row[2])
 
 
 def queue_manual_retry(
@@ -291,15 +323,23 @@ def soft_delete_resource(
     deleted_by: UUID,
     deleted_at: datetime,
 ) -> tuple[KnowledgeResource, bool] | None:
-    resource = session.scalar(
-        select(KnowledgeResource)
+    resource = session.execute(
+        select(KnowledgeResource, KnowledgeResourceVersion)
+        .outerjoin(
+            KnowledgeResourceVersion,
+            (KnowledgeResourceVersion.org_id == KnowledgeResource.org_id)
+            & (KnowledgeResourceVersion.project_id == KnowledgeResource.project_id)
+            & (KnowledgeResourceVersion.resource_id == KnowledgeResource.id)
+            & (KnowledgeResourceVersion.id == _latest_version_id()),
+        )
         .where(
             KnowledgeResource.org_id == org_id,
             KnowledgeResource.project_id == project_id,
             KnowledgeResource.id == resource_id,
+            source_access_filter(org_id=org_id, project_id=project_id),
         )
-        .with_for_update()
-    )
+        .with_for_update(of=KnowledgeResource)
+    ).scalar_one_or_none()
     if resource is None:
         return None
     changed = resource.deleted_at is None
@@ -365,6 +405,7 @@ def get_chunk_context(
             KnowledgeResource.id == resource_id,
             KnowledgeResource.deleted_at.is_(None),
             KnowledgeResourceVersion.status == ResourceVersionStatus.READY,
+            source_access_filter(org_id=org_id, project_id=project_id),
             access_filter,
         )
     ).one_or_none()

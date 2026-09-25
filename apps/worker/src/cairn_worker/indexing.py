@@ -24,6 +24,10 @@ from cairn_api.knowledge.models import (
     ResourceVersionStatus,
 )
 from cairn_api.knowledge.object_store import ObjectNotFound, ObjectStoreUnavailable
+from cairn_api.knowledge.source_access import (
+    is_canonical_feishu_revision,
+    validate_index_source,
+)
 from sqlalchemy import delete, select, text
 from sqlalchemy.orm import Session
 
@@ -62,6 +66,10 @@ def _failure(code: str) -> WorkerFailure:
     if code == "upload_size_mismatch":
         return WorkerFailure(code, "", retryable=False)
     return WorkerFailure.for_code(code, "")
+
+
+def _source_revoked_failure() -> WorkerFailure:
+    return WorkerFailure("parser_failed", "", retryable=False)
 
 
 def _profile_value(client: EmbeddingClient, name: str) -> object:
@@ -145,8 +153,15 @@ def _target(
         KnowledgeResourceVersion.project_id == claim.project_id,
     )
     if lock:
-        job_statement = job_statement.with_for_update()
-        version_statement = version_statement.with_for_update()
+        job_statement = job_statement.with_for_update().execution_options(
+            populate_existing=True
+        )
+        # FOR NO KEY UPDATE permits the KEY SHARE of a duplicate sync's result FK
+        # while it holds the resource. Publication only changes non-key status/timing;
+        # FOR UPDATE here would create a version→resource→version deadlock.
+        version_statement = version_statement.with_for_update(key_share=True).execution_options(
+            populate_existing=True
+        )
     job = session.scalar(job_statement)
     version = session.scalar(version_statement)
     if job is None or version is None:
@@ -164,8 +179,12 @@ def _target(
         IngestionItem.resource_version_id == version.id,
     )
     if lock:
-        resource_statement = resource_statement.with_for_update()
-        item_statement = item_statement.with_for_update()
+        resource_statement = resource_statement.with_for_update().execution_options(
+            populate_existing=True
+        )
+        item_statement = item_statement.with_for_update().execution_options(
+            populate_existing=True
+        )
     resource = session.scalar(resource_statement)
     item = session.scalar(item_statement)
     profile = _active_profile(session, org_id=claim.org_id, lock=lock)
@@ -463,6 +482,15 @@ def handle_index_resource_version(claim: ClaimedJob, context: IndexingContext) -
     target = _target(session, claim, context.embedding_client, lock=False)
     if target.completed:
         return
+    if not validate_index_source(
+        session,
+        org_id=claim.org_id,
+        project_id=claim.project_id,
+        resource_id=target.resource.id,
+        version_id=target.version.id,
+        lock_source=False,
+    ):
+        raise _source_revoked_failure()
     drafts = _prepare_document(target.version, target.profile, context)
     context.heartbeat.ensure_owned()
     chunks = _replace_chunks(
@@ -487,6 +515,28 @@ def handle_index_resource_version(claim: ClaimedJob, context: IndexingContext) -
         return
     if locked.profile.id != target.profile.id:
         raise _failure("parser_failed")
+    if not validate_index_source(
+        session,
+        org_id=claim.org_id,
+        project_id=claim.project_id,
+        resource_id=locked.resource.id,
+        version_id=locked.version.id,
+        lock_source=True,
+    ):
+        raise _source_revoked_failure()
+    if (
+        locked.resource.source_type == "feishu"
+        and locked.resource.current_version_id is not None
+        and locked.resource.current_version_id != locked.version.id
+        and is_canonical_feishu_revision(locked.version.source_version)
+    ):
+        current = session.get(KnowledgeResourceVersion, locked.resource.current_version_id)
+        if (
+            current is not None
+            and is_canonical_feishu_revision(current.source_version)
+            and int(current.source_version) > int(locked.version.source_version)
+        ):
+            raise _source_revoked_failure()
     context.heartbeat.ensure_owned()
     publication_time = context.now()
     for boundary in (locked.version.processing_started_at, locked.job.heartbeat_at):

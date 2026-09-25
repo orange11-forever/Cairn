@@ -76,6 +76,7 @@ class ResourceSourceType(StrEnum):
 class JobKind(StrEnum):
     EXPAND_ARCHIVE = "expand_archive"
     INDEX_RESOURCE_VERSION = "index_resource_version"
+    SYNC_FEISHU_SOURCE = "sync_feishu_source"
 
 
 class JobAttemptTrigger(StrEnum):
@@ -565,7 +566,8 @@ class IngestionJob(Base):
             name="uq_ingestion_jobs_kind_target_profile",
         ),
         CheckConstraint(
-            "job_kind IN ('expand_archive','index_resource_version')", name="kind_values"
+            "job_kind IN ('expand_archive','index_resource_version','sync_feishu_source')",
+            name="kind_values",
         ),
         CheckConstraint(
             "status IN ('queued','running','completed','failed')", name="status_values"

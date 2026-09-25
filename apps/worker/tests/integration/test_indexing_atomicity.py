@@ -35,6 +35,7 @@ from cairn_api.knowledge.models import (
     ResourceVersionStatus,
 )
 from cairn_api.knowledge.object_store import ObjectStoreUnavailable
+from cairn_api.knowledge.source_models import KnowledgeSource
 from cairn_api.projects.models import OutboxEvent
 from cairn_worker.embedding import OpenAIEmbeddingClient
 from cairn_worker.errors import WorkerFailure
@@ -45,7 +46,7 @@ from cairn_worker.indexing import (
 )
 from cairn_worker.leases import ClaimedJob, claim_next_job
 from cairn_worker.runner import run_once
-from sqlalchemy import Engine, delete, event, func, select
+from sqlalchemy import Engine, delete, event, func, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from .conftest import seed_job
@@ -327,6 +328,247 @@ def _run(
         now=lambda: seed.now,
         heartbeat_factory=heartbeat_factory,
     )
+
+
+def _configure_feishu_source(
+    engine: Engine,
+    seed: _Seed,
+    *,
+    disabled: bool = False,
+) -> UUID:
+    source_id = uuid4()
+    external_id = f"doc-{uuid4().hex}"
+    with Session(engine) as session, session.begin():
+        session.add(
+            KnowledgeSource(
+                id=source_id,
+                org_id=seed.org_id,
+                project_id=seed.project_id,
+                name="Worker source",
+                external_id=external_id,
+                credential_ref=f"credential_{uuid4().hex}",
+                access_policy="project_members",
+                status="disabled" if disabled else "configured",
+                disabled_at=seed.now if disabled else None,
+            )
+        )
+        resource = session.get(KnowledgeResource, seed.resource_id)
+        assert resource is not None
+        resource.source_type = ResourceSourceType.FEISHU
+        resource.source_id = str(source_id)
+        resource.external_id = external_id
+        versions = session.scalars(
+            select(KnowledgeResourceVersion).where(
+                KnowledgeResourceVersion.resource_id == seed.resource_id
+            )
+        )
+        for version in versions:
+            version.source_type = ResourceSourceType.FEISHU
+            version.source_id = str(source_id)
+            version.external_id = external_id
+    return source_id
+
+
+@pytest.mark.integration
+def test_configured_feishu_source_indexes_successfully(migrated_engine: Engine) -> None:
+    seed = _seed(migrated_engine)
+    _configure_feishu_source(migrated_engine, seed)
+    store, embedding = _Store(), _Embedding()
+
+    assert _run(migrated_engine, seed, store, embedding)
+
+    assert store.opens == 1
+    assert embedding.calls
+    with Session(migrated_engine) as session:
+        resource = session.get(KnowledgeResource, seed.resource_id)
+        assert resource is not None and resource.current_version_id == seed.target_version_id
+
+
+@pytest.mark.integration
+def test_disabled_feishu_source_fails_before_object_or_embedding_io(
+    migrated_engine: Engine,
+) -> None:
+    seed = _seed(migrated_engine)
+    _configure_feishu_source(migrated_engine, seed, disabled=True)
+    store, embedding = _Store(), _Embedding()
+
+    assert _run(migrated_engine, seed, store, embedding)
+
+    assert store.opens == 0
+    assert embedding.calls == []
+    with Session(migrated_engine) as session:
+        resource = session.get(KnowledgeResource, seed.resource_id)
+        version = session.get(KnowledgeResourceVersion, seed.target_version_id)
+        assert resource is not None and resource.current_version_id == seed.old_version_id
+        assert version is not None and version.status == ResourceVersionStatus.FAILED
+        assert version.error_code == "parser_failed"
+
+
+@pytest.mark.integration
+def test_disable_during_embedding_rolls_back_index_and_publication(
+    migrated_engine: Engine,
+) -> None:
+    seed = _seed(migrated_engine)
+    source_id = _configure_feishu_source(migrated_engine, seed)
+
+    def disable() -> None:
+        with Session(migrated_engine) as session, session.begin():
+            source = session.get(KnowledgeSource, source_id)
+            assert source is not None
+            source.status = "disabled"
+            source.disabled_at = seed.now
+
+    store = _Store()
+    embedding = _Embedding(after_call=disable)
+    assert _run(migrated_engine, seed, store, embedding)
+
+    assert store.opens == 1
+    assert embedding.calls
+    with Session(migrated_engine) as session:
+        resource = session.get(KnowledgeResource, seed.resource_id)
+        version = session.get(KnowledgeResourceVersion, seed.target_version_id)
+        chunks = session.scalar(
+            select(func.count()).select_from(KnowledgeChunk).where(
+                KnowledgeChunk.resource_version_id == seed.target_version_id
+            )
+        )
+        assert resource is not None and resource.current_version_id == seed.old_version_id
+        assert version is not None and version.status == ResourceVersionStatus.FAILED
+        assert version.error_code == "parser_failed"
+        assert chunks == 1
+
+
+@pytest.mark.integration
+def test_final_publication_lock_serializes_disable(
+    migrated_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seed = _seed(migrated_engine)
+    source_id = _configure_feishu_source(migrated_engine, seed)
+    attempted, finished = Event(), Event()
+    errors: list[BaseException] = []
+    threads: list[Thread] = []
+
+    def disable() -> None:
+        try:
+            with Session(migrated_engine) as session, session.begin():
+                attempted.set()
+                session.execute(
+                    update(KnowledgeSource)
+                    .where(KnowledgeSource.id == source_id)
+                    .values(status="disabled", disabled_at=seed.now)
+                )
+        except BaseException as exc:  # noqa: BLE001
+            errors.append(exc)
+        finally:
+            finished.set()
+
+    original_publish = indexing_module._publish  # pyright: ignore[reportPrivateUsage]
+
+    def publish_while_disable_waits(*args: Any, **kwargs: Any) -> None:
+        thread = Thread(target=disable)
+        threads.append(thread)
+        thread.start()
+        assert attempted.wait(2)
+        assert not finished.wait(0.2)
+        original_publish(*args, **kwargs)
+
+    monkeypatch.setattr(indexing_module, "_publish", publish_while_disable_waits)
+
+    assert _run(migrated_engine, seed, _Store(), _Embedding())
+
+    assert finished.wait(2)
+    for thread in threads:
+        thread.join(timeout=2)
+    assert not errors
+    with Session(migrated_engine) as session:
+        source = session.get(KnowledgeSource, source_id)
+        resource = session.get(KnowledgeResource, seed.resource_id)
+        assert source is not None and source.status == "disabled"
+        assert resource is not None and resource.current_version_id == seed.target_version_id
+
+
+@pytest.mark.integration
+def test_older_feishu_revision_cannot_replace_newer_published_revision(
+    migrated_engine: Engine,
+) -> None:
+    seed = _seed(migrated_engine)
+    _configure_feishu_source(migrated_engine, seed)
+    with Session(migrated_engine) as session, session.begin():
+        old = session.get(KnowledgeResourceVersion, seed.old_version_id)
+        target = session.get(KnowledgeResourceVersion, seed.target_version_id)
+        assert old is not None and target is not None
+        old.source_version = "13"
+        target.source_version = "12"
+
+    assert _run(migrated_engine, seed, _Store(), _Embedding())
+
+    with Session(migrated_engine) as session:
+        resource = session.get(KnowledgeResource, seed.resource_id)
+        target = session.get(KnowledgeResourceVersion, seed.target_version_id)
+        assert resource is not None and resource.current_version_id == seed.old_version_id
+        assert target is not None and target.status == ResourceVersionStatus.FAILED
+        assert target.error_code == "parser_failed"
+
+
+@pytest.mark.integration
+def test_newer_feishu_publication_between_observation_and_final_lock_wins(
+    migrated_engine: Engine,
+) -> None:
+    seed = _seed(migrated_engine)
+    _configure_feishu_source(migrated_engine, seed)
+    with Session(migrated_engine) as session, session.begin():
+        old = session.get(KnowledgeResourceVersion, seed.old_version_id)
+        target = session.get(KnowledgeResourceVersion, seed.target_version_id)
+        assert old is not None and target is not None
+        old.source_version = "11"
+        target.source_version = "12"
+
+    newer_id = uuid4()
+
+    def publish_newer() -> None:
+        with Session(migrated_engine) as session, session.begin():
+            resource = session.get(KnowledgeResource, seed.resource_id)
+            target = session.get(KnowledgeResourceVersion, seed.target_version_id)
+            assert resource is not None and target is not None
+            session.add(
+                KnowledgeResourceVersion(
+                    id=newer_id,
+                    org_id=seed.org_id,
+                    project_id=seed.project_id,
+                    resource_id=seed.resource_id,
+                    source_type=target.source_type,
+                    source_id=target.source_id,
+                    external_id=target.external_id,
+                    source_version="13",
+                    object_key=f"orgs/{seed.org_id}/newer-{newer_id}.txt",
+                    media_type="text/plain",
+                    size_bytes=3,
+                    sha256=hashlib.sha256(b"new").hexdigest(),
+                    parser_profile="default-v1",
+                    chunking_profile="default-v1",
+                    status=ResourceVersionStatus.READY,
+                    created_at=seed.now,
+                    processing_started_at=seed.now,
+                    ready_at=seed.now,
+                )
+            )
+            session.flush()
+            resource.current_version_id = newer_id
+
+    assert _run(
+        migrated_engine,
+        seed,
+        _Store(),
+        _Embedding(after_call=publish_newer),
+    )
+
+    with Session(migrated_engine) as session:
+        resource = session.get(KnowledgeResource, seed.resource_id)
+        target = session.get(KnowledgeResourceVersion, seed.target_version_id)
+        assert resource is not None and resource.current_version_id == newer_id
+        assert target is not None and target.status == ResourceVersionStatus.FAILED
+        assert target.error_code == "parser_failed"
 
 
 @pytest.mark.integration
