@@ -18,6 +18,7 @@ from cairn_api.knowledge.models import (
     SearchRateLimitBucket,
     UploadSession,
 )
+from cairn_api.knowledge.source_models import KnowledgeSource
 from cairn_api.organizations.models import Membership, Organization
 from cairn_api.projects.models import (
     Milestone,
@@ -50,6 +51,7 @@ _MAPPED_TYPES = (
     KnowledgeChunk,
     KnowledgeResource,
     KnowledgeResourceVersion,
+    KnowledgeSource,
     Membership,
     Milestone,
     Organization,

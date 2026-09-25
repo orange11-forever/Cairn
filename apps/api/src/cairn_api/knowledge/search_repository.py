@@ -16,6 +16,7 @@ from cairn_api.knowledge.models import (
     KnowledgeResourceVersion,
     ResourceVersionStatus,
 )
+from cairn_api.knowledge.source_access import source_access_filter
 
 SEARCH_CANDIDATE_LIMIT = 50
 
@@ -74,6 +75,7 @@ def _authorized_current_chunks(
         KnowledgeResourceVersion.org_id == org_id,
         KnowledgeResourceVersion.project_id == project_id,
         KnowledgeResourceVersion.status == ResourceVersionStatus.READY,
+        source_access_filter(org_id=org_id, project_id=project_id),
         access_filter,
     )
 

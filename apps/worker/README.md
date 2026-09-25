@@ -37,21 +37,38 @@ Worker 通过 OpenAI 兼容 `/embeddings` 接口分批生成严格 1024 维向�
 
 ## 飞书文档读取边界
 
-`cairn_worker.feishu.FeishuDocumentClient` 是一个可独立调用的内部读取器。它使用服务端自建应用凭证读取一个明确的飞书新版文档 ID，并返回标题、revision、原样纯文本和内容 SHA-256。调用方应从环境或密钥管理设施读取凭证，例如：
+`cairn_worker.feishu.FeishuDocumentClient` 是一个可独立调用的内部读取器。它使用服务端自建应用凭证读取一个明确的飞书新版文档 ID，并返回标题、revision、原样纯文本和内容 SHA-256。`cairn_worker.feishu_credentials.FeishuCredentialResolver` 提供独立的部署凭证解析边界：只读取可选的 `CAIRN_FEISHU_CREDENTIALS_JSON`，按组织 UUID 与不透明别名精确解析，并为每次调用创建独立客户端。配置格式如下，示例值均为合成数据：
 
-```python
-import os
-
-from cairn_worker.feishu import FeishuDocumentClient
-
-client = FeishuDocumentClient(
-    app_id=os.environ["FEISHU_APP_ID"],
-    app_secret=os.environ["FEISHU_APP_SECRET"],
-)
-snapshot = client.read_document(os.environ["FEISHU_DOCUMENT_ID"])
+```json
+{
+  "11111111-1111-4111-8111-111111111111": {
+    "engineering_feishu": {
+      "appId": "demo-app",
+      "appSecret": "demo-secret"
+    }
+  }
+}
 ```
 
-此读取器尚未接入 Worker 任务、持久化、项目来源权限或用户界面，也没有生产凭证配置入口，因此当前不构成用户可操作的飞书同步功能。读取流程在正文前后核对 metadata，但飞书纯文本接口不绑定 revision，不能据此声称获得服务端原子快照；后续同步层仍须处理重试、幂等、来源 ACL、撤权和删除传播。
+调用方必须从经过授权检查的持久化来源上下文提供组织 ID 与 `credentialRef`：
+
+```python
+from uuid import UUID
+
+from cairn_worker.feishu_credentials import FeishuCredentialResolver
+
+resolver = FeishuCredentialResolver.from_environment()
+client = resolver.create_client(
+    org_id=UUID("11111111-1111-4111-8111-111111111111"),
+    credential_ref="engineering_feishu",
+)
+```
+
+环境变量缺失时解析器使用空映射，因此现有上传 Worker 不会因未启用飞书而增加启动要求。解析器不建立当前用户授权、不检查来源是否启用，也不决定 `project_members` 分享策略；加载、查找和客户端构造不联网，同一客户端实例内部的 token 缓存不会跨组织或凭证共享。索引处理器独立使用可信任务、资源和版本事实，在读取对象前验证来源，并在最终发布前锁定来源行后重新验证；停用先提交会阻止发布，发布先取得锁时停用等待提交，随后内容读取立即被过滤。
+
+读取器和凭证解析器已接入管理员手动触发的 Worker 同步任务，但尚未接入用户界面或完成真实生产租户验收。读取流程在正文前后核对 metadata，但飞书纯文本接口不绑定 revision，不能据此声称获得服务端原子快照；后续仍须处理定时触发和外部删除传播。当前索引发布边界已经执行来源授权和停用撤回。
+
+手动同步任务现已接入 Worker：运行时按需解析部署凭证，读取单个登记文档，把 UTF-8 快照写入对象存储并原子创建资源版本和既有索引任务。相同 revision/hash 复用事实，同 revision 不同 hash 安全重试，较旧 revision 终止且不会覆盖较新发布版本；软删除资源不会自动复活。普通上传启动和预检不要求配置飞书凭证。定时同步、webhook、外部删除传播与真实租户验收仍待完成。
 
 ## 对象存储与回滚边界
 
@@ -64,7 +81,7 @@ Worker 以流式/有界方式从 S3/MinIO 读取源对象。ZIP 子项写入对�
 - 提供或执行 Task 12 混合搜索查询；
 - 执行 Temporal Agent 工作流、模型对话或 AgentRunner 调度；
 - 执行资源软删除之后的对象/索引清除传播；
-- 同步飞书、GitHub、Wiki、云盘等连接器或处理外部来源删除传播。
+- 飞书周期/目录同步、GitHub/Wiki/云盘等其他连接器，或上游权限撤回与外部来源删除传播。
 
 ## 质量检查
 

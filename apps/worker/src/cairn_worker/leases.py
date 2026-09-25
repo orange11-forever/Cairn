@@ -357,6 +357,8 @@ def _terminalize_target(
     safe_detail: str,
     now: datetime,
 ) -> dict[str, object]:
+    if JobKind(job.job_kind) == JobKind.SYNC_FEISHU_SOURCE:
+        return {"sourceSyncId": str(job.target_id)}
     if JobKind(job.job_kind) == JobKind.EXPAND_ARCHIVE:
         item = session.scalar(
             select(IngestionItem)

@@ -17,6 +17,7 @@ KNOWLEDGE_TABLES = {
     "embedding_profiles",
     "chunk_embeddings",
     "search_rate_limit_buckets",
+    "knowledge_sources",
 }
 
 
@@ -103,6 +104,12 @@ def test_knowledge_migration_exposes_stable_status_and_safety_constraints(
             "ck_search_rate_limit_buckets_subject_type_values",
             "ck_search_rate_limit_buckets_nonnegative_count",
         },
+        "knowledge_sources": {
+            "ck_knowledge_sources_provider_values",
+            "ck_knowledge_sources_access_policy_values",
+            "ck_knowledge_sources_status_values",
+            "ck_knowledge_sources_status_disabled_at",
+        },
     }
     for table_name, names in expected.items():
         actual = {constraint["name"] for constraint in inspector.get_check_constraints(table_name)}
@@ -116,6 +123,20 @@ def test_knowledge_migration_builds_idempotency_and_search_indexes(
     inspector = inspect(migrated_engine)
     upload_uniques = inspector.get_unique_constraints("upload_sessions")
     assert any(item["column_names"] == ["object_key"] for item in upload_uniques)
+
+    source_uniques = inspector.get_unique_constraints("knowledge_sources")
+    assert any(
+        item["column_names"]
+        == ["org_id", "project_id", "provider", "credential_ref", "external_id"]
+        for item in source_uniques
+    )
+    source_foreign_keys = inspector.get_foreign_keys("knowledge_sources")
+    assert any(
+        item["constrained_columns"] == ["org_id", "project_id"]
+        and item["referred_table"] == "projects"
+        and item["referred_columns"] == ["org_id", "id"]
+        for item in source_foreign_keys
+    )
 
     version_uniques = inspector.get_unique_constraints("knowledge_resource_versions")
     assert any(

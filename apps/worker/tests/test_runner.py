@@ -388,7 +388,7 @@ def test_runtime_handler_assembly_registers_the_production_index_handler(
 
     runtime.preflight()
 
-    assert set(handlers) == REQUIRED_JOB_KINDS
+    assert set(handlers) == REQUIRED_JOB_KINDS | {JobKind.SYNC_FEISHU_SOURCE}
     assert events == ["database", "object-store", "embedding"]
     observed: list[ClaimedJob] = []
 
@@ -425,7 +425,7 @@ def test_runtime_claims_all_job_kinds_with_production_handlers(
         worker_id="worker-a:1",
         handlers=handlers,
     )
-    assert observed_job_kinds == [REQUIRED_JOB_KINDS]
+    assert observed_job_kinds == [REQUIRED_JOB_KINDS | {JobKind.SYNC_FEISHU_SOURCE}]
 
 
 @pytest.mark.parametrize(

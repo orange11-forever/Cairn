@@ -424,6 +424,40 @@ export const componentSchemas = {
     "title": "ErrorBody",
     "type": "object"
   },
+  "FeishuSourceCreateRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "accessPolicy": {
+        "const": "project_members",
+        "title": "Accesspolicy",
+        "type": "string"
+      },
+      "credentialRef": {
+        "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+        "title": "Credentialref",
+        "type": "string"
+      },
+      "documentId": {
+        "pattern": "^[A-Za-z0-9]{1,128}$",
+        "title": "Documentid",
+        "type": "string"
+      },
+      "name": {
+        "maxLength": 200,
+        "minLength": 1,
+        "title": "Name",
+        "type": "string"
+      }
+    },
+    "required": [
+      "name",
+      "documentId",
+      "credentialRef",
+      "accessPolicy"
+    ],
+    "title": "FeishuSourceCreateRequest",
+    "type": "object"
+  },
   "HealthResponse": {
     "properties": {
       "service": {
@@ -1043,6 +1077,220 @@ export const componentSchemas = {
       "results"
     ],
     "title": "KnowledgeSearchResponse",
+    "type": "object"
+  },
+  "KnowledgeSourcePage": {
+    "properties": {
+      "items": {
+        "items": {
+          "$ref": "#/components/schemas/KnowledgeSourceResponse"
+        },
+        "title": "Items",
+        "type": "array"
+      },
+      "nextCursor": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Nextcursor"
+      }
+    },
+    "required": [
+      "items",
+      "nextCursor"
+    ],
+    "title": "KnowledgeSourcePage",
+    "type": "object"
+  },
+  "KnowledgeSourceResponse": {
+    "properties": {
+      "accessPolicy": {
+        "const": "project_members",
+        "title": "Accesspolicy",
+        "type": "string"
+      },
+      "createdAt": {
+        "format": "date-time",
+        "title": "Createdat",
+        "type": "string"
+      },
+      "credentialRef": {
+        "title": "Credentialref",
+        "type": "string"
+      },
+      "disabledAt": {
+        "anyOf": [
+          {
+            "format": "date-time",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Disabledat"
+      },
+      "documentId": {
+        "title": "Documentid",
+        "type": "string"
+      },
+      "id": {
+        "format": "uuid",
+        "title": "Id",
+        "type": "string"
+      },
+      "name": {
+        "title": "Name",
+        "type": "string"
+      },
+      "projectId": {
+        "format": "uuid",
+        "title": "Projectid",
+        "type": "string"
+      },
+      "provider": {
+        "const": "feishu",
+        "title": "Provider",
+        "type": "string"
+      },
+      "status": {
+        "enum": [
+          "configured",
+          "disabled"
+        ],
+        "title": "Status",
+        "type": "string"
+      },
+      "updatedAt": {
+        "format": "date-time",
+        "title": "Updatedat",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "projectId",
+      "provider",
+      "name",
+      "documentId",
+      "credentialRef",
+      "accessPolicy",
+      "status",
+      "createdAt",
+      "updatedAt",
+      "disabledAt"
+    ],
+    "title": "KnowledgeSourceResponse",
+    "type": "object"
+  },
+  "KnowledgeSourceSyncCreateRequest": {
+    "additionalProperties": false,
+    "properties": {},
+    "title": "KnowledgeSourceSyncCreateRequest",
+    "type": "object"
+  },
+  "KnowledgeSourceSyncResponse": {
+    "properties": {
+      "attempt": {
+        "title": "Attempt",
+        "type": "integer"
+      },
+      "completedAt": {
+        "anyOf": [
+          {
+            "format": "date-time",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Completedat"
+      },
+      "createdAt": {
+        "format": "date-time",
+        "title": "Createdat",
+        "type": "string"
+      },
+      "errorCode": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Errorcode"
+      },
+      "id": {
+        "format": "uuid",
+        "title": "Id",
+        "type": "string"
+      },
+      "projectId": {
+        "format": "uuid",
+        "title": "Projectid",
+        "type": "string"
+      },
+      "resourceId": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Resourceid"
+      },
+      "resourceVersionId": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Resourceversionid"
+      },
+      "sourceId": {
+        "format": "uuid",
+        "title": "Sourceid",
+        "type": "string"
+      },
+      "status": {
+        "enum": [
+          "queued",
+          "running",
+          "completed",
+          "failed"
+        ],
+        "title": "Status",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "projectId",
+      "sourceId",
+      "status",
+      "attempt",
+      "createdAt",
+      "completedAt",
+      "errorCode",
+      "resourceId",
+      "resourceVersionId"
+    ],
+    "title": "KnowledgeSourceSyncResponse",
     "type": "object"
   },
   "KnowledgeVersionResponse": {
