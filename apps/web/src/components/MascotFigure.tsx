@@ -12,7 +12,7 @@ export interface MascotFigureProps {
 
 const MASCOT_CHIBI_SRC = "/assets/brand/mascot/cairn-mascot-chibi.png";
 const MASCOT_FULL_SRC = "/assets/brand/mascot/cenning-full-v2-20260928.png";
-const FALLBACK_SRC = "/assets/brand/cairn-mark-v2.svg";
+const FALLBACK_SRC = "/assets/brand/cairn-mark-v3.svg";
 
 type ImageStage = "primary" | "logo" | "accessible";
 

@@ -3,7 +3,7 @@ import { expect, test } from "vitest";
 
 import { BrandMark } from "../../src/components/BrandMark.tsx";
 
-test("Cairn wordmark uses the three native vector stones and real brand spelling", () => {
+test("Cairn wordmark uses the concept mountain silhouette and real brand spelling", () => {
   render(<BrandMark />);
   const mark = screen.getByRole("img", { name: "Cairn" });
   expect(mark).toHaveTextContent("Cairn");
@@ -11,7 +11,7 @@ test("Cairn wordmark uses the three native vector stones and real brand spelling
   expect(mark.querySelector("img")).toBeNull();
 });
 
-test("compact Cairn mark remains an accessible three-stone icon", () => {
+test("compact Cairn mountain mark remains accessible", () => {
   render(<BrandMark compact />);
   const mark = screen.getByRole("img", { name: "Cairn" });
   expect(mark.querySelectorAll("svg path")).toHaveLength(3);

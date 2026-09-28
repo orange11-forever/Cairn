@@ -1671,6 +1671,57 @@ function expectLoginMascot(images, viewport, expect) {
   );
 }
 
+export async function checkLoginMascotFallback({ page, expect, screenshotDir, viewport, themeValue }) {
+  const imageRoute = "**/assets/brand/mascot/*.png";
+  const failImage = (route) => route.abort();
+  await page.route(imageRoute, failImage);
+  try {
+    await page.reload({ waitUntil: "networkidle" });
+    const fallback = page.locator(".login-brand-scene .mascot-figure img[src$='.svg']");
+    await fallback.waitFor({ state: "visible" });
+    const appearance = await fallback.evaluate(async (image) => {
+      await image.decode();
+      const scene = image.closest(".login-brand-scene");
+      const background = getComputedStyle(scene).backgroundColor.match(/[\d.]+/g).slice(0, 3).map(Number);
+      const luminance = (rgb) => rgb.map((channel) => {
+        const value = channel / 255;
+        return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+      }).reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0);
+      const backgroundLuminance = luminance(background);
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 36;
+      const context = canvas.getContext("2d");
+      if (context === null) throw new Error("无法读取备用 Logo 像素");
+      context.drawImage(image, 0, 0, 36, 36);
+      const pixels = context.getImageData(0, 0, 36, 36).data;
+      let opaquePixels = 0;
+      let minimumContrast = Infinity;
+      for (let offset = 0; offset < pixels.length; offset += 4) {
+        if (pixels[offset + 3] < 250) continue;
+        const inkLuminance = luminance([...pixels.slice(offset, offset + 3)]);
+        const contrast = (Math.max(inkLuminance, backgroundLuminance) + 0.05) /
+          (Math.min(inkLuminance, backgroundLuminance) + 0.05);
+        minimumContrast = Math.min(minimumContrast, contrast);
+        opaquePixels += 1;
+      }
+      return { currentSrc: image.currentSrc, opaquePixels, minimumContrast };
+    });
+    await fallback.screenshot({
+      path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-login-fallback.png`),
+    });
+    expect(appearance.opaquePixels > 0, `${viewport.name} ${themeValue} 备用 Logo 不应为空白`);
+    expect(
+      appearance.minimumContrast >= 3,
+      `${viewport.name} ${themeValue} 备用 Logo 与登录品牌背景对比应至少为3:1，实际为 ${appearance.minimumContrast.toFixed(2)}:1`,
+    );
+    return appearance;
+  } finally {
+    await page.unroute(imageRoute, failImage);
+    await page.reload({ waitUntil: "networkidle" });
+    await waitForLoginBrandScenePaint(page);
+  }
+}
+
 export async function checkResponsiveFoundation({
   page,
   expect,
@@ -2106,6 +2157,7 @@ export async function checkResponsiveFoundation({
         path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-login.png`),
         fullPage: true,
       });
+      await checkLoginMascotFallback({ page, expect, screenshotDir, viewport, themeValue });
       await login();
     }
 

@@ -54,7 +54,7 @@ describe("MascotFigure", () => {
     expect(container.querySelector("source")).not.toBeInTheDocument();
     expect(screen.getByRole("img", { name: "看板娘" })).toHaveAttribute(
       "src",
-      "/assets/brand/cairn-mark-v2.svg",
+      "/assets/brand/cairn-mark-v3.svg",
     );
   });
 
@@ -65,7 +65,7 @@ describe("MascotFigure", () => {
 
     expect(screen.getByRole("img", { name: "看板娘" })).toHaveAttribute(
       "src",
-      "/assets/brand/cairn-mark-v2.svg",
+      "/assets/brand/cairn-mark-v3.svg",
     );
   });
 

@@ -3429,17 +3429,15 @@ summary:focus-visible {
   .knowledge-content > .knowledge-resource-details, .knowledge-content > .knowledge-citation-context { padding: 14px; }
 }
 
-.cairn-brand-mark { --brand-ink: #102541; --brand-blue: #2372dd; display: inline-flex; align-items: center; gap: 9px; color: var(--brand-ink); white-space: nowrap; font-size: 24px; font-weight: 750; letter-spacing: -.045em; line-height: 1; }
+.cairn-brand-mark { --brand-ink: #102541; display: inline-flex; align-items: center; gap: 9px; color: var(--brand-ink); white-space: nowrap; font-size: 24px; font-weight: 750; letter-spacing: -.045em; line-height: 1; }
 .cairn-brand-mark svg { display: block; width: 34px; height: 34px; flex: none; overflow: visible; }
-.cairn-brand-mark .cairn-stone-top { fill: var(--brand-blue); }
-.cairn-brand-mark .cairn-stone-middle,
-.cairn-brand-mark .cairn-stone-bottom { fill: var(--brand-ink); }
+.cairn-brand-mark path { fill: currentColor; }
 .cairn-brand-mark-compact svg { width: 24px; height: 24px; }
-:root[data-theme='dark'] .cairn-brand-mark { --brand-ink: #e7edf5; --brand-blue: #6da9f7; }
-.login-brand-scene .cairn-brand-mark { --brand-ink: #e7edf5; --brand-blue: #6da9f7; font-size: 28px; }
+:root[data-theme='dark'] .cairn-brand-mark { --brand-ink: #e7edf5; }
+.login-brand-scene .cairn-brand-mark { --brand-ink: #e7edf5; font-size: 28px; }
 
 /* The new vector mark sits directly on the brand field, without the old image capsule. */
-.login-brand-scene { background: #182332; }
+.login-brand-scene { background: #182332; color-scheme: dark; }
 .login-brand-scene::before, .login-brand-scene::after { content: none; }
 .login-wordmark-chip { padding: 0; border-radius: 0; background: transparent; box-shadow: none; }
 .login-wordmark { width: auto; height: auto; }

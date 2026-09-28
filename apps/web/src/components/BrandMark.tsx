@@ -2,12 +2,9 @@ export function BrandMark({ compact = false }: { compact?: boolean }) {
   return <span className={`cairn-brand-mark${compact ? " cairn-brand-mark-compact" : ""}`}
     role="img" aria-label="Cairn">
     <svg aria-hidden="true" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg">
-      <path className="cairn-stone-top"
-        d="M6.2 11.4c-.5-1.4.2-2.7 1.5-3.4L20.7 2c1.6-.8 3.4-.6 4.8.5l6.2 5c1.5 1.2 1.4 3.2.3 4.6l-2.2 2.5c-.8.9-1.8 1.2-3 1L8 13.1c-.9-.1-1.5-.6-1.8-1.7Z" />
-      <path className="cairn-stone-middle"
-        d="M5.9 15.7c.6-.8 1.5-1.2 2.5-1.1l17.5 2.1c-4.1 1.1-6.5 3.8-6.7 7.7-.1 2.2.7 4 2 5.4L5.3 27.5c-2.1-.3-3.1-2.1-2.3-4.1l2.9-7.7Z" />
-      <path className="cairn-stone-bottom"
-        d="M5.8 28.8c.4-.6 1.1-.9 1.9-.8l20 2.8c1.2.2 2.3.8 3.1 1.8l2 2.4c.5.6.1 1.1-.7 1.1H13.4c-2.2 0-4.3-1-5.8-2.6l-2.5-2.8c-.6-.7-.4-1.3.7-1.9Z" />
+      <path d="M2.2 28.7 9.4 15c.5-1 1.3-1.3 2-.3l2.7 3.7c-1.5 1.1-2.7 2.8-3.6 4.5l-3.8 7.6H3.2c-1.2 0-1.6-.8-1-1.8Z" />
+      <path d="m14.1 17.4 4.1-8.6c.6-1.3 1.3-2.1 2.5-2.1 1.3 0 2 .9 2.6 2.1l3.1 7-5.1 4-3-1.9c-1.3-.9-2.7-1.1-4.2-.5Z" />
+      <path d="m10.1 30.5 4.8-8.7c.7-1.3 1.5-2 2.6-1.4l3.2 2c.4.2.7.2 1.1-.1l5.6-4.5 6.2 10.8c.6 1.1.2 1.9-1.1 1.9H10.1Z" />
     </svg>
     {compact ? null : <span aria-hidden="true">Cairn</span>}
   </span>;
