@@ -1,5 +1,6 @@
 import base64
 
+import pytest
 from cairn_api.auth.security import (
     DUMMY_PASSWORD_HASH,
     derive_csrf_token,
@@ -44,3 +45,13 @@ def test_csrf_verification_rejects_wrong_or_tampered_values() -> None:
     assert verify_csrf_token(material.session_token, material.csrf_token, b"x" * 32) is True
     assert verify_csrf_token(material.session_token, "wrong", b"x" * 32) is False
     assert verify_csrf_token(material.session_token, material.csrf_token, b"y" * 32) is False
+
+
+@pytest.mark.parametrize(
+    ("session_token", "csrf_token"),
+    [("valid-session", "é"), ("é", "ascii"), ("valid-session", "\ud800")],
+)
+def test_csrf_verification_rejects_non_ascii(
+    session_token: str, csrf_token: str
+) -> None:
+    assert verify_csrf_token(session_token, csrf_token, b"x" * 32) is False

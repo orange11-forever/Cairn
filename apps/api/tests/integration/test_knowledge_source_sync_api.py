@@ -613,15 +613,13 @@ def test_sync_migration_rejects_populated_downgrade_without_deleting_facts(
     assert response.status_code == 202
     with database.session_factory.begin() as session:
         session.execute(delete(IngestionJob if retained_fact == "request" else KnowledgeSourceSync))
+        starting_revision = session.scalar(text("SELECT version_num FROM alembic_version"))
     config = Config("apps/api/alembic.ini")
     config.set_main_option("sqlalchemy.url", test_database_url)
     with pytest.raises(RuntimeError, match="cannot downgrade while source sync"):
         command.downgrade(config, "0006_knowledge_sources")
     with database.session_factory() as session:
-        assert (
-            session.scalar(text("SELECT version_num FROM alembic_version"))
-            == "0007_knowledge_source_syncs"
-        )
+        assert session.scalar(text("SELECT version_num FROM alembic_version")) == starting_revision
         assert session.scalar(select(func.count()).select_from(KnowledgeSourceSync)) == int(
             retained_fact == "request"
         )

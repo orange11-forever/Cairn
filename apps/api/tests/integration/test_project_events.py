@@ -11,6 +11,7 @@ from cairn_api.auth.dependencies import get_current_identity
 from cairn_api.authorization.types import MembershipRole
 from cairn_api.db.session import Database, get_db
 from cairn_api.organizations.models import Organization
+from cairn_api.projects.events import ProjectEventCursor
 from cairn_api.projects.models import OutboxEvent, Project
 from cairn_api.seed import seed_demo_identity
 from cairn_api.settings import Settings
@@ -132,7 +133,6 @@ def test_project_event_stream_reads_transactional_outbox_with_strict_bounded_res
             "status": "todo",
         }
         assert status_event.published_at is None
-        status_event.occurred_at = fixed_time
         successor_id = UUID(int=status_event.id.int + 1)
         session.add(
             OutboxEvent(
@@ -145,20 +145,19 @@ def test_project_event_stream_reads_transactional_outbox_with_strict_bounded_res
                 occurred_at=fixed_time,
             )
         )
-        session.add_all(
-            [
-                OutboxEvent(
-                    id=UUID(int=10_000 + index),
-                    org_id=demo_org.id,
-                    event_type="project.bulk",
-                    aggregate_type="project",
-                    aggregate_id=UUID(str(first_project["id"])),
-                    payload={"sequence": index},
-                    occurred_at=fixed_time + timedelta(seconds=index + 1),
-                )
-                for index in range(105)
-            ]
-        )
+        bulk_events = [
+            OutboxEvent(
+                id=UUID(int=10_000 + index),
+                org_id=demo_org.id,
+                event_type="project.bulk",
+                aggregate_type="project",
+                aggregate_id=UUID(str(first_project["id"])),
+                payload={"sequence": index},
+                occurred_at=fixed_time + timedelta(seconds=index + 1),
+            )
+            for index in range(105)
+        ]
+        session.add_all(bulk_events)
         session.add(
             OutboxEvent(
                 org_id=demo_org.id,
@@ -195,6 +194,19 @@ def test_project_event_stream_reads_transactional_outbox_with_strict_bounded_res
         )
         status_event_id = status_event.id
 
+    # Reconstruct legacy rows after insertion so the commit-order trigger does
+    # not rewrite the historical equal-timestamp/UUID tie fixture.
+    with database.session_factory.begin() as session:
+        status_event = session.get(OutboxEvent, status_event_id)
+        successor_event = session.get(OutboxEvent, successor_id)
+        assert status_event is not None and successor_event is not None
+        status_event.occurred_at = fixed_time
+        successor_event.occurred_at = fixed_time
+        for index, event in enumerate(bulk_events):
+            persisted = session.get(OutboxEvent, event.id)
+            assert persisted is not None
+            persisted.occurred_at = fixed_time + timedelta(seconds=index + 1)
+
     # Cookie-authenticated event reads are safe GETs and do not require mutation CSRF.
     del client.headers["Origin"]
     del client.headers["X-CSRF-Token"]
@@ -220,6 +232,9 @@ def test_project_event_stream_reads_transactional_outbox_with_strict_bounded_res
     assert "hidden-other-tenant" not in body
     status_cursor = status_frame["id"]
     assert isinstance(status_cursor, str)
+    decoded_status = ProjectEventCursor.decode(status_cursor)
+    assert decoded_status.occurred_at == fixed_time
+    assert decoded_status.id == status_event_id
 
     with client.stream(
         "GET",
@@ -231,6 +246,11 @@ def test_project_event_stream_reads_transactional_outbox_with_strict_bounded_res
     assert resumed_response.status_code == 200
     assert len(resumed_frames) == 100
     assert resumed_frames[0]["data"] == {"marker": "same-timestamp-successor"}
+    successor_cursor = resumed_frames[0]["id"]
+    assert isinstance(successor_cursor, str)
+    decoded_successor = ProjectEventCursor.decode(successor_cursor)
+    assert decoded_successor.occurred_at == fixed_time
+    assert decoded_successor.id == successor_id
     assert status_cursor not in {frame["id"] for frame in resumed_frames}
 
     with database.session_factory() as session:
@@ -272,6 +292,32 @@ def test_project_event_database_failure_is_traced_before_streaming_starts(
         "traceId": "req-project-events-down",
     }
     assert "SELECT secret" not in response.text
+
+
+@pytest.mark.integration
+def test_authorized_project_event_stream_rejects_malformed_cursor_with_traced_problem(
+    client: TestClient,
+) -> None:
+    project = _create_project(client, "Invalid cursor project")
+    response = client.get(
+        f"/api/v1/projects/{project['id']}/events",
+        params={"after": "malformed-cursor"},
+        headers={"Origin": APP_ORIGIN, "X-Request-ID": "req-project-events-bad-cursor"},
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {
+        "message": "事件游标无效",
+        "code": "invalid_cursor",
+        "traceId": "req-project-events-bad-cursor",
+    }
+    assert response.headers["content-type"] == "application/json"
+    assert response.headers["x-request-id"] == "req-project-events-bad-cursor"
+    assert response.headers["access-control-allow-origin"] == APP_ORIGIN
+    assert response.headers["access-control-allow-credentials"] == "true"
+    assert "Origin" in response.headers["vary"]
+    for header in ("set-cookie", "cache-control", "allow", "retry-after"):
+        assert header not in response.headers
 
 
 @pytest.mark.integration

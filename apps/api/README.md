@@ -97,6 +97,8 @@ Docker Desktop 必须保持运行。生产环境必须使用 HTTPS `APP_URL`/`CO
 
 Cookie 会话下的 `POST`/`PATCH`/`PUT`/`DELETE` 命令要求合法 Origin 和会话绑定的 `X-CSRF-Token`。已接受的项目、任务、成员角色或 ACL 变化会把业务变化、追加式审计行与 Outbox 事件放在同一数据库事务中提交。
 
+项目 SSE 游标仍是 `(occurredAt, id)` 的不透明编码，按时间、UUID 严格升序分页，单批最多 100 条。项目 Outbox 事件由 PostgreSQL 延迟约束触发器在提交尾部定稿 `occurred_at`：一个保留的全局事务 advisory lock 串行化短暂的定稿阶段，同项目新时间严格大于已提交事件的最大时间；每条事件额外执行一次 `UPDATE`。此保证依赖当前 `READ COMMITTED` 隔离级别及触发器保持 `INITIALLY DEFERRED`，写入项目事件的事务不得用 `SET CONSTRAINTS ... IMMEDIATE` 提前执行它。`expire_on_commit=False` 的 ORM 新建实例可能仍持有插入时的旧时间，生成 SSE 游标必须重新读取已提交的持久行。
+
 ### 阶段 2.5A 授权与成员管理
 
 项目权限的顺序严格为 `read < write < manage`，更高权限包含更低权限。授权查询以当前组织为第一过滤条件，再组合组织角色和当前有效的规范化 ACL：

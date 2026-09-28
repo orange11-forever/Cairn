@@ -27,6 +27,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 NOW = datetime(2026, 8, 8, 9, 30, tzinfo=UTC)
+APP_ORIGIN = "http://localhost:5500"
 
 
 def _identity(org_id: UUID) -> IdentityContextResponse:
@@ -67,6 +68,7 @@ def _test_client(
         Settings(
             environment="test",
             database_url="postgresql+psycopg://unused/unused",
+            cors_origins=[APP_ORIGIN],
             csrf_secret="test-only-csrf-secret-with-at-least-32-bytes",
             auth_rate_limit_secret="test-only-auth-rate-secret-with-at-least-32-bytes",
             _env_file=None,  # pyright: ignore[reportCallIssue]
@@ -197,11 +199,17 @@ def test_project_events_rejects_control_line_injection_before_streaming() -> Non
     with _test_client(identity=_identity(org_id), session=session) as client:
         response = client.get(
             f"/api/v1/projects/{project_id}/events",
-            headers={"X-Request-ID": "req-malicious-event-type"},
+            headers={"Origin": APP_ORIGIN, "X-Request-ID": "req-malicious-event-type"},
         )
 
     assert response.status_code == 500
-    assert response.headers["content-type"].startswith("application/json")
+    assert response.headers["content-type"] == "application/json"
+    assert response.headers["x-request-id"] == "req-malicious-event-type"
+    assert response.headers["access-control-allow-origin"] == APP_ORIGIN
+    assert response.headers["access-control-allow-credentials"] == "true"
+    assert "Origin" in response.headers["vary"]
+    for header in ("set-cookie", "cache-control", "allow", "retry-after"):
+        assert header not in response.headers
     assert response.json() == {
         "message": "服务器内部错误",
         "code": "internal_error",
@@ -210,6 +218,16 @@ def test_project_events_rejects_control_line_injection_before_streaming() -> Non
     assert "task.status_changed" not in response.text
     assert "forged" not in response.text
     assert "attacker" not in response.text
+
+
+def test_project_event_openapi_declares_json_internal_error_and_sse_success() -> None:
+    with _test_client(identity=_identity(uuid4()), session=MagicMock(spec=Session)) as client:
+        operation = client.get("/openapi.json").json()["paths"]["/api/v1/projects/{project_id}/events"]["get"]
+
+    assert operation["responses"]["200"]["content"] == {"text/event-stream": {}}
+    assert operation["responses"]["500"]["content"] == {
+        "application/json": {"schema": {"$ref": "#/components/schemas/ErrorBody"}}
+    }
 
 
 def test_project_event_payload_control_characters_remain_in_one_json_data_line() -> None:

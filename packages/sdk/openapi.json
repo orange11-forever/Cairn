@@ -3403,6 +3403,16 @@
             },
             "description": "请求参数无效"
           },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "服务器内部错误"
+          },
           "503": {
             "content": {
               "application/json": {
