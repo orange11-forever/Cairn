@@ -134,6 +134,7 @@ async function checkCoreKnowledgeIngestion() {
   );
   await page.goto(`${WEB}/projects/${CORE_PROJECT_ID}/knowledge`, { waitUntil: "networkidle" });
   await page.waitForSelector(".knowledge-page");
+  await page.getByRole("button", { name: "上传资料" }).click();
   await page.getByLabel("上传知识资料", { exact: true }).setInputFiles({
     name: fileName,
     mimeType: "text/plain",
@@ -154,7 +155,7 @@ async function checkCoreKnowledgeIngestion() {
     expect(headers.authorization === undefined, "对象存储 PUT 不应携带 Identity Authorization");
   }
   expect(
-    await page.getByText("Worker 处理完成，可用于知识检索", { exact: true }).isVisible(),
+    await page.getByText("处理完成，可用于知识检索", { exact: true }).isVisible(),
     "真实上传应由 Worker 处理为 ready",
   );
 
@@ -183,7 +184,9 @@ async function checkCoreKnowledgeIngestion() {
   );
   const search = page.getByRole("region", { name: "项目知识检索" });
   await search.getByRole("button", { name: "查看引用上下文" }).first().click();
-  const context = search.locator(".knowledge-citation-context-success");
+  const context = page.getByRole("region", { name: "知识内容" })
+    .getByRole("region", { name: "引用上下文" })
+    .locator(".knowledge-citation-context-success");
   await context.waitFor({ timeout: 30_000 });
   expect(await context.getByText(CORE_PHRASE, { exact: false }).isVisible(), "引用上下文应包含命中文本");
   expect(/第\s*\d+(?:[–-]\d+)?\s*行/.test(await context.innerText()), "文本引用应显示行号 locator");

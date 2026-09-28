@@ -190,7 +190,7 @@ test("distinguishes initial, pending, empty, and keyword fallback states", async
   vi.stubGlobal("fetch", vi.fn(async () => Response.json(responses.shift())));
   const user = userEvent.setup();
   renderKnowledgeSearch();
-  expect(screen.getByText("搜索只返回当前项目已索引的原文片段，不生成 AI 答案。"))
+  expect(screen.getByText("搜索当前项目已索引的资料片段。"))
     .toBeInTheDocument();
   expect(screen.queryByText("没有匹配片段")).toBeNull();
 

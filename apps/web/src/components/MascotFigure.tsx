@@ -7,11 +7,12 @@ export interface MascotFigureProps {
   state?: MascotState;
   label?: string;
   className?: string;
+  idleCaption?: string;
 }
 
 const MASCOT_CHIBI_SRC = "/assets/brand/mascot/cairn-mascot-chibi.png";
-const MASCOT_FULL_SRC = "/assets/brand/mascot/cairn-mascot-transparent.png";
-const FALLBACK_SRC = "/assets/brand/cairn-logo.png";
+const MASCOT_FULL_SRC = "/assets/brand/mascot/cenning-full-v2-20260928.png";
+const FALLBACK_SRC = "/assets/brand/cairn-mark-v2.svg";
 
 type ImageStage = "primary" | "logo" | "accessible";
 
@@ -27,6 +28,7 @@ export function MascotFigure({
   state = "idle",
   label = "岑宁，Cairn 知识向导",
   className,
+  idleCaption,
 }: MascotFigureProps) {
   const [imageStage, setImageStage] = useState<ImageStage>("primary");
   const primarySrc = variant === "full" ? MASCOT_FULL_SRC : MASCOT_CHIBI_SRC;
@@ -59,7 +61,7 @@ export function MascotFigure({
         </picture>
       )}
       <span className="mascot-state" role="status">
-        {STATE_LABEL[state]}
+        {state === "idle" && idleCaption !== undefined ? idleCaption : STATE_LABEL[state]}
       </span>
     </span>
   );

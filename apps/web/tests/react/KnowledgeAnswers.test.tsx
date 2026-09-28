@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
 import { afterEach, expect, test, vi } from "vitest";
@@ -56,11 +56,40 @@ test("submits one question and renders cited plain-text paragraphs", async () =>
 
   const answer = await screen.findByRole("region", { name: "生成式回答" });
   expect(within(answer).getByText("交付日期是 9 月 30 日。")).toBeInTheDocument();
+  expect(screen.getByLabelText("向项目知识提问")).toHaveValue("什么时候交付?");
   expect(within(answer).getByText("S1 · 项目说明.txt")).toBeInTheDocument();
   expect(container.querySelector("script, iframe, object, embed")).toBeNull();
   expect(requests).toHaveLength(1);
   expect(await requests[0]!.clone().json()).toEqual({ question: "什么时候交付?" });
   expect(requests[0]!.headers.get("X-CSRF-Token")).toBe("csrf-answer-test");
+});
+
+test.each([
+  [true, "第二轮草稿"],
+  [false, ""],
+] as const)("docked answer keeps a draft edited during pending=%s", async (editPending, expectedDraft) => {
+  let resolveResponse!: (response: Response) => void;
+  const fetchSpy = vi.fn(() => new Promise<Response>((resolve) => { resolveResponse = resolve; }));
+  vi.stubGlobal("fetch", fetchSpy);
+  const user = userEvent.setup();
+  renderAnswers({ docked: true });
+  const input = screen.getByLabelText("向项目知识提问");
+  await user.type(input, "第一轮问题");
+  await user.click(screen.getByRole("button", { name: "生成回答" }));
+  await screen.findByText("正在查找资料并生成回答…");
+  await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
+  if (editPending) {
+    await user.clear(input);
+    await user.type(input, "第二轮草稿");
+  }
+  await act(async () => resolveResponse(Response.json({
+    status: "insufficient_evidence", retrievalMode: "hybrid", paragraphs: [], citations: [],
+  })));
+  expect(await screen.findByText("现有项目资料不足以回答这个问题")).toBeInTheDocument();
+  expect(input).toHaveValue(expectedDraft);
+  expect(screen.getByText("第一轮问题", { selector: ".knowledge-answer-question span" }))
+    .toBeInTheDocument();
+  expect(fetchSpy).toHaveBeenCalledTimes(1);
 });
 
 test("renders insufficient evidence and rejects invalid response invariants", async () => {

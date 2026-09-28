@@ -315,9 +315,11 @@ export function useKnowledgeResourcesQuery(
   organizationId: string,
   projectId: string,
   sessionSignal: AbortSignal,
+  enabled = true,
 ) {
   return useInfiniteQuery({
     queryKey: knowledgeKeys.resources(organizationId, projectId),
+    enabled,
     queryFn: ({ pageParam, signal }) => fetchKnowledgeResources({
       projectId,
       cursor: pageParam,

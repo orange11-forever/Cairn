@@ -8,6 +8,8 @@ import {
   type KnowledgeAnswerCitation,
   type KnowledgeAnswerResponse,
 } from "../../api/knowledgeAnswers.ts";
+import type { KnowledgeCitation } from "../../api/knowledge.ts";
+import { MascotFigure } from "../MascotFigure.tsx";
 import { formatKnowledgeLocator, formatKnowledgeMediaType, validateKnowledgeQuery } from "../../lib/knowledgeSearch.ts";
 import { KnowledgeCitationContext } from "./KnowledgeCitationContext.tsx";
 
@@ -18,6 +20,8 @@ export interface KnowledgeAnswersProps {
   sessionSignal: AbortSignal;
   onAccessUnavailable(error: ApiError): void;
   resourceDeletion?: { revision: number; title: string } | null;
+  onOpenCitation?(citation: KnowledgeCitation): void;
+  docked?: boolean;
 }
 
 function presentError(error: unknown): string | null {
@@ -38,10 +42,14 @@ export function KnowledgeAnswers({
   sessionSignal,
   onAccessUnavailable,
   resourceDeletion = null,
+  onOpenCitation,
+  docked = false,
 }: KnowledgeAnswersProps) {
   const inputId = useId();
   const helpId = useId();
   const [draft, setDraft] = useState("");
+  const draftEditRevision = useRef(0);
+  const [submittedQuestion, setSubmittedQuestion] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [answer, setAnswer] = useState<KnowledgeAnswerResponse | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -93,6 +101,7 @@ export function KnowledgeAnswers({
     setAnswer(null);
     mutation.reset();
     setNotice(`资料“${resourceDeletion.title}”已删除，回答已清空。`);
+    setSubmittedQuestion(null);
   }, [resourceDeletion]);
 
   useEffect(() => {
@@ -102,6 +111,7 @@ export function KnowledgeAnswers({
     setAnswer(null);
     mutation.reset();
     setNotice("当前处于离线状态，回答已清空");
+    setSubmittedQuestion(null);
   }, [online]);
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -112,6 +122,7 @@ export function KnowledgeAnswers({
       return;
     }
     if (!online) return;
+    const submittedDraftRevision = draftEditRevision.current;
     requestRef.current?.abort();
     const controller = new AbortController();
     requestRef.current = controller;
@@ -120,6 +131,7 @@ export function KnowledgeAnswers({
     setNotice(null);
     setAnswer(null);
     mutation.reset();
+    setSubmittedQuestion(validation.query);
     mutation.mutate(
       { question: validation.query, signal: controller.signal },
       {
@@ -127,6 +139,7 @@ export function KnowledgeAnswers({
           if (controller.signal.aborted || requestRef.current !== controller) return;
           requestRef.current = null;
           setAnswer(response);
+          if (docked && draftEditRevision.current === submittedDraftRevision) setDraft("");
         },
         onError: (error) => {
           if (controller.signal.aborted || requestRef.current !== controller) return;
@@ -143,25 +156,34 @@ export function KnowledgeAnswers({
     mutation.reset();
     setAnswer(null);
     setNotice("回答生成已取消");
+    setSubmittedQuestion(null);
   }
 
   const error = mutation.error === null ? null : presentError(mutation.error);
 
   return (
-    <section className="knowledge-answers" aria-label="项目知识问答">
+    <section className={`knowledge-answers${docked ? " knowledge-answers-docked" : ""}`} aria-label="项目知识问答">
       <div className="knowledge-search-heading">
-        <span className="knowledge-search-kicker">基于项目资料</span>
-        <h2>向项目知识提问</h2>
-        <p id={helpId}>生成的回答来自当前项目资料，请核对引用。</p>
+        {docked ? <MascotFigure variant="avatar" label="岑宁" /> : null}
+        <div>
+          <span className="knowledge-search-kicker">基于项目资料</span>
+          <h2>{docked ? "岑宁 · 项目问答" : "向项目知识提问"}</h2>
+          <p id={helpId}>生成的回答来自当前项目资料，请核对引用。</p>
+        </div>
       </div>
+      {docked && submittedQuestion !== null ? (
+        <p className="knowledge-answer-question"><strong>你</strong><span>{submittedQuestion}</span></p>
+      ) : null}
       <form className="knowledge-search-form" onSubmit={submit}>
         <label htmlFor={inputId}>向项目知识提问</label>
         <div className="knowledge-search-controls">
           <textarea
             id={inputId} rows={3} value={draft} disabled={!online}
+            placeholder="向当前项目提问…"
             aria-describedby={`${helpId}${validationError === null ? "" : " knowledge-answer-error"}`}
             aria-invalid={validationError === null ? undefined : "true"}
             onChange={(event) => {
+              draftEditRevision.current += 1;
               setDraft(event.target.value);
               if (validationError !== null) setValidationError(null);
             }}
@@ -182,6 +204,9 @@ export function KnowledgeAnswers({
         )}
       </form>
       <div className="knowledge-answer-output" aria-busy={mutation.isPending ? "true" : undefined}>
+        {docked && submittedQuestion === null && answer === null && notice === null && error === null ? (
+          <p className="knowledge-answer-intro">输入问题后，岑宁会根据当前项目的资料回答，并列出可核对的来源。</p>
+        ) : null}
         {mutation.isPending ? <p role="status" aria-live="polite">正在查找资料并生成回答…</p> : null}
         {notice === null ? null : <p role="status" aria-live="polite">{notice}</p>}
         {error === null ? null : <p role="alert">{error}</p>}
@@ -193,7 +218,7 @@ export function KnowledgeAnswers({
         ) : (
           <KnowledgeAnswerResult
             answer={answer} organizationId={organizationId} projectId={projectId}
-            sessionSignal={sessionSignal}
+            sessionSignal={sessionSignal} onOpenCitation={onOpenCitation}
           />
         )}
       </div>
@@ -201,11 +226,12 @@ export function KnowledgeAnswers({
   );
 }
 
-function KnowledgeAnswerResult({ answer, organizationId, projectId, sessionSignal }: {
+function KnowledgeAnswerResult({ answer, organizationId, projectId, sessionSignal, onOpenCitation }: {
   answer: KnowledgeAnswerResponse;
   organizationId: string;
   projectId: string;
   sessionSignal: AbortSignal;
+  onOpenCitation?: (citation: KnowledgeCitation) => void;
 }) {
   return (
     <article className="knowledge-answer-result" aria-label="生成式回答" role="region">
@@ -221,18 +247,19 @@ function KnowledgeAnswerResult({ answer, organizationId, projectId, sessionSigna
       <ol className="knowledge-answer-sources" aria-label="回答来源">
         {answer.citations.map((citation) => (
           <AnswerCitation key={citation.id} citation={citation} organizationId={organizationId}
-            projectId={projectId} sessionSignal={sessionSignal} />
+            projectId={projectId} sessionSignal={sessionSignal} onOpenCitation={onOpenCitation} />
         ))}
       </ol>
     </article>
   );
 }
 
-function AnswerCitation({ citation, organizationId, projectId, sessionSignal }: {
+function AnswerCitation({ citation, organizationId, projectId, sessionSignal, onOpenCitation }: {
   citation: KnowledgeAnswerCitation;
   organizationId: string;
   projectId: string;
   sessionSignal: AbortSignal;
+  onOpenCitation?: (citation: KnowledgeCitation) => void;
 }) {
   const [open, setOpen] = useState(false);
   const contextId = useId();
@@ -243,11 +270,15 @@ function AnswerCitation({ citation, organizationId, projectId, sessionSignal }: 
         <span>{formatKnowledgeMediaType(citation.mediaType)} · {formatKnowledgeLocator(citation.locator)}</span>
       </div>
       <p>{citation.excerpt}</p>
-      <button className="knowledge-citation-toggle" type="button" aria-expanded={open}
-        aria-controls={contextId} onClick={() => setOpen((value) => !value)}>
-        {open ? "收起引用上下文" : "查看引用上下文"}
+      <button className="knowledge-citation-toggle" type="button"
+        aria-expanded={onOpenCitation === undefined ? open : undefined}
+        aria-controls={onOpenCitation === undefined ? contextId : undefined}
+        onClick={() => onOpenCitation === undefined
+          ? setOpen((value) => !value)
+          : onOpenCitation(citation)}>
+        {onOpenCitation === undefined && open ? "收起引用上下文" : "查看引用上下文"}
       </button>
-      {open ? <KnowledgeCitationContext id={contextId} organizationId={organizationId}
+      {onOpenCitation === undefined && open ? <KnowledgeCitationContext id={contextId} organizationId={organizationId}
         projectId={projectId} citation={citation} sessionSignal={sessionSignal} /> : null}
     </li>
   );

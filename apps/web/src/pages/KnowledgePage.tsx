@@ -1,10 +1,11 @@
 import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
-import { ArrowLeft, BookOpenText, CalendarDays, FileText, HardDrive, PackageOpen } from "lucide-react";
+import { ArrowLeft, BookOpenText, CalendarDays, FileText, HardDrive, PackageOpen, Search, UploadCloud, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 
 import { ApiError } from "../api/errors.ts";
-import type { KnowledgeResource, KnowledgeResourcePage } from "../api/knowledge.ts";
+import type { KnowledgeCitation, KnowledgeResource, KnowledgeResourcePage } from "../api/knowledge.ts";
+import { KnowledgeCitationContext } from "../components/knowledge/KnowledgeCitationContext.tsx";
 import { KnowledgeSearch } from "../components/knowledge/KnowledgeSearch.tsx";
 import { KnowledgeAnswers } from "../components/knowledge/KnowledgeAnswers.tsx";
 import { KnowledgeResourceDetails } from "../components/knowledge/KnowledgeResourceDetails.tsx";
@@ -14,9 +15,15 @@ import { formatCalendarDate } from "../lib/dateTime.ts";
 import { formatKnowledgeMediaType } from "../lib/knowledgeSearch.ts";
 import { formatBytes } from "../lib/validation.ts";
 import { knowledgeKeys, useKnowledgeResourcesQuery } from "../queries/knowledge.ts";
+import { useProjectQuery } from "../queries/projects.ts";
 import { useSession } from "../session/SessionContext.tsx";
 
 type ResourceStatus = NonNullable<KnowledgeResource["latestVersion"]>["status"];
+type WorkbenchSelection =
+  | { kind: "resource"; resourceId: string; title: string }
+  | { kind: "citation"; citation: KnowledgeCitation }
+  | null;
+type MobilePane = "explorer" | "content" | "assistant";
 
 const RESOURCE_STATUS_LABELS: Record<ResourceStatus, string> = {
   queued: "等待处理",
@@ -133,7 +140,15 @@ function KnowledgeWorkspaceContent({
   onSearchAccessUnavailable(error: ApiError): void;
 }) {
   const queryClient = useQueryClient();
-  const resources = useKnowledgeResourcesQuery(organizationId, projectId, signal);
+  const project = useProjectQuery(organizationId, projectId, signal);
+  const resources = useKnowledgeResourcesQuery(
+    organizationId, projectId, signal, project.isSuccess && !project.isFetching,
+  );
+  const [selection, setSelection] = useState<WorkbenchSelection>(null);
+  const [mobilePane, setMobilePane] = useState<MobilePane>("content");
+  const [compact, setCompact] = useState(() => window.matchMedia?.("(max-width: 900px)").matches ?? window.innerWidth <= 900);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const selectionEpoch = useRef(0);
   const active = useRef(true);
   const deletionNotice = useRef<HTMLParagraphElement | null>(null);
   const [resourceDeletion, setResourceDeletion] = useState<{
@@ -143,6 +158,13 @@ function KnowledgeWorkspaceContent({
   useEffect(() => {
     active.current = true;
     return () => { active.current = false; };
+  }, []);
+  useEffect(() => {
+    const query = window.matchMedia?.("(max-width: 900px)");
+    if (query === undefined) return;
+    const update = () => setCompact(query.matches);
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
   }, []);
   useEffect(() => {
     if (resourceDeletion === null) return;
@@ -158,6 +180,44 @@ function KnowledgeWorkspaceContent({
   const items = pages.flatMap((page) => page.items);
   const capabilities = pages[pages.length - 1]?.capabilities;
   const displayedError = accessError ?? resources.error;
+  const clearSelection = useCallback(async () => {
+    const previous = selection;
+    const epoch = ++selectionEpoch.current;
+    setSelection(null);
+    if (previous === null) return;
+    const key = previous.kind === "resource"
+      ? knowledgeKeys.resource(organizationId, projectId, previous.resourceId)
+      : knowledgeKeys.citationContext(organizationId, projectId,
+        previous.citation.resourceId, previous.citation.resourceVersionId,
+        previous.citation.chunkId);
+    await queryClient.cancelQueries({ queryKey: key, exact: true });
+    if (epoch === selectionEpoch.current) queryClient.removeQueries({ queryKey: key, exact: true });
+  }, [organizationId, projectId, queryClient, selection]);
+
+  const openSelection = useCallback(async (next: NonNullable<WorkbenchSelection>) => {
+    const epoch = ++selectionEpoch.current;
+    const previous = selection;
+    setSelection(null);
+    if (previous !== null) {
+      const oldKey = previous.kind === "resource"
+        ? knowledgeKeys.resource(organizationId, projectId, previous.resourceId)
+        : knowledgeKeys.citationContext(organizationId, projectId,
+          previous.citation.resourceId, previous.citation.resourceVersionId,
+          previous.citation.chunkId);
+      await queryClient.cancelQueries({ queryKey: oldKey, exact: true });
+      if (epoch !== selectionEpoch.current || signal.aborted) return;
+      queryClient.removeQueries({ queryKey: oldKey, exact: true });
+    }
+    if (epoch !== selectionEpoch.current || signal.aborted) return;
+    const key = next.kind === "resource"
+      ? knowledgeKeys.resource(organizationId, projectId, next.resourceId)
+      : knowledgeKeys.citationContext(organizationId, projectId,
+        next.citation.resourceId, next.citation.resourceVersionId,
+        next.citation.chunkId);
+    queryClient.removeQueries({ queryKey: key, exact: true });
+    setSelection(next);
+    setMobilePane("content");
+  }, [organizationId, projectId, queryClient, selection, signal]);
   const handleResourceMissing = useCallback(async () => {
     void queryClient.invalidateQueries({
       queryKey: knowledgeKeys.searches(organizationId, projectId),
@@ -220,13 +280,39 @@ function KnowledgeWorkspaceContent({
     );
     queryClient.removeQueries({ queryKey: resourceKey, exact: true });
     queryClient.removeQueries(citationFilter);
+    if ((selection?.kind === "resource" && selection.resourceId === resource.id) ||
+      (selection?.kind === "citation" && selection.citation.resourceId === resource.id)) {
+      selectionEpoch.current += 1;
+      setSelection(null);
+    }
     await queryClient.invalidateQueries({ queryKey: searchesKey, refetchType: "none" });
     if (!active.current || signal.aborted) return;
     setResourceDeletion((current) => ({
       revision: (current?.revision ?? 0) + 1,
       title: resource.title,
     }));
-  }, [organizationId, projectId, queryClient, signal]);
+  }, [organizationId, projectId, queryClient, selection, signal]);
+
+  if (project.isPending || project.isFetching) return (
+    <section aria-busy="true" aria-label="项目知识工作区" className="knowledge-page">
+      <p role="status">正在确认项目访问权限…</p>
+    </section>
+  );
+  if (project.isError) return (
+    <section aria-label="项目知识工作区" className="knowledge-page">
+      <WorkspaceHeader id="knowledge-page-title" eyebrow="项目范围知识"
+        title="项目知识" description="当前项目暂时无法打开。" actions={<ProjectsLink />} />
+      <div className="knowledge-state knowledge-state-error">
+        <p role="alert">{errorMessage(project.error)}</p>
+        {project.error instanceof ApiError && project.error.traceId !== null ? (
+          <p>请求编号：{project.error.traceId}</p>
+        ) : null}
+        {project.error instanceof ApiError && project.error.retryable ? (
+          <button type="button" onClick={() => void project.refetch()}>重新加载项目</button>
+        ) : null}
+      </div>
+    </section>
+  );
 
   return (
     <section
@@ -236,16 +322,17 @@ function KnowledgeWorkspaceContent({
     >
       <WorkspaceHeader
         id="knowledge-page-title"
-        eyebrow="项目范围知识"
-        title="项目知识"
-        description="管理当前项目的资料、处理状态与检索入口。"
+        eyebrow="当前项目"
+        title={project.data.name}
+        description="项目知识"
         actions={<ProjectsLink />}
-        status={capabilities === undefined ? undefined : (
-          <span className="knowledge-access">
-            {capabilities.canWrite ? "可维护资料" : "只读访问"}
-          </span>
-        )}
       />
+
+      <nav aria-label="工作台分区" className="knowledge-mobile-panes">
+        <button type="button" aria-pressed={mobilePane === "explorer"} onClick={() => setMobilePane("explorer")}>资料</button>
+        <button type="button" aria-pressed={mobilePane === "content"} onClick={() => setMobilePane("content")}>内容</button>
+        <button type="button" aria-pressed={mobilePane === "assistant"} onClick={() => setMobilePane("assistant")}>岑宁</button>
+      </nav>
 
       {resourceDeletion === null ? null : <p
         aria-label="资料删除结果"
@@ -275,103 +362,105 @@ function KnowledgeWorkspaceContent({
         </div>
       ) : null}
 
-      {!accessUnavailable && resources.data !== undefined && capabilities?.canWrite === true ? (
-        <KnowledgeUploadBatch
-          key={`upload:${organizationId}:${projectId}`}
-          organizationId={organizationId}
-          projectId={projectId}
-          csrfToken={csrfToken}
-          sessionSignal={signal}
-          onAccessUnavailable={onSearchAccessUnavailable}
-        />
-      ) : null}
-
-      {!accessUnavailable && resources.data !== undefined ? (
-        <KnowledgeAnswers
-          key={`answers:${organizationId}:${projectId}`}
-          organizationId={organizationId}
-          projectId={projectId}
-          csrfToken={csrfToken}
-          sessionSignal={signal}
-          onAccessUnavailable={onSearchAccessUnavailable}
-          resourceDeletion={resourceDeletion}
-        />
-      ) : null}
-
-      {!accessUnavailable && resources.data !== undefined ? (
-        <KnowledgeSearch
-          key={`${organizationId}:${projectId}`}
-          organizationId={organizationId}
-          projectId={projectId}
-          csrfToken={csrfToken}
-          sessionSignal={signal}
-          onAccessUnavailable={onSearchAccessUnavailable}
-          resourceDeletion={resourceDeletion}
-        />
-      ) : null}
-
-      {!accessUnavailable && resources.data !== undefined && items.length === 0 ? (
-        <div className="knowledge-state knowledge-state-empty">
-          <BookOpenText aria-hidden="true" size={28} strokeWidth={1.8} />
-          <div>
-            <h2>还没有知识资料</h2>
-            <p>当前项目暂时没有可显示的知识资料。</p>
+      {!accessUnavailable && resources.data !== undefined ? <div className="knowledge-workbench" data-mobile-pane={mobilePane}>
+        <aside className="knowledge-explorer" aria-label="项目资料" hidden={compact && mobilePane !== "explorer"}>
+          <div className="knowledge-explorer-heading">
+            <div><span>项目资料</span><h2>{project.data.name}</h2></div>
+            {capabilities?.canWrite === true ? <button type="button"
+              aria-label="上传资料" aria-expanded={uploadOpen}
+              onClick={() => setUploadOpen((value) => !value)}>
+              <UploadCloud aria-hidden="true" size={18} />
+            </button> : null}
           </div>
-        </div>
-      ) : null}
-
-      {items.length > 0 ? (
-        <KnowledgeResourceList
-          organizationId={organizationId}
-          projectId={projectId}
-          csrfToken={csrfToken}
-          canWrite={capabilities?.canWrite === true}
-          actionsDisabled={resources.fetchStatus !== "idle" || resources.isError}
-          sessionSignal={signal}
+          {capabilities?.canWrite === true ? <div className="knowledge-explorer-upload">
+            <KnowledgeUploadBatch key={`upload:${organizationId}:${projectId}`}
+              organizationId={organizationId} projectId={projectId} csrfToken={csrfToken}
+              sessionSignal={signal} onAccessUnavailable={onSearchAccessUnavailable}
+              collapsible open={uploadOpen} onToggle={() => setUploadOpen((value) => !value)} />
+          </div> : null}
+          {items.length === 0 ? <div className="knowledge-state knowledge-state-empty">
+            <BookOpenText aria-hidden="true" size={28} strokeWidth={1.8} />
+            <div><h2>还没有知识资料</h2>
+              <p>{capabilities?.canWrite ? "上传资料后可在此检索。" : "当前项目暂时没有可显示的知识资料。"}</p></div>
+          </div> : null}
+          {items.length > 0 ? <KnowledgeResourceList
           items={items}
           hasNextPage={resources.hasNextPage}
           paginationError={resources.isFetchNextPageError ? resources.error : null}
           pending={resources.isFetchingNextPage}
           onLoadMore={() => void resources.fetchNextPage()}
-          onResourceMissing={handleResourceMissing}
-          onRetrySucceeded={handleRetrySucceeded}
-          onDeleteSucceeded={handleDeleteSucceeded}
-        />
-      ) : null}
+          selectedResourceId={selection?.kind === "resource" ? selection.resourceId : null}
+          onOpenResource={(resource) => selection?.kind === "resource" &&
+            selection.resourceId === resource.id
+            ? void clearSelection()
+            : void openSelection({ kind: "resource", resourceId: resource.id, title: resource.title })}
+        /> : null}
+        </aside>
+        <section className="knowledge-content" aria-label="知识内容" hidden={compact && mobilePane !== "content"}>
+          <div className="knowledge-content-tabs">
+            <button type="button" aria-current={selection === null ? "page" : undefined}
+              onClick={() => void clearSelection()}><Search aria-hidden="true" size={17} />搜索</button>
+            {selection !== null ? <span>{selection.kind === "resource" ? selection.title : `${selection.citation.title} · 引用上下文`}</span> : null}
+            {selection !== null ? <button type="button" aria-label="关闭当前内容"
+              onClick={() => void clearSelection()}><X aria-hidden="true" size={18} /></button> : null}
+          </div>
+          <div hidden={selection !== null}>
+            <KnowledgeSearch key={`${organizationId}:${projectId}`}
+              organizationId={organizationId} projectId={projectId} csrfToken={csrfToken}
+              sessionSignal={signal} onAccessUnavailable={onSearchAccessUnavailable}
+              resourceDeletion={resourceDeletion}
+              onOpenCitation={(citation) => void openSelection({ kind: "citation", citation })} />
+          </div>
+          {selection?.kind === "resource" ? <KnowledgeResourceDetails
+            key={`selected:${selection.resourceId}`} id={`knowledge-center-resource-${selection.resourceId}`}
+            organizationId={organizationId} projectId={projectId}
+            resourceId={selection.resourceId} csrfToken={csrfToken}
+            canWrite={capabilities?.canWrite === true}
+            actionsDisabled={resources.fetchStatus !== "idle" || resources.isError}
+            sessionSignal={signal} onResourceMissing={handleResourceMissing}
+            onRetrySucceeded={handleRetrySucceeded} onDeleteSucceeded={handleDeleteSucceeded} /> : null}
+          {selection?.kind === "citation" ? <KnowledgeCitationContext
+            key={`selected:${selection.citation.resourceVersionId}:${selection.citation.chunkId}`}
+            id="knowledge-center-citation" organizationId={organizationId}
+            projectId={projectId} citation={selection.citation} sessionSignal={signal} /> : null}
+        </section>
+        <aside className="knowledge-assistant" aria-label="岑宁问答面板" hidden={compact && mobilePane !== "assistant"}>
+          <KnowledgeAnswers key={`answers:${organizationId}:${projectId}`}
+            organizationId={organizationId} projectId={projectId} csrfToken={csrfToken}
+            sessionSignal={signal} onAccessUnavailable={onSearchAccessUnavailable}
+            resourceDeletion={resourceDeletion} docked
+            onOpenCitation={(citation) => void openSelection({ kind: "citation", citation })} />
+        </aside>
+      </div> : null}
+      <footer className="knowledge-statusbar" aria-label="工作台状态">
+        <span>{project.data.name}</span>
+        {capabilities === undefined ? (
+          <span>{resources.isPending ? "正在读取资料" : "资料暂不可用"}</span>
+        ) : (
+          <span><strong>{capabilities.canWrite ? "可维护资料" : "只读访问"}</strong>
+            {` · 已加载 ${items.length} 项资料`}</span>
+        )}
+      </footer>
     </section>
   );
 }
 
 function KnowledgeResourceList({
-  organizationId,
-  projectId,
-  csrfToken,
-  canWrite,
-  actionsDisabled,
-  sessionSignal,
   items,
   hasNextPage,
   paginationError,
   pending,
   onLoadMore,
-  onResourceMissing,
-  onRetrySucceeded,
-  onDeleteSucceeded,
+  selectedResourceId,
+  onOpenResource,
 }: {
-  organizationId: string;
-  projectId: string;
-  csrfToken: string;
-  canWrite: boolean;
-  actionsDisabled: boolean;
-  sessionSignal: AbortSignal;
   items: KnowledgeResource[];
   hasNextPage: boolean;
   paginationError: unknown;
   pending: boolean;
   onLoadMore(): void;
-  onResourceMissing(): void | Promise<void>;
-  onRetrySucceeded(resource: KnowledgeResource): void | Promise<void>;
-  onDeleteSucceeded(resource: KnowledgeResource): void | Promise<void>;
+  selectedResourceId: string | null;
+  onOpenResource(resource: KnowledgeResource): void;
 }) {
   const canRetryPagination = paginationError instanceof ApiError && paginationError.retryable;
 
@@ -387,10 +476,8 @@ function KnowledgeResourceList({
       <ul aria-label="知识资料" className="knowledge-resource-list">
         {items.map((resource) => (
           <KnowledgeResourceRow key={resource.id} resource={resource}
-            organizationId={organizationId} projectId={projectId}
-            csrfToken={csrfToken} canWrite={canWrite} actionsDisabled={actionsDisabled}
-            sessionSignal={sessionSignal} onResourceMissing={onResourceMissing}
-            onRetrySucceeded={onRetrySucceeded} onDeleteSucceeded={onDeleteSucceeded} />
+            selected={selectedResourceId === resource.id}
+            onOpen={() => onOpenResource(resource)} />
         ))}
       </ul>
       {hasNextPage ? (
@@ -413,94 +500,47 @@ function KnowledgeResourceList({
   );
 }
 
-function KnowledgeResourceRow({ resource, organizationId, projectId, sessionSignal,
-  csrfToken, canWrite, actionsDisabled, onResourceMissing, onRetrySucceeded,
-  onDeleteSucceeded }: {
+function KnowledgeResourceRow({ resource, selected, onOpen }: {
   resource: KnowledgeResource;
-  organizationId: string;
-  projectId: string;
-  csrfToken: string;
-  canWrite: boolean;
-  actionsDisabled: boolean;
-  sessionSignal: AbortSignal;
-  onResourceMissing(): void | Promise<void>;
-  onRetrySucceeded(resource: KnowledgeResource): void | Promise<void>;
-  onDeleteSucceeded(resource: KnowledgeResource): void | Promise<void>;
+  selected: boolean;
+  onOpen(): void;
 }) {
-  const queryClient = useQueryClient();
-  const [expanded, setExpanded] = useState(false);
-  const panelId = `knowledge-resource-detail-${resource.id}`;
   const version = resource.latestVersion;
   const status = version?.status ?? "waiting";
   const statusLabel = version === null ? "等待版本" : RESOURCE_STATUS_LABELS[version.status];
-
   return (
-    <li className="knowledge-resource" data-status={status}>
-      <article>
-        <FileText aria-hidden="true" className="knowledge-resource-icon" size={22} strokeWidth={1.7} />
-        <div className="knowledge-resource-content">
-          <div className="knowledge-resource-title-line">
-            <h3>{resource.title}</h3>
+    <li className="knowledge-resource" data-status={status} data-selected={selected || undefined}>
+      <button type="button" className="knowledge-resource-select"
+        aria-label={`${selected ? "收起" : "查看"}${resource.title}资料详情`}
+        aria-expanded={selected} aria-controls={`knowledge-center-resource-${resource.id}`}
+        onClick={onOpen}>
+        <FileText aria-hidden="true" className="knowledge-resource-icon" size={20} strokeWidth={1.7} />
+        <span className="knowledge-resource-content">
+          <span className="knowledge-resource-title-line">
+            <strong>{resource.title}</strong>
             <span className="knowledge-resource-status" data-status={status}>{statusLabel}</span>
-          </div>
-          <div className="knowledge-resource-metadata">
+          </span>
+          <span className="knowledge-resource-metadata">
             {version === null ? (
               <>
-                <span>
-                  <FileText aria-hidden="true" size={15} />
-                  文件类型待生成
-                </span>
-                <span>
-                  <HardDrive aria-hidden="true" size={15} />
-                  文件大小待生成
-                </span>
+                <span><FileText aria-hidden="true" size={15} />文件类型待生成</span>
+                <span><HardDrive aria-hidden="true" size={15} />文件大小待生成</span>
                 {resource.sourceType === "zip_entry" ? (
-                  <span>
-                    <PackageOpen aria-hidden="true" size={15} />
-                    ZIP 内文件
-                  </span>
+                  <span><PackageOpen aria-hidden="true" size={15} />ZIP 内文件</span>
                 ) : null}
               </>
             ) : (
               <>
-                <span title={version.mediaType}>
-                  <FileText aria-hidden="true" size={15} />
-                  {formatKnowledgeMediaType(version.mediaType)}
-                </span>
-                <span>
-                  <HardDrive aria-hidden="true" size={15} />
-                  {formatBytes(version.sizeBytes)}
-                </span>
+                <span title={version.mediaType}><FileText aria-hidden="true" size={15} />
+                  {formatKnowledgeMediaType(version.mediaType)}</span>
+                <span><HardDrive aria-hidden="true" size={15} />{formatBytes(version.sizeBytes)}</span>
               </>
             )}
-            <time dateTime={resource.updatedAt}>
-              <CalendarDays aria-hidden="true" size={15} />
-              {formatCalendarDate(resource.updatedAt, UPDATED_DATE_FORMAT)}
-            </time>
-          </div>
-          <button type="button" className="knowledge-resource-toggle"
-            aria-expanded={expanded} aria-controls={panelId}
-            onClick={() => {
-              const key = knowledgeKeys.resource(organizationId, projectId, resource.id);
-              if (expanded) {
-                void queryClient.cancelQueries({ queryKey: key, exact: true }).finally(() => {
-                  queryClient.removeQueries({ queryKey: key, exact: true });
-                });
-                setExpanded(false);
-                return;
-              }
-              queryClient.removeQueries({ queryKey: key, exact: true });
-              setExpanded(true);
-            }}>
-            {expanded ? "收起资料详情" : "查看资料详情"}
-          </button>
-        </div>
-      </article>
-      {expanded ? <KnowledgeResourceDetails id={panelId} organizationId={organizationId}
-        projectId={projectId} resourceId={resource.id} csrfToken={csrfToken}
-        canWrite={canWrite} actionsDisabled={actionsDisabled} sessionSignal={sessionSignal}
-        onResourceMissing={onResourceMissing} onRetrySucceeded={onRetrySucceeded}
-        onDeleteSucceeded={onDeleteSucceeded} /> : null}
+            <time dateTime={resource.updatedAt}><CalendarDays aria-hidden="true" size={15} />
+              {formatCalendarDate(resource.updatedAt, UPDATED_DATE_FORMAT)}</time>
+          </span>
+        </span>
+      </button>
     </li>
   );
 }

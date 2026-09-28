@@ -366,7 +366,7 @@ async function readLayout(page) {
     const nav = document.querySelector(".primary-nav");
     const workspace = document.querySelector("main.workspace");
     const panel = document.querySelector(".knowledge-page, .projects-page");
-    const brandImage = document.querySelector(".product-brand img");
+    const brandImage = document.querySelector(".product-brand .cairn-brand-mark svg");
     const navRect = nav?.getBoundingClientRect();
     const brandImageRect = brandImage?.getBoundingClientRect();
     const workspaceStyle = workspace === null ? null : getComputedStyle(workspace);
@@ -392,10 +392,7 @@ async function readLayout(page) {
         document.querySelector('.primary-nav a[aria-current="page"]')?.textContent.trim() ?? null,
       brandImageWidth: brandImageRect?.width ?? null,
       brandImageHeight: brandImageRect?.height ?? null,
-      brandImageNaturalWidth:
-        brandImage instanceof HTMLImageElement ? brandImage.naturalWidth : null,
-      brandImageNaturalHeight:
-        brandImage instanceof HTMLImageElement ? brandImage.naturalHeight : null,
+      brandPathCount: brandImage?.querySelectorAll("path").length ?? 0,
       brandImageBorderWidth: brandImageStyle?.borderTopWidth ?? null,
       brandImageObjectFit: brandImageStyle?.objectFit ?? null,
       undersizedTargets: [
@@ -488,6 +485,8 @@ function expectKnowledgeUploadLayout(layout, viewport, expect, state) {
 }
 
 async function checkKnowledgeUploadLayout(page, expect, screenshotDir, viewport, themeValue) {
+  if (viewport.width <= 900) await page.getByRole("button", { name: "资料", exact: true }).click();
+  await page.getByRole("button", { name: "上传资料" }).click();
   await page.evaluate(() => {
     window.__responsiveNativeXhr = window.XMLHttpRequest;
     window.__responsiveUploadReleased = false;
@@ -627,7 +626,7 @@ async function checkKnowledgeUploadLayout(page, expect, screenshotDir, viewport,
 
   await page.evaluate(() => window.__releaseResponsiveUploads());
   await page.waitForSelector(".knowledge-upload-child-list");
-  await page.getByText("Worker 已完成本批次处理，部分文件处理失败。").waitFor();
+  await page.getByText("本批次已处理完成，部分文件处理失败。").waitFor();
   const completedLayout = await readKnowledgeUploadLayout(page);
   expectKnowledgeUploadLayout(completedLayout, viewport, expect, "部分失败");
   expect(
@@ -708,6 +707,7 @@ async function checkKnowledgeResourceLayout(
     `${new URL(page.url()).origin}/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`,
     { waitUntil: "networkidle" },
   );
+  if (viewport.width <= 900) await page.getByRole("button", { name: "资料", exact: true }).click();
   await page.waitForSelector(".knowledge-resource-list");
 
   const layout = await readLayout(page);
@@ -741,7 +741,8 @@ async function checkKnowledgeResourceLayout(
   const detailRow = page.locator(".knowledge-resource", {
     hasText: KNOWLEDGE_RESOURCE_DETAIL.title,
   });
-  const detailToggle = detailRow.getByRole("button", { name: "查看资料详情" });
+  if (viewport.width <= 900) await page.getByRole("button", { name: "资料", exact: true }).click();
+  const detailToggle = detailRow.getByRole("button", { name: `查看${KNOWLEDGE_RESOURCE_DETAIL.title}资料详情` });
   const detailRequest = page.waitForRequest((request) =>
     request.method() === "GET" &&
     new URL(request.url()).pathname.endsWith(`/knowledge/resources/${KNOWLEDGE_RESOURCE_DETAIL.id}`)
@@ -764,6 +765,7 @@ async function checkKnowledgeResourceLayout(
     ["手动刷新", refreshDetail],
     ["下载", downloadDetail],
   ]) {
+    await control.evaluate((element) => element.scrollIntoView({ block: "center", inline: "nearest" }));
     await control.focus();
     expect(await control.evaluate((element) => document.activeElement === element),
       `${viewport.name} 资料详情${label}控件无法获得键盘焦点`);
@@ -795,7 +797,7 @@ async function checkKnowledgeResourceLayout(
     const rect = panel.getBoundingClientRect();
     const grid = panel.querySelector(".knowledge-resource-detail-grid");
     const download = panel.querySelector(".knowledge-resource-download");
-    const toggle = panel.parentElement?.querySelector(".knowledge-resource-toggle");
+    const toggle = document.querySelector('.knowledge-resource-select[aria-expanded="true"]');
     return {
       insideViewport: rect.left >= 0 && rect.right <= innerWidth,
       columnCount: grid === null ? 0 : getComputedStyle(grid).gridTemplateColumns.split(" ").length,
@@ -832,9 +834,10 @@ async function checkKnowledgeResourceLayout(
     path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-resource-detail.png`),
     fullPage: true,
   });
-  await detailRow.getByRole("button", { name: "收起资料详情" }).click();
+  if (viewport.width <= 900) await page.getByRole("button", { name: "资料", exact: true }).click();
+  await detailRow.getByRole("button", { name: `收起${KNOWLEDGE_RESOURCE_DETAIL.title}资料详情` }).click();
   await detailPanel.waitFor({ state: "detached" });
-  const collapsedToggle = detailRow.getByRole("button", { name: "查看资料详情" });
+  const collapsedToggle = detailRow.getByRole("button", { name: `查看${KNOWLEDGE_RESOURCE_DETAIL.title}资料详情` });
   expect(await collapsedToggle.getAttribute("aria-expanded") === "false",
     `${viewport.name} 资料详情未收起`);
   expect(await collapsedToggle.evaluate((button) => document.activeElement === button),
@@ -851,6 +854,8 @@ async function checkKnowledgeResourceLayout(
 
   await checkKnowledgeUploadLayout(page, expect, screenshotDir, viewport, themeValue);
 
+  if (viewport.width <= 900) await page.getByRole("button", { name: "内容", exact: true }).click();
+  await page.getByRole("button", { name: "搜索", exact: true }).click();
   await page.getByLabel("搜索项目知识").fill("跨区域故障恢复");
   await page.getByRole("button", { name: "搜索项目知识" }).click();
   await page.waitForSelector(".knowledge-search-result-list");
@@ -945,6 +950,7 @@ async function checkKnowledgeResourceLayout(
     fullPage: true,
   });
 
+  await page.getByRole("button", { name: "搜索", exact: true }).click();
   await page.getByLabel("搜索项目知识").fill(KNOWLEDGE_SEARCH_ERROR_QUERY);
   await page.getByRole("button", { name: "搜索项目知识" }).click();
   await page.waitForSelector(".knowledge-search-error");
@@ -1054,7 +1060,8 @@ async function checkKnowledgeResourceLayout(
   const failedRow = page.locator(".knowledge-resource", {
     hasText: KNOWLEDGE_FAILED_RESOURCE_DETAIL.title,
   });
-  await failedRow.getByRole("button", { name: "查看资料详情" }).click();
+  if (viewport.width <= 900) await page.getByRole("button", { name: "资料", exact: true }).click();
+  await failedRow.getByRole("button", { name: `查看${KNOWLEDGE_FAILED_RESOURCE_DETAIL.title}资料详情` }).click();
   const failedPanel = page.getByRole("region", {
     name: `${KNOWLEDGE_FAILED_RESOURCE_DETAIL.title} 资料详情`,
   });
@@ -1062,6 +1069,7 @@ async function checkKnowledgeResourceLayout(
   const retryAction = failedPanel.getByRole("button", { name: "重新处理失败版本" });
   const deleteAction = failedPanel.getByRole("button", { name: "删除资料" });
   for (const [label, control] of [["重试", retryAction], ["删除", deleteAction]]) {
+    await control.evaluate((element) => element.scrollIntoView({ block: "center", inline: "nearest" }));
     await control.focus();
     const actionState = await control.evaluate((element) => {
       const rect = element.getBoundingClientRect();
@@ -1111,7 +1119,7 @@ async function checkKnowledgeResourceLayout(
   operationState.failNextDelete = true;
   await page.getByRole("button", { name: "确认删除资料" }).click();
   await failedPanel.getByText("资料删除暂时失败，请重试", { exact: true }).waitFor();
-  expect(await failedRow.isVisible(), `${viewport.name} 删除失败后资料被错误隐藏`);
+  expect(await failedRow.count() === 1, `${viewport.name} 删除失败后资料被错误移除`);
   expect(await failedPanel.getByText("请求编号：trace-responsive-delete-503", { exact: true }).isVisible(),
     `${viewport.name} 删除失败缺少请求编号`);
 
@@ -1122,7 +1130,7 @@ async function checkKnowledgeResourceLayout(
     (element) => document.activeElement === element,
     await deleteNotice.elementHandle(),
   );
-  expect(!(await failedRow.isVisible()), `${viewport.name} 删除成功后资料仍可见`);
+  expect(await failedRow.count() === 0, `${viewport.name} 删除成功后资料仍在列表中`);
   expect(await page.getByLabel("搜索项目知识").inputValue() === "",
     `${viewport.name} 删除成功后搜索输入未清空`);
   expect(operationState.searchRequests === searchRequestsBeforeDelete,
@@ -1414,7 +1422,7 @@ async function checkProjectsLayout({
   );
   const expectedEmptyAsset = viewport.width < 600
     ? "/cairn-mascot-chibi.png"
-    : "/cairn-mascot-transparent.png";
+    : "/cenning-full-v2-20260928.png";
   const expectedEmptyDimensions = viewport.width < 600 ? [512, 512] : [1024, 1536];
   expect(
     empty.currentSrc?.endsWith(expectedEmptyAsset) &&
@@ -1447,7 +1455,7 @@ async function checkProjectsLayout({
 
 async function readImageHealth(page) {
   return page.evaluate(() =>
-    [...document.querySelectorAll(".login-wordmark, .product-brand img, .mascot-figure img")].map(
+    [...document.querySelectorAll(".mascot-figure img")].map(
       (image) => {
         let cornerAlpha = null;
         if (image.complete && image.naturalWidth > 0 && image.naturalHeight > 0) {
@@ -1476,9 +1484,9 @@ async function readImageHealth(page) {
 }
 
 async function readProductBrandAppearance(page, screenshot) {
-  const brandImage = page.locator(".product-brand img");
+  const brandImage = page.locator(".product-brand .cairn-brand-mark svg");
   const bounds = await brandImage.boundingBox();
-  if (bounds === null) throw new Error("顶栏 wordmark 不可见");
+  if (bounds === null) throw new Error("顶栏矢量标记不可见");
 
   return page.evaluate(
     async ({ source, backgroundX, imageX, sampleY }) => {
@@ -1511,33 +1519,23 @@ async function readProductBrandAppearance(page, screenshot) {
 async function waitForLoginBrandScenePaint(page) {
   await page.waitForFunction(
     () => {
-      const images = [
-        document.querySelector(".login-wordmark"),
-        document.querySelector(
-          ".login-brand-scene .mascot-figure[data-variant='full'] .mascot-art > img",
-        ),
-      ];
-      return images.every(
-        (image) => image instanceof HTMLImageElement &&
-          image.complete &&
-          image.naturalWidth > 0 &&
-          image.naturalHeight > 0,
+      const mark = document.querySelector(".login-wordmark .cairn-brand-mark svg");
+      const image = document.querySelector(
+        ".login-brand-scene .mascot-figure[data-variant='full'] .mascot-art > img",
       );
+      return mark?.querySelectorAll("path").length === 3 &&
+        image instanceof HTMLImageElement && image.complete &&
+        image.naturalWidth > 0 && image.naturalHeight > 0;
     },
     undefined,
     { timeout: 5_000 },
   );
   await page.evaluate(async () => {
-    const images = [
-      document.querySelector(".login-wordmark"),
-      document.querySelector(
-        ".login-brand-scene .mascot-figure[data-variant='full'] .mascot-art > img",
-      ),
-    ];
-    if (!images.every((image) => image instanceof HTMLImageElement)) {
-      throw new Error("登录品牌图片在绘制前离开了 DOM");
-    }
-    await Promise.all(images.map((image) => image.decode()));
+    const image = document.querySelector(
+      ".login-brand-scene .mascot-figure[data-variant='full'] .mascot-art > img",
+    );
+    if (!(image instanceof HTMLImageElement)) throw new Error("登录岑宁图片在绘制前离开了 DOM");
+    await image.decode();
     await new Promise((resolve) => {
       requestAnimationFrame(() => requestAnimationFrame(resolve));
     });
@@ -1557,11 +1555,15 @@ async function readLoginBrandScene(page) {
     const card = document.querySelector(".login-card");
     const mascotFigure = mascot?.closest(".mascot-figure");
     const sceneStyle = getComputedStyle(scene);
+    const mark = chip?.querySelector(".cairn-brand-mark svg");
     const chipRect = chip?.getBoundingClientRect();
     const mascotRect = mascot?.getBoundingClientRect();
     const stateRect = state?.getBoundingClientRect();
     return {
       backgroundImage: sceneStyle.backgroundImage,
+      backgroundColor: sceneStyle.backgroundColor,
+      wordmarkPathCount: mark?.querySelectorAll("path").length ?? 0,
+      wordmarkText: chip?.textContent?.trim() ?? null,
       overflow: sceneStyle.overflow,
       position: sceneStyle.position,
       // 状态文字压在深色渐变上，必须是纯白。
@@ -1662,7 +1664,7 @@ function expectLoginMascot(images, viewport, expect) {
   const mascot = images.find((image) => image.alt === "岑宁，Cairn 知识向导");
   const expectedAsset = viewport.width < 600
     ? "/cairn-mascot-chibi.png"
-    : "/cairn-mascot-transparent.png";
+    : "/cenning-full-v2-20260928.png";
   expect(
     mascot?.currentSrc.endsWith(expectedAsset),
     `${viewport.name} 登录页素材选择错误：${mascot?.currentSrc ?? "未渲染"}`,
@@ -1700,6 +1702,12 @@ export async function checkResponsiveFoundation({
         nextCursor: null,
       },
     });
+  });
+  await page.route(/\/api\/v1\/projects\/[^/]+$/, async (route) => {
+    const projectId = new URL(route.request().url()).pathname.split("/").at(-1);
+    const project = RESPONSIVE_PROJECTS.find((item) => item.id === projectId);
+    expect(project !== undefined, `项目详情请求不得读取其他项目：${projectId}`);
+    await route.fulfill({ status: 200, json: project });
   });
   await page.route(/\/api\/v1\/tasks\/[^/]+\/status$/, async (route) => {
     const request = route.request();
@@ -1890,15 +1898,12 @@ export async function checkResponsiveFoundation({
       expect(
         Number.isFinite(projectsLayout.brandImageWidth) &&
           Number.isFinite(projectsLayout.brandImageHeight) &&
-          Number.isFinite(projectsLayout.brandImageNaturalWidth) &&
-          Number.isFinite(projectsLayout.brandImageNaturalHeight) &&
-          Math.abs(
-            projectsLayout.brandImageWidth / projectsLayout.brandImageHeight -
-              projectsLayout.brandImageNaturalWidth / projectsLayout.brandImageNaturalHeight,
-          ) < 0.01 &&
-          projectsLayout.brandImageBorderWidth === "0px" &&
-          projectsLayout.brandImageObjectFit === "contain",
-        `${viewport.name} 顶栏 wordmark 应保持横向比例且没有控件式边框，实际为 ${projectsLayout.brandImageWidth}x${projectsLayout.brandImageHeight}、边框 ${projectsLayout.brandImageBorderWidth}、适配 ${projectsLayout.brandImageObjectFit}`,
+          projectsLayout.brandImageWidth >= 24 &&
+          projectsLayout.brandImageHeight >= 24 &&
+          Math.abs(projectsLayout.brandImageWidth - projectsLayout.brandImageHeight) < 1 &&
+          projectsLayout.brandPathCount === 3 &&
+          projectsLayout.brandImageBorderWidth === "0px",
+        `${viewport.name} 顶栏矢量标记需保持三层方形且无控件式边框，实际为 ${projectsLayout.brandImageWidth}x${projectsLayout.brandImageHeight}、路径 ${projectsLayout.brandPathCount}`,
       );
       expect(
         projectsLayout.undersizedTargets.length === 0,
@@ -1921,7 +1926,7 @@ export async function checkResponsiveFoundation({
           (channel, index) =>
             Math.abs(channel - brandAppearance.backgroundPixel[index]) <= 3,
         ),
-        `${viewport.name} ${themeValue} 顶栏 wordmark 背景必须融入顶栏，实际图片像素 ${brandAppearance.imageBackgroundPixel.join(",")} / 顶栏 ${brandAppearance.backgroundPixel.join(",")}`,
+        `${viewport.name} ${themeValue} 顶栏矢量标记透明区域应融入顶栏，实际像素 ${brandAppearance.imageBackgroundPixel.join(",")} / 顶栏 ${brandAppearance.backgroundPixel.join(",")}`,
       );
 
       const assistantTrigger = page.getByRole("button", { name: "打开岑宁助手" });
@@ -1991,15 +1996,15 @@ export async function checkResponsiveFoundation({
         knowledgeOperationState,
       );
 
-      if (viewport.width < 600) {
-        expect(projectsLayout.navPosition === "fixed", "手机导航必须固定在视口底部");
+      if (viewport.width <= 900) {
+        expect(projectsLayout.navPosition === "fixed", "紧凑导航必须固定在视口底部");
         expect(
           projectsLayout.navBottom !== null && Math.abs(projectsLayout.navBottom - projectsLayout.viewportHeight) < 1,
-          "手机导航必须贴合视口底部",
+          "紧凑导航必须贴合视口底部",
         );
         expect(
           projectsLayout.workspacePaddingBottom > projectsLayout.navHeight,
-          "手机工作区必须为底部导航预留空间",
+          "项目工作区必须为底部导航预留空间",
         );
       } else {
         expect(projectsLayout.navPosition !== "fixed", `${viewport.name} 不应使用固定底部导航`);
@@ -2021,49 +2026,26 @@ export async function checkResponsiveFoundation({
         continue;
       }
       expect(
-        typeof brandScene.backgroundImage === "string" &&
-          brandScene.backgroundImage.includes("gradient"),
-        `${viewport.name} 品牌区应使用渐变背景，实际为 ${brandScene.backgroundImage}`,
+        brandScene.backgroundImage === "none" &&
+          brandScene.backgroundColor === "rgb(24, 35, 50)",
+        `${viewport.name} 登录品牌区应使用克制的深色实底，实际为 ${brandScene.backgroundColor} / ${brandScene.backgroundImage}`,
       );
-      expect(
-        brandScene.position === "relative",
-        `${viewport.name} 品牌区需要 position: relative 作为装饰元素的定位基准`,
-      );
+      expect(brandScene.position === "relative", `${viewport.name} 品牌区应保持稳定定位`);
       expect(
         brandScene.stateColor === "rgb(255, 255, 255)",
-        `${viewport.name} 品牌区状态文字必须为纯白以满足 4.5:1 对比度，实际为 ${brandScene.stateColor}`,
+        `${viewport.name} 岑宁状态文字应保持可读白色，实际为 ${brandScene.stateColor}`,
       );
       expect(
-        typeof brandScene.decorTopWidth === "string" &&
-          typeof brandScene.decorBottomWidth === "string" &&
-          Number.parseFloat(brandScene.decorTopWidth) > 0 &&
-          Number.parseFloat(brandScene.decorBottomWidth) > 0,
-        `${viewport.name} 品牌区应有两个三角装饰，实际 ::before=${brandScene.decorTopWidth} ::after=${brandScene.decorBottomWidth}`,
-      );
-      const approvedGradientStops = [
-        "rgb(58, 111, 176)",
-        "rgb(31, 75, 134)",
-        "rgb(23, 51, 92)",
-      ];
-      expect(
-        typeof brandScene.backgroundImage === "string" &&
-          approvedGradientStops.every((stop) => brandScene.backgroundImage.includes(stop)),
-        `${viewport.name} 品牌区渐变不是已审阅的三段配色，实际为 ${brandScene.backgroundImage}`,
-      );
-      expect(
-        brandScene.wordmarkChipPresent &&
-          brandScene.wordmarkChipVisible &&
-          typeof brandScene.wordmarkChipBackground === "string" &&
-          brandScene.wordmarkChipBackground !== "rgba(0, 0, 0, 0)" &&
-          typeof brandScene.wordmarkChipRadius === "string" &&
-          Number.parseFloat(brandScene.wordmarkChipRadius) > 0,
-        `${viewport.name} wordmark 必须由有背景和圆角的胶囊承载`,
+        brandScene.wordmarkChipPresent && brandScene.wordmarkChipVisible &&
+          brandScene.wordmarkPathCount === 3 && brandScene.wordmarkText === "Cairn" &&
+          brandScene.wordmarkChipBackground === "rgba(0, 0, 0, 0)",
+        `${viewport.name} 登录品牌应使用三层矢量标记和真实 Cairn 文本，无旧位图胶囊`,
       );
       expect(
         Number.isFinite(brandScene.wordmarkChipWidth) &&
           Number.isFinite(brandScene.wordmarkChipHeight) &&
           brandScene.wordmarkChipWidth > brandScene.wordmarkChipHeight,
-        `${viewport.name} wordmark 胶囊不应被网格拉伸，实际为 ${brandScene.wordmarkChipWidth}x${brandScene.wordmarkChipHeight}`,
+        `${viewport.name} 矢量词标不应被网格拉伸，实际为 ${brandScene.wordmarkChipWidth}x${brandScene.wordmarkChipHeight}`,
       );
       expect(
         brandScene.mascotVisible &&
@@ -2084,39 +2066,15 @@ export async function checkResponsiveFoundation({
       );
       expect(
         brandScene.cardHairlineHeight === "4px" &&
-          typeof brandScene.cardHairlineBackground === "string" &&
-          brandScene.cardHairlineBackground.includes("gradient"),
-        `${viewport.name} 登录卡片必须保留 4px 主题渐变细线`,
-      );
-      const expectedHairlineStops = themeValue === "dark"
-        ? ["rgb(133, 179, 238)", "rgb(120, 201, 167)"]
-        : ["rgb(40, 91, 159)", "rgb(38, 114, 91)"];
-      expect(
-        typeof brandScene.cardHairlineBackground === "string" &&
-          expectedHairlineStops.every((stop) =>
-            brandScene.cardHairlineBackground.includes(stop)),
-        `${viewport.name} ${themeValue} 登录卡片细线没有使用对应主题色，实际为 ${brandScene.cardHairlineBackground}`,
+          brandScene.cardHairlineBackground === "none",
+        `${viewport.name} 登录卡片应保留简洁状态细线，实际为 ${brandScene.cardHairlineHeight} / ${brandScene.cardHairlineBackground}`,
       );
       expect(
         brandScene.overflow === "hidden" &&
-          brandScene.decorTopZIndex === "0" &&
-          brandScene.decorBottomZIndex === "0" &&
           brandScene.wordmarkChipZIndex === "1" &&
           brandScene.mascotZIndex === "1",
-        `${viewport.name} 品牌内容必须位于裁切后的三角装饰之上`,
+        `${viewport.name} 矢量品牌与岑宁应保持在裁切容器内可见`,
       );
-
-      const expectedDecor = viewport.width < 600
-        ? { top: "100px", bottom: "75px" }
-        : viewport.width < 1024
-          ? { top: "150px", bottom: "112px" }
-          : { top: "200px", bottom: "150px" };
-      expect(
-        brandScene.decorTopWidth === expectedDecor.top &&
-          brandScene.decorBottomWidth === expectedDecor.bottom,
-        `${viewport.name} 三角装饰尺寸错误，实际为 ${brandScene.decorTopWidth}/${brandScene.decorBottomWidth}`,
-      );
-
       if (viewport.width < 600) {
         expect(
           typeof brandScene.mascotTransform === "string" &&
@@ -2130,7 +2088,7 @@ export async function checkResponsiveFoundation({
         expect(
           Number.isFinite(brandScene.wordmarkChipHeight) &&
             brandScene.wordmarkChipHeight <= 40,
-          `mobile wordmark 胶囊不应被网格拉伸，实际高度为 ${brandScene.wordmarkChipHeight}px`,
+          `mobile 矢量词标不应被网格拉伸，实际高度为 ${brandScene.wordmarkChipHeight}px`,
         );
       } else {
         expect(

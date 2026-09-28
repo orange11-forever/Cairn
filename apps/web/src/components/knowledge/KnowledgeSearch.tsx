@@ -24,6 +24,7 @@ export interface KnowledgeSearchProps {
   sessionSignal: AbortSignal;
   onAccessUnavailable(error: ApiError): void;
   resourceDeletion?: { revision: number; title: string } | null;
+  onOpenCitation?(citation: KnowledgeCitation): void;
 }
 
 export function presentKnowledgeSearchError(error: unknown): {
@@ -55,6 +56,7 @@ export function KnowledgeSearch({
   sessionSignal,
   onAccessUnavailable,
   resourceDeletion = null,
+  onOpenCitation,
 }: KnowledgeSearchProps) {
   const queryClient = useQueryClient();
   const inputId = useId();
@@ -143,15 +145,16 @@ export function KnowledgeSearch({
   return (
     <section className="knowledge-search" aria-label="项目知识检索">
       <div className="knowledge-search-heading">
-        <span className="knowledge-search-kicker">真实项目检索</span>
+        <span className="knowledge-search-kicker">项目资料</span>
         <h2>搜索项目知识</h2>
-        <p id={helpId}>搜索只返回当前项目已索引的原文片段，不生成 AI 答案。</p>
+        <p id={helpId}>搜索当前项目已索引的资料片段。</p>
       </div>
       <form className="knowledge-search-form" onSubmit={submit}>
         <label htmlFor={inputId}>搜索项目知识</label>
         <div className="knowledge-search-controls">
           <textarea
             id={inputId}
+            placeholder="搜索资料中的内容…"
             value={draft}
             rows={2}
             aria-invalid={validationError === null ? undefined : "true"}
@@ -203,6 +206,7 @@ export function KnowledgeSearch({
             projectId={projectId}
             response={query.data}
             sessionSignal={sessionSignal}
+            onOpenCitation={onOpenCitation}
           />
         ) : null}
       </div>
@@ -215,11 +219,13 @@ function KnowledgeSearchResults({
   projectId,
   response,
   sessionSignal,
+  onOpenCitation,
 }: {
   organizationId: string;
   projectId: string;
   response: KnowledgeSearchResponse;
   sessionSignal: AbortSignal;
+  onOpenCitation?: (citation: KnowledgeCitation) => void;
 }) {
   const fallback = response.retrievalMode === "keyword_fallback";
   return (
@@ -247,6 +253,7 @@ function KnowledgeSearchResults({
                 projectId={projectId}
                 citation={citation}
                 sessionSignal={sessionSignal}
+                onOpenCitation={onOpenCitation}
               />
             ))}
           </ol>
@@ -261,11 +268,13 @@ function KnowledgeSearchResult({
   projectId,
   citation,
   sessionSignal,
+  onOpenCitation,
 }: {
   organizationId: string;
   projectId: string;
   citation: KnowledgeCitation;
   sessionSignal: AbortSignal;
+  onOpenCitation?: (citation: KnowledgeCitation) => void;
 }) {
   const panelId = useId();
   const [expanded, setExpanded] = useState(false);
@@ -281,15 +290,17 @@ function KnowledgeSearchResult({
         </p>
         <p className="knowledge-search-excerpt">{citation.excerpt}</p>
         <button
-          aria-controls={panelId}
-          aria-expanded={expanded}
+          aria-controls={onOpenCitation === undefined ? panelId : undefined}
+          aria-expanded={onOpenCitation === undefined ? expanded : undefined}
           className="knowledge-citation-toggle"
           type="button"
-          onClick={() => setExpanded((current) => !current)}
+          onClick={() => onOpenCitation === undefined
+            ? setExpanded((current) => !current)
+            : onOpenCitation(citation)}
         >
-          {expanded ? "收起引用上下文" : "查看引用上下文"}
+          {onOpenCitation === undefined && expanded ? "收起引用上下文" : "查看引用上下文"}
         </button>
-        {expanded ? (
+        {onOpenCitation === undefined && expanded ? (
           <KnowledgeCitationContext
             id={panelId}
             organizationId={organizationId}
