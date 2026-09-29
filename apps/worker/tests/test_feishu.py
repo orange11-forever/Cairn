@@ -302,8 +302,8 @@ def test_redirects_are_classified_without_retry(status: int) -> None:
     [
         (400, "feishu_request_rejected", False),
         (401, "feishu_auth_failed", False),
-        (403, "feishu_access_denied", False),
-        (404, "feishu_not_found", False),
+        (403, "feishu_auth_failed", False),
+        (404, "feishu_auth_failed", False),
         (429, "feishu_rate_limited", True),
         (500, "feishu_unavailable", True),
         (503, "feishu_unavailable", True),
@@ -322,6 +322,45 @@ def test_http_status_is_classified_before_error_body(
     assert (raised.value.code, raised.value.retryable, len(opener.requests)) == (code, retryable, 1)
     _assert_safe_failure(raised.value, "upstream-secret-reason", "upstream-private-body", "app-secret-canary")
     assert error.closed
+
+
+@pytest.mark.parametrize("stage", ["metadata", "raw"])
+@pytest.mark.parametrize(
+    ("status", "business_code", "expected"),
+    [
+        (403, 1770032, "feishu_access_denied"),
+        (404, 1770002, "feishu_not_found"),
+        (400, 1770003, "feishu_not_found"),
+        (500, 1771001, "feishu_unavailable"),
+        (503, 1771005, "feishu_unavailable"),
+        (400, 9999999, "feishu_request_rejected"),
+    ],
+)
+@pytest.mark.parametrize("transport", ["response", "http_error", "envelope"])
+def test_document_error_classification_keeps_token_errors_separate(
+    stage: str, status: int, business_code: int, expected: str, transport: str,
+) -> None:
+    """A documented document error changes access; an unknown code stays generic."""
+    body = json.dumps({"code": business_code, "msg": "private-upstream-secret"}).encode()
+    if transport == "http_error":
+        failed: _Response | BaseException = HTTPError(
+            "https://open.feishu.cn/private", status, "private-upstream-secret",
+            HTTPMessage(), BytesIO(body),
+        )
+    else:
+        failed = _response({"code": business_code, "msg": "private-upstream-secret"}, status=200 if transport == "envelope" else status)
+    items: list[_Response | BaseException] = [_response(TOKEN)]
+    if stage == "raw":
+        items.append(_response(METADATA))
+    items.append(failed)
+    client, opener, _factory = _client(items)
+
+    with pytest.raises(FeishuFailure) as raised:
+        client.read_document("Doc123")
+
+    assert raised.value.code == expected
+    assert len(opener.requests) == (3 if stage == "raw" else 2)
+    _assert_safe_failure(raised.value, "private-upstream-secret")
 
 
 @pytest.mark.parametrize(

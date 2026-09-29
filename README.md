@@ -11,7 +11,7 @@
 </p>
 
 > [!IMPORTANT]
-> Cairn 已在真实 PostgreSQL/pgvector 知识链路上交付项目范围单轮生成式知识问答。`verify:core` 使用确定性本地回答 Provider；`dev:core` 的问答需显式配置 `ANSWER_BASE_URL`、`ANSWER_API_KEY`、`ANSWER_MODEL`，并通过 `ANSWER_PROTOCOL` 选择协议，未配置时其他知识功能仍可用。浏览器验收覆盖上传、索引、混合搜索、生成回答、引用上下文与授权下载；默认验证不访问外网或真实 Provider。飞书手动同步后端已交付；流式/多轮问答、飞书周期同步、其他连接器和全文格式化预览仍在后续任务。
+> Cairn 已在真实 PostgreSQL/pgvector 知识链路上交付项目范围单轮生成式知识问答。`verify:core` 使用确定性本地回答 Provider；`dev:core` 的问答需显式配置 `ANSWER_BASE_URL`、`ANSWER_API_KEY`、`ANSWER_MODEL`，并通过 `ANSWER_PROTOCOL` 选择协议，未配置时其他知识功能仍可用。浏览器验收覆盖上传、索引、混合搜索、生成回答、引用上下文与授权下载；默认验证不访问外网或真实 Provider。飞书单文档管理、手动与周期同步已通过本地模拟飞书验收，真实租户仍待验证；流式/多轮问答、其他连接器和全文格式化预览仍在后续任务。
 >
 > 当前 Web 项目知识页是 IDE 式工作台：左侧查看实际资料和上传进度，中间打开搜索、已授权资源详情或纯文本引用上下文，右侧由岑宁回答当前单个问题。手机端可切换资料、内容、岑宁区域；本地切换保留草稿与上传状态，项目或会话变化会销毁私有状态。品牌使用演示图中的山峰轮廓 SVG 标记，已提供可复用的 mark 与 wordmark；岑宁全身版更新为 `cenning-full-v2-20260928.png`，紧凑头像仍用原 Q 版。当前没有全文格式化预览、终端、Agent 执行、多轮会话或模型设置入口。
 >
@@ -33,9 +33,9 @@
 | API / SDK | FastAPI 已提供会话、项目/任务、RBAC/ACL、知识摄取、资源、混合搜索、带引用的单轮回答以及飞书来源登记/手动同步契约；生成 SDK 导出 OpenAPI schema 与运行时校验器，Web API 适配器使用该校验器检查身份、项目/任务和知识响应，并对 OpenAPI `date-time` 字段执行运行时校验。 |
 | 项目知识问答 | 基于当前项目授权资料生成单轮回答；模型调用前后重新核验权限与证据，引用可展开上下文并授权下载。支持 Chat Completions、Responses、Claude Messages 和 Gemini GenerateContent 协议，真实厂商密钥联调仍需部署者完成。 |
 | Worker | 独立 Worker 已进入知识摄取核心链路；Python Worker 通过 PostgreSQL 持久化任务完成受限归档、解析、切分、Embedding 与原子索引发布。 |
-| 飞书手动同步 | 管理员通过 API 登记文档来源并显式确认项目共享，手动触发持久化同步与版本幂等；索引发布后可检索，手动停用后撤回内容访问。Web 管理入口、周期同步、上游权限/删除传播与真实租户验收仍待完成。 |
+| 飞书单文档连接 | 管理员在 Web 登记来源并显式确认项目共享，可手动或每 5 分钟至一周同步、查看记录、停用和恢复。快照保存后仍需等待索引 ready；明确的上游撤权/删除在下次检查后隐藏旧内容。本地模拟飞书的完整门禁上一轮已通过；本次窄屏布局修复待最终复核，真实租户未验证。 |
 | 基础设施 | 核心开发链路使用 PostgreSQL 16/pgvector 与 S3 兼容 MinIO；Redis、正式 Compose/Helm 部署和 OpenTelemetry 仍在规划。 |
-| 延后 | 全文格式化预览、流式/多轮问答、周期性资源详情轮询、飞书周期同步与连接管理界面、其他连接器、Agent 执行和完整模型 Provider 策略层尚未交付。 |
+| 延后 | 全文格式化预览、流式/多轮问答、周期性资源详情轮询、其他连接器、Agent 执行和完整模型 Provider 策略层尚未交付。 |
 
 ## 多模型问答与飞书接入进度
 
@@ -50,13 +50,13 @@
 
 具体模型必须支持相应的结构化 JSON 输出。当前验收使用确定性本地 Provider 和协议测试，未使用各厂商真实密钥联网测试；更换模型时需验证目标模型的实际能力。配置与 API 边界见 [API 说明](apps/api/README.md)。
 
-Stage 3B 首个切片为 Worker 包中的飞书新版文档读取客户端：自建应用凭证获取与缓存、指定文档的标题/版本/纯文本读取、有界响应、版本变化检测和安全失败分类。它是内部接入基础，知识工作区暂不提供飞书同步入口，也不自动读取外部文档。前后版本检查不能保证飞书服务端原子快照。
+Stage 3B 首个切片为 Worker 包中的飞书新版文档读取客户端：自建应用凭证获取与缓存、指定文档的标题/版本/纯文本读取、有界响应、版本变化检测和安全失败分类。它是内部接入基础；项目知识页的管理员入口可登记并同步单个文档。前后版本检查不能保证飞书服务端原子快照。
 
 Stage 3B 来源登记 API 接续读取基础：组织 owner/admin 可以登记飞书文档来源、绑定项目、分页查看并幂等停用。登记必须显式声明 `accessPolicy=project_members`，确认允许向有项目读取权限的成员共享；仅保存部署凭证引用，API 不接收密钥。`configured` 表示登记成功，不表示凭证已经验证或文档已经同步。来源变更、审计和项目 Outbox 在同一事务提交。
 
-Worker 现可从唯一可选部署变量 `CAIRN_FEISHU_CREDENTIALS_JSON` 按组织 UUID 与不透明 `credentialRef` 精确解析凭证，并按次创建隔离的读取客户端；缺失配置不影响现有上传 Worker。已有知识内容读取、搜索、问答、重试、删除和索引发布会按当前 `project_members` 来源状态重新授权：停用后新请求立即不可见，索引发布与停用通过来源行锁串行化。解析器本身不授予权限，也不执行同步；独立的手动同步任务已接入读取、持久化与版本幂等，外部权限/删除传播和管理界面仍待完成。使用方式见 [API 来源管理说明](apps/api/README.md#stage-3b-飞书项目来源登记)与 [Worker 说明](apps/worker/README.md)，范围与验收要求见[来源登记设计](docs/stage-3b-feishu-sources-design.md)、[凭证解析设计](docs/stage-3b-feishu-credentials-design.md)和[飞书读取基础设计](docs/stage-3b-feishu-reader-design.md)。
+Worker 现可从唯一可选部署变量 `CAIRN_FEISHU_CREDENTIALS_JSON` 按组织 UUID 与不透明 `credentialRef` 精确解析凭证，并按次创建隔离的读取客户端；缺失配置不影响现有上传 Worker。已有知识内容读取、搜索、问答、重试、删除和索引发布会按当前 `project_members` 来源状态重新授权：停用后新请求立即不可见，索引发布与停用通过来源行锁串行化。解析器本身不授予权限；手动和周期同步、管理界面及明确的上游拒绝传播已通过本地模拟飞书验收，真实租户尚未验证。使用方式见 [API 来源管理说明](apps/api/README.md#stage-3b-飞书项目来源登记)与 [Worker 说明](apps/worker/README.md)，范围与验收要求见[来源登记设计](docs/stage-3b-feishu-sources-design.md)、[凭证解析设计](docs/stage-3b-feishu-credentials-design.md)和[飞书读取基础设计](docs/stage-3b-feishu-reader-design.md)。
 
-管理员还可通过来源同步端点手动排队单文档快照；`completed` 表示快照和资源版本已持久化且索引任务已排队，内容须待既有索引任务发布后可检索。同步按 revision/hash 幂等，拒绝复活软删除资源和发布较旧飞书 revision。当前仍无 Web 管理界面、定时同步、webhook 或外部删除传播。
+管理员还可通过来源同步端点手动排队单文档快照；`completed` 表示快照和资源版本已持久化且索引任务已排队，内容须待既有索引任务发布后可检索。同步按 revision/hash 幂等，拒绝复活软删除资源和发布较旧飞书 revision。管理界面与周期同步已通过本地模拟验收；不提供 webhook，因此上游变化只能在下次检查时被发现。
 
 ## Stage 3A Task 1–20 已交付边界
 
@@ -144,7 +144,7 @@ Stage 3A Task 1–12 在项目授权边界内提供上传批次状态、资源�
 - 完整阶段/里程碑编辑 UI、React Flow/ELK 图编辑、拖拽 Kanban 和时间线可视化延后；
 - Outbox worker 发布、长连接重连 SSE、Redis fan-out、评论、通知和任务执行延后；
 - 群组、邀请和成员移除未实现；ACL 管理 UI 与成员管理 UI 未实现；
-- Bearer/OIDC 延后；知识摄取、项目搜索和单轮生成式回答已交付。全文格式化预览、流式/多轮问答和周期性详情轮询仍在后续任务；飞书手动同步后端已交付，周期同步、连接管理界面、其他连接器、Agent 执行和完整模型 Provider 策略层尚未交付。
+- Bearer/OIDC 延后；知识摄取、项目搜索和单轮生成式回答已交付。全文格式化预览、流式/多轮问答和周期性详情轮询仍在后续任务；飞书单文档周期同步和连接管理界面已通过本地模拟验收，真实租户仍待验证；其他连接器、Agent 执行和完整模型 Provider 策略层尚未交付。
 
 ## 核心能力
 
@@ -322,3 +322,5 @@ pnpm verify
 ## 开源许可证
 
 Cairn 采用 [ISC License](LICENSE) 开源。
+
+飞书来源管理、周期同步与撤权处理的本地验收及真实租户待验事项见[完成验收记录](docs/stage-3b-feishu-completion-acceptance.md)。真实租户检查尚无通过证据。

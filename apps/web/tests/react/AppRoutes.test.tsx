@@ -3859,7 +3859,7 @@ test("the docked assistant shows the submitted question and opens answer citatio
   const resourceId = "00000000-0000-4000-8000-000000005092";
   const versionId = "00000000-0000-4000-8000-000000006092";
   const chunkId = "00000000-0000-4000-8000-000000007092";
-  const citation = { id: "[1]", resourceId, resourceVersionId: versionId, chunkId,
+  const citation = { id: "S1", resourceId, resourceVersionId: versionId, chunkId,
     title: "架构说明.md", mediaType: "text/markdown", excerpt: "架构来源摘录",
     locator: { type: "text", lineStart: 3, lineEnd: 4 }, score: 0.9 };
   const requests: Request[] = [];
@@ -3872,7 +3872,7 @@ test("the docked assistant shows the submitted question and opens answer citatio
     });
     if (pathname.endsWith("/knowledge/answers")) return jsonResponse({
       status: "answered", retrievalMode: "hybrid",
-      paragraphs: [{ text: "真实生成回答", citationIds: ["[1]"] }], citations: [citation],
+      paragraphs: [{ text: "真实生成回答", citationIds: ["S1"] }], citations: [citation],
     });
     if (pathname.endsWith(`/knowledge/resources/${resourceId}/chunks/${chunkId}`)) {
       return jsonResponse({ resourceId, resourceVersionId: versionId, before: null,

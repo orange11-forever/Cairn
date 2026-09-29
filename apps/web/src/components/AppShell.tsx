@@ -11,7 +11,8 @@ import { ThemeControl } from "./ThemeControl.tsx";
 export function AppShell({ identity, onLogout, logoutError }: { identity: IdentityContext; onLogout: () => Promise<void>; logoutError: ApiError | null }) {
   const { pathname } = useLocation();
   const normalizedPathname = pathname.replace(/\/+$/, "") || "/";
-  const page = normalizedPathname.endsWith("/knowledge")
+  const knowledgePath = normalizedPathname.match(/^(\/projects\/[^/]+\/knowledge)(?:\/sources)?$/)?.[1] ?? null;
+  const page = knowledgePath !== null
       ? "knowledge"
       : "projects";
 
@@ -27,7 +28,7 @@ export function AppShell({ identity, onLogout, logoutError }: { identity: Identi
         </div>
       </header>
       <div className="app-layout">
-        <PrimaryNavigation currentKnowledgePath={page === "knowledge" ? normalizedPathname : null} />
+        <PrimaryNavigation currentKnowledgePath={knowledgePath} />
         <main className="workspace">
           <Outlet />
         </main>

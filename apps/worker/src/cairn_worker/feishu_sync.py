@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session
 from cairn_worker.errors import WorkerFailure
 from cairn_worker.feishu import FeishuFailure
 from cairn_worker.feishu_credentials import FeishuCredentialFailure, FeishuCredentialResolver
+from cairn_worker.feishu_outcomes import FeishuSyncFailure
 from cairn_worker.leases import ClaimedJob, finish_job
 
 Now = Callable[[], datetime]
@@ -114,6 +115,8 @@ def _trusted_target(
     )
     if source is None:
         raise _failure()
+    if source.generation != sync.source_generation:
+        raise _failure()
     return sync, source
 
 
@@ -133,6 +136,7 @@ def handle_feishu_source_sync(
     sync, observed_source = _trusted_target(database, claim, read_started_at)
     credential_ref = observed_source.credential_ref
     external_id = observed_source.external_id
+    generation = observed_source.generation
     try:
         active_resolver = resolver or FeishuCredentialResolver.from_environment()
         client = active_resolver.create_client(
@@ -140,11 +144,16 @@ def handle_feishu_source_sync(
         )
         snapshot = client.read_document(external_id)
     except FeishuCredentialFailure as exc:
-        raise _failure(retryable=exc.retryable) from None
+        raise FeishuSyncFailure(
+            code=exc.code, source_id=observed_source.id, generation=generation,
+            retryable=exc.retryable, checked=False,
+        ) from None
     except FeishuFailure as exc:
-        raise _failure(
-            retryable=exc.retryable,
-            retry_after=exc.retry_after_seconds,
+        raise FeishuSyncFailure(
+            code=exc.code, source_id=observed_source.id, generation=generation,
+            retryable=exc.retryable, checked=exc.code != "feishu_auth_failed",
+            retry_after=(timedelta(seconds=min(3600, max(0, exc.retry_after_seconds)))
+                         if exc.retry_after_seconds is not None else None),
         ) from None
     if (
         snapshot.document_id != external_id
@@ -245,11 +254,15 @@ def handle_feishu_source_sync(
         or source.provider != "feishu"
         or source.access_policy != "project_members"
         or source.credential_ref != credential_ref
+        or source.generation != generation
         or source.external_id != external_id
-        or resource is not None
-        and resource.deleted_at is not None
     ):
         raise _failure()
+    if resource is not None and resource.deleted_at is not None:
+        raise FeishuSyncFailure(
+            code="feishu_resource_deleted", source_id=source.id,
+            generation=generation, retryable=False, checked=True,
+        )
     profile = _active_profile(database, claim.org_id)
     if profile is None:
         raise _failure()
@@ -270,6 +283,11 @@ def handle_feishu_source_sync(
             raise _failure(retryable=True)
         sync.resource_id = same.resource_id
         sync.resource_version_id = same.id
+        source.access_state = "available"
+        source.last_checked_at = now()
+        source.last_success_at = source.last_checked_at
+        source.last_error_code = None
+        sync.failure_code = None
         _record_completion(database, claim=claim, sync=sync, source=source)
         finish_job(database, claim=claim, now=now())
         return
@@ -343,6 +361,11 @@ def handle_feishu_source_sync(
     )
     sync.resource_id = resource.id
     sync.resource_version_id = version.id
+    source.access_state = "available"
+    source.last_checked_at = now()
+    source.last_success_at = source.last_checked_at
+    source.last_error_code = None
+    sync.failure_code = None
     _record_completion(database, claim=claim, sync=sync, source=source)
     finish_job(database, claim=claim, now=now())
 

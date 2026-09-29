@@ -169,9 +169,17 @@ test("SDK validates generated knowledge source responses", () => {
     createdAt: "2026-09-19T07:30:00Z",
     updatedAt: "2026-09-19T07:30:00Z",
     disabledAt: null,
+    syncIntervalSeconds: 300,
+    nextSyncAt: "2026-09-19T07:35:00Z",
+    lastCheckedAt: null,
+    lastSuccessAt: null,
+    lastErrorCode: null,
+    accessState: "unverified",
   };
 
   assert.equal(matchesComponentSchema("KnowledgeSourceResponse", source), true);
+  assert.equal(matchesComponentSchema("KnowledgeSourceResponse", { ...source, accessState: "access_denied" }), true);
+  assert.equal(matchesComponentSchema("KnowledgeSourceResponse", { ...source, accessState: "secret" }), false);
   assert.equal(
     matchesComponentSchema("KnowledgeSourceResponse", { ...source, accessPolicy: "private" }),
     false,
@@ -191,6 +199,31 @@ test("SDK validates generated knowledge source responses", () => {
   );
 });
 
+test("SDK accepts S1 answer citations and rejects legacy bracket citation IDs", () => {
+  const citation = {
+    id: "S1",
+    resourceId: "00000000-0000-4000-8000-000000005092",
+    resourceVersionId: "00000000-0000-4000-8000-000000006092",
+    chunkId: "00000000-0000-4000-8000-000000007092",
+    title: "Architecture",
+    mediaType: "text/markdown",
+    excerpt: "Architecture source excerpt",
+    locator: { type: "text", lineStart: 3, lineEnd: 4 },
+    score: 0.9,
+  };
+  const answer = {
+    status: "answered", retrievalMode: "hybrid",
+    paragraphs: [{ text: "Generated answer", citationIds: ["S1"] }], citations: [citation],
+  };
+  assert.equal(matchesComponentSchema("KnowledgeAnswerCitation", citation), true);
+  assert.equal(matchesComponentSchema("KnowledgeAnswerCitation", { ...citation, id: "[1]" }), false);
+  assert.equal(matchesComponentSchema("KnowledgeAnswerResponse", answer), true);
+  assert.equal(matchesComponentSchema("KnowledgeAnswerResponse", {
+    ...answer, paragraphs: [{ text: "Generated answer", citationIds: ["[1]"] }],
+    citations: [{ ...citation, id: "[1]" }],
+  }), false);
+});
+
 test("SDK validates strict Feishu source registration requests", () => {
   const request = {
     name: "Engineering handbook",
@@ -200,12 +233,33 @@ test("SDK validates strict Feishu source registration requests", () => {
   };
 
   assert.equal(matchesComponentSchema("FeishuSourceCreateRequest", request), true);
+  assert.equal(matchesComponentSchema("FeishuSourceCreateRequest", { ...request, syncIntervalSeconds: 300 }), true);
+  assert.equal(matchesComponentSchema("FeishuSourceCreateRequest", { ...request, syncIntervalSeconds: true }), false);
   const { accessPolicy: _missingPolicy, ...missingPolicy } = request;
   assert.equal(matchesComponentSchema("FeishuSourceCreateRequest", missingPolicy), false);
   assert.equal(
     matchesComponentSchema("FeishuSourceCreateRequest", { ...request, orgId: "forged" }),
     false,
   );
+  assert.equal(matchesComponentSchema("FeishuSourcePatchRequest", { name: "Renamed" }), true);
+  assert.equal(matchesComponentSchema("FeishuSourcePatchRequest", { status: "disabled" }), true);
+  assert.equal(matchesComponentSchema("FeishuSourcePatchRequest", { credentialRef: "team", accessPolicy: "project_members" }), true);
+  assert.equal(matchesComponentSchema("FeishuSourcePatchRequest", { status: "configured", accessPolicy: "project_members" }), true);
+  assert.equal(matchesComponentSchema("FeishuSourcePatchRequest", { syncIntervalSeconds: null }), true);
+  assert.equal(matchesComponentSchema("FeishuSourcePatchRequest", { syncIntervalSeconds: false }), false);
+  assert.equal(matchesComponentSchema("FeishuSourcePatchRequest", { syncIntervalSeconds: 299 }), false);
+  assert.equal(matchesComponentSchema("FeishuSourcePatchRequest", { syncIntervalSeconds: 604801 }), false);
+  assert.equal(matchesComponentSchema("FeishuSourcePatchRequest", { credentialRef: "invalid alias", accessPolicy: "project_members" }), false);
+  for (const value of [
+    {}, { accessPolicy: "project_members" }, { name: null }, { credentialRef: null },
+    { status: null }, { accessPolicy: null, name: "Renamed" },
+    { credentialRef: "team" }, { status: "configured" },
+    { name: "Renamed", credentialRef: "team" },
+    { syncIntervalSeconds: 300, status: "configured" },
+  ]) {
+    assert.equal(matchesComponentSchema("FeishuSourcePatchRequest", value), false, JSON.stringify(value));
+  }
+  assert.equal(matchesComponentSchema("FeishuSourcePatchRequest", { documentId: "forged" }), false);
 });
 
 test("SDK sends credentialed Feishu source registration with CSRF and JSON body", async () => {
@@ -249,6 +303,7 @@ test("SDK validates sync lifecycle payloads and strict empty queue requests", ()
     sourceId: "00000000-0000-4000-8000-000000007001",
     status: "queued", attempt: 0, createdAt: "2026-09-25T08:00:00Z",
     completedAt: null, errorCode: null, resourceId: null, resourceVersionId: null,
+    trigger: "manual", failureCode: null, nextAttemptAt: null, resourceStatus: null,
   };
   assert.equal(matchesComponentSchema("KnowledgeSourceSyncCreateRequest", {}), true);
   for (const value of [null, [], { documentId: "forged" }, { credentialRef: "forged" }]) {
@@ -262,6 +317,13 @@ test("SDK validates sync lifecycle payloads and strict empty queue requests", ()
     resourceId: "00000000-0000-4000-8000-000000009001",
     resourceVersionId: "00000000-0000-4000-8000-000000009002",
   }), true);
+  assert.equal(matchesComponentSchema("KnowledgeSourceSyncResponse", {
+    ...queued, status: "failed", trigger: "scheduled", failureCode: "feishu_access_denied",
+    nextAttemptAt: null,
+  }), true);
+  assert.equal(matchesComponentSchema("KnowledgeSourceSyncResponse", { ...queued, resourceStatus: "ready" }), true);
+  assert.equal(matchesComponentSchema("KnowledgeSourceSyncResponse", { ...queued, resourceStatus: "secret" }), false);
+  assert.equal(matchesComponentSchema("KnowledgeSourceSyncPage", { items: [queued], nextCursor: null }), true);
   for (const [key, value] of [["status", "ready"], ["attempt", "1"], ["sourceId", "invalid"],
     ["resourceVersionId", "invalid"], ["createdAt", "invalid"], ["completedAt", "invalid"]]) {
     assert.equal(matchesComponentSchema("KnowledgeSourceSyncResponse", { ...queued, [key]: value }), false);
@@ -271,6 +333,33 @@ test("SDK validates sync lifecycle payloads and strict empty queue requests", ()
     delete partial[key];
     assert.equal(matchesComponentSchema("KnowledgeSourceSyncResponse", partial), false, key);
   }
+});
+
+test("SDK PATCH and sync-history calls use exact credentialed routes", async () => {
+  const calls = [];
+  const client = createCairnClient({
+    baseUrl: "https://api.cairn.test",
+    fetch: async (request) => {
+      calls.push(request);
+      return Response.json({}, { status: 200 });
+    },
+  });
+  const path = { project_id: "00000000-0000-4000-8000-000000004001",
+    source_id: "00000000-0000-4000-8000-000000007001" };
+  const body = { status: "configured", accessPolicy: "project_members", syncIntervalSeconds: 300 };
+  await client.PATCH("/api/v1/projects/{project_id}/knowledge/sources/{source_id}", {
+    params: { path }, headers: { "X-CSRF-Token": "csrf-source-token" }, body,
+  });
+  await client.GET("/api/v1/projects/{project_id}/knowledge/sources/{source_id}/syncs", {
+    params: { path, query: { limit: 10 } },
+  });
+  const base = `https://api.cairn.test/api/v1/projects/${path.project_id}/knowledge/sources/${path.source_id}`;
+  assert.deepEqual(calls.map((request) => request.method), ["PATCH", "GET"]);
+  assert.equal(calls[0].url, base);
+  assert.equal(calls[1].url, `${base}/syncs?limit=10`);
+  assert.equal(calls[0].headers.get("X-CSRF-Token"), "csrf-source-token");
+  assert.deepEqual(await calls[0].json(), body);
+  assert.ok(calls.every((request) => request.credentials === "include"));
 });
 
 test("SDK queues and polls sync with exact routes, credentials, CSRF and empty JSON", async () => {

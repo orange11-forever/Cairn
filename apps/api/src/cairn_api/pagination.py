@@ -54,16 +54,25 @@ def page_by_timestamp[Item](
     id_column: InstrumentedAttribute[UUID],
     cursor: str | None,
     limit: int,
+    descending: bool = False,
 ) -> tuple[list[Item], str | None]:
     if cursor is not None:
         cursor_timestamp, cursor_id = decode_cursor(cursor)
-        statement = statement.where(
-            or_(
+        if descending:
+            continuation = or_(
+                timestamp_column < cursor_timestamp,
+                and_(timestamp_column == cursor_timestamp, id_column < cursor_id),
+            )
+        else:
+            continuation = or_(
                 timestamp_column > cursor_timestamp,
                 and_(timestamp_column == cursor_timestamp, id_column > cursor_id),
             )
-        )
-    bounded = statement.order_by(timestamp_column, id_column).limit(limit + 1)
+        statement = statement.where(continuation)
+    ordering = (timestamp_column.desc(), id_column.desc()) if descending else (
+        timestamp_column, id_column,
+    )
+    bounded = statement.order_by(*ordering).limit(limit + 1)
     rows = list(session.scalars(bounded).all())
     items = rows[:limit]
     next_cursor = None

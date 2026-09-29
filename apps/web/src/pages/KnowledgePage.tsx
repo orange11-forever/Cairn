@@ -67,6 +67,7 @@ export function KnowledgePage() {
       projectId={projectId}
       csrfToken={session.identity.csrfToken}
       signal={session.signal}
+      canManageSources={session.identity.membership.role === "owner" || session.identity.membership.role === "admin"}
     />
   );
 }
@@ -76,11 +77,13 @@ function KnowledgeWorkspace({
   projectId,
   csrfToken,
   signal,
+  canManageSources,
 }: {
   organizationId: string;
   projectId: string;
   csrfToken: string;
   signal: AbortSignal;
+  canManageSources: boolean;
 }) {
   const queryClient = useQueryClient();
   const [searchAccessError, setSearchAccessError] = useState<ApiError | null>(null);
@@ -104,6 +107,7 @@ function KnowledgeWorkspace({
       projectId={projectId}
       csrfToken={csrfToken}
       signal={signal}
+      canManageSources={canManageSources}
       onSearchAccessUnavailable={handleSearchAccessUnavailable}
     />
   );
@@ -131,12 +135,14 @@ function KnowledgeWorkspaceContent({
   projectId,
   csrfToken,
   signal,
+  canManageSources,
   onSearchAccessUnavailable,
 }: {
   organizationId: string;
   projectId: string;
   csrfToken: string;
   signal: AbortSignal;
+  canManageSources: boolean;
   onSearchAccessUnavailable(error: ApiError): void;
 }) {
   const queryClient = useQueryClient();
@@ -325,7 +331,7 @@ function KnowledgeWorkspaceContent({
         eyebrow="当前项目"
         title={project.data.name}
         description="项目知识"
-        actions={<ProjectsLink />}
+        actions={<><ProjectsLink />{canManageSources ? <Link className="task-knowledge-link" to={`/projects/${projectId}/knowledge/sources`}>飞书来源</Link> : null}</>}
       />
 
       <nav aria-label="工作台分区" className="knowledge-mobile-panes">

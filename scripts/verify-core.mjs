@@ -77,8 +77,13 @@ export function resolveVerificationConfig(
   const productionProxyOrigin = `https://localhost:${proxyPort}`;
   const productionApiOrigin = `https://localhost:${apiPort}`;
   const productionWebOrigin = `https://localhost:${webPort}`;
+  const sanitizedEnvironment = Object.fromEntries(Object.entries(environment).filter(([key]) =>
+    !["CAIRN_FEISHU_CREDENTIALS_JSON", "CAIRN_VERIFY_FAKE_FEISHU",
+      "CAIRN_VERIFY_FEISHU_REUSE_SOURCE", "CAIRN_VERIFY_REUSE_WEB"].includes(key) &&
+    !key.startsWith("FEISHU_TEST_")));
   const productionEnvironment = {
-    ...environment,
+    ...sanitizedEnvironment,
+    CAIRN_FEISHU_CREDENTIALS_JSON: "{}",
     APP_URL: productionWebOrigin,
     CAIRN_AUTH_RATE_LIMIT_SECRET: "proxy-verification-rate-limit-secret-at-least-32-bytes",
     CAIRN_CSRF_SECRET: "proxy-verification-csrf-secret-at-least-32-bytes",
@@ -120,7 +125,9 @@ export function resolveVerificationConfig(
     productionWebOrigin,
     productionEnvironment,
     environment: {
-      ...environment,
+      ...sanitizedEnvironment,
+      CAIRN_FEISHU_CREDENTIALS_JSON: "{}",
+      CAIRN_VERIFY_FAKE_FEISHU: "1",
       APP_URL: webOrigin,
       CAIRN_CSRF_SECRET: "test-only-csrf-secret-with-at-least-32-bytes",
       CAIRN_ENVIRONMENT: "test",
@@ -329,7 +336,7 @@ export function createStageRunner(config, processManager) {
     if (stage === "worker") {
       return processManager.start(
         UV,
-        ["run", "--package", "cairn-worker", "cairn-worker", "serve"],
+        ["run", "--package", "cairn-worker", "python", "apps/worker/tests/support/verify_feishu_worker.py"],
         { env: config.environment },
       );
     }

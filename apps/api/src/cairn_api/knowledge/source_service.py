@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from psycopg.errors import UniqueViolation
@@ -13,13 +13,16 @@ from cairn_api.authorization import repository as authorization_repository
 from cairn_api.authorization.policy import AuthorizationPolicy
 from cairn_api.authorization.types import MembershipRole, ProjectPermission
 from cairn_api.errors import ApiProblem
-from cairn_api.knowledge.models import IngestionJob, IngestionJobStatus, JobKind
+from cairn_api.knowledge.models import IngestionJob, JobKind, KnowledgeResourceVersion
 from cairn_api.knowledge.source_models import KnowledgeSource, KnowledgeSourceSync
 from cairn_api.knowledge.source_schemas import (
+    FeishuSourcePatchRequest,
     KnowledgeSourcePage,
     KnowledgeSourceResponse,
+    KnowledgeSourceSyncPage,
     KnowledgeSourceSyncResponse,
 )
+from cairn_api.knowledge.source_sync_queue import queue_locked_source_sync
 from cairn_api.pagination import page_by_timestamp
 from cairn_api.projects.models import OutboxEvent
 
@@ -86,8 +89,10 @@ class KnowledgeSourceService:
         document_id: str,
         credential_ref: str,
         access_policy: str,
+        sync_interval_seconds: int | None,
         audit: RequestAuditContext,
     ) -> KnowledgeSourceResponse:
+        now = datetime.now(UTC)
         source = KnowledgeSource(
             org_id=identity.organization.id,
             project_id=project_id,
@@ -97,6 +102,9 @@ class KnowledgeSourceService:
             credential_ref=credential_ref,
             access_policy=access_policy,
             status="configured",
+            access_state="unverified",
+            sync_interval_seconds=sync_interval_seconds,
+            next_sync_at=now + timedelta(seconds=sync_interval_seconds) if sync_interval_seconds is not None else None,
         )
         try:
             with self._session.begin():
@@ -177,6 +185,8 @@ class KnowledgeSourceService:
             now = datetime.now(UTC)
             source.status = "disabled"
             source.disabled_at = now
+            source.next_sync_at = None
+            source.generation += 1
             source.updated_at = now
             self._session.flush()
             self._record_change(identity, audit, source, "knowledge.source_disabled")
@@ -202,72 +212,96 @@ class KnowledgeSourceService:
             )
             if source is None or source.status != "configured":
                 raise _not_found()
-            existing = self._session.execute(
-                select(KnowledgeSourceSync, IngestionJob)
-                .join(
-                    IngestionJob,
-                    (IngestionJob.org_id == KnowledgeSourceSync.org_id)
-                    & (IngestionJob.project_id == KnowledgeSourceSync.project_id)
-                    & (IngestionJob.target_id == KnowledgeSourceSync.id)
-                    & (IngestionJob.job_kind == JobKind.SYNC_FEISHU_SOURCE),
-                )
-                .where(
-                    KnowledgeSourceSync.org_id == identity.organization.id,
-                    KnowledgeSourceSync.project_id == project_id,
-                    KnowledgeSourceSync.source_id == source_id,
-                    IngestionJob.status.in_([IngestionJobStatus.QUEUED, IngestionJobStatus.RUNNING]),
-                )
-                .order_by(KnowledgeSourceSync.created_at.desc(), KnowledgeSourceSync.id.desc())
-                .limit(1)
-            ).one_or_none()
-            if existing is not None:
-                return self._sync_response(*existing)
-            sync = KnowledgeSourceSync(
-                org_id=identity.organization.id,
-                project_id=project_id,
-                source_id=source_id,
-                requested_by=identity.user.id,
-            )
-            self._session.add(sync)
-            self._session.flush()
-            job = IngestionJob(
-                org_id=identity.organization.id,
-                project_id=project_id,
-                job_kind=JobKind.SYNC_FEISHU_SOURCE,
-                target_id=sync.id,
-                profile_version="feishu-sync-v1",
-            )
-            self._session.add(job)
-            self._session.flush()
-            details: dict[str, object] = {
-                "projectId": str(project_id),
-                "sourceId": str(source.id),
-                "syncId": str(sync.id),
-                "jobId": str(job.id),
-            }
-            add_audit_log(
-                self._session,
-                org_id=identity.organization.id,
-                actor_type="user",
-                actor_id=identity.user.id,
-                action="knowledge.source_sync_queued",
-                resource_type="knowledge_source_sync",
-                resource_id=sync.id,
-                trace_id=audit.trace_id,
-                ip=audit.ip,
-                user_agent=audit.user_agent,
-                details=details,
-            )
-            self._session.add(
-                OutboxEvent(
-                    org_id=identity.organization.id,
-                    event_type="knowledge.source_sync_queued",
-                    aggregate_type="project",
-                    aggregate_id=project_id,
-                    payload=details,
-                )
+            sync, job = queue_locked_source_sync(
+                self._session, source=source, trigger="manual", requested_by=identity.user.id,
+                trace_id=audit.trace_id, ip=audit.ip, user_agent=audit.user_agent,
             )
             return self._sync_response(sync, job)
+
+    def patch_source(
+        self, *, identity: IdentityContextResponse, project_id: UUID, source_id: UUID,
+        payload: FeishuSourcePatchRequest, audit: RequestAuditContext,
+    ) -> KnowledgeSourceResponse:
+        try:
+            with self._session.begin():
+                self._require_administrator(identity, project_id, for_update=True)
+                source = self._session.scalar(
+                    select(KnowledgeSource).where(
+                        KnowledgeSource.org_id == identity.organization.id,
+                        KnowledgeSource.project_id == project_id,
+                        KnowledgeSource.id == source_id,
+                    ).with_for_update()
+                )
+                if source is None:
+                    raise _not_found()
+                fields = payload.model_fields_set
+                now = datetime.now(UTC)
+                changed = False
+                lifecycle = False
+                if "name" in fields and source.name != payload.name:
+                    source.name = payload.name or source.name
+                    changed = True
+                if "credential_ref" in fields and source.credential_ref != payload.credential_ref:
+                    if payload.access_policy != "project_members":
+                        raise ApiProblem(status_code=422, code="validation_error", message="必须确认项目成员共享")
+                    source.credential_ref = payload.credential_ref or source.credential_ref
+                    lifecycle = changed = True
+                if "status" in fields and source.status != payload.status:
+                    if payload.status == "configured" and payload.access_policy != "project_members":
+                        raise ApiProblem(status_code=422, code="validation_error", message="必须确认项目成员共享")
+                    source.status = payload.status or source.status
+                    source.disabled_at = now if source.status == "disabled" else None
+                    lifecycle = changed = True
+                if "sync_interval_seconds" in fields and source.sync_interval_seconds != payload.sync_interval_seconds:
+                    source.sync_interval_seconds = payload.sync_interval_seconds
+                    changed = True
+                if lifecycle:
+                    source.generation += 1
+                    source.access_state = "unverified"
+                    source.last_error_code = None
+                if changed:
+                    source.next_sync_at = (
+                        now + timedelta(seconds=source.sync_interval_seconds)
+                        if source.status == "configured" and source.sync_interval_seconds is not None
+                        else None
+                    )
+                    source.updated_at = now
+                    self._session.flush()
+                    self._record_change(identity, audit, source, "knowledge.source_updated")
+            return KnowledgeSourceResponse.model_validate(source)
+        except IntegrityError as exc:
+            if isinstance(exc.orig, UniqueViolation) and exc.orig.diag.constraint_name == "uq_knowledge_sources_registration":
+                raise _source_conflict() from exc
+            raise
+
+    def list_syncs(
+        self, *, identity: IdentityContextResponse, project_id: UUID, source_id: UUID,
+        cursor: str | None, limit: int,
+    ) -> KnowledgeSourceSyncPage:
+        self._require_administrator(identity, project_id, for_update=False)
+        if self._find(identity, project_id, source_id) is None:
+            raise _not_found()
+        syncs, next_cursor = page_by_timestamp(
+            self._session,
+            select(KnowledgeSourceSync).where(
+                KnowledgeSourceSync.org_id == identity.organization.id,
+                KnowledgeSourceSync.project_id == project_id,
+                KnowledgeSourceSync.source_id == source_id,
+            ),
+            timestamp_column=KnowledgeSourceSync.created_at,
+            id_column=KnowledgeSourceSync.id,
+            cursor=cursor, limit=limit, descending=True,
+        )
+        if not syncs:
+            return KnowledgeSourceSyncPage(items=[], next_cursor=next_cursor)
+        jobs = {
+            job.target_id: job for job in self._session.scalars(
+                select(IngestionJob).where(IngestionJob.org_id == identity.organization.id,
+                    IngestionJob.project_id == project_id, IngestionJob.job_kind == JobKind.SYNC_FEISHU_SOURCE,
+                    IngestionJob.target_id.in_([sync.id for sync in syncs]))
+            )
+        }
+        return KnowledgeSourceSyncPage(items=[self._sync_response(sync, jobs[sync.id]) for sync in syncs], next_cursor=next_cursor)
 
     def get_sync(
         self,
@@ -298,8 +332,8 @@ class KnowledgeSourceService:
             raise _not_found()
         return self._sync_response(*row)
 
-    @staticmethod
-    def _sync_response(sync: KnowledgeSourceSync, job: IngestionJob) -> KnowledgeSourceSyncResponse:
+    def _sync_response(self, sync: KnowledgeSourceSync, job: IngestionJob) -> KnowledgeSourceSyncResponse:
+        version = self._session.get(KnowledgeResourceVersion, sync.resource_version_id) if sync.resource_version_id is not None else None
         return KnowledgeSourceSyncResponse.model_validate(
             {
                 "id": sync.id,
@@ -312,6 +346,10 @@ class KnowledgeSourceService:
                 "error_code": job.last_error_code,
                 "resource_id": sync.resource_id,
                 "resource_version_id": sync.resource_version_id,
+                "trigger": sync.trigger,
+                "failure_code": sync.failure_code,
+                "next_attempt_at": job.next_attempt_at if job.status == "queued" and job.attempt > 0 else None,
+                "resource_status": version.status if version is not None else None,
             }
         )
 

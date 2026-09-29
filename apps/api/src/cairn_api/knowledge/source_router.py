@@ -11,9 +11,11 @@ from cairn_api.db.session import get_db
 from cairn_api.errors import ErrorBody
 from cairn_api.knowledge.source_schemas import (
     FeishuSourceCreateRequest,
+    FeishuSourcePatchRequest,
     KnowledgeSourcePage,
     KnowledgeSourceResponse,
     KnowledgeSourceSyncCreateRequest,
+    KnowledgeSourceSyncPage,
     KnowledgeSourceSyncResponse,
 )
 from cairn_api.knowledge.source_service import KnowledgeSourceService
@@ -87,6 +89,7 @@ def create_feishu_source(
         document_id=payload.document_id,
         credential_ref=payload.credential_ref,
         access_policy=payload.access_policy,
+        sync_interval_seconds=payload.sync_interval_seconds,
         audit=audit,
     )
 
@@ -128,6 +131,23 @@ def get_source(
         identity=identity,
         project_id=project_id,
         source_id=source_id,
+    )
+
+
+@router.patch(
+    "/projects/{project_id}/knowledge/sources/{source_id}",
+    response_model=KnowledgeSourceResponse,
+    responses={200: {"description": "知识来源已更新", "headers": RESPONSE_HEADERS}, **MUTATION_ERRORS, 409: _error("知识来源身份冲突")},
+    dependencies=[Depends(require_mutation_csrf)],
+    openapi_extra=CSRF_REQUIRED_OPENAPI,
+)
+def patch_source(
+    project_id: UUID, source_id: UUID, payload: FeishuSourcePatchRequest,
+    identity: CurrentIdentity, session: SessionDependency, audit: AuditContext,
+) -> KnowledgeSourceResponse:
+    return KnowledgeSourceService(session).patch_source(
+        identity=identity, project_id=project_id, source_id=source_id,
+        payload=payload, audit=audit,
     )
 
 
@@ -177,6 +197,22 @@ def queue_source_sync(
         source_id=source_id,
         audit=audit,
     )
+
+
+@router.get(
+    "/projects/{project_id}/knowledge/sources/{source_id}/syncs",
+    response_model=KnowledgeSourceSyncPage,
+    description="按创建时间与 ID 倒序返回同步记录；游标继续读取更早记录。",
+    responses={200: {"description": "飞书来源同步记录分页", "headers": RESPONSE_HEADERS}, **READ_ERRORS},
+)
+def list_source_syncs(
+    project_id: UUID, source_id: UUID, identity: CurrentIdentity, session: SessionDependency,
+    cursor: Cursor = None, limit: PageLimit = 50,
+) -> KnowledgeSourceSyncPage:
+    return load_cursor_page(lambda: KnowledgeSourceService(session).list_syncs(
+        identity=identity, project_id=project_id, source_id=source_id,
+        cursor=cursor, limit=limit,
+    ))
 
 
 @router.get(

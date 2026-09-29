@@ -379,7 +379,8 @@ export interface paths {
         delete: operations["disable_source_api_v1_projects__project_id__knowledge_sources__source_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /** Patch Source */
+        patch: operations["patch_source_api_v1_projects__project_id__knowledge_sources__source_id__patch"];
         trace?: never;
     };
     "/api/v1/projects/{project_id}/knowledge/sources/{source_id}/syncs": {
@@ -389,7 +390,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List Source Syncs
+         * @description 按创建时间与 ID 倒序返回同步记录；游标继续读取更早记录。
+         */
+        get: operations["list_source_syncs_api_v1_projects__project_id__knowledge_sources__source_id__syncs_get"];
         put?: never;
         /** Queue Source Sync */
         post: operations["queue_source_sync_api_v1_projects__project_id__knowledge_sources__source_id__syncs_post"];
@@ -739,7 +744,68 @@ export interface components {
             documentId: string;
             /** Name */
             name: string;
+            /** Syncintervalseconds */
+            syncIntervalSeconds?: number | null;
         };
+        /** FeishuSourcePatchRequest */
+        FeishuSourcePatchRequest: ({
+            credentialRef?: never;
+            name: string;
+            /** @constant */
+            status?: "disabled";
+            /** Syncintervalseconds */
+            syncIntervalSeconds?: number | null;
+        } | {
+            credentialRef?: never;
+            name?: string;
+            /** @constant */
+            status: "disabled";
+            /** Syncintervalseconds */
+            syncIntervalSeconds?: number | null;
+        } | {
+            credentialRef?: never;
+            name?: string;
+            /** @constant */
+            status?: "disabled";
+            /** Syncintervalseconds */
+            syncIntervalSeconds: number | null;
+        }) | ({
+            /** @constant */
+            accessPolicy: "project_members";
+            credentialRef?: string;
+            name: string;
+            /** @enum {string} */
+            status?: "configured" | "disabled";
+            /** Syncintervalseconds */
+            syncIntervalSeconds?: number | null;
+        } | {
+            /** @constant */
+            accessPolicy: "project_members";
+            credentialRef: string;
+            name?: string;
+            /** @enum {string} */
+            status?: "configured" | "disabled";
+            /** Syncintervalseconds */
+            syncIntervalSeconds?: number | null;
+        } | {
+            /** @constant */
+            accessPolicy: "project_members";
+            credentialRef?: string;
+            name?: string;
+            /** @enum {string} */
+            status: "configured" | "disabled";
+            /** Syncintervalseconds */
+            syncIntervalSeconds?: number | null;
+        } | {
+            /** @constant */
+            accessPolicy: "project_members";
+            credentialRef?: string;
+            name?: string;
+            /** @enum {string} */
+            status?: "configured" | "disabled";
+            /** Syncintervalseconds */
+            syncIntervalSeconds: number | null;
+        });
         /** HealthResponse */
         HealthResponse: {
             /**
@@ -974,6 +1040,11 @@ export interface components {
              */
             accessPolicy: "project_members";
             /**
+             * Accessstate
+             * @enum {string}
+             */
+            accessState: "available" | "unverified" | "access_denied" | "not_found";
+            /**
              * Createdat
              * Format: date-time
              */
@@ -989,8 +1060,16 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Lastcheckedat */
+            lastCheckedAt: string | null;
+            /** Lasterrorcode */
+            lastErrorCode: string | null;
+            /** Lastsuccessat */
+            lastSuccessAt: string | null;
             /** Name */
             name: string;
+            /** Nextsyncat */
+            nextSyncAt: string | null;
             /**
              * Projectid
              * Format: uuid
@@ -1006,6 +1085,8 @@ export interface components {
              * @enum {string}
              */
             status: "configured" | "disabled";
+            /** Syncintervalseconds */
+            syncIntervalSeconds: number | null;
             /**
              * Updatedat
              * Format: date-time
@@ -1014,6 +1095,13 @@ export interface components {
         };
         /** KnowledgeSourceSyncCreateRequest */
         KnowledgeSourceSyncCreateRequest: Record<string, never>;
+        /** KnowledgeSourceSyncPage */
+        KnowledgeSourceSyncPage: {
+            /** Items */
+            items: components["schemas"]["KnowledgeSourceSyncResponse"][];
+            /** Nextcursor */
+            nextCursor: string | null;
+        };
         /** KnowledgeSourceSyncResponse */
         KnowledgeSourceSyncResponse: {
             /** Attempt */
@@ -1027,11 +1115,15 @@ export interface components {
             createdAt: string;
             /** Errorcode */
             errorCode: string | null;
+            /** Failurecode */
+            failureCode: string | null;
             /**
              * Id
              * Format: uuid
              */
             id: string;
+            /** Nextattemptat */
+            nextAttemptAt: string | null;
             /**
              * Projectid
              * Format: uuid
@@ -1039,6 +1131,8 @@ export interface components {
             projectId: string;
             /** Resourceid */
             resourceId: string | null;
+            /** Resourcestatus */
+            resourceStatus: ("queued" | "processing" | "ready" | "failed") | null;
             /** Resourceversionid */
             resourceVersionId: string | null;
             /**
@@ -1051,6 +1145,11 @@ export interface components {
              * @enum {string}
              */
             status: "queued" | "running" | "completed" | "failed";
+            /**
+             * Trigger
+             * @enum {string}
+             */
+            trigger: "manual" | "scheduled";
         };
         /** KnowledgeVersionResponse */
         KnowledgeVersionResponse: {
@@ -3636,6 +3735,256 @@ export interface operations {
             };
             /** @description 请求来源或 CSRF 令牌无效 */
             403: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目或知识来源不存在 */
+            404: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求方法不被允许 */
+            405: {
+                headers: {
+                    /** @description 该资源支持的 HTTP 方法 */
+                    Allow?: string;
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求参数无效 */
+            422: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 数据库暂时不可用 */
+            503: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    patch_source_api_v1_projects__project_id__knowledge_sources__source_id__patch: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Session-bound CSRF token returned by login or session restore. */
+                "X-CSRF-Token": string;
+            };
+            path: {
+                project_id: string;
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeishuSourcePatchRequest"];
+            };
+        };
+        responses: {
+            /** @description 知识来源已更新 */
+            200: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeSourceResponse"];
+                };
+            };
+            /** @description 会话无效 */
+            401: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求来源或 CSRF 令牌无效 */
+            403: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目或知识来源不存在 */
+            404: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求方法不被允许 */
+            405: {
+                headers: {
+                    /** @description 该资源支持的 HTTP 方法 */
+                    Allow?: string;
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 知识来源身份冲突 */
+            409: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求参数无效 */
+            422: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 数据库暂时不可用 */
+            503: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_source_syncs_api_v1_projects__project_id__knowledge_sources__source_id__syncs_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 飞书来源同步记录分页 */
+            200: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeSourceSyncPage"];
+                };
+            };
+            /** @description 会话无效 */
+            401: {
                 headers: {
                     /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
                     "Cache-Control"?: "private, no-store";

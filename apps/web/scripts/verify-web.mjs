@@ -16,11 +16,14 @@ import {
   waitForServer,
 } from "./process-utils.mjs";
 import { checkResponsiveFoundation } from "./verify-responsive.mjs";
+import { checkFeishuHistoryReachability } from "./verify-feishu-history-layout.mjs";
 
 const WEB_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const ROOT = join(WEB_ROOT, "../..");
 const SHOT_DIR = join(ROOT, "apps/web/screenshots");
+const FEISHU_SHOT_DIR = join(ROOT, "output/playwright/feishu");
 mkdirSync(SHOT_DIR, { recursive: true });
+mkdirSync(FEISHU_SHOT_DIR, { recursive: true });
 
 function readPort(name, fallback) {
   const raw = process.env[name] ?? String(fallback);
@@ -48,6 +51,8 @@ const IDENTITY_READY = `${IDENTITY_ORIGIN}/ready`;
 const OBJECT_STORE_ORIGIN = readOrigin("CAIRN_OBJECT_STORE_PUBLIC_ENDPOINT_URL");
 const CORE_PROJECT_ID = "00000000-0000-4000-8000-000000004001";
 const CORE_PHRASE = "松针协议确认跨区域恢复完成";
+const FEISHU_DOCUMENT_ID = "VerifyDoc2026";
+const FEISHU_PHRASE = "青松协定确认飞书跨区域恢复完成";
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 
 let web = null;
@@ -200,23 +205,183 @@ async function checkCoreKnowledgeIngestion() {
   expect((await downloadResponse.body()).equals(content), "授权下载应返回刚上传的原始字节");
 }
 
-try {
-  await assertPortAvailable(WEB_PORT);
-  const previewInvocation = spawnInvocation(pnpm, [
-    "exec",
-    "vite",
-    "preview",
-    "--port",
-    String(WEB_PORT),
-    "--strictPort",
-  ]);
-  web = spawn(previewInvocation.command, previewInvocation.args, {
-    cwd: WEB_ROOT,
-    stdio: "ignore",
-    shell: false,
-    detached: process.platform !== "win32",
+async function checkFeishuSources() {
+  const syncDetailRequests = [];
+  page.on("request", (request) => {
+    if (request.method() === "GET" && /\/knowledge\/sources\/[^/]+\/syncs\/[^/]+$/.test(request.url())) {
+      syncDetailRequests.push(request.url());
+    }
   });
-  await waitForChildSpawn(web);
+  await page.goto(`${WEB}/projects/${CORE_PROJECT_ID}/knowledge`, { waitUntil: "networkidle" });
+  await page.getByRole("link", { name: "飞书来源" }).click();
+  let created;
+  if (process.env.CAIRN_VERIFY_FEISHU_REUSE_SOURCE === "1") {
+    const existingResponse = await page.request.get(`${IDENTITY_ORIGIN}/api/v1/projects/${CORE_PROJECT_ID}/knowledge/sources`);
+    const existingPage = await existingResponse.json();
+    created = existingPage.items.find((item) => item.documentId === FEISHU_DOCUMENT_ID &&
+      item.credentialRef === "verify_feishu");
+    if (!created) throw new Error("reusable synthetic Feishu source is missing");
+    await page.getByRole("button", { name: /飞书浏览器验收/ }).click();
+    if (created.status === "disabled") {
+      await page.getByRole("checkbox", { name: /我确认将此文档共享/ }).check();
+      await page.getByRole("button", { name: "恢复来源" }).click();
+      await page.getByText(/来源已恢复。请手动同步/).waitFor();
+    }
+  } else {
+    await page.getByRole("button", { name: "添加来源", exact: true }).click();
+    const form = page.getByRole("region", { name: "添加飞书来源" });
+    await form.getByLabel("来源名称").fill("飞书浏览器验收");
+    await form.getByLabel("飞书文档链接或 ID").fill(`https://team.feishu.cn/docx/${FEISHU_DOCUMENT_ID}`);
+    await form.getByLabel("凭证别名").fill("verify_feishu");
+    expect(await form.getByRole("button", { name: "添加来源" }).isDisabled(), "未确认共享时不得创建来源");
+    await form.getByRole("checkbox", { name: /我确认将此文档共享/ }).check();
+    const [createdResponse] = await Promise.all([
+      page.waitForResponse((response) => response.request().method() === "POST" &&
+        response.url().endsWith("/knowledge/sources/feishu")),
+      form.getByRole("button", { name: "添加来源" }).click(),
+    ]);
+    expect(createdResponse.status() === 201, `来源登记应返回201，实际 ${createdResponse.status()}`);
+    created = await createdResponse.json();
+    await page.getByText("来源已登记。现在可以手动同步文档。").waitFor();
+  }
+  expect(created.documentId === FEISHU_DOCUMENT_ID && created.credentialRef === "verify_feishu",
+    "来源响应应匹配合成文档与凭证别名");
+  const [queuedResponse] = await Promise.all([
+    page.waitForResponse((response) => response.request().method() === "POST" &&
+      response.url().endsWith(`/knowledge/sources/${created.id}/syncs`)),
+    page.getByRole("button", { name: "立即同步" }).click(),
+  ]);
+  expect(queuedResponse.status() === 202, `同步排队应返回202，实际 ${queuedResponse.status()}`);
+  const queued = await queuedResponse.json();
+  expect(queued.sourceId === created.id && queued.projectId === CORE_PROJECT_ID,
+    "同步请求应绑定当前项目与来源");
+  let sync;
+  const syncUrl = `${IDENTITY_ORIGIN}/api/v1/projects/${CORE_PROJECT_ID}`
+    + `/knowledge/sources/${created.id}/syncs/${queued.id}`;
+  const deadline = Date.now() + 120_000;
+  while (Date.now() < deadline) {
+    const syncResponse = await page.request.get(syncUrl);
+    expect(syncResponse.status() === 200, "同步详情应可重新授权读取");
+    sync = await syncResponse.json();
+    if (sync.status === "completed" && sync.resourceStatus === "ready") break;
+    if (sync.status === "failed" || sync.resourceStatus === "failed") break;
+    await page.waitForTimeout(2_000);
+  }
+  expect(sync.status === "completed" && sync.resourceStatus === "ready" && sync.resourceId,
+    `快照和索引都须完成后才可检索，实际 ${sync?.status}/${sync?.resourceStatus}/${sync?.failureCode}`);
+  await page.locator(".feishu-sync-history strong").getByText("可检索", { exact: true })
+    .first().waitFor({ timeout: 20_000 });
+
+  for (const theme of ["light", "dark"]) {
+    await page.locator(".account-menu summary").click();
+    await page.locator(`input[name="theme-preference"][value="${theme}"]`).check();
+    await page.locator(".account-menu summary").click();
+    for (const width of [360, 768, 1280]) {
+      await page.setViewportSize({ width, height: 850 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),
+        `飞书管理页 ${width}px ${theme} 不应横向溢出`);
+      await page.screenshot({ path: join(FEISHU_SHOT_DIR, `sources-${theme}-${width}.png`), fullPage: true });
+      if (width === 360) {
+        await page.locator(".feishu-sync-history li").last().scrollIntoViewIfNeeded();
+        await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+        expect(await page.evaluate(() => {
+          const row = document.querySelector(".feishu-sync-history li:last-child")?.getBoundingClientRect();
+          const nav = document.querySelector(".primary-nav")?.getBoundingClientRect();
+          return row !== undefined && nav !== undefined && row.bottom <= nav.top;
+        }), "手机端最后一条同步记录应能滚动到固定导航上方");
+        await page.evaluate(() => window.scrollTo(0, 0));
+      }
+    }
+  }
+  // The synthetic 50-row fixture exercises the real page/CSS and pager geometry
+  // without creating 50 upstream sync jobs or replacing the functional API flow.
+  await checkFeishuHistoryReachability(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.getByRole("link", { name: "返回项目知识" }).click();
+  await page.getByLabel("搜索项目知识", { exact: true }).fill(FEISHU_PHRASE);
+  await page.getByRole("button", { name: "搜索项目知识" }).click();
+  await page.locator(".knowledge-search-result").filter({ hasText: FEISHU_PHRASE })
+    .first().waitFor({ timeout: 30_000 });
+
+  await page.getByRole("link", { name: "飞书来源" }).click();
+  await page.getByRole("button", { name: /飞书浏览器验收/ }).click();
+  await page.getByRole("button", { name: "编辑设置" }).click();
+  const targetInterval = created.syncIntervalSeconds === 900 ? "300" : "900";
+  await page.getByLabel("同步周期").selectOption(targetInterval);
+  await page.getByRole("button", { name: "保存修改" }).click();
+  await page.getByText("来源设置已保存。").waitFor();
+  expect(await page.locator(".feishu-facts").getByText(targetInterval === "900" ? "每 15 分钟" : "每 5 分钟").isVisible(),
+    "周期修改应反映在来源详情");
+  await page.getByRole("button", { name: "停用来源" }).click();
+  await page.getByRole("button", { name: "确认停用 飞书浏览器验收" }).click();
+  await page.getByText(/来源已停用，项目成员无法再读取/).waitFor();
+  const deniedResource = await page.request.get(`${IDENTITY_ORIGIN}/api/v1/projects/${CORE_PROJECT_ID}`
+    + `/knowledge/resources/${sync.resourceId}`);
+  expect(deniedResource.status() === 404,
+    `停用后资源详情应404，实际 ${deniedResource.status()}`);
+  await page.getByRole("link", { name: "返回项目知识" }).click();
+  await page.getByLabel("搜索项目知识", { exact: true }).fill(FEISHU_PHRASE);
+  const [stoppedSearch] = await Promise.all([
+    page.waitForResponse((response) => response.request().method() === "POST" &&
+      response.url().endsWith("/knowledge/search")),
+    page.getByRole("button", { name: "搜索项目知识" }).click(),
+  ]);
+  expect(stoppedSearch.status() === 200, "停用后搜索仍应返回成功响应");
+  const stoppedResults = await stoppedSearch.json();
+  expect(stoppedResults.results.every((result) => result.resourceId !== sync.resourceId),
+    "停用来源不能出现在新的搜索结果中");
+  expect(await page.locator(".knowledge-search-result").filter({ hasText: FEISHU_PHRASE }).count() === 0,
+    "旧飞书片段不能留在搜索界面");
+
+  await page.getByRole("link", { name: "飞书来源" }).click();
+  await page.getByRole("button", { name: /飞书浏览器验收/ }).click();
+  const restore = page.getByRole("button", { name: "恢复来源" });
+  expect(await restore.isDisabled(), "恢复来源必须重新确认共享");
+  await page.getByRole("checkbox", { name: /我确认将此文档共享/ }).check();
+  await restore.click();
+  await page.getByText(/来源已恢复。请手动同步/).waitFor();
+  const [recoveryQueueResponse] = await Promise.all([
+    page.waitForResponse((response) => response.request().method() === "POST" &&
+      response.url().endsWith(`/knowledge/sources/${created.id}/syncs`)),
+    page.getByRole("button", { name: "立即同步" }).click(),
+  ]);
+  expect(recoveryQueueResponse.status() === 202, "恢复后手动同步应返回202");
+  const recoveryQueue = await recoveryQueueResponse.json();
+  await page.waitForTimeout(2_500);
+  expect(syncDetailRequests.some((url) => url.endsWith(`/syncs/${recoveryQueue.id}`)),
+    "同步记录应跟踪最新一笔恢复任务，而非旧的已完成记录");
+  const recoveryDeadline = Date.now() + 120_000;
+  let recovered;
+  while (Date.now() < recoveryDeadline) {
+    const response = await page.request.get(`${IDENTITY_ORIGIN}/api/v1/projects/${CORE_PROJECT_ID}`
+      + `/knowledge/sources/${created.id}/syncs/${recoveryQueue.id}`);
+    expect(response.status() === 200, "恢复同步详情应可读取");
+    recovered = await response.json();
+    if (recovered.status === "completed" && recovered.resourceStatus === "ready") break;
+    if (recovered.status === "failed" || recovered.resourceStatus === "failed") break;
+    await page.waitForTimeout(2_000);
+  }
+  expect(recovered?.status === "completed" && recovered?.resourceStatus === "ready",
+    `恢复后应重新验证并可检索，实际 ${recovered?.status}/${recovered?.resourceStatus}/${recovered?.failureCode}`);
+  await page.getByRole("link", { name: "返回项目知识" }).click();
+  await page.getByLabel("搜索项目知识", { exact: true }).fill(FEISHU_PHRASE);
+  await page.getByRole("button", { name: "搜索项目知识" }).click();
+  await page.locator(".knowledge-search-result").filter({ hasText: FEISHU_PHRASE })
+    .first().waitFor({ timeout: 30_000 });
+}
+
+try {
+  if (process.env.CAIRN_VERIFY_REUSE_WEB !== "1") {
+    await assertPortAvailable(WEB_PORT);
+    const previewInvocation = spawnInvocation(pnpm, [
+      "exec", "vite", "preview", "--port", String(WEB_PORT), "--strictPort",
+    ]);
+    web = spawn(previewInvocation.command, previewInvocation.args, {
+      cwd: WEB_ROOT, stdio: "ignore", shell: false,
+      detached: process.platform !== "win32",
+    });
+    await waitForChildSpawn(web);
+  }
   await Promise.all([waitForServer(WEB), waitForServer(IDENTITY_READY)]);
 
   browser = await chromium.launch();
@@ -238,6 +403,7 @@ try {
   await login();
   await checkAuthenticatedShell();
   await checkCoreKnowledgeIngestion();
+  await checkFeishuSources();
 
   await page.goto(`${WEB}/projects`, { waitUntil: "networkidle" });
   await waitForAuthenticated();

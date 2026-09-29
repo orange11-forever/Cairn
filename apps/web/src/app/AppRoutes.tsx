@@ -4,6 +4,7 @@ import type { IdentityContext } from "../api/auth.ts";
 import { AuthenticatedLayout } from "../components/AuthenticatedLayout.tsx";
 import { LoginForm } from "../components/LoginForm.tsx";
 import { KnowledgePage } from "../pages/KnowledgePage.tsx";
+import { KnowledgeSourcesPage } from "../pages/KnowledgeSourcesPage.tsx";
 import { ProjectsPage } from "../pages/ProjectsPage.tsx";
 import { useSession } from "../session/SessionContext.tsx";
 
@@ -59,6 +60,7 @@ export function AppRoutes() {
         <Route element={<AuthenticatedLayout />}>
           <Route path="/projects" element={<ProjectsPage />} />
           <Route path="/projects/:projectId/knowledge" element={<KnowledgePage />} />
+          <Route path="/projects/:projectId/knowledge/sources" element={<KnowledgeSourcesPage />} />
           <Route path="/documents" element={<Navigate to="/projects" replace />} />
           <Route path="/ask" element={<Navigate to="/projects" replace />} />
         </Route>

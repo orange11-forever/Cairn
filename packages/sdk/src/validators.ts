@@ -65,22 +65,36 @@ function matchesStringFormat(format: unknown, value: string): boolean {
   return true;
 }
 
+function matchesNumberBounds(definition: JsonObject, value: number): boolean {
+  return (
+    (typeof definition.minimum !== "number" || value >= definition.minimum) &&
+    (typeof definition.maximum !== "number" || value <= definition.maximum) &&
+    (typeof definition.exclusiveMinimum !== "number" || value > definition.exclusiveMinimum) &&
+    (typeof definition.exclusiveMaximum !== "number" || value < definition.exclusiveMaximum)
+  );
+}
+
 function matchesSchema(schema: unknown, value: unknown): boolean {
   const definition = objectValue(schema);
   if (definition === null) return false;
 
+  let composed = false;
   if ("$ref" in definition) {
     const referenced = referencedSchema(definition.$ref);
-    return referenced !== undefined && matchesSchema(referenced, value);
+    if (referenced === undefined || !matchesSchema(referenced, value)) return false;
+    composed = true;
   }
   if (Array.isArray(definition.anyOf)) {
-    return definition.anyOf.some((candidate) => matchesSchema(candidate, value));
+    if (!definition.anyOf.some((candidate) => matchesSchema(candidate, value))) return false;
+    composed = true;
   }
   if (Array.isArray(definition.oneOf)) {
-    return definition.oneOf.filter((candidate) => matchesSchema(candidate, value)).length === 1;
+    if (definition.oneOf.filter((candidate) => matchesSchema(candidate, value)).length !== 1) return false;
+    composed = true;
   }
   if (Array.isArray(definition.allOf)) {
-    return definition.allOf.every((candidate) => matchesSchema(candidate, value));
+    if (!definition.allOf.every((candidate) => matchesSchema(candidate, value))) return false;
+    composed = true;
   }
   if (Array.isArray(definition.enum) && !definition.enum.some((entry) => Object.is(entry, value))) {
     return false;
@@ -93,17 +107,19 @@ function matchesSchema(schema: unknown, value: unknown): boolean {
     case "boolean":
       return typeof value === "boolean";
     case "integer":
-      return typeof value === "number" && Number.isInteger(value);
+      return typeof value === "number" && Number.isInteger(value) && matchesNumberBounds(definition, value);
     case "number":
-      return typeof value === "number" && Number.isFinite(value);
+      return typeof value === "number" && Number.isFinite(value) && matchesNumberBounds(definition, value);
     case "string": {
       if (typeof value !== "string") return false;
-      if (typeof definition.minLength === "number" && value.length < definition.minLength) {
+      const length = [...value].length;
+      if (typeof definition.minLength === "number" && length < definition.minLength) {
         return false;
       }
-      if (typeof definition.maxLength === "number" && value.length > definition.maxLength) {
+      if (typeof definition.maxLength === "number" && length > definition.maxLength) {
         return false;
       }
+      if (typeof definition.pattern === "string" && !new RegExp(definition.pattern, "u").test(value)) return false;
       return matchesStringFormat(definition.format, value);
     }
     case "array":
@@ -134,7 +150,7 @@ function matchesSchema(schema: unknown, value: unknown): boolean {
       return true;
     }
     default:
-      return false;
+      return composed;
   }
 }
 

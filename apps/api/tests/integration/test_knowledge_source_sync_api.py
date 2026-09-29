@@ -48,10 +48,10 @@ def test_admin_queues_coalesces_and_polls_source_sync(
         missing = client.post(
             f"/api/v1/projects/{project_id}/knowledge/sources/{uuid4()}/syncs", json={}
         )
-        unsupported = client.get(path)
         invalid = client.post(path, json={"unexpected": True})
         queued = client.post(path, json={}, headers={"X-Request-ID": "req-sync-queue"})
         repeated = client.post(path, json={})
+        history = client.get(path)
         polled = client.get(f"{path}/{queued.json()['id']}")
         with database.session_factory.begin() as session:
             source = session.get(KnowledgeSource, source_id)
@@ -66,7 +66,7 @@ def test_admin_queues_coalesces_and_polls_source_sync(
 
     assert csrf.status_code == 403
     assert missing.status_code == 404
-    assert unsupported.status_code == 405 and unsupported.headers["allow"] == "POST"
+    assert history.status_code == 200 and history.json() == {"items": [queued.json()], "nextCursor": None}
     assert invalid.status_code == 422
     assert invalid.json()["traceId"] == invalid.headers["x-request-id"]
     assert queued.status_code == repeated.status_code == 202
@@ -87,6 +87,10 @@ def test_admin_queues_coalesces_and_polls_source_sync(
         "errorCode": None,
         "resourceId": None,
         "resourceVersionId": None,
+        "trigger": "manual",
+        "failureCode": None,
+        "nextAttemptAt": None,
+        "resourceStatus": None,
     }
     with database.session_factory() as session:
         audits = list(
@@ -100,7 +104,8 @@ def test_admin_queues_coalesces_and_polls_source_sync(
             )
         )
     assert len(audits) == len(events) == 1
-    assert set(audits[0].details) == {"projectId", "sourceId", "syncId", "jobId"}
+    assert set(audits[0].details) == {"projectId", "sourceId", "syncId", "jobId", "trigger"}
+    assert audits[0].details["trigger"] == "manual"
     assert events[0].payload == audits[0].details
     with (
         pytest.raises(IntegrityError) as caught,
@@ -187,6 +192,10 @@ def _assert_contract(
             "errorCode",
             "resourceId",
             "resourceVersionId",
+            "trigger",
+            "failureCode",
+            "nextAttemptAt",
+            "resourceStatus",
         }
 
 
@@ -284,6 +293,7 @@ def test_separate_transactions_concurrently_coalesce_one_sync_job_and_queued_eve
                 "sourceId": str(source_id),
                 "syncId": str(syncs[0].id),
                 "jobId": str(jobs[0].id),
+                "trigger": "manual",
             }
         )
 
@@ -475,14 +485,14 @@ def test_sync_validation_csrf_and_method_contract(
         elif case == "get_uuid":
             response = client.get(f"{path}/not-a-uuid")
         elif case in {"post_method", "get_method"}:
-            response = client.patch(path if case == "post_method" else poll, json={})
+            response = client.put(path if case == "post_method" else poll, json={})
         elif case == "get_without_csrf":
             response = client.get(poll)
         else:
             response = client.post(path, json={})
     if case in {"post_method", "get_method"}:
         _assert_contract(
-            response, 405, "method_not_allowed", allow="POST" if case == "post_method" else "GET"
+            response, 405, "method_not_allowed", allow="GET, POST" if case == "post_method" else "GET"
         )
     elif case in {"missing_csrf", "wrong_csrf", "wrong_origin"}:
         _assert_contract(response, 403, "csrf_failed", origin=case != "wrong_origin")
@@ -507,7 +517,7 @@ def test_queue_event_failure_rolls_back_sync_and_job(
             knowledge_settings(test_database_url), database, actor, MemoryObjectStore()
         ) as client,
         patch(
-            f"cairn_api.knowledge.source_service.{dependency}", side_effect=RuntimeError("private")
+            f"cairn_api.knowledge.source_sync_queue.{dependency}", side_effect=RuntimeError("private")
         ),
     ):
         response = client.post(
@@ -535,16 +545,19 @@ def test_sync_openapi_exact_operations_schemas_statuses_and_headers() -> None:
     schema = create_app().openapi()
     path = "/api/v1/projects/{project_id}/knowledge/sources/{source_id}/syncs"
     response_ref = {"$ref": "#/components/schemas/KnowledgeSourceSyncResponse"}
-    for url, method, success, extra in (
-        (path, "post", "202", {"403"}),
-        (path + "/{sync_id}", "get", "200", set[str]()),
+    for url, method, success, extra, expected_ref in (
+        (path, "post", "202", {"403"}, response_ref),
+        (path, "get", "200", set[str](), {"$ref": "#/components/schemas/KnowledgeSourceSyncPage"}),
+        (path + "/{sync_id}", "get", "200", set[str](), response_ref),
     ):
-        assert set(schema["paths"][url]) == {method}
+        assert set(schema["paths"][url]) == ({"get", "post"} if url == path else {"get"})
         operation = schema["paths"][url][method]
         assert operation["operationId"] == (
             "queue_source_sync_api_v1_projects__project_id__knowledge_sources__source_id__syncs_post"
-            if method == "post"
-            else "get_source_sync_api_v1_projects__project_id__knowledge_sources__source_id__syncs__sync_id__get"
+            if method == "post" else
+            "list_source_syncs_api_v1_projects__project_id__knowledge_sources__source_id__syncs_get"
+            if url == path else
+            "get_source_sync_api_v1_projects__project_id__knowledge_sources__source_id__syncs__sync_id__get"
         )
         assert (
             set(operation["responses"])
@@ -552,16 +565,16 @@ def test_sync_openapi_exact_operations_schemas_statuses_and_headers() -> None:
         )
         for status, response in operation["responses"].items():
             assert response["content"]["application/json"]["schema"] == (
-                response_ref if status == success else {"$ref": "#/components/schemas/ErrorBody"}
+                expected_ref if status == success else {"$ref": "#/components/schemas/ErrorBody"}
             )
             assert response["headers"]["Cache-Control"]["schema"]["const"] == "private, no-store"
             assert response["headers"]["X-Request-ID"]["schema"] == {"type": "string"}
             assert ("Allow" in response["headers"]) == (status == "405")
         parameters = {item["name"]: item for item in operation["parameters"]}
         assert set(parameters) == {"project_id", "source_id"} | (
-            {"X-CSRF-Token"} if method == "post" else {"sync_id"}
+            {"X-CSRF-Token"} if method == "post" else {"sync_id"} if url != path else {"cursor", "limit"}
         )
-        assert all(value["required"] for value in parameters.values())
+        assert all(value["required"] for key, value in parameters.items() if key not in {"cursor", "limit"})
         if method == "post":
             assert operation["requestBody"]["required"] is True
             assert operation["requestBody"]["content"]["application/json"]["schema"] == {
@@ -581,6 +594,10 @@ def test_sync_openapi_exact_operations_schemas_statuses_and_headers() -> None:
         "errorCode",
         "resourceId",
         "resourceVersionId",
+        "trigger",
+        "failureCode",
+        "nextAttemptAt",
+        "resourceStatus",
     }
     assert response_schema["properties"]["status"]["enum"] == [
         "queued",
@@ -613,6 +630,9 @@ def test_sync_migration_rejects_populated_downgrade_without_deleting_facts(
     assert response.status_code == 202
     with database.session_factory.begin() as session:
         session.execute(delete(IngestionJob if retained_fact == "request" else KnowledgeSourceSync))
+        source = session.get(KnowledgeSource, source_id)
+        assert source is not None
+        source.access_state = "available"  # Isolate the older 0007 downgrade guard.
         starting_revision = session.scalar(text("SELECT version_num FROM alembic_version"))
     config = Config("apps/api/alembic.ini")
     config.set_main_option("sqlalchemy.url", test_database_url)

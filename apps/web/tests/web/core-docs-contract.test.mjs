@@ -541,7 +541,7 @@ test("documentation distinguishes current ingestion infrastructure from planned 
 
 test("Worker documentation covers current modes and explicit non-goals", async () => {
   // Break caught: an operator loses a supported execution mode, or planned search,
-  // Agent, deletion propagation, or connector work is presented as Worker behavior.
+  // Agent or full connector crawling is presented as current Worker behavior.
   const readme = await readFile(new URL("apps/worker/README.md", repositoryRoot), "utf8");
 
   assert.match(readme, /`pnpm dev:worker`[^\n]*持续模式/);
@@ -550,7 +550,8 @@ test("Worker documentation covers current modes and explicit non-goals", async (
   assert.match(readme, /Task 12 混合搜索查询/);
   assert.match(readme, /Temporal Agent 工作流/);
   assert.match(readme, /软删除[^\n]*对象\/索引清除传播/);
-  assert.match(readme, /连接器[^\n]*外部来源删除传播/);
+  assert.match(readme, /没有 webhook[^\n]*真实租户验收尚无通过证据/);
+  assert.match(readme, /定时同步及明确的上游拒绝\/删除传播已通过本地模拟飞书验收/);
 });
 
 test("API documentation specifies the exact task transition graph and terminal states", async () => {

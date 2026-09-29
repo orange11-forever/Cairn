@@ -128,13 +128,18 @@ def _retry_after(headers: object) -> int | None:
     return int(normalized)
 
 
-def _status_failure(status: object, headers: object) -> FeishuFailure:
+def _status_failure(
+    status: object, headers: object, *, token_endpoint: bool = False,
+    document_endpoint: bool = False, business_code: object = None,
+) -> FeishuFailure:
+    if document_endpoint and status == 400 and business_code == 1770003:
+        return _failure("feishu_not_found")
     if status == 401:
         return _failure("feishu_auth_failed")
     if status == 403:
-        return _failure("feishu_access_denied")
+        return _failure("feishu_auth_failed" if token_endpoint else "feishu_access_denied")
     if status == 404:
-        return _failure("feishu_not_found")
+        return _failure("feishu_auth_failed" if token_endpoint else "feishu_not_found")
     if status == 429:
         return _failure("feishu_rate_limited", retry_after_seconds=_retry_after(headers))
     if isinstance(status, int) and not isinstance(status, bool) and 500 <= status <= 599:
@@ -142,6 +147,21 @@ def _status_failure(status: object, headers: object) -> FeishuFailure:
     if isinstance(status, int) and not isinstance(status, bool) and 300 <= status <= 399:
         return _failure("feishu_redirect_rejected")
     return _failure("feishu_request_rejected")
+
+
+def _document_request(request: Request) -> bool:
+    return request.full_url.startswith(f"{_ORIGIN}/open-apis/docx/v1/documents/")
+
+
+def _bounded_business_code(response: object) -> object:
+    try:
+        body = cast(Any, response).read(_TOKEN_RESPONSE_LIMIT + 1)
+        if not isinstance(body, bytes) or len(body) > _TOKEN_RESPONSE_LIMIT:
+            return None
+        payload = json.loads(body)
+        return cast(dict[str, object], payload).get("code") if isinstance(payload, dict) else None
+    except (AttributeError, HTTPException, OSError, TimeoutError, UnicodeError, ValueError, RecursionError):
+        return None
 
 
 def _close_quietly(value: object) -> None:
@@ -250,7 +270,7 @@ class FeishuDocumentClient:
         payload = self._authorized_get(
             f"{_ORIGIN}/open-apis/docx/v1/documents/{document_id}", token
         )
-        self._check_business_code(payload)
+        self._check_business_code(payload, document_endpoint=True)
         data = payload.get("data")
         if not isinstance(data, dict):
             raise _failure("feishu_invalid_response")
@@ -275,7 +295,7 @@ class FeishuDocumentClient:
         payload = self._authorized_get(
             f"{_ORIGIN}/open-apis/docx/v1/documents/{document_id}/raw_content", token
         )
-        self._check_business_code(payload)
+        self._check_business_code(payload, document_endpoint=True)
         data = payload.get("data")
         if not isinstance(data, dict):
             raise _failure("feishu_invalid_response")
@@ -292,13 +312,20 @@ class FeishuDocumentClient:
         )
         return self._request_json(request, limit=self._maximum_response_bytes)
 
-    def _check_business_code(self, payload: Mapping[str, object]) -> None:
+    def _check_business_code(self, payload: Mapping[str, object], *, document_endpoint: bool = False) -> None:
         code = payload.get("code")
         if isinstance(code, bool) or not isinstance(code, int):
             raise _failure("feishu_invalid_response")
         if code != 0:
             self._cached_token = None
             self._token_expires_at = 0.0
+            if document_endpoint:
+                if code in {1770002, 1770003}:
+                    raise _failure("feishu_not_found")
+                if code == 1770032:
+                    raise _failure("feishu_access_denied")
+                if code in {1771001, 1771002, 1771003, 1771004, 1771005, 1771006}:
+                    raise _failure("feishu_unavailable")
             raise _failure("feishu_request_rejected")
 
     def _request_json(self, request: Request, *, limit: int) -> dict[str, object]:
@@ -310,7 +337,8 @@ class FeishuDocumentClient:
                     if status == 401:
                         self._cached_token = None
                         self._token_expires_at = 0.0
-                    raise _status_failure(status, getattr(response, "headers", None))
+                    code = _bounded_business_code(response) if _document_request(request) else None
+                    raise _status_failure(status, getattr(response, "headers", None), token_endpoint=request.full_url == _TOKEN_URL, document_endpoint=_document_request(request), business_code=code)
                 try:
                     body = response.read(limit + 1)
                 except (HTTPException, OSError, TimeoutError):
@@ -324,7 +352,8 @@ class FeishuDocumentClient:
                 if error.code == 401:
                     self._cached_token = None
                     self._token_expires_at = 0.0
-                failure = _status_failure(error.code, error.headers)
+                code = _bounded_business_code(error) if _document_request(request) else None
+                failure = _status_failure(error.code, error.headers, token_endpoint=request.full_url == _TOKEN_URL, document_endpoint=_document_request(request), business_code=code)
             finally:
                 _close_quietly(error)
             raise failure from None

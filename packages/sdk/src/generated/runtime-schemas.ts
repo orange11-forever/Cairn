@@ -447,6 +447,19 @@ export const componentSchemas = {
         "minLength": 1,
         "title": "Name",
         "type": "string"
+      },
+      "syncIntervalSeconds": {
+        "anyOf": [
+          {
+            "maximum": 604800,
+            "minimum": 300,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Syncintervalseconds"
       }
     },
     "required": [
@@ -457,6 +470,287 @@ export const componentSchemas = {
     ],
     "title": "FeishuSourceCreateRequest",
     "type": "object"
+  },
+  "FeishuSourcePatchRequest": {
+    "oneOf": [
+      {
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "credentialRef": false,
+              "name": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "status": {
+                "const": "disabled",
+                "type": "string"
+              },
+              "syncIntervalSeconds": {
+                "anyOf": [
+                  {
+                    "maximum": 604800,
+                    "minimum": 300,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Syncintervalseconds"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "credentialRef": false,
+              "name": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "status": {
+                "const": "disabled",
+                "type": "string"
+              },
+              "syncIntervalSeconds": {
+                "anyOf": [
+                  {
+                    "maximum": 604800,
+                    "minimum": 300,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Syncintervalseconds"
+              }
+            },
+            "required": [
+              "status"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "credentialRef": false,
+              "name": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "status": {
+                "const": "disabled",
+                "type": "string"
+              },
+              "syncIntervalSeconds": {
+                "anyOf": [
+                  {
+                    "maximum": 604800,
+                    "minimum": 300,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Syncintervalseconds"
+              }
+            },
+            "required": [
+              "syncIntervalSeconds"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      {
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "accessPolicy": {
+                "const": "project_members",
+                "type": "string"
+              },
+              "credentialRef": {
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+                "type": "string"
+              },
+              "name": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "configured",
+                  "disabled"
+                ],
+                "type": "string"
+              },
+              "syncIntervalSeconds": {
+                "anyOf": [
+                  {
+                    "maximum": 604800,
+                    "minimum": 300,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Syncintervalseconds"
+              }
+            },
+            "required": [
+              "accessPolicy",
+              "name"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "accessPolicy": {
+                "const": "project_members",
+                "type": "string"
+              },
+              "credentialRef": {
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+                "type": "string"
+              },
+              "name": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "configured",
+                  "disabled"
+                ],
+                "type": "string"
+              },
+              "syncIntervalSeconds": {
+                "anyOf": [
+                  {
+                    "maximum": 604800,
+                    "minimum": 300,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Syncintervalseconds"
+              }
+            },
+            "required": [
+              "accessPolicy",
+              "credentialRef"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "accessPolicy": {
+                "const": "project_members",
+                "type": "string"
+              },
+              "credentialRef": {
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+                "type": "string"
+              },
+              "name": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "configured",
+                  "disabled"
+                ],
+                "type": "string"
+              },
+              "syncIntervalSeconds": {
+                "anyOf": [
+                  {
+                    "maximum": 604800,
+                    "minimum": 300,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Syncintervalseconds"
+              }
+            },
+            "required": [
+              "accessPolicy",
+              "status"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "accessPolicy": {
+                "const": "project_members",
+                "type": "string"
+              },
+              "credentialRef": {
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+                "type": "string"
+              },
+              "name": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "configured",
+                  "disabled"
+                ],
+                "type": "string"
+              },
+              "syncIntervalSeconds": {
+                "anyOf": [
+                  {
+                    "maximum": 604800,
+                    "minimum": 300,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Syncintervalseconds"
+              }
+            },
+            "required": [
+              "accessPolicy",
+              "syncIntervalSeconds"
+            ],
+            "type": "object"
+          }
+        ]
+      }
+    ],
+    "title": "FeishuSourcePatchRequest"
   },
   "HealthResponse": {
     "properties": {
@@ -1114,6 +1408,16 @@ export const componentSchemas = {
         "title": "Accesspolicy",
         "type": "string"
       },
+      "accessState": {
+        "enum": [
+          "available",
+          "unverified",
+          "access_denied",
+          "not_found"
+        ],
+        "title": "Accessstate",
+        "type": "string"
+      },
       "createdAt": {
         "format": "date-time",
         "title": "Createdat",
@@ -1144,9 +1448,56 @@ export const componentSchemas = {
         "title": "Id",
         "type": "string"
       },
+      "lastCheckedAt": {
+        "anyOf": [
+          {
+            "format": "date-time",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Lastcheckedat"
+      },
+      "lastErrorCode": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Lasterrorcode"
+      },
+      "lastSuccessAt": {
+        "anyOf": [
+          {
+            "format": "date-time",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Lastsuccessat"
+      },
       "name": {
         "title": "Name",
         "type": "string"
+      },
+      "nextSyncAt": {
+        "anyOf": [
+          {
+            "format": "date-time",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Nextsyncat"
       },
       "projectId": {
         "format": "uuid",
@@ -1166,6 +1517,17 @@ export const componentSchemas = {
         "title": "Status",
         "type": "string"
       },
+      "syncIntervalSeconds": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Syncintervalseconds"
+      },
       "updatedAt": {
         "format": "date-time",
         "title": "Updatedat",
@@ -1183,7 +1545,13 @@ export const componentSchemas = {
       "status",
       "createdAt",
       "updatedAt",
-      "disabledAt"
+      "disabledAt",
+      "syncIntervalSeconds",
+      "nextSyncAt",
+      "lastCheckedAt",
+      "lastSuccessAt",
+      "lastErrorCode",
+      "accessState"
     ],
     "title": "KnowledgeSourceResponse",
     "type": "object"
@@ -1192,6 +1560,34 @@ export const componentSchemas = {
     "additionalProperties": false,
     "properties": {},
     "title": "KnowledgeSourceSyncCreateRequest",
+    "type": "object"
+  },
+  "KnowledgeSourceSyncPage": {
+    "properties": {
+      "items": {
+        "items": {
+          "$ref": "#/components/schemas/KnowledgeSourceSyncResponse"
+        },
+        "title": "Items",
+        "type": "array"
+      },
+      "nextCursor": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Nextcursor"
+      }
+    },
+    "required": [
+      "items",
+      "nextCursor"
+    ],
+    "title": "KnowledgeSourceSyncPage",
     "type": "object"
   },
   "KnowledgeSourceSyncResponse": {
@@ -1228,10 +1624,33 @@ export const componentSchemas = {
         ],
         "title": "Errorcode"
       },
+      "failureCode": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Failurecode"
+      },
       "id": {
         "format": "uuid",
         "title": "Id",
         "type": "string"
+      },
+      "nextAttemptAt": {
+        "anyOf": [
+          {
+            "format": "date-time",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Nextattemptat"
       },
       "projectId": {
         "format": "uuid",
@@ -1249,6 +1668,23 @@ export const componentSchemas = {
           }
         ],
         "title": "Resourceid"
+      },
+      "resourceStatus": {
+        "anyOf": [
+          {
+            "enum": [
+              "queued",
+              "processing",
+              "ready",
+              "failed"
+            ],
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Resourcestatus"
       },
       "resourceVersionId": {
         "anyOf": [
@@ -1276,6 +1712,14 @@ export const componentSchemas = {
         ],
         "title": "Status",
         "type": "string"
+      },
+      "trigger": {
+        "enum": [
+          "manual",
+          "scheduled"
+        ],
+        "title": "Trigger",
+        "type": "string"
       }
     },
     "required": [
@@ -1288,7 +1732,11 @@ export const componentSchemas = {
       "completedAt",
       "errorCode",
       "resourceId",
-      "resourceVersionId"
+      "resourceVersionId",
+      "trigger",
+      "failureCode",
+      "nextAttemptAt",
+      "resourceStatus"
     ],
     "title": "KnowledgeSourceSyncResponse",
     "type": "object"
