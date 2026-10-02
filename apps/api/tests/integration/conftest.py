@@ -81,7 +81,7 @@ def cleanup_identity_rows(
                 "ingestion_batches, search_rate_limit_buckets, "
                 "resource_acl_entries, outbox_events, task_dependencies, "
                 "tasks, milestones, project_stages, projects, auth_rate_limits, "
-                "audit_logs, auth_sessions, memberships, users, organizations CASCADE"
+                "audit_logs, browser_login_claims, auth_sessions, memberships, users, organizations CASCADE"
             )
         )
         connection.execute(

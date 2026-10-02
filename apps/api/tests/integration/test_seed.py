@@ -45,6 +45,7 @@ def test_demo_seed_is_idempotent(
     assert user.id == UUID("00000000-0000-4000-8000-000000001001")
     assert user.email == "demo@cairn.dev"
     assert user.display_name == "演示用户"
+    assert user.password_hash is not None
     assert verify_password("cairn-demo-2026", user.password_hash)
     assert membership is not None
     assert membership.id == UUID("00000000-0000-4000-8000-000000003001")

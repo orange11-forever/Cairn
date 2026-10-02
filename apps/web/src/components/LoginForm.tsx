@@ -17,6 +17,8 @@
 // ---------------------------------------------------------------------------
 
 import { useState } from "react";
+import { OAuthLoginButtons } from "./OAuthLoginButtons.tsx";
+import { OAuthNotice } from "./OAuthNotice.tsx";
 import { LogIn } from "lucide-react";
 
 import { FormField, fieldAria } from "./FormField.tsx";
@@ -27,6 +29,7 @@ import { useAbortableAction } from "../hooks/useAbortableAction.ts";
 import { PASSWORD_MIN_LENGTH, validateEmail, validatePassword } from "../lib/validation.ts";
 
 interface LoginFormProps {
+  oauthOutcome?: string | null;
   /** 登录成功后把用户交出去。这个组件不决定登录后干什么。 */
   onSuccess: (identity: IdentityContext) => void;
 }
@@ -38,7 +41,7 @@ interface FieldErrors {
 
 const NO_ERRORS: FieldErrors = { email: null, password: null };
 
-export function LoginForm({ onSuccess }: LoginFormProps) {
+export function LoginForm({ onSuccess, oauthOutcome }: LoginFormProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>(NO_ERRORS);
@@ -133,6 +136,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
 
         <section className="login-card" aria-labelledby="login-title">
           <h1 id="login-title">登录 Cairn</h1>
+          <OAuthNotice outcome={oauthOutcome} />
           <p>用企业邮箱登录，查看属于你的知识文档。</p>
 
           {/*
@@ -199,6 +203,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
               {action.pending ? "登录中…" : "登录"}
             </button>
           </form>
+          <OAuthLoginButtons />
 
           {/* 演示账号是 mock 阶段的临时便利，接入真实鉴权时必须移除。 */}
           {import.meta.env.DEV && (

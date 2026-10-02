@@ -482,7 +482,7 @@ def test_logout_rejects_non_ascii_csrf_without_revoking_valid_session(
 
 @pytest.mark.integration
 @pytest.mark.parametrize("state", ["expired", "revoked"])
-def test_expired_or_revoked_session_is_invalid_and_clears_cookie(
+def test_expired_or_revoked_session_is_invalid_without_mutating_newer_cookie(
     client: TestClient,
     database: Database,
     state: str,
@@ -498,11 +498,14 @@ def test_expired_or_revoked_session_is_invalid_and_clears_cookie(
     response = client.get("/api/v1/session")
     assert response.status_code == 401
     assert response.json()["code"] == "session_invalid"
-    assert "Max-Age=0" in response.headers["set-cookie"]
+    assert "set-cookie" not in response.headers
+    # Explicit same-origin initialization safely removes the invalid cookie.
+    prepared = client.post("/api/v1/auth/login-context", headers={"Origin": APP_ORIGIN})
+    assert prepared.status_code == 204
 
 
 @pytest.mark.integration
-def test_non_ascii_session_cookie_is_invalid_and_clears_cookie(client: TestClient) -> None:
+def test_non_ascii_session_cookie_is_invalid_without_mutating_newer_cookie(client: TestClient) -> None:
     response = client.get(
         "/api/v1/session",
         headers=[(b"cookie", b"cairn_session=\xe9")],
@@ -510,7 +513,10 @@ def test_non_ascii_session_cookie_is_invalid_and_clears_cookie(client: TestClien
 
     assert response.status_code == 401
     assert response.json()["code"] == "session_invalid"
-    assert "Max-Age=0" in response.headers["set-cookie"]
+    assert "set-cookie" not in response.headers
+    # Explicit same-origin initialization safely removes the invalid cookie.
+    prepared = client.post("/api/v1/auth/login-context", headers={"Origin": APP_ORIGIN})
+    assert prepared.status_code == 204
 
 
 @pytest.mark.integration

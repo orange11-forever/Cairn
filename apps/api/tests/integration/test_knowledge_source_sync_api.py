@@ -169,11 +169,8 @@ def _assert_contract(
     else:
         assert response.headers["allow"] == allow
     assert "retry-after" not in response.headers
-    if status == 401:
-        cookie = response.headers["set-cookie"]
-        assert "Max-Age=0" in cookie and "HttpOnly" in cookie and "SameSite=lax" in cookie
-    else:
-        assert "set-cookie" not in response.headers
+    # Delayed invalid-session responses must not clear a newer login's cookie.
+    assert "set-cookie" not in response.headers
     assert response.headers["access-control-expose-headers"] == "X-Request-ID, Retry-After"
     if code:
         assert set(response.json()) == {"message", "code", "traceId"}

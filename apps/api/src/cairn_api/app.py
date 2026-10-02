@@ -6,13 +6,15 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.base import RequestResponseEndpoint
 from starlette.middleware.cors import CORSMiddleware
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 from starlette.routing import BaseRoute, Match, Router
 from starlette.types import ASGIApp
 
 from cairn_api import __version__
-from cairn_api.auth.router import clear_session_cookie
+from cairn_api.auth.oauth_providers import configured_providers
+from cairn_api.auth.oauth_router import router as oauth_router
 from cairn_api.auth.router import router as auth_router
 from cairn_api.authorization.router import router as authorization_router
 from cairn_api.db.errors import DATABASE_UNAVAILABLE_ERRORS
@@ -144,11 +146,23 @@ def create_app(
 
     application = CairnFastAPI(title="Cairn API", version=__version__, lifespan=lifespan)
     application.cairn_cors_origins = tuple(current_settings.cors_origins)
+    application.state.oauth_providers = configured_providers(current_settings)
     application.state.settings = current_settings
     application.state.database = current_database
     application.state.object_store = current_object_store
     application.state.embedding_client = embedding_client
     application.state.answer_provider = answer_provider
+
+    @application.middleware("http")
+    async def protect_oauth_responses(  # pyright: ignore[reportUnusedFunction]
+        request: Request,
+        call_next: RequestResponseEndpoint,
+    ) -> Response:
+        response = await call_next(request)
+        if request.url.path.startswith("/api/v1/auth/"):
+            response.headers["Cache-Control"] = "no-store"
+            response.headers["Referrer-Policy"] = "no-referrer"
+        return response
 
     @application.exception_handler(ApiProblem)
     async def api_problem_handler(  # pyright: ignore[reportUnusedFunction]
@@ -162,8 +176,8 @@ def create_app(
             trace_id=get_request_id(request),
             headers=exc.headers,
         )
-        if exc.code == "session_invalid":
-            clear_session_cookie(response, current_settings)
+        # Query responses can arrive after a newer sign-in. Never mutate cookies here.
+        # Same-origin logout/bootstrap owns cookie cleanup instead.
         return response
 
     @application.exception_handler(StarletteHTTPException)
@@ -289,6 +303,7 @@ def create_app(
         return ApiVersionResponse()
 
     application.include_router(auth_router)
+    application.include_router(oauth_router)
     application.include_router(organizations_router)
     application.include_router(authorization_router)
     application.include_router(projects_router)

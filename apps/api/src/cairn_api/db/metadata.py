@@ -7,6 +7,7 @@ from cairn_api.db.base import Base
 MODEL_MODULES = (
     "cairn_api.audit.models",
     "cairn_api.auth.models",
+    "cairn_api.auth.oauth_models",
     "cairn_api.authorization.models",
     "cairn_api.knowledge.models",
     "cairn_api.knowledge.source_models",

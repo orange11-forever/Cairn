@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from cairn_api.authorization.types import MembershipRole
 from cairn_api.db.session import Database
 from cairn_api.knowledge.source_models import KnowledgeSource, KnowledgeSourceSync
@@ -86,7 +87,7 @@ def test_lifecycle_migration_refuses_downgrade_with_nondefault_facts(
     with pytest.raises(RuntimeError, match="cannot downgrade while Feishu lifecycle facts exist"):
         command.downgrade(config, "0008_project_event_commit_order")
     with database.session_factory() as session:
-        assert session.scalar(text("SELECT version_num FROM alembic_version")) == "0009_feishu_lifecycle"
+        assert session.scalar(text("SELECT version_num FROM alembic_version")) == ScriptDirectory.from_config(config).get_current_head()
         assert session.scalar(select(KnowledgeSource.sync_interval_seconds).where(KnowledgeSource.id == source_id)) == 300
         assert session.scalar(select(KnowledgeSourceSync.trigger)) == "scheduled"
 
@@ -134,5 +135,5 @@ def test_downgrade_retains_schedule_attempt_fact_even_without_period(
     with pytest.raises(RuntimeError, match="cannot downgrade while Feishu lifecycle facts exist"):
         command.downgrade(config, "0008_project_event_commit_order")
     with database.session_factory() as session:
-        assert session.scalar(text("SELECT version_num FROM alembic_version")) == "0009_feishu_lifecycle"
+        assert session.scalar(text("SELECT version_num FROM alembic_version")) == ScriptDirectory.from_config(config).get_current_head()
         assert session.get(KnowledgeSource, source.id) is not None

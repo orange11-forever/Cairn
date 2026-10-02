@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import {
   type IdentityContext,
   logoutSession,
+  prepareLoginContext,
   restoreSession,
 } from "../api/auth.ts";
 import { ApiError } from "../api/errors.ts";
@@ -18,6 +19,7 @@ export interface ActiveSession {
 
 export interface SessionApi {
   restore(signal: AbortSignal): Promise<IdentityContext>;
+  prepareLogin?(signal: AbortSignal): Promise<void>;
   logout(csrfToken: string, signal: AbortSignal): Promise<void>;
 }
 
@@ -31,9 +33,10 @@ export interface SessionContextValue {
   establishSession(identity: IdentityContext): void;
   retryRestore(): void;
   logout(): Promise<void>;
+  restartLogin(): Promise<void>;
 }
 
-const defaultSessionApi: SessionApi = { restore: restoreSession, logout: logoutSession };
+const defaultSessionApi: SessionApi = { restore: restoreSession, logout: logoutSession, prepareLogin: prepareLoginContext };
 const SessionContext = createContext<SessionContextValue | undefined>(undefined);
 
 function isSessionInvalid(error: unknown): error is ApiError {
@@ -76,6 +79,7 @@ export function SessionProvider({
   const [logoutError, setLogoutError] = useState<ApiError | null>(null);
 
   const establishSession = useCallback((identity: IdentityContext): void => {
+    restoreControllerRef.current?.abort();
     controllerRef.current?.abort();
     queryClient.clear();
     const controller = new AbortController();
@@ -93,6 +97,22 @@ export function SessionProvider({
     setStatus("authenticated");
   }, [queryClient]);
 
+  const prepareAnonymous = useCallback(async (): Promise<void> => {
+    restoreControllerRef.current?.abort();
+    const controller = new AbortController();
+    restoreControllerRef.current = controller;
+    setStatus("restoring");
+    setRestoreError(null);
+    try {
+      await sessionApi.prepareLogin?.(controller.signal);
+      if (!controller.signal.aborted) setStatus("anonymous");
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      setRestoreError(error instanceof ApiError ? error : new ApiError("network", "暂时无法准备登录，请重试", { cause: error }));
+      setStatus("restore-error");
+    }
+  }, [sessionApi]);
+
   const expireSession = useCallback((): void => {
     const controller = controllerRef.current;
     if (controller === null || expiringRef.current) return;
@@ -106,12 +126,11 @@ export function SessionProvider({
         queryClient.clear();
         if (controllerRef.current === controller) controllerRef.current = null;
         setSession(null);
-        setStatus("anonymous");
-        setRestoreError(null);
+        void prepareAnonymous();
         setLogoutError(null);
         navigate("/login", { replace: true });
       });
-  }, [navigate, queryClient]);
+  }, [navigate, prepareAnonymous, queryClient]);
 
   const retryRestore = useCallback((): void => {
     restoreControllerRef.current?.abort();
@@ -122,7 +141,7 @@ export function SessionProvider({
     void sessionApi
       .restore(controller.signal)
       .then(establishSession)
-      .catch((error: unknown) => {
+      .catch(async (error: unknown) => {
         if (controller.signal.aborted) return;
         const apiError =
           error instanceof ApiError
@@ -133,13 +152,13 @@ export function SessionProvider({
           apiError.status === 401 &&
           apiError.code === "session_invalid"
         ) {
-          setStatus("anonymous");
+          await prepareAnonymous();
           return;
         }
         setRestoreError(apiError);
         setStatus("restore-error");
       });
-  }, [establishSession, sessionApi]);
+  }, [establishSession, prepareAnonymous, sessionApi]);
 
   const logout = useCallback(async (): Promise<void> => {
     if (session === null) return;
@@ -158,10 +177,24 @@ export function SessionProvider({
     queryClient.clear();
     controllerRef.current = null;
     setSession(null);
-    setStatus("anonymous");
+    await prepareAnonymous();
     setLogoutError(null);
     navigate("/login", { replace: true });
-  }, [navigate, queryClient, session, sessionApi]);
+  }, [navigate, prepareAnonymous, queryClient, session, sessionApi]);
+
+  const restartLogin = useCallback(async (): Promise<void> => {
+    if (session !== null) return;
+    const controller = new AbortController();
+    setStatus("restoring");
+    try {
+      await sessionApi.logout("", controller.signal);
+      await prepareAnonymous();
+      navigate("/login", { replace: true });
+    } catch (error) {
+      setRestoreError(error instanceof ApiError ? error : new ApiError("network", "暂时无法重新开始登录，请重试", { cause: error }));
+      setStatus("restore-error");
+    }
+  }, [navigate, prepareAnonymous, session, sessionApi]);
 
   useEffect(() => {
     if (restoredIdentity !== undefined) return;
@@ -198,7 +231,7 @@ export function SessionProvider({
 
   return (
     <SessionContext.Provider
-      value={{ status, session, restoreError, logoutError, establishSession, retryRestore, logout }}
+      value={{ status, session, restoreError, logoutError, establishSession, retryRestore, logout, restartLogin }}
     >
       {children}
     </SessionContext.Provider>

@@ -1027,7 +1027,7 @@ test.each(["create", "complete"] as const)(
       return (
         <QueryClientProvider client={client}>
           <MemoryRouter initialEntries={["/knowledge"]}>
-            <SessionProvider restoredIdentity={IDENTITY}>{children}</SessionProvider>
+            <SessionProvider restoredIdentity={IDENTITY} sessionApi={{ restore: async () => IDENTITY, logout: async () => undefined }}>{children}</SessionProvider>
           </MemoryRouter>
         </QueryClientProvider>
       );

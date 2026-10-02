@@ -1828,6 +1828,68 @@ export const componentSchemas = {
     "title": "KnowledgeVersionResponse",
     "type": "object"
   },
+  "LinkedIdentitiesResponse": {
+    "properties": {
+      "identities": {
+        "items": {
+          "$ref": "#/components/schemas/LinkedIdentityResponse"
+        },
+        "title": "Identities",
+        "type": "array"
+      },
+      "passwordAvailable": {
+        "title": "Passwordavailable",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "identities",
+      "passwordAvailable"
+    ],
+    "title": "LinkedIdentitiesResponse",
+    "type": "object"
+  },
+  "LinkedIdentityResponse": {
+    "properties": {
+      "createdAt": {
+        "format": "date-time",
+        "title": "Createdat",
+        "type": "string"
+      },
+      "displayName": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Displayname"
+      },
+      "id": {
+        "format": "uuid",
+        "title": "Id",
+        "type": "string"
+      },
+      "provider": {
+        "enum": [
+          "github",
+          "feishu"
+        ],
+        "title": "Provider",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "provider",
+      "displayName",
+      "createdAt"
+    ],
+    "title": "LinkedIdentityResponse",
+    "type": "object"
+  },
   "LoginRequest": {
     "properties": {
       "email": {
@@ -1956,6 +2018,68 @@ export const componentSchemas = {
       "role"
     ],
     "title": "MembershipRoleUpdateRequest",
+    "type": "object"
+  },
+  "OAuthProviderResponse": {
+    "properties": {
+      "enabled": {
+        "title": "Enabled",
+        "type": "boolean"
+      },
+      "provider": {
+        "enum": [
+          "github",
+          "feishu"
+        ],
+        "title": "Provider",
+        "type": "string"
+      }
+    },
+    "required": [
+      "provider",
+      "enabled"
+    ],
+    "title": "OAuthProviderResponse",
+    "type": "object"
+  },
+  "OAuthStartRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "intent": {
+        "enum": [
+          "login",
+          "link"
+        ],
+        "title": "Intent",
+        "type": "string"
+      },
+      "returnTo": {
+        "default": "/projects",
+        "enum": [
+          "/projects",
+          "/account/identities"
+        ],
+        "title": "Returnto",
+        "type": "string"
+      }
+    },
+    "required": [
+      "intent"
+    ],
+    "title": "OAuthStartRequest",
+    "type": "object"
+  },
+  "OAuthStartResponse": {
+    "properties": {
+      "authorizationUrl": {
+        "title": "Authorizationurl",
+        "type": "string"
+      }
+    },
+    "required": [
+      "authorizationUrl"
+    ],
+    "title": "OAuthStartResponse",
     "type": "object"
   },
   "OrganizationResponse": {

@@ -8,14 +8,17 @@
 // 结论：构建步骤是必需的，不是可选的。Node 能跑 .ts（strip-only）不代表浏览器能。
 // 这个文件就是那个构建步骤。
 
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import { join } from "node:path";
 
 const WEB_ROOT = import.meta.dirname;
 const REPOSITORY_ROOT = join(WEB_ROOT, "../..");
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const environment = loadEnv(mode, REPOSITORY_ROOT, "");
+  const apiProxyTarget = environment.CAIRN_API_PROXY_TARGET || process.env.CAIRN_API_PROXY_TARGET;
+  return {
   // Day 8：JSX 也是浏览器读不懂的语法，和上面的 .ts 同理——
   // `<div>` 在 .tsx 里是表达式，浏览器的解析器只会看到一个小于号。
   // 插件负责把 JSX 转成 React.createElement 调用，并在 dev 下提供组件热更新。
@@ -46,6 +49,8 @@ export default defineConfig({
     // verify-web.mjs 硬编码了 5500，静默换端口会让验证脚本连到一个空端口，
     // 报出来的错是「页面加载失败」，掩盖真正原因。
     strictPort: true,
+    // OAuth callbacks share the APP_URL origin and must reach the API server.
+    proxy: apiProxyTarget ? { "/api": { target: apiProxyTarget, changeOrigin: false } } : undefined,
   },
 
   build: {
@@ -54,4 +59,5 @@ export default defineConfig({
     // 不发布包含完整前端源码的 source map；生产诊断使用服务端 traceId 和版本号。
     sourcemap: false,
   },
+  };
 });

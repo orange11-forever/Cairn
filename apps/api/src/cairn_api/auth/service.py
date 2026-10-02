@@ -3,11 +3,13 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from cairn_api.audit.repository import add_audit_log
 from cairn_api.auth.models import AuthSession, User
+from cairn_api.auth.oauth_claims import claim_login, lock_claim
 from cairn_api.auth.rate_limit import digest_key, retry_after_seconds
 from cairn_api.auth.rate_limit_repository import BucketKey, RateLimitRepository, utcnow
 from cairn_api.auth.repository import (
@@ -79,7 +81,7 @@ def _invalid_session() -> ApiProblem:
     )
 
 
-def _identity(
+def identity_context(
     record: MembershipRecord | SessionRecord,
     *,
     user: User,
@@ -168,6 +170,9 @@ class AuthService:
         audit: RequestAuditContext,
         client_ip: str,
         now: Callable[[], datetime] = utcnow,
+        oauth_browser_token: str | None = None,
+        current_session_token: str | None = None,
+        require_browser_claim: bool = False,
     ) -> LoginResult:
         current_time = now()
         normalized_email = normalize_email(email)
@@ -218,9 +223,18 @@ class AuthService:
                     outcome = _login_rate_limited(retry_after)
                 else:
                     user = get_user_by_normalized_email(self._session, normalized_email)
-                    password_digest = user.password_hash if user is not None else DUMMY_PASSWORD_HASH
+                    password_digest = (
+                        (user.password_hash or DUMMY_PASSWORD_HASH)
+                        if user is not None
+                        else DUMMY_PASSWORD_HASH
+                    )
                     password_valid = verify_password(password, password_digest)
-                    if user is None or not password_valid or not user.is_active:
+                    if (
+                        user is None
+                        or not user.password_hash
+                        or not password_valid
+                        or not user.is_active
+                    ):
                         outcome = _record_login_failure(
                             self._session,
                             email_key=email_key,
@@ -247,6 +261,13 @@ class AuthService:
                         else:
                             membership = memberships[0]
                             material = issue_session_material(self._csrf_secret)
+                            claim_login(
+                                self._session,
+                                oauth_browser_token,
+                                material.session_digest,
+                                current_session_token,
+                                required=require_browser_claim,
+                            )
                             RateLimitRepository.clear_email_bucket(
                                 self._session,
                                 email_key.key_digest,
@@ -274,7 +295,7 @@ class AuthService:
                                 user_agent=audit.user_agent,
                             )
                             login_result = LoginResult(
-                                identity=_identity(
+                                identity=identity_context(
                                     membership,
                                     user=user,
                                     csrf_token=material.csrf_token,
@@ -305,7 +326,7 @@ class AuthService:
         try:
             with self._session.begin():
                 record = get_session_record(self._session, session_digest)
-                if not self._record_is_valid(record, csrf_token=csrf_token):
+                if not self.record_is_valid(record, csrf_token=csrf_token):
                     raise _invalid_session()
                 assert record is not None
                 now = datetime.now(UTC)
@@ -322,7 +343,7 @@ class AuthService:
                     ip=audit.ip,
                     user_agent=audit.user_agent,
                 )
-                identity = _identity(record, user=record.user, csrf_token=csrf_token)
+                identity = identity_context(record, user=record.user, csrf_token=csrf_token)
             return identity
         except SQLAlchemyError as exc:
             raise _database_unavailable() from exc
@@ -333,30 +354,51 @@ class AuthService:
         session_token: str | None,
         csrf_token: str | None,
         audit: RequestAuditContext,
+        oauth_browser_token: str | None = None,
     ) -> None:
-        if not session_token:
-            return
         try:
-            session_digest = digest_token(session_token)
-            derived_csrf = derive_csrf_token(session_token, self._csrf_secret)
+            session_digest = digest_token(session_token) if session_token else None
+            derived_csrf = (
+                derive_csrf_token(session_token, self._csrf_secret) if session_token else ""
+            )
         except UnicodeEncodeError:
-            return
+            session_digest = None
+            derived_csrf = ""
         try:
             with self._session.begin():
-                record = get_session_record(self._session, session_digest)
-                if not self._record_is_valid(record, csrf_token=derived_csrf):
-                    return
-                assert record is not None
-                if csrf_token is None or not verify_csrf_token(
-                    session_token,
-                    csrf_token,
-                    self._csrf_secret,
+                # Match sign-in lock order: browser claim before session/user.
+                claim = lock_claim(self._session, oauth_browser_token, include_expired=True)
+                record = (
+                    get_session_record(self._session, session_digest) if session_digest else None
+                )
+                valid = self.record_is_valid(record, csrf_token=derived_csrf)
+                if valid and (
+                    csrf_token is None
+                    or not verify_csrf_token(
+                        session_token or "",
+                        csrf_token,
+                        self._csrf_secret,
+                    )
                 ):
                     raise ApiProblem(
                         status_code=403,
                         code="csrf_failed",
                         message="请求来源或 CSRF 令牌无效",
                     )
+                if claim is not None:
+                    claim.expires_at = datetime.now(UTC)
+                    claim.pending_identity_id = None
+                    if claim.claimed_session_digest is not None:
+                        pending = self._session.scalar(
+                            select(AuthSession)
+                            .where(AuthSession.token_digest == claim.claimed_session_digest)
+                            .with_for_update()
+                        )
+                        if pending is not None:
+                            pending.revoked_at = datetime.now(UTC)
+                if not valid:
+                    return
+                assert record is not None
                 record.auth_session.revoked_at = datetime.now(UTC)
                 add_audit_log(
                     self._session,
@@ -374,7 +416,7 @@ class AuthService:
             raise _database_unavailable() from exc
 
     @staticmethod
-    def _record_is_valid(record: SessionRecord | None, *, csrf_token: str) -> bool:
+    def record_is_valid(record: SessionRecord | None, *, csrf_token: str) -> bool:
         if record is None:
             return False
         auth_session = record.auth_session

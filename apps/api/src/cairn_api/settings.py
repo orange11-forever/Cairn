@@ -149,6 +149,24 @@ class Settings(BaseSettings):
         default="local-development-auth-rate-limit-secret-change-before-deploying-32-bytes",
         validation_alias="CAIRN_AUTH_RATE_LIMIT_SECRET",
     )
+    oauth_github_client_id: str | None = Field(default=None, min_length=1, max_length=160, validation_alias="CAIRN_OAUTH_GITHUB_CLIENT_ID")
+    oauth_github_client_secret: SecretStr | None = Field(default=None, validation_alias="CAIRN_OAUTH_GITHUB_CLIENT_SECRET")
+    oauth_feishu_client_id: str | None = Field(default=None, min_length=1, max_length=160, validation_alias="CAIRN_OAUTH_FEISHU_CLIENT_ID")
+    oauth_feishu_client_secret: SecretStr | None = Field(default=None, validation_alias="CAIRN_OAUTH_FEISHU_CLIENT_SECRET")
+
+    @model_validator(mode="after")
+    def validate_oauth_configuration(self) -> "Settings":
+        for client_id, secret in ((self.oauth_github_client_id, self.oauth_github_client_secret),
+                                  (self.oauth_feishu_client_id, self.oauth_feishu_client_secret)):
+            if (client_id is None) != (secret is None):
+                raise ValueError("OAuth client ID and secret must be configured together")
+            if client_id is not None:
+                if not client_id.strip() or secret is None or not secret.get_secret_value().strip():
+                    raise ValueError("OAuth credentials cannot be blank")
+                if self.app_url is None:
+                    raise ValueError("OAuth requires APP_URL and same-origin API proxy")
+        return self
+
     trusted_proxy_cidrs: Annotated[tuple[IPv4Network | IPv6Network, ...], NoDecode] = Field(
         default=(),
         validation_alias="CAIRN_TRUSTED_PROXY_CIDRS",

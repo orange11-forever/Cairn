@@ -5,7 +5,10 @@ from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.orm import Session
 
 from cairn_api.auth.dependencies import get_audit_context, get_request_settings
+from cairn_api.auth.oauth_claims import browser_cookie_name, ensure_claim
+from cairn_api.auth.repository import get_session_record
 from cairn_api.auth.schemas import IdentityContextResponse, LoginRequest
+from cairn_api.auth.security import derive_csrf_token, digest_token
 from cairn_api.auth.service import AuthService
 from cairn_api.db.session import get_db
 from cairn_api.errors import ApiProblem, ErrorBody
@@ -52,7 +55,7 @@ LOGOUT_OPENAPI: dict[str, Any] = {
 }
 
 
-def _require_origin(request: Request, settings: Settings) -> None:
+def require_login_origin(request: Request, settings: Settings) -> None:
     expected = str(settings.app_url).rstrip("/") if settings.app_url is not None else None
     if expected is None or request.headers.get("origin") != expected:
         raise ApiProblem(
@@ -75,7 +78,17 @@ def set_session_cookie(response: Response, settings: Settings, session_token: st
     )
 
 
-def clear_session_cookie(response: Response, settings: Settings) -> None:
+def clear_session_cookie(
+    response: Response, settings: Settings, *, clear_login_context: bool = True
+) -> None:
+    if clear_login_context:
+        response.delete_cookie(
+            browser_cookie_name(settings.session_cookie_name),
+            path="/api/v1",
+            secure=settings.session_cookie_secure,
+            httponly=True,
+            samesite="lax",
+        )
     response.delete_cookie(
         key=settings.session_cookie_name,
         path="/",
@@ -97,13 +110,16 @@ def login(
     session: SessionDependency,
 ) -> IdentityContextResponse:
     settings = get_request_settings(request)
-    _require_origin(request, settings)
+    require_login_origin(request, settings)
     audit = get_audit_context(request)
     result = AuthService(session, settings).login(
         email=str(payload.email),
         password=payload.password,
         audit=audit,
         client_ip=audit.ip or "unknown",
+        oauth_browser_token=request.cookies.get(browser_cookie_name(settings.session_cookie_name)),
+        current_session_token=request.cookies.get(settings.session_cookie_name),
+        require_browser_claim=bool(request.app.state.oauth_providers),
     )
     set_session_cookie(response, settings, result.session_token)
     return result.identity
@@ -133,12 +149,56 @@ def logout(
     session: SessionDependency,
 ) -> Response:
     settings = get_request_settings(request)
-    _require_origin(request, settings)
+    require_login_origin(request, settings)
     AuthService(session, settings).logout(
         session_token=request.cookies.get(settings.session_cookie_name),
         csrf_token=request.headers.get("X-CSRF-Token"),
         audit=get_audit_context(request),
+        oauth_browser_token=request.cookies.get(browser_cookie_name(settings.session_cookie_name)),
     )
     response = Response(status_code=204)
     clear_session_cookie(response, settings)
+    return response
+
+
+@router.post(
+    "/auth/login-context",
+    status_code=204,
+    responses={**LOGOUT_ERRORS, 409: {"description": "登录状态已改变", "model": ErrorBody}},
+)
+def prepare_login(request: Request, session: SessionDependency) -> Response:
+    """Bootstrap once before displaying any anonymous sign-in actions."""
+    settings = get_request_settings(request)
+    require_login_origin(request, settings)
+    incoming = request.cookies.get(settings.session_cookie_name)
+    invalid_digest = None
+    with session.begin():
+        if incoming and incoming.isascii():
+            invalid_digest = digest_token(incoming)
+            record = get_session_record(session, invalid_digest)
+            if AuthService.record_is_valid(
+                record, csrf_token=derive_csrf_token(incoming, settings.csrf_secret.encode("utf-8"))
+            ):
+                raise ApiProblem(
+                    status_code=409,
+                    code="session_changed",
+                    message="当前登录状态已改变，请刷新页面",
+                )
+        token, _claim = ensure_claim(
+            session,
+            request.cookies.get(browser_cookie_name(settings.session_cookie_name)),
+            invalid_session_digest=invalid_digest,
+        )
+    response = Response(status_code=204)
+    if incoming:
+        clear_session_cookie(response, settings, clear_login_context=False)
+    response.set_cookie(
+        browser_cookie_name(settings.session_cookie_name),
+        token,
+        max_age=31 * 86400,
+        path="/api/v1",
+        secure=settings.session_cookie_secure,
+        httponly=True,
+        samesite="lax",
+    )
     return response
