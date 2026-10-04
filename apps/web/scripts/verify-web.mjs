@@ -359,9 +359,18 @@ async function checkFeishuSources() {
   await page.getByRole("button", { name: "编辑设置" }).click();
   const targetInterval = created.syncIntervalSeconds === 900 ? "300" : "900";
   await page.getByLabel("同步周期").selectOption(targetInterval);
-  await page.getByRole("button", { name: "保存修改" }).click();
+  const updatedResponse = await waitForSourceResponse({ page, label: "feishu-update-interval", screenshotDir: PREVIEW_SHOT_DIR,
+    predicate: response => response.request().method() === "PATCH" && response.url().endsWith(`/knowledge/sources/${created.id}`),
+    action: () => page.getByRole("button", { name: "保存修改" }).click() });
+  expect(updatedResponse.status() === 200, `来源设置保存应返回200，实际 ${updatedResponse.status()}`);
+  const updated = await updatedResponse.json();
+  expect(updated.id === created.id && updated.projectId === CORE_PROJECT_ID &&
+    updated.syncIntervalSeconds === Number(targetInterval), "来源设置响应应匹配当前项目、来源与新周期");
   await page.getByText("来源设置已保存。").waitFor();
-  expect(await page.locator(".feishu-facts").getByText(targetInterval === "900" ? "每 15 分钟" : "每 5 分钟").isVisible(),
+  const savedInterval = page.locator(".feishu-facts").getByText(
+    targetInterval === "900" ? "每 15 分钟" : "每 5 分钟", { exact: true });
+  await savedInterval.waitFor({ state: "visible" });
+  expect(await savedInterval.isVisible(),
     "周期修改应反映在来源详情");
   await page.getByRole("button", { name: "停用来源" }).click();
   await page.getByRole("button", { name: "确认停用 飞书浏览器验收" }).click();
