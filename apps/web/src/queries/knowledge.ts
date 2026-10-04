@@ -13,6 +13,7 @@ import {
   searchKnowledge,
 } from "../api/knowledge.ts";
 import { fetchKnowledgeResource } from "../api/knowledgeResources.ts";
+import { fetchKnowledgeContent, type KnowledgeContentRequest } from "../api/knowledgeContent.ts";
 import {
   fetchKnowledgeBatch,
   type KnowledgeBatchDetail,
@@ -32,6 +33,10 @@ export const knowledgeKeys = {
     ["project-knowledge", organizationId, projectId, "resources"] as const,
   resource: (organizationId: string, projectId: string, resourceId: string) =>
     ["project-knowledge", organizationId, projectId, "resource", resourceId] as const,
+  content: (organizationId: string, projectId: string, resourceId: string,
+    resourceVersionId?: string, chunkId?: string) =>
+    ["project-knowledge", organizationId, projectId, "content", resourceId,
+      resourceVersionId ?? "current", chunkId ?? "document"] as const,
   batch: (organizationId: string, projectId: string, batchId: string) =>
     ["project-knowledge", organizationId, projectId, "batch", batchId] as const,
   searches: (organizationId: string, projectId: string) =>
@@ -55,6 +60,19 @@ export const knowledgeKeys = {
 
 function sessionQuerySignal(querySignal: AbortSignal, sessionSignal: AbortSignal): AbortSignal {
   return AbortSignal.any([querySignal, sessionSignal]);
+}
+
+export function useKnowledgeContentQuery({ organizationId, sessionSignal, enabled, ...request }:
+  Omit<KnowledgeContentRequest, "signal"> & { organizationId: string; sessionSignal: AbortSignal; enabled: boolean }) {
+  return useQuery({
+    queryKey: knowledgeKeys.content(organizationId, request.projectId, request.resourceId,
+      request.resourceVersionId, request.chunkId),
+    queryFn: ({ signal }) => fetchKnowledgeContent({ ...request,
+      signal: sessionQuerySignal(signal, sessionSignal) }),
+    enabled: enabled && !sessionSignal.aborted,
+    networkMode: "always", retry: false, staleTime: 0, gcTime: 0,
+    refetchOnMount: "always", refetchOnWindowFocus: false, refetchOnReconnect: false,
+  });
 }
 
 export function isKnowledgeBatchTerminal(status: KnowledgeBatchDetail["status"]): boolean {
@@ -315,9 +333,11 @@ export function useKnowledgeResourcesQuery(
   organizationId: string,
   projectId: string,
   sessionSignal: AbortSignal,
+  enabled = true,
 ) {
   return useInfiniteQuery({
     queryKey: knowledgeKeys.resources(organizationId, projectId),
+    enabled,
     queryFn: ({ pageParam, signal }) => fetchKnowledgeResources({
       projectId,
       cursor: pageParam,

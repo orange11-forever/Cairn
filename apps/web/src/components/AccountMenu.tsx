@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import type { IdentityContext } from "../api/auth.ts";
 import type { ApiError } from "../api/errors.ts";
 import { LogOut, UserRound } from "lucide-react";
@@ -13,17 +14,19 @@ export function AccountMenu({
   logoutError: ApiError | null;
   appearance?: React.ReactNode;
 }) {
+  const accountName = identity.user.displayName ?? identity.user.email ?? "Cairn 用户";
   return (
     <details className="account-menu">
-      <summary>
+      <summary title={accountName}>
         <UserRound aria-hidden="true" size={18} strokeWidth={1.8} />
-        <span className="current-user account-label-full">{identity.user.displayName ?? identity.user.email}</span>
+        <span className="current-user account-label-full">{accountName}</span>
         <span className="account-label-short">账户</span>
       </summary>
       <div className="account-menu-panel">
-        <p className="account-email">{identity.user.email}</p>
+        <p className="account-email">{identity.user.email ?? "未提供邮箱"}</p>
         <p className="account-organization">{identity.organization.name}</p>
         {logoutError !== null && <p role="alert">{logoutError.message}</p>}
+        <Link to="/account/identities">登录方式</Link>
         {appearance}
         <button type="button" className="logout-btn" onClick={() => void onLogout()}>
           <LogOut aria-hidden="true" size={16} strokeWidth={1.8} />

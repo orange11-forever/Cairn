@@ -78,6 +78,34 @@ test("verification database and service ports are configurable", () => {
   assert.match(config.databaseUrl, /127\.0\.0\.1:55499\/cairn_test$/);
 });
 
+test("offline verification excludes real Feishu credentials and selects guarded fixture Worker", async () => {
+  const config = resolveVerificationConfig({
+    CAIRN_FEISHU_CREDENTIALS_JSON: '{"private":"secret"}',
+    FEISHU_TEST_APP_SECRET: "private-secret",
+    CAIRN_VERIFY_FEISHU_REUSE_SOURCE: "1",
+    CAIRN_VERIFY_REUSE_WEB: "1",
+  }, { projectName: "cairn-verify-feishu-deadbeef" });
+  assert.equal(config.environment.CAIRN_FEISHU_CREDENTIALS_JSON, "{}");
+  assert.equal(config.environment.FEISHU_TEST_APP_SECRET, undefined);
+  assert.equal(config.environment.CAIRN_VERIFY_FEISHU_REUSE_SOURCE, undefined);
+  assert.equal(config.environment.CAIRN_VERIFY_REUSE_WEB, undefined);
+  assert.equal(config.productionEnvironment.FEISHU_TEST_APP_SECRET, undefined);
+  assert.equal(config.environment.CAIRN_VERIFY_FAKE_FEISHU, "1");
+  const calls = [];
+  const runner = createStageRunner(config, {
+    start: (command, args, options) => {
+      calls.push({ command, args, options });
+      return { completion: new Promise(() => undefined), stop: async () => undefined };
+    },
+  });
+  await runner("worker");
+  assert.deepEqual(calls[0].args, [
+    "run", "--package", "cairn-worker", "python",
+    "apps/worker/tests/support/verify_feishu_worker.py",
+  ]);
+  assert.equal(calls[0].options.env.CAIRN_VERIFY_FAKE_FEISHU, "1");
+});
+
 test("core process manager bridges Compose variables when WSL launches docker.exe", async () => {
   let childEnvironment;
   const processManager = createProcessManager({

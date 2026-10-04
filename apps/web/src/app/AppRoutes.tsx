@@ -1,15 +1,21 @@
-import { Navigate, Outlet, Route, Routes, useNavigate } from "react-router-dom";
+import { Navigate, Outlet, Route, Routes, useNavigate, useSearchParams } from "react-router-dom";
 import type { IdentityContext } from "../api/auth.ts";
 
 import { AuthenticatedLayout } from "../components/AuthenticatedLayout.tsx";
+import { RegistrationForm } from "../components/RegistrationForm.tsx";
+import { EmailVerification } from "../components/EmailVerification.tsx";
 import { LoginForm } from "../components/LoginForm.tsx";
+import { OAuthFinalize } from "../components/OAuthFinalize.tsx";
 import { KnowledgePage } from "../pages/KnowledgePage.tsx";
+import { KnowledgeSourcesPage } from "../pages/KnowledgeSourcesPage.tsx";
+import { AccountIdentitiesPage } from "../pages/AccountIdentitiesPage.tsx";
 import { ProjectsPage } from "../pages/ProjectsPage.tsx";
 import { useSession } from "../session/SessionContext.tsx";
 
 function LoginRoute() {
   const { status, establishSession } = useSession();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
 
   if (status === "authenticated") return <Navigate to="/projects" replace />;
 
@@ -18,7 +24,9 @@ function LoginRoute() {
     navigate("/projects", { replace: true });
   }
 
-  return <LoginForm onSuccess={handleSuccess} />;
+  if (params.get("oauth") === "login_ready") return <OAuthFinalize onSuccess={handleSuccess} />;
+
+  return <LoginForm onSuccess={handleSuccess} oauthOutcome={params.get("oauth")} />;
 }
 
 function RequireSession() {
@@ -33,8 +41,8 @@ function FallbackRoute() {
   return <Navigate to={status === "anonymous" ? "/login" : "/projects"} replace />;
 }
 
-export function AppRoutes() {
-  const { status, restoreError, retryRestore } = useSession();
+function SessionRoutes() {
+  const { status, restoreError, retryRestore, restartLogin } = useSession();
   if (status === "restoring") {
     return <main className="session-status-page" aria-busy="true">正在恢复会话…</main>;
   }
@@ -48,6 +56,7 @@ export function AppRoutes() {
           <button type="button" className="retry-btn" onClick={retryRestore}>
             重试
           </button>
+          {restoreError?.code === "session_changed" && <button type="button" className="retry-btn" onClick={() => void restartLogin()}>重新开始登录</button>}
         </div>
       </main>
     );
@@ -57,8 +66,10 @@ export function AppRoutes() {
       <Route path="/login" element={<LoginRoute />} />
       <Route element={<RequireSession />}>
         <Route element={<AuthenticatedLayout />}>
+          <Route path="/account/identities" element={<AccountIdentitiesPage />} />
           <Route path="/projects" element={<ProjectsPage />} />
           <Route path="/projects/:projectId/knowledge" element={<KnowledgePage />} />
+          <Route path="/projects/:projectId/knowledge/sources" element={<KnowledgeSourcesPage />} />
           <Route path="/documents" element={<Navigate to="/projects" replace />} />
           <Route path="/ask" element={<Navigate to="/projects" replace />} />
         </Route>
@@ -66,4 +77,13 @@ export function AppRoutes() {
       <Route path="*" element={<FallbackRoute />} />
     </Routes>
   );
+}
+
+// Public email proof does not depend on restoring or preparing browser login state.
+export function AppRoutes() {
+  return <Routes>
+    <Route path="/register" element={<RegistrationForm />} />
+    <Route path="/register/verify" element={<EmailVerification />} />
+    <Route path="*" element={<SessionRoutes />} />
+  </Routes>;
 }

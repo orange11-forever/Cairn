@@ -129,6 +129,12 @@ def test_feishu_source_create_list_detail_disable_flow_is_atomic_and_traced(
             "createdAt": source["createdAt"],
             "updatedAt": source["updatedAt"],
             "disabledAt": None,
+            "syncIntervalSeconds": None,
+            "nextSyncAt": None,
+            "lastCheckedAt": None,
+            "lastSuccessAt": None,
+            "lastErrorCode": None,
+            "accessState": "unverified",
         }
 
         listed = client.get(
@@ -339,8 +345,8 @@ def test_disable_rejects_invalid_csrf_and_origin_without_side_effects(
     ("suffix", "expected_allow"),
     [
         ("", "GET"),
-        ("/feishu", "DELETE, GET, POST"),
-        (f"/{uuid4()}", "DELETE, GET"),
+        ("/feishu", "DELETE, GET, PATCH, POST"),
+        (f"/{uuid4()}", "DELETE, GET, PATCH"),
     ],
 )
 def test_source_method_not_allowed_lists_all_framework_matched_methods(
@@ -354,7 +360,7 @@ def test_source_method_not_allowed_lists_all_framework_matched_methods(
     with knowledge_client(
         knowledge_settings(test_database_url), database, actor, MemoryObjectStore()
     ) as client:
-        response = client.patch(
+        response = client.put(
             f"/api/v1/projects/{project_id}/knowledge/sources{suffix}",
             json={},
             headers={"X-Request-ID": "req-source-method"},

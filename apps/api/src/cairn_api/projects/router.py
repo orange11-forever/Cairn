@@ -116,6 +116,7 @@ def get_project(
             "description": "有界项目事件批次",
             "content": {"text/event-stream": {}},
         },
+        500: {"description": "服务器内部错误", "model": ErrorBody},
         503: {"description": "数据库暂时不可用", "model": ErrorBody},
     },
 )

@@ -1,10 +1,25 @@
-from uuid import UUID
+from datetime import UTC, datetime
+from uuid import UUID, uuid4
 
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import Connection, Engine, MetaData, Table, create_engine, insert, inspect, select
+from cairn_api.organizations.models import Organization
+from cairn_api.projects.events import ProjectEventCursor
+from cairn_api.projects.models import OutboxEvent, Project
+from sqlalchemy import (
+    Connection,
+    Engine,
+    MetaData,
+    Table,
+    create_engine,
+    insert,
+    inspect,
+    select,
+    text,
+)
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 PROJECT_TABLES = {
     "projects",
@@ -377,6 +392,97 @@ def test_project_migration_downgrade_removes_tables_and_restores_head(
         ]
     finally:
         engine.dispose()
+
+
+@pytest.mark.integration
+def test_project_event_order_migration_preserves_old_events_and_restores_hook(
+    migrated_engine: Engine, test_database_url: str
+) -> None:
+    config = Config("apps/api/alembic.ini")
+    config.set_main_option("sqlalchemy.url", test_database_url)
+    org_id, project_id = uuid4(), uuid4()
+    legacy_id, fresh_id = uuid4(), uuid4()
+    old_time = datetime(2020, 1, 2, 3, 4, 5, tzinfo=UTC)
+    old_cursor = ProjectEventCursor(old_time, legacy_id).encode()
+
+    try:
+        command.downgrade(config, "0007_knowledge_source_syncs")
+        with Session(migrated_engine) as session, session.begin():
+            session.add(Organization(id=org_id, slug=f"legacy-{org_id.hex}", name="Legacy"))
+            session.add(Project(id=project_id, org_id=org_id, name="Legacy stream"))
+            session.flush()
+            session.add(
+                OutboxEvent(
+                    id=legacy_id,
+                    org_id=org_id,
+                    aggregate_type="project",
+                    aggregate_id=project_id,
+                    event_type="project.legacy",
+                    payload={"marker": "unchanged"},
+                    occurred_at=old_time,
+                )
+            )
+        assert _project_event_order_hook_exists(migrated_engine) is False
+        assert _project_event_order_function_exists(migrated_engine) is False
+
+        command.upgrade(config, "head")
+        assert _project_event_order_hook_exists(migrated_engine) is True
+        assert _project_event_order_function_exists(migrated_engine) is True
+        with Session(migrated_engine) as session:
+            legacy = session.get(OutboxEvent, legacy_id)
+            assert legacy is not None
+            assert legacy.occurred_at == old_time
+            assert legacy.payload == {"marker": "unchanged"}
+            assert ProjectEventCursor(legacy.occurred_at, legacy.id).encode() == old_cursor
+
+        with Session(migrated_engine) as session, session.begin():
+            session.add(
+                OutboxEvent(
+                    id=fresh_id,
+                    org_id=org_id,
+                    aggregate_type="project",
+                    aggregate_id=project_id,
+                    event_type="project.after_upgrade",
+                    payload={"marker": "new"},
+                    occurred_at=old_time,
+                )
+            )
+        with Session(migrated_engine) as session:
+            fresh = session.get(OutboxEvent, fresh_id)
+            assert fresh is not None and fresh.occurred_at > old_time
+
+        command.downgrade(config, "0007_knowledge_source_syncs")
+        assert _project_event_order_hook_exists(migrated_engine) is False
+        assert _project_event_order_function_exists(migrated_engine) is False
+        with Session(migrated_engine) as session:
+            assert session.get(OutboxEvent, legacy_id) is not None
+            assert session.get(OutboxEvent, fresh_id) is not None
+    finally:
+        command.upgrade(config, "head")
+    assert _project_event_order_hook_exists(migrated_engine) is True
+    assert _project_event_order_function_exists(migrated_engine) is True
+
+
+def _project_event_order_hook_exists(engine: Engine) -> bool:
+    with engine.connect() as connection:
+        return bool(
+            connection.scalar(
+                text(
+                    "SELECT EXISTS (SELECT 1 FROM pg_trigger "
+                    "WHERE tgrelid = 'outbox_events'::regclass "
+                    "AND tgname = 'project_event_commit_order' AND NOT tgisinternal)"
+                )
+            )
+        )
+
+
+def _project_event_order_function_exists(engine: Engine) -> bool:
+    with engine.connect() as connection:
+        return bool(
+            connection.scalar(
+                text("SELECT to_regprocedure('cairn_finalize_project_event_order()') IS NOT NULL")
+            )
+        )
 
 
 def _project_graph_tables(connection: Connection) -> dict[str, Table]:

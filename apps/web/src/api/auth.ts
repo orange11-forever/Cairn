@@ -65,7 +65,7 @@ async function identityRequest<T>(
 }
 
 export async function login(input: LoginInput, signal: AbortSignal): Promise<IdentityContext> {
-  return identityRequest("POST /api/v1/login", signal, async (requestSignal) => {
+  return browserLoginLock(signal, () => identityRequest("POST /api/v1/login", signal, async (requestSignal) => {
     const { data, error, response } = await identityClient().POST("/api/v1/login", {
       body: { email: input.email.trim(), password: input.password },
       signal: requestSignal,
@@ -74,7 +74,7 @@ export async function login(input: LoginInput, signal: AbortSignal): Promise<Ide
       return parseIdentityContext(data, "POST /api/v1/login");
     }
     throw responseError(error, response, "POST /api/v1/login");
-  });
+  }));
 }
 
 export async function restoreSession(signal: AbortSignal): Promise<IdentityContext> {
@@ -85,17 +85,43 @@ export async function restoreSession(signal: AbortSignal): Promise<IdentityConte
     if (data !== undefined) {
       return parseIdentityContext(data, "GET /api/v1/session");
     }
-    throw responseError(error, response, "GET /api/v1/session");
+    const failure = responseError(error, response, "GET /api/v1/session");
+    throw failure;
   });
 }
 
 export async function logoutSession(csrfToken: string, signal: AbortSignal): Promise<void> {
-  return identityRequest("POST /api/v1/logout", signal, async (requestSignal) => {
+  return browserLoginLock(signal, () => identityRequest("POST /api/v1/logout", signal, async (requestSignal) => {
     const { error, response } = await identityClient().POST("/api/v1/logout", {
       headers: { "X-CSRF-Token": csrfToken },
       signal: requestSignal,
     });
     if (response.ok) return;
     throw responseError(error, response, "POST /api/v1/logout");
-  });
+  }));
+}
+
+
+function browserLoginLock<T>(signal: AbortSignal, run: () => Promise<T>): Promise<T> {
+  return navigator.locks ? navigator.locks.request("cairn-login-context", { signal }, run).then(value => value) : run();
+}
+
+export async function prepareLoginContext(signal: AbortSignal): Promise<void> {
+  // One browser cookie context must be established before any tab can sign in.
+  // Web Locks serialize initially cookieless tabs, including delayed responses.
+  if (!navigator.locks) throw new ApiError("contract", "请使用支持安全登录的最新浏览器，并通过 HTTPS 或 localhost 访问", { context: "login context" });
+  return navigator.locks.request("cairn-login-context", { signal }, async () =>
+    identityRequest("POST /api/v1/auth/login-context", signal, async (requestSignal) => {
+      const { error, response } = await identityClient().POST("/api/v1/auth/login-context", { signal: requestSignal });
+      if (!response.ok) throw responseError(error, response, "POST /api/v1/auth/login-context");
+    }));
+}
+
+
+export async function finalizeOAuthLogin(signal: AbortSignal): Promise<IdentityContext> {
+  return browserLoginLock(signal, () => identityRequest("POST /api/v1/auth/oauth/finalize", signal, async (requestSignal) => {
+    const { data, error, response } = await identityClient().POST("/api/v1/auth/oauth/finalize", { signal: requestSignal });
+    if (data !== undefined) return parseIdentityContext(data, "POST /api/v1/auth/oauth/finalize");
+    throw responseError(error, response, "POST /api/v1/auth/oauth/finalize");
+  }));
 }

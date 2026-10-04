@@ -21,7 +21,7 @@ class MembershipDetailResponse(BaseModel):
 
     id: UUID
     user_id: UUID = Field(serialization_alias="userId")
-    email: EmailStr
+    email: EmailStr | None
     display_name: str = Field(serialization_alias="displayName")
     role: MembershipRole
     created_at: AwareDatetime = Field(serialization_alias="createdAt")

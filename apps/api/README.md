@@ -61,7 +61,7 @@ Docker Desktop 必须保持运行。生产环境必须使用 HTTPS `APP_URL`/`CO
 - 对象存储公开 `PUT` URL 必须与 Web 页面使用不同 origin；客户端拒绝同源上传 URL，避免浏览器自动携带同源 Cookie。对象存储 `PUT` 不携带 Identity credentials；预签名上传 URL 与签名 headers 仅存于局部运行时，不进入 DOM、Query/Mutation 缓存、日志或浏览器存储。文件与 ZIP 子条目展示安全状态和局部错误，完成确认及批次终止时刷新资源列表，搜索仅标记 stale，不自动重跑。取消、路由切换、批次替换和会话失效会停止未完成的浏览器操作；自动跟踪超时保留已知 queued/processing 事实，显示“后台仍在处理”并允许手动刷新。
 - `Bearer/OIDC`：未实现。
 - 群组、邀请、成员移除、ACL 管理 UI 与成员管理 UI：未实现。
-- Stage 3B 飞书来源登记与撤回：owner/admin 可登记、查询和停用项目文档来源；已存在的匹配内容只向当前项目成员开放，停用会从资源、批次、搜索、问答、重试和删除边界撤回。飞书手动同步 API 已接入持久化 Worker；管理界面、周期同步、AI Provider 完整策略层与外部 Agent 仍未实现。
+- Stage 3B 飞书单文档来源：owner/admin 可在 Web 登记、查询、修改、停用和恢复项目文档来源，并手动或按周期触发持久化 Worker 同步；已存在的匹配内容只向当前项目成员开放，停用会从资源、批次、搜索、问答、重试和删除边界撤回。管理和周期链路已通过本地模拟飞书验收；真实租户、AI Provider 完整策略层与外部 Agent 仍未验证或实现。
 
 登录限流使用固定的 15 分钟窗口：规范化邮箱最多失败 5 次，来源 IP 最多失败 30 次，达到阈值后阻止 15 分钟。`auth_rate_limits` 只保存以 `CAIRN_AUTH_RATE_LIMIT_SECRET` 生成的 HMAC-SHA-256 摘要，不保存明文邮箱或 IP；限流数据库操作失败时登录会关闭并返回 `503 database_unavailable`。
 
@@ -96,6 +96,8 @@ Docker Desktop 必须保持运行。生产环境必须使用 HTTPS `APP_URL`/`CO
 | `DELETE /api/v1/projects/{project_id}/acl/{principal_type}/{principal_id}` | 幂等撤销项目 ACL 并保留历史行 |
 
 Cookie 会话下的 `POST`/`PATCH`/`PUT`/`DELETE` 命令要求合法 Origin 和会话绑定的 `X-CSRF-Token`。已接受的项目、任务、成员角色或 ACL 变化会把业务变化、追加式审计行与 Outbox 事件放在同一数据库事务中提交。
+
+项目 SSE 游标仍是 `(occurredAt, id)` 的不透明编码，按时间、UUID 严格升序分页，单批最多 100 条。项目 Outbox 事件由 PostgreSQL 延迟约束触发器在提交尾部定稿 `occurred_at`：一个保留的全局事务 advisory lock 串行化短暂的定稿阶段，同项目新时间严格大于已提交事件的最大时间；每条事件额外执行一次 `UPDATE`。此保证依赖当前 `READ COMMITTED` 隔离级别及触发器保持 `INITIALLY DEFERRED`，写入项目事件的事务不得用 `SET CONSTRAINTS ... IMMEDIATE` 提前执行它。`expire_on_commit=False` 的 ORM 新建实例可能仍持有插入时的旧时间，生成 SSE 游标必须重新读取已提交的持久行。
 
 ### 阶段 2.5A 授权与成员管理
 
@@ -152,7 +154,7 @@ Cookie 会话下的 `POST`/`PATCH`/`PUT`/`DELETE` 命令要求合法 Origin 和�
 
 - 完整阶段/里程碑编辑 UI、React Flow/ELK 图编辑、拖拽 Kanban 和时间线可视化延后。
 - Outbox worker 发布、长连接重连 SSE、Redis fan-out、评论、通知和任务执行延后。
-- 群组、邀请、成员移除、ACL/成员管理 UI、Bearer/OIDC、飞书周期同步与连接管理界面、其他连接器、Agent 执行和完整模型 Provider 策略层延后。全文格式化预览、流式/多轮问答和周期性资源详情轮询仍在后续任务。
+- 群组、邀请、成员移除、ACL/成员管理 UI、Bearer/OIDC、其他连接器、Agent 执行和完整模型 Provider 策略层延后。飞书单文档周期同步和连接管理界面已通过本地模拟验收，真实租户待验证；流式/多轮问答和周期性资源详情轮询仍在后续任务。
 
 ## Stage 3A Task 1–20 知识摄取、资源操作与搜索契约
 
@@ -190,6 +192,8 @@ Cookie 会话下的 `POST`/`PATCH`/`PUT`/`DELETE` 命令要求合法 Origin 和�
 | `GET /api/v1/projects/{project_id}/knowledge/sources` | 游标分页，包含停用来源；默认 50 条，最多 100 条 |
 | `GET /api/v1/projects/{project_id}/knowledge/sources/{source_id}` | 读取来源详情，返回 `200` |
 | `DELETE /api/v1/projects/{project_id}/knowledge/sources/{source_id}` | 幂等停用，返回 `204` 空响应 |
+| `PATCH /api/v1/projects/{project_id}/knowledge/sources/{source_id}` | 修改名称、别名、周期、状态，返回 `200` |
+| `GET /api/v1/projects/{project_id}/knowledge/sources/{source_id}/syncs` | 创建时间与 ID 倒序、最新优先的稳定游标分页；返回 `200` |
 
 创建请求示例（变更请求仍须 Cookie、允许的 Origin 和当前 `X-CSRF-Token`）：
 
@@ -204,13 +208,13 @@ Cookie 会话下的 `POST`/`PATCH`/`PUT`/`DELETE` 命令要求合法 Origin 和�
 
 `accessPolicy` 必须显式提供，表示管理员确认可以向有项目读取权限的成员共享该文档；这不会修改项目 ACL。`credentialRef` 只是部署凭证别名，限定为字母开头的 1–64 个 ASCII 字母、数字、下划线或短横线；不能提交密钥、token、文件路径或 URL。登记端点不解析别名；同步 Worker 按组织隔离解析，不能直接访问同名的全局环境变量或文件。`documentId` 只接受 1–128 个 ASCII 字母或数字，不接受共享链接。
 
-响应含来源和项目 ID、`provider=feishu`、名称、文档 ID、凭证引用、共享策略、`status` 及创建/更新时间和可空停用时间。`configured` 仅表示已登记，未验证凭证也未同步文档；停用后为 `disabled`，保留来源身份与审计。相同项目、凭证引用和文档的重复登记（包括已停用记录）返回 `409 source_conflict`；本切片不提供修改或重新启用。来源创建/首次停用与审计及 Outbox 同事务提交；事件不包含凭证引用、文档 ID 或名称。
+响应含来源和项目 ID、`provider=feishu`、名称、文档 ID、凭证引用、共享策略、`status` 及创建/更新时间和可空停用时间。`configured` 仅表示已登记，未验证凭证也未同步文档；停用后为 `disabled`，保留来源身份与审计。相同项目、凭证引用和文档的重复登记（包括已停用记录）返回 `409 source_conflict`；PATCH 可修改名称、凭证别名、周期并恢复；恢复或更换别名必须再次显式提交 `accessPolicy=project_members`。文档 ID 不可修改。来源创建/首次停用与审计及 Outbox 同事务提交；事件不包含凭证引用、文档 ID 或名称。
 
 沿用知识 API 的 `X-Request-ID`、`Cache-Control: private, no-store`、CORS 和统一错误契约。额外字段及非法输入为 `422 validation_error`，非法分页游标沿用 `422 invalid_cursor`，会话失效 `401 session_invalid`，来源/CSRF 校验失败 `403`，数据库不可用 `503 database_unavailable`，未预期异常 `500 internal_error`。OpenAPI 与生成 SDK 包含此契约。
 
-来源登记不访问飞书、不创建资源或同步任务，也不提供 Web 管理入口。若数据库中已有匹配的飞书资源，内容 API 会同时验证资源与实际读取版本的来源类型、来源 UUID、文档 ID，以及同组织同项目的 `configured/project_members` 来源；缺失、停用、跨租户、跨项目和混合来源均失败关闭。过滤发生在分页和搜索候选截断之前，关联了无效来源的批次整体返回 `404`，生成式回答在生成前后重新验证；已签发的短时效对象 URL 仍按原到期时间失效。持久化手动同步由下述独立端点触发；上游权限撤回与外部删除传播仍待实现。完整边界见[来源登记设计](../../docs/stage-3b-feishu-sources-design.md)和[来源撤回设计](../../docs/stage-3b-source-revocation-design.md)。
+来源登记不访问飞书、不创建资源或同步任务；管理员可从项目知识页进入来源管理。若数据库中已有匹配的飞书资源，内容 API 会同时验证资源与实际读取版本的来源类型、来源 UUID、文档 ID，以及同组织同项目的 `configured/project_members` 来源；缺失、停用、跨租户、跨项目和混合来源均失败关闭。过滤发生在分页和搜索候选截断之前，关联了无效来源的批次整体返回 `404`，生成式回答在生成前后重新验证；已签发的短时效对象 URL 仍按原到期时间失效。持久化手动同步由下述独立端点触发；配置周期后 Worker 还会扫描到期来源。明确的上游文档 403/404 会在下次检查后更新访问状态并隐藏旧内容，非明确或暂时性失败保留已确认的可见性；本地模拟验收已通过，真实租户未验证。完整边界见[来源登记设计](../../docs/stage-3b-feishu-sources-design.md)和[来源撤回设计](../../docs/stage-3b-source-revocation-design.md)。
 
-`POST /api/v1/projects/{project_id}/knowledge/sources/{source_id}/syncs` 接受严格空对象并返回 `202`；同一来源已有 queued/running 请求时复用它。`GET .../syncs/{sync_id}` 返回安全状态、attempt、完成时间、错误码及可空资源/版本 ID。两者仅 owner/admin 可用；停用来源不能新建同步，但历史请求仍可查询。同步 `completed` 仅表示快照持久化并已排队索引，不表示内容已经发布。当前不提供定时同步、webhook 或 Web 管理入口。
+`POST /api/v1/projects/{project_id}/knowledge/sources/{source_id}/syncs` 接受严格空对象并返回 `202`；同一来源已有 queued/running 请求时复用它。`GET .../syncs/{sync_id}` 返回安全状态、attempt、完成时间、错误码及可空资源/版本 ID。两者仅 owner/admin 可用；停用来源不能新建同步，但历史请求仍可查询。同步 `completed` 仅表示快照持久化并已排队索引，不表示内容已经发布。周期同步与 Web 管理入口已通过本地模拟验收。不提供 webhook；上游权限变化仅在后续检查时传播。
 
 ## 实施顺序
 
@@ -231,13 +235,15 @@ Cookie 会话下的 `POST`/`PATCH`/`PUT`/`DELETE` 命令要求合法 Origin 和�
 | 3A Task 18B | 已完成资源操作闭环：可写且服务端声明失败版本可重试时的精确版本重试，行内命名软删除确认与严格 `204` 空响应；无自动 mutation 重试/离线回放，删除取消相关读取并清理当前项目列表、详情、引用和搜索而不自动 `POST`，保留其他项目与上传跟踪，且覆盖会话、列表重检、冲突刷新和契约恢复边界 |
 | 3A Task 19 | 已完成 Mock 退场：默认 `/projects`、旧书签重定向、生成 SDK 错误校验及旧 Node mock/contracts workspace 移除 |
 | 3A Task 20 | 已完成核心 Worker/本地假 Embedding 生命周期和真实浏览器上传、索引、混合检索、引用上下文与授权下载闭环 |
-| 3B 飞书手动同步 | 管理员来源登记、项目绑定、显式共享、内容撤回、持久化同步与版本幂等；管理界面和真实租户验收待完成 |
+| 3B 飞书单文档连接 | 管理员来源登记、项目绑定、显式共享、内容撤回、持久化手动及周期同步、管理界面与版本幂等已通过本地模拟验收；真实租户验收待完成 |
 | 4 | Agent、模型策略、运行、预算、审批与 AgentRunner 契约 |
 | 5-6 | 外部编程 Agent、代码智能、OIDC/SAML、配额、审计查询和部署治理 |
 
 ## 后续数据模型不变量
 
-以下内容同时记录已交付的授权和知识边界，以及后续阶段必须遵守的设计约束；全文格式化预览、流式/多轮问答和周期性资源详情轮询仍在后续任务；飞书手动同步后端已交付，周期同步、连接管理界面、其他连接器、Agent 或完整 Provider 治理能力尚未实现。
+以下内容同时记录已交付的授权和知识边界，以及后续阶段必须遵守的设计约束；流式/多轮问答和周期性资源详情轮询仍在后续任务；飞书单文档周期同步和连接管理界面已通过本地模拟验收，真实租户待验证；其他连接器、Agent 或完整 Provider 治理能力尚未实现。
+
+全文读取使用 `GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}/content`。可选 `version_id` 固定当前 ready 版本；`chunk_id` 需同时给出该版本，仅允许属于相同资源版本的引用片段。仅支持可信 `text/markdown`/`text/plain` UTF-8 快照，最大原始1 MiB、20,000行，先后重新授权并校验大小/SHA256；超限413、格式/编码415、换版409、不可见404、基础设施503，成功与失败都为 `private, no-store`。响应包含完整正文、行数与可信精确/区块引用位置，不返回对象路径。详见[预览契约](../../docs/2026-10-04-document-preview-design.md)。
 
 ### 1. 组织是租户边界
 
@@ -300,7 +306,7 @@ ip, user_agent, trace_id, metadata, created_at
 
 当前已实现文件上传生成的项目知识资源、不可变版本、批次/item 状态和持久化摄取任务。上传会话 ID 是完成确认的幂等边界，SHA-256 绑定本次预签名传输；软删除只改变可见性，不冒充合规清除。
 
-飞书手动同步已以 `source_id + external_id + source_version` 形成摄取幂等边界；其他连接器后续也必须遵守该约束。上游权限撤回与外部来源删除传播尚未实现。
+飞书同步以 `source_id + external_id + source_version` 形成摄取幂等边界；其他连接器后续也必须遵守该约束。明确的上游文档拒绝/删除传播已通过本地模拟验收；其他无法确认的上游失败不会自动撤回。
 
 ### 6. Embedding Profile 版本化
 
@@ -370,3 +376,5 @@ Cookie 路径启用 CSRF 防护；Bearer 路径不依赖浏览器自动携带凭
 ## 暂不提前实现
 
 当前只固定会造成数据迁移、权限漏洞或跨客户端返工的不变量。计费、多可用区、SCIM、按租户密钥和数据驻留策略在对应阶段实现，但接口和表结构不得阻塞后续加入这些能力。
+
+来源生命周期的本地验收、真实租户只读检查与传播时间说明见[飞书完成验收记录](../../docs/stage-3b-feishu-completion-acceptance.md)。

@@ -713,9 +713,7 @@ summary:focus-visible {
   overflow: hidden;
 }
 
-/* 顶部渐变细线，呼应左侧品牌区的蓝到绿配色。
-   作用是让两栏看起来属于同一个设计，而不是拼在一起的两个页面。
-   卡片其余部分（纯白底、边框、表单控件、纯色按钮）一律不动。 */
+/* 登录卡片顶部保留品牌强调色的简洁状态细线。 */
 .login-card::before {
   content: "";
   position: absolute;
@@ -723,7 +721,7 @@ summary:focus-visible {
   right: 0;
   left: 0;
   height: 4px;
-  background: linear-gradient(90deg, var(--color-mineral), var(--color-jade));
+  background: var(--color-accent);
 }
 
 .login-card h1 {
@@ -768,6 +766,8 @@ summary:focus-visible {
 
 .account-menu {
   position: relative;
+  min-width: 0;
+  max-width: min(40vw, 20rem);
 }
 
 .account-menu summary {
@@ -778,6 +778,10 @@ summary:focus-visible {
   min-width: 44px;
   min-height: 44px;
   cursor: pointer;
+}
+
+.account-menu summary svg {
+  flex: none;
 }
 
 .account-menu-panel {
@@ -791,6 +795,21 @@ summary:focus-visible {
   border-radius: var(--radius);
   background: var(--color-surface);
   box-shadow: var(--elevation-floating);
+}
+
+.account-menu-panel > a {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius);
+  color: var(--color-ink);
+}
+
+.account-menu-panel > a:hover,
+.account-menu-panel > a:focus-visible {
+  background: var(--color-surface-subtle);
+  text-decoration: none;
 }
 
 .account-email {
@@ -822,6 +841,10 @@ summary:focus-visible {
 }
 
 .current-user {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--color-muted);
   font-size: 0.875rem;
 }
@@ -2469,6 +2492,15 @@ summary:focus-visible {
   gap: var(--space-3);
 }
 
+.knowledge-citation-chunk-heading strong {
+  flex: none;
+  white-space: nowrap;
+}
+
+.knowledge-citation-chunk-heading span {
+  min-width: 0;
+}
+
 .knowledge-citation-chunk-heading span,
 .knowledge-citation-chunk p,
 .knowledge-citation-context-error {
@@ -3300,5 +3332,66 @@ summary:focus-visible {
 
   .knowledge-pagination {
     display: grid;
+  }
+}
+
+.cairn-brand-mark { --brand-ink: #102541; display: inline-flex; align-items: center; gap: 9px; color: var(--brand-ink); white-space: nowrap; font-size: 24px; font-weight: 750; letter-spacing: -.045em; line-height: 1; }
+.cairn-brand-mark svg { display: block; width: 34px; height: 34px; flex: none; overflow: visible; }
+.cairn-brand-mark path { fill: currentColor; }
+.cairn-brand-mark-compact svg { width: 24px; height: 24px; }
+:root[data-theme='dark'] .cairn-brand-mark { --brand-ink: #e7edf5; }
+.login-brand-scene .cairn-brand-mark { --brand-ink: #e7edf5; font-size: 28px; }
+
+/* The new vector mark sits directly on the brand field, without the old image capsule. */
+.login-brand-scene { background: #182332; color-scheme: dark; }
+.login-brand-scene::before, .login-brand-scene::after { content: none; }
+.login-wordmark-chip { padding: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.login-wordmark { width: auto; height: auto; }
+@media (max-width: 600px) {
+  .login-brand-scene .cairn-brand-mark { font-size: 22px; }
+  .login-brand-scene .cairn-brand-mark svg { width: 29px; height: 29px; }
+}
+
+/* Account sign-in methods use the existing Cairn palette and control sizes. */
+.oauth-login { margin-top: var(--space-5); border-top: 1px solid var(--color-border); padding-top: var(--space-4); }
+.oauth-login-label, .identity-help { color: var(--color-muted); }
+.oauth-login-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.oauth-login-actions button, .identity-page button { padding: 9px 14px; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); color: var(--color-ink); cursor: pointer; }
+.oauth-login-actions button { flex: 1 1 auto; min-width: max-content; min-height: 44px; white-space: nowrap; }
+.oauth-login-actions button:hover:not(:disabled), .identity-page button:hover:not(:disabled) { background: var(--color-surface-subtle); }
+.oauth-login-actions button:disabled, .identity-page button:disabled { opacity: 0.55; cursor: default; }
+.identity-page { max-width: 760px; padding: var(--space-5); }
+.identity-page h1 { margin-top: 0; }
+.identity-account { color: var(--color-muted); overflow-wrap: anywhere; }
+.identity-methods { list-style: none; margin: var(--space-5) 0; padding: 0; border-top: 1px solid var(--color-border); }
+.identity-methods > li { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-4) 0; border-bottom: 1px solid var(--color-border); }
+.identity-methods > li > div { flex: 1; min-width: 0; }
+.identity-methods p { margin: var(--space-1) 0; color: var(--color-muted); }
+.identity-linked { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-2); overflow-wrap: anywhere; }
+.identity-confirm { width: 100%; }
+.identity-confirm button + button { margin-left: var(--space-2); }
+.oauth-notice { color: var(--color-success); }
+@media (max-width: 600px) { .identity-page { padding: var(--space-3); } .identity-methods > li { align-items: flex-start; flex-wrap: wrap; } }
+
+/* Registration extends the established login composition and theme tokens. */
+.registration-card > p { line-height: 1.65; }
+.registration-login-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: var(--space-3);
+  margin-right: var(--space-3);
+  color: var(--color-accent-strong);
+  text-underline-offset: 0.2em;
+}
+.registration-email { overflow-wrap: anywhere; }
+.registration-notice { color: var(--color-muted); }
+
+/* Preserve the established login illustration sizing after workbench extraction. */
+@media (min-width: 1025px) {
+  .login-brand-scene .mascot-figure[data-variant='full'] .mascot-art > img,
+  .login-brand-scene .mascot-figure[data-variant='full'] .mascot-image-fallback {
+    width: min(365px, 85%);
+    height: min(550px, 68vh);
   }
 }

@@ -102,7 +102,7 @@ test("establishing a new subject synchronously isolates private state before pub
     csrfToken: "csrf-next-user",
   };
   const events: string[] = [];
-  const sessions: Array<{ email: string; generation: number; signal: AbortSignal }> = [];
+  const sessions: Array<{ email: string | null; generation: number; signal: AbortSignal }> = [];
   const originalClear = queryClient.clear.bind(queryClient);
   vi.spyOn(queryClient, "clear").mockImplementation(() => {
     events.push("cache:clear");
@@ -138,7 +138,7 @@ test("establishing a new subject synchronously isolates private state before pub
   render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
-        <SessionProvider restoredIdentity={IDENTITY}>
+        <SessionProvider restoredIdentity={IDENTITY} sessionApi={{ restore: async () => IDENTITY, logout: async () => undefined }}>
           <Harness />
         </SessionProvider>
       </MemoryRouter>
@@ -187,7 +187,7 @@ test("session invalidation still closes locally when query cancellation fails", 
   render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={["/projects"]}>
-        <SessionProvider restoredIdentity={IDENTITY}>
+        <SessionProvider restoredIdentity={IDENTITY} sessionApi={{ restore: async () => IDENTITY, logout: async () => undefined }}>
           <Harness />
         </SessionProvider>
       </MemoryRouter>
@@ -207,7 +207,7 @@ test("session invalidation still closes locally when query cancellation fails", 
 
   expect(await screen.findByText("anonymous")).toBeInTheDocument();
   expect(screen.getByText("no-session")).toBeInTheDocument();
-  expect(screen.getByText("/login")).toBeInTheDocument();
+  expect(await screen.findByText("/login")).toBeInTheDocument();
   expect(capturedSession.signal?.aborted).toBe(true);
   expect(queryClient.getQueryCache().getAll()).toHaveLength(0);
 });
@@ -262,4 +262,36 @@ test("restore outages expose a retry state instead of becoming anonymous", async
   expect(await screen.findByText("authenticated")).toBeInTheDocument();
   expect(screen.getByText("demo@cairn.dev")).toBeInTheDocument();
   expect(attempts).toBe(2);
+});
+
+
+test("logout waits for login preparation before publishing anonymous state", async () => {
+  let finish!: () => void;
+  const prepared = new Promise<void>((resolve) => { finish = resolve; });
+  function Harness() {
+    const { status, logout, session } = useSession();
+    return <><output>{status}</output><output>{session ? "private" : "empty"}</output><button onClick={() => void logout()}>leave</button></>;
+  }
+  render(<QueryClientProvider client={createAppQueryClient()}><MemoryRouter>
+    <SessionProvider restoredIdentity={IDENTITY} sessionApi={{ restore: async () => IDENTITY, logout: async () => undefined, prepareLogin: async () => prepared }}><Harness /></SessionProvider>
+  </MemoryRouter></QueryClientProvider>);
+  await userEvent.click(screen.getByRole("button", { name: "leave" }));
+  expect(screen.getByText("restoring")).toBeInTheDocument();
+  expect(screen.getByText("empty")).toBeInTheDocument();
+  expect(screen.queryByText("anonymous")).not.toBeInTheDocument();
+  finish();
+  expect(await screen.findByText("anonymous")).toBeInTheDocument();
+});
+
+test("failed login preparation blocks anonymous sign-in and offers restore retry", async () => {
+  function Harness() {
+    const { status, restoreError } = useSession();
+    return <><output>{status}</output><output>{restoreError?.message}</output></>;
+  }
+  render(<QueryClientProvider client={createAppQueryClient()}><MemoryRouter>
+    <SessionProvider sessionApi={{ restore: async () => { throw new ApiError("http", "expired", { status: 401, code: "session_invalid" }); }, logout: async () => undefined, prepareLogin: async () => { throw new ApiError("network", "无法准备登录"); } }}><Harness /></SessionProvider>
+  </MemoryRouter></QueryClientProvider>);
+  expect(await screen.findByText("restore-error")).toBeInTheDocument();
+  expect(screen.getByText("无法准备登录")).toBeInTheDocument();
+  expect(screen.queryByText("anonymous")).not.toBeInTheDocument();
 });

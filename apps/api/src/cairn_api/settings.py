@@ -1,7 +1,15 @@
 from ipaddress import IPv4Network, IPv6Network, ip_address
 from typing import Annotated, Literal, cast
 
-from pydantic import AnyHttpUrl, Field, SecretStr, TypeAdapter, field_validator, model_validator
+from pydantic import (
+    AnyHttpUrl,
+    EmailStr,
+    Field,
+    SecretStr,
+    TypeAdapter,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from cairn_api.client_ip import parse_trusted_proxy_cidrs
@@ -149,6 +157,56 @@ class Settings(BaseSettings):
         default="local-development-auth-rate-limit-secret-change-before-deploying-32-bytes",
         validation_alias="CAIRN_AUTH_RATE_LIMIT_SECRET",
     )
+    oauth_github_client_id: str | None = Field(default=None, min_length=1, max_length=160, validation_alias="CAIRN_OAUTH_GITHUB_CLIENT_ID")
+    oauth_github_client_secret: SecretStr | None = Field(default=None, validation_alias="CAIRN_OAUTH_GITHUB_CLIENT_SECRET")
+    oauth_feishu_client_id: str | None = Field(default=None, min_length=1, max_length=160, validation_alias="CAIRN_OAUTH_FEISHU_CLIENT_ID")
+    oauth_feishu_client_secret: SecretStr | None = Field(default=None, validation_alias="CAIRN_OAUTH_FEISHU_CLIENT_SECRET")
+
+    @model_validator(mode="after")
+    def validate_oauth_configuration(self) -> "Settings":
+        for client_id, secret in ((self.oauth_github_client_id, self.oauth_github_client_secret),
+                                  (self.oauth_feishu_client_id, self.oauth_feishu_client_secret)):
+            if (client_id is None) != (secret is None):
+                raise ValueError("OAuth client ID and secret must be configured together")
+            if client_id is not None:
+                if not client_id.strip() or secret is None or not secret.get_secret_value().strip():
+                    raise ValueError("OAuth credentials cannot be blank")
+                if self.app_url is None:
+                    raise ValueError("OAuth requires APP_URL and same-origin API proxy")
+        return self
+
+    registration_enabled: bool = Field(default=False, validation_alias="CAIRN_REGISTRATION_ENABLED")
+    smtp_host: str | None = Field(default=None, min_length=1, max_length=253, validation_alias="CAIRN_SMTP_HOST")
+    smtp_port: int = Field(default=587, ge=1, le=65535, validation_alias="CAIRN_SMTP_PORT")
+    smtp_security: Literal["starttls", "tls", "plain"] = Field(default="starttls", validation_alias="CAIRN_SMTP_SECURITY")
+    smtp_username: str | None = Field(default=None, min_length=1, validation_alias="CAIRN_SMTP_USERNAME")
+    smtp_password: SecretStr | None = Field(default=None, validation_alias="CAIRN_SMTP_PASSWORD")
+    smtp_from: EmailStr | None = Field(default=None, validation_alias="CAIRN_SMTP_FROM")
+
+    @model_validator(mode="after")
+    def validate_registration_configuration(self) -> "Settings":
+        if (self.smtp_username is None) != (self.smtp_password is None):
+            raise ValueError("SMTP username and password must be configured together")
+        if self.smtp_password is not None and not self.smtp_password.get_secret_value().strip():
+            raise ValueError("SMTP password cannot be blank")
+        for value in (self.smtp_host, self.smtp_username):
+            if value is not None and (not value.strip() or any(c in value for c in "\r\n\x00")):
+                raise ValueError("SMTP settings cannot contain blank values or control characters")
+        if self.smtp_security == "plain":
+            host = self.smtp_host or ""
+            try:
+                loopback = ip_address(host).is_loopback
+            except ValueError:
+                loopback = host.lower() == "localhost"
+            if self.environment != "test" or not loopback:
+                raise ValueError("plaintext SMTP is limited to explicit test loopback capture")
+        if self.registration_enabled and self.smtp_host and self.smtp_from:
+            if self.app_url is None:
+                raise ValueError("registration requires APP_URL")
+            if self.smtp_security != "plain" and not self.smtp_username:
+                raise ValueError("SMTP requires authentication")
+        return self
+
     trusted_proxy_cidrs: Annotated[tuple[IPv4Network | IPv6Network, ...], NoDecode] = Field(
         default=(),
         validation_alias="CAIRN_TRUSTED_PROXY_CIDRS",

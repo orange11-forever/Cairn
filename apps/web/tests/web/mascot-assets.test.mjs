@@ -13,6 +13,10 @@ const transparentFullUrl = new URL(
   "../../public/assets/brand/mascot/cairn-mascot-transparent.png",
   import.meta.url,
 );
+const refinedFullUrl = new URL(
+  "../../public/assets/brand/mascot/cenning-full-v2-20260928.png",
+  import.meta.url,
+);
 const chibiUrl = new URL(
   "../../public/assets/brand/mascot/cairn-mascot-chibi.png",
   import.meta.url,
@@ -198,6 +202,25 @@ test("full mascot is a 1024x1536 RGBA PNG", async () => {
   assert.equal(png[25], 6, "full mascot must contain RGBA channels");
   assert.ok(png.byteLength < 2_500_000, "full mascot must stay below 2.5 MB");
   assertTransparentMascotAlpha(decodeRgbaPng(png));
+});
+
+test("refined full mascot keeps 1024x1536 transparent art with substantial visible figure", async () => {
+  const decoded = decodeRgbaPng(await readFile(refinedFullUrl));
+  assert.deepEqual([decoded.width, decoded.height], [1024, 1536]);
+  const alphaAt = (x, y) => decoded.pixels[(y * decoded.width + x) * 4 + 3];
+  assert.deepEqual([
+    alphaAt(0, 0), alphaAt(decoded.width - 1, 0),
+    alphaAt(0, decoded.height - 1), alphaAt(decoded.width - 1, decoded.height - 1),
+  ], [0, 0, 0, 0]);
+  let transparent = 0;
+  let visible = 0;
+  for (let offset = 3; offset < decoded.pixels.length; offset += 4) {
+    if (decoded.pixels[offset] === 0) transparent += 1;
+    if (decoded.pixels[offset] >= 250) visible += 1;
+  }
+  const total = decoded.width * decoded.height;
+  assert.ok(transparent / total > 0.6 && transparent / total < 0.85);
+  assert.ok(visible / total > 0.15 && visible / total < 0.45);
 });
 
 test("full mascot alpha contract rejects an opaque pixel mutation", async () => {

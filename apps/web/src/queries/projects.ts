@@ -1,7 +1,8 @@
-import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   fetchProjects,
+  fetchProject,
   fetchProjectTasks,
   transitionTaskStatus,
   type TaskStatus,
@@ -10,6 +11,8 @@ import {
 export const projectKeys = {
   all: ["projects"] as const,
   list: (organizationId: string) => ["projects", organizationId] as const,
+  detail: (organizationId: string, projectId: string) =>
+    ["projects", organizationId, "detail", projectId] as const,
 };
 
 export const taskKeys = {
@@ -22,9 +25,28 @@ function sessionQuerySignal(querySignal: AbortSignal, sessionSignal: AbortSignal
   return AbortSignal.any([querySignal, sessionSignal]);
 }
 
-export function useProjectsQuery(organizationId: string, sessionSignal: AbortSignal) {
+export function useProjectQuery(
+  organizationId: string,
+  projectId: string,
+  sessionSignal: AbortSignal,
+) {
+  return useQuery({
+    queryKey: projectKeys.detail(organizationId, projectId),
+    queryFn: ({ signal }) => fetchProject({
+      projectId,
+      signal: sessionQuerySignal(signal, sessionSignal),
+    }),
+    refetchOnMount: "always",
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: false,
+  });
+}
+
+export function useProjectsQuery(organizationId: string, sessionSignal: AbortSignal, enabled = true) {
   return useInfiniteQuery({
     queryKey: projectKeys.list(organizationId),
+    enabled,
     queryFn: ({ pageParam, signal }) => fetchProjects({
       cursor: pageParam,
       signal: sessionQuerySignal(signal, sessionSignal),

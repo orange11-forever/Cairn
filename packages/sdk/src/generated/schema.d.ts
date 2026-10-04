@@ -21,6 +21,196 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/identities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Identities */
+        get: operations["identities_api_v1_auth_identities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/identities/{identity_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Unlink */
+        delete: operations["unlink_api_v1_auth_identities__identity_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/login-context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Prepare Login
+         * @description Bootstrap once before displaying any anonymous sign-in actions.
+         */
+        post: operations["prepare_login_api_v1_auth_login_context_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/oauth/finalize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finalize */
+        post: operations["finalize_api_v1_auth_oauth_finalize_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/oauth/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Providers */
+        get: operations["providers_api_v1_auth_oauth_providers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/oauth/{provider}/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Callback */
+        get: operations["callback_api_v1_auth_oauth__provider__callback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/oauth/{provider}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start */
+        post: operations["start_api_v1_auth_oauth__provider__start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register */
+        post: operations["register_api_v1_auth_register_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/register/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resend */
+        post: operations["resend_api_v1_auth_register_resend_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/register/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify */
+        post: operations["verify_api_v1_auth_register_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/registration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Availability */
+        get: operations["availability_api_v1_auth_registration_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/login": {
         parameters: {
             query?: never;
@@ -279,6 +469,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/knowledge/resources/{resource_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Knowledge Content
+         * @description 读取当前已发布 UTF-8 Markdown/TXT 全文。chunk_id 必须同时提供 version_id；引用固定版本须为当前 ready 版本。最大原始 1 MiB、20,000 行，超限不截断。
+         */
+        get: operations["get_knowledge_content_api_v1_projects__project_id__knowledge_resources__resource_id__content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/knowledge/resources/{resource_id}/download": {
         parameters: {
             query?: never;
@@ -379,7 +589,8 @@ export interface paths {
         delete: operations["disable_source_api_v1_projects__project_id__knowledge_sources__source_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /** Patch Source */
+        patch: operations["patch_source_api_v1_projects__project_id__knowledge_sources__source_id__patch"];
         trace?: never;
     };
     "/api/v1/projects/{project_id}/knowledge/sources/{source_id}/syncs": {
@@ -389,7 +600,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List Source Syncs
+         * @description 按创建时间与 ID 倒序返回同步记录；游标继续读取更早记录。
+         */
+        get: operations["list_source_syncs_api_v1_projects__project_id__knowledge_sources__source_id__syncs_get"];
         put?: never;
         /** Queue Source Sync */
         post: operations["queue_source_sync_api_v1_projects__project_id__knowledge_sources__source_id__syncs_post"];
@@ -739,7 +954,68 @@ export interface components {
             documentId: string;
             /** Name */
             name: string;
+            /** Syncintervalseconds */
+            syncIntervalSeconds?: number | null;
         };
+        /** FeishuSourcePatchRequest */
+        FeishuSourcePatchRequest: ({
+            credentialRef?: never;
+            name: string;
+            /** @constant */
+            status?: "disabled";
+            /** Syncintervalseconds */
+            syncIntervalSeconds?: number | null;
+        } | {
+            credentialRef?: never;
+            name?: string;
+            /** @constant */
+            status: "disabled";
+            /** Syncintervalseconds */
+            syncIntervalSeconds?: number | null;
+        } | {
+            credentialRef?: never;
+            name?: string;
+            /** @constant */
+            status?: "disabled";
+            /** Syncintervalseconds */
+            syncIntervalSeconds: number | null;
+        }) | ({
+            /** @constant */
+            accessPolicy: "project_members";
+            credentialRef?: string;
+            name: string;
+            /** @enum {string} */
+            status?: "configured" | "disabled";
+            /** Syncintervalseconds */
+            syncIntervalSeconds?: number | null;
+        } | {
+            /** @constant */
+            accessPolicy: "project_members";
+            credentialRef: string;
+            name?: string;
+            /** @enum {string} */
+            status?: "configured" | "disabled";
+            /** Syncintervalseconds */
+            syncIntervalSeconds?: number | null;
+        } | {
+            /** @constant */
+            accessPolicy: "project_members";
+            credentialRef?: string;
+            name?: string;
+            /** @enum {string} */
+            status: "configured" | "disabled";
+            /** Syncintervalseconds */
+            syncIntervalSeconds?: number | null;
+        } | {
+            /** @constant */
+            accessPolicy: "project_members";
+            credentialRef?: string;
+            name?: string;
+            /** @enum {string} */
+            status?: "configured" | "disabled";
+            /** Syncintervalseconds */
+            syncIntervalSeconds: number | null;
+        });
         /** HealthResponse */
         HealthResponse: {
             /**
@@ -911,6 +1187,52 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** KnowledgeContent */
+        KnowledgeContent: {
+            /** Content */
+            content: string;
+            /**
+             * Format
+             * @enum {string}
+             */
+            format: "markdown" | "text";
+            highlight: components["schemas"]["KnowledgeContentHighlight"] | null;
+            /** Linecount */
+            lineCount: number;
+            /** Mediatype */
+            mediaType: string;
+            /**
+             * Resourceid
+             * Format: uuid
+             */
+            resourceId: string;
+            /**
+             * Resourceversionid
+             * Format: uuid
+             */
+            resourceVersionId: string;
+            /** Title */
+            title: string;
+        };
+        /** KnowledgeContentHighlight */
+        KnowledgeContentHighlight: {
+            /**
+             * Chunkid
+             * Format: uuid
+             */
+            chunkId: string;
+            /** Lineend */
+            lineEnd: number;
+            /** Linestart */
+            lineStart: number;
+            /**
+             * Matchtype
+             * @enum {string}
+             */
+            matchType: "exact" | "range";
+            /** Text */
+            text: string;
+        };
         /** KnowledgeResourcePage */
         KnowledgeResourcePage: {
             capabilities: components["schemas"]["KnowledgeCapabilities"];
@@ -974,6 +1296,11 @@ export interface components {
              */
             accessPolicy: "project_members";
             /**
+             * Accessstate
+             * @enum {string}
+             */
+            accessState: "available" | "unverified" | "access_denied" | "not_found";
+            /**
              * Createdat
              * Format: date-time
              */
@@ -989,8 +1316,16 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Lastcheckedat */
+            lastCheckedAt: string | null;
+            /** Lasterrorcode */
+            lastErrorCode: string | null;
+            /** Lastsuccessat */
+            lastSuccessAt: string | null;
             /** Name */
             name: string;
+            /** Nextsyncat */
+            nextSyncAt: string | null;
             /**
              * Projectid
              * Format: uuid
@@ -1006,6 +1341,8 @@ export interface components {
              * @enum {string}
              */
             status: "configured" | "disabled";
+            /** Syncintervalseconds */
+            syncIntervalSeconds: number | null;
             /**
              * Updatedat
              * Format: date-time
@@ -1014,6 +1351,13 @@ export interface components {
         };
         /** KnowledgeSourceSyncCreateRequest */
         KnowledgeSourceSyncCreateRequest: Record<string, never>;
+        /** KnowledgeSourceSyncPage */
+        KnowledgeSourceSyncPage: {
+            /** Items */
+            items: components["schemas"]["KnowledgeSourceSyncResponse"][];
+            /** Nextcursor */
+            nextCursor: string | null;
+        };
         /** KnowledgeSourceSyncResponse */
         KnowledgeSourceSyncResponse: {
             /** Attempt */
@@ -1027,11 +1371,15 @@ export interface components {
             createdAt: string;
             /** Errorcode */
             errorCode: string | null;
+            /** Failurecode */
+            failureCode: string | null;
             /**
              * Id
              * Format: uuid
              */
             id: string;
+            /** Nextattemptat */
+            nextAttemptAt: string | null;
             /**
              * Projectid
              * Format: uuid
@@ -1039,6 +1387,8 @@ export interface components {
             projectId: string;
             /** Resourceid */
             resourceId: string | null;
+            /** Resourcestatus */
+            resourceStatus: ("queued" | "processing" | "ready" | "failed") | null;
             /** Resourceversionid */
             resourceVersionId: string | null;
             /**
@@ -1051,6 +1401,11 @@ export interface components {
              * @enum {string}
              */
             status: "queued" | "running" | "completed" | "failed";
+            /**
+             * Trigger
+             * @enum {string}
+             */
+            trigger: "manual" | "scheduled";
         };
         /** KnowledgeVersionResponse */
         KnowledgeVersionResponse: {
@@ -1085,6 +1440,33 @@ export interface components {
             sourceType: string;
             status: components["schemas"]["ResourceVersionStatus"];
         };
+        /** LinkedIdentitiesResponse */
+        LinkedIdentitiesResponse: {
+            /** Identities */
+            identities: components["schemas"]["LinkedIdentityResponse"][];
+            /** Passwordavailable */
+            passwordAvailable: boolean;
+        };
+        /** LinkedIdentityResponse */
+        LinkedIdentityResponse: {
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Displayname */
+            displayName: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "github" | "feishu";
+        };
         /** LoginRequest */
         LoginRequest: {
             /**
@@ -1104,11 +1486,8 @@ export interface components {
             createdAt: string;
             /** Displayname */
             displayName: string;
-            /**
-             * Email
-             * Format: email
-             */
-            email: string;
+            /** Email */
+            email: string | null;
             /**
              * Id
              * Format: uuid
@@ -1145,6 +1524,34 @@ export interface components {
         /** MembershipRoleUpdateRequest */
         MembershipRoleUpdateRequest: {
             role: components["schemas"]["MembershipRole"];
+        };
+        /** OAuthProviderResponse */
+        OAuthProviderResponse: {
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "github" | "feishu";
+        };
+        /** OAuthStartRequest */
+        OAuthStartRequest: {
+            /**
+             * Intent
+             * @enum {string}
+             */
+            intent: "login" | "link";
+            /**
+             * Returnto
+             * @enum {string}
+             */
+            returnTo?: "/projects" | "/account/identities";
+        };
+        /** OAuthStartResponse */
+        OAuthStartResponse: {
+            /** Authorizationurl */
+            authorizationUrl: string;
         };
         /** OrganizationResponse */
         OrganizationResponse: {
@@ -1237,6 +1644,65 @@ export interface components {
              * @constant
              */
             status: "ready";
+        };
+        /** RegistrationAccepted */
+        RegistrationAccepted: {
+            /**
+             * Message
+             * @default 如可为此邮箱创建账号，请查收验证邮件；已有账号请直接登录。
+             */
+            message: string;
+            /** Registrationreceipt */
+            registrationReceipt: string;
+            /**
+             * Resendafterseconds
+             * @default 60
+             */
+            resendAfterSeconds: number;
+        };
+        /** RegistrationAvailability */
+        RegistrationAvailability: {
+            /** Enabled */
+            enabled: boolean;
+        };
+        /** RegistrationRequest */
+        RegistrationRequest: {
+            /** Displayname */
+            displayName?: string | null;
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Password */
+            password: string;
+        };
+        /** RegistrationResendRequest */
+        RegistrationResendRequest: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Password */
+            password: string;
+            /** Registrationreceipt */
+            registrationReceipt: string;
+        };
+        /** RegistrationVerified */
+        RegistrationVerified: {
+            /**
+             * Message
+             * @default 邮箱验证成功，请使用邮箱和密码登录。
+             */
+            message: string;
+        };
+        /** RegistrationVerifyRequest */
+        RegistrationVerifyRequest: {
+            /** Password */
+            password: string;
+            /** Token */
+            token: string;
         };
         /**
          * ResourceType
@@ -1425,7 +1891,7 @@ export interface components {
             /** Displayname */
             displayName: string | null;
             /** Email */
-            email: string;
+            email: string | null;
             /**
              * Id
              * Format: uuid
@@ -1469,6 +1935,902 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiVersionResponse"];
+                };
+            };
+        };
+    };
+    identities_api_v1_auth_identities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkedIdentitiesResponse"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    unlink_api_v1_auth_identities__identity_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                identity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 授权或身份管理请求失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    prepare_login_api_v1_auth_login_context_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 请求来源或 CSRF 令牌无效 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 登录状态已改变 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 数据库暂时不可用 */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    finalize_api_v1_auth_oauth_finalize_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityContextResponse"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    providers_api_v1_auth_oauth_providers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthProviderResponse"][];
+                };
+            };
+        };
+    };
+    callback_api_v1_auth_oauth__provider__callback_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: "github" | "feishu";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            303: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 授权或身份管理请求失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    start_api_v1_auth_oauth__provider__start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: "github" | "feishu";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OAuthStartRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OAuthStartResponse"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 授权或身份管理请求失败 */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    register_api_v1_auth_register_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegistrationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistrationAccepted"];
+                };
+            };
+            /** @description 验证链接或密码无效 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求来源无效 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求参数无效 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 操作过于频繁 */
+            429: {
+                headers: {
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 注册、邮件或数据库暂时不可用 */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    resend_api_v1_auth_register_resend_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegistrationResendRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistrationAccepted"];
+                };
+            };
+            /** @description 验证链接或密码无效 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求来源无效 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求参数无效 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 操作过于频繁 */
+            429: {
+                headers: {
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 注册、邮件或数据库暂时不可用 */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    verify_api_v1_auth_register_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegistrationVerifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistrationVerified"];
+                };
+            };
+            /** @description 验证链接或密码无效 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求来源无效 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求参数无效 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 操作过于频繁 */
+            429: {
+                headers: {
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 注册、邮件或数据库暂时不可用 */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    availability_api_v1_auth_registration_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegistrationAvailability"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
@@ -2264,6 +3626,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            /** @description 服务器内部错误 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
             /** @description 数据库暂时不可用 */
             503: {
                 headers: {
@@ -2839,6 +4210,142 @@ export interface operations {
             };
             /** @description 项目或知识资源不存在 */
             404: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求参数无效 */
+            422: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 数据库或对象存储暂时不可用 */
+            503: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_knowledge_content_api_v1_projects__project_id__knowledge_resources__resource_id__content_get: {
+        parameters: {
+            query?: {
+                /** @description 固定当前已发布版本；chunk_id 存在时必填 */
+                version_id?: string | null;
+                /** @description 属于固定资源版本的引用片段 */
+                chunk_id?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                resource_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 经过重新授权的完整正文与引用位置 */
+            200: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeContent"];
+                };
+            };
+            /** @description 会话无效 */
+            401: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目或知识资源不存在 */
+            404: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 固定版本或读取期间资料发生变化 */
+            409: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 超过全文预览限制 */
+            413: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 格式或 UTF-8 编码不支持全文预览 */
+            415: {
                 headers: {
                     /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
                     "Cache-Control"?: "private, no-store";
@@ -3627,6 +5134,256 @@ export interface operations {
             };
             /** @description 请求来源或 CSRF 令牌无效 */
             403: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目或知识来源不存在 */
+            404: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求方法不被允许 */
+            405: {
+                headers: {
+                    /** @description 该资源支持的 HTTP 方法 */
+                    Allow?: string;
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求参数无效 */
+            422: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 数据库暂时不可用 */
+            503: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    patch_source_api_v1_projects__project_id__knowledge_sources__source_id__patch: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Session-bound CSRF token returned by login or session restore. */
+                "X-CSRF-Token": string;
+            };
+            path: {
+                project_id: string;
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeishuSourcePatchRequest"];
+            };
+        };
+        responses: {
+            /** @description 知识来源已更新 */
+            200: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeSourceResponse"];
+                };
+            };
+            /** @description 会话无效 */
+            401: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求来源或 CSRF 令牌无效 */
+            403: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目或知识来源不存在 */
+            404: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求方法不被允许 */
+            405: {
+                headers: {
+                    /** @description 该资源支持的 HTTP 方法 */
+                    Allow?: string;
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 知识来源身份冲突 */
+            409: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求参数无效 */
+            422: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 数据库暂时不可用 */
+            503: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_source_syncs_api_v1_projects__project_id__knowledge_sources__source_id__syncs_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 飞书来源同步记录分页 */
+            200: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeSourceSyncPage"];
+                };
+            };
+            /** @description 会话无效 */
+            401: {
                 headers: {
                     /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
                     "Cache-Control"?: "private, no-store";

@@ -125,7 +125,7 @@ function renderProjects(queryClient = new QueryClient({
     ...render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={["/projects"]}>
-          <SessionProvider restoredIdentity={identity}>
+          <SessionProvider restoredIdentity={identity} sessionApi={{ restore: async () => identity, logout: async () => undefined }}>
             <ProjectsPage />
             <SessionProbe />
           </SessionProvider>

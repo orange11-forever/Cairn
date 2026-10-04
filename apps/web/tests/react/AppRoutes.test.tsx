@@ -290,7 +290,28 @@ function renderTestRoutes(path: string, options: {
   restoredIdentity?: IdentityContext;
   sessionApi?: SessionApi;
   strictMode?: boolean;
+  projectName?: string;
+  projectResponse?: (projectId: string, request: Request) => Promise<Response> | Response;
 } = {}) {
+  const configuredFetch = globalThis.fetch;
+  vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+    const request = input as Request;
+    const pathname = new URL(request.url).pathname;
+    const projectMatch = /^\/api\/v1\/projects\/([^/]+)$/.exec(pathname);
+    if (projectMatch !== null && request.method === "GET") {
+      if (options.projectResponse !== undefined) {
+        return options.projectResponse(decodeURIComponent(projectMatch[1]!), request);
+      }
+      return jsonResponse({
+        id: decodeURIComponent(projectMatch[1]!),
+        name: options.projectName ?? "测试项目",
+        description: null,
+        createdAt: "2026-08-01T08:00:00Z",
+        updatedAt: "2026-08-08T08:00:00Z",
+      });
+    }
+    return configuredFetch(input, init);
+  });
   const queryClient = createAppQueryClient();
   const commitSnapshots: string[] = [];
   let controls: TestRouteControls | null = null;
@@ -330,6 +351,12 @@ function renderTestRoutes(path: string, options: {
       act(() => requireControls().navigate(pathname));
     },
   };
+}
+
+async function readyUploadInput(): Promise<HTMLInputElement> {
+  const toggle = await screen.findByRole("button", { name: "上传资料" });
+  if (toggle.getAttribute("aria-expanded") !== "true") fireEvent.click(toggle);
+  return screen.getByLabelText("上传知识资料") as HTMLInputElement;
 }
 
 beforeEach(() => {
@@ -500,22 +527,21 @@ test("authenticated shell presents the dedicated Cairn wordmark once", async () 
   renderTestRoutes("/projects", { restoredIdentity: IDENTITY });
 
   const brandLink = await screen.findByRole("link", { name: "Cairn" });
-  expect(within(brandLink).getByRole("img", { name: "Cairn" })).toHaveAttribute(
-    "src",
-    "/assets/brand/cairn-wordmark.png",
-  );
-  expect(within(brandLink).queryByText("Cairn")).toBeNull();
+  const mark = within(brandLink).getByRole("img", { name: "Cairn" });
+  expect(mark.querySelectorAll("svg path")).toHaveLength(3);
+  expect(mark).toHaveTextContent("Cairn");
+  expect(mark.querySelector("img")).toBeNull();
   expect(brandLink).toHaveAttribute("href", "/projects");
 });
 
-test("authenticated shell keeps a text brand when the wordmark fails", async () => {
+test("authenticated shell's vector brand stays readable without an image request", async () => {
   renderTestRoutes("/projects", { restoredIdentity: IDENTITY });
 
   const brandLink = await screen.findByRole("link", { name: "Cairn" });
-  fireEvent.error(within(brandLink).getByRole("img", { name: "Cairn" }));
-
-  expect(within(brandLink).queryByRole("img")).toBeNull();
-  expect(within(brandLink).getByText("Cairn")).toBeInTheDocument();
+  const mark = within(brandLink).getByRole("img", { name: "Cairn" });
+  fireEvent.error(mark.querySelector("svg")!);
+  expect(within(brandLink).getByRole("img", { name: "Cairn" })).toHaveTextContent("Cairn");
+  expect(brandLink.querySelector("img")).toBeNull();
 });
 
 test("the project route stays in the shared shell with project navigation and assistant copy", async () => {
@@ -637,7 +663,7 @@ test("the project knowledge route exposes its initial loading state until resour
 
   const workspace = screen.getByRole("region", { name: "项目知识工作区" });
   expect(workspace).toHaveAttribute("aria-busy", "true");
-  expect(screen.getByText("正在连接项目知识")).toBeInTheDocument();
+  expect(screen.getByText("正在确认项目访问权限…")).toBeInTheDocument();
 
   resourcePage.resolve(jsonResponse({
     capabilities: { canWrite: true },
@@ -646,7 +672,7 @@ test("the project knowledge route exposes its initial loading state until resour
   }));
 
   expect(await screen.findByRole("heading", { name: "还没有知识资料" })).toBeInTheDocument();
-  expect(workspace).not.toHaveAttribute("aria-busy");
+  expect(screen.getByRole("region", { name: "项目知识工作区" })).not.toHaveAttribute("aria-busy");
   expect(screen.queryByText("正在连接项目知识")).toBeNull();
 });
 
@@ -664,17 +690,15 @@ test("the project knowledge route loads the selected project inside the shared k
       });
     }),
   );
-  const user = userEvent.setup();
-
   renderTestRoutes(`/projects/${projectId}/knowledge`, { restoredIdentity: IDENTITY });
 
-  expect(await screen.findByRole("heading", { level: 1, name: "项目知识" })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { level: 1, name: "测试项目" })).toBeInTheDocument();
   expect(await screen.findByRole("heading", { name: "还没有知识资料" })).toBeInTheDocument();
-  expect(screen.getByLabelText("上传知识资料")).toBeVisible();
+  expect(await readyUploadInput()).toBeVisible();
   expect(screen.queryByText("上传入口将在后续任务接入")).toBeNull();
   expect(screen.getByText("可维护资料")).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "返回项目" })).toHaveAttribute("href", "/projects");
-  expect(screen.getByRole("link", { name: "项目任务" })).toHaveAttribute(
+  expect(screen.getByRole("link", { name: "Cairn" })).toHaveAttribute("href", "/projects");
+  expect(screen.getByRole("link", { name: "知识资料" })).toHaveAttribute(
     "aria-current",
     "page",
   );
@@ -684,8 +708,9 @@ test("the project knowledge route loads the selected project inside the shared k
   );
   expect(requests[0]?.credentials).toBe("include");
 
-  await user.click(screen.getByRole("button", { name: "打开岑宁助手" }));
-  expect(screen.getByRole("dialog", { name: "岑宁助手" })).toHaveTextContent("项目知识助手");
+  expect(screen.queryByRole("button", { name: "打开岑宁助手" })).toBeNull();
+  expect(await screen.findByRole("complementary", { name: "岑宁问答面板" }))
+    .toHaveTextContent("岑宁项目问答 · 单轮");
 });
 
 test("a read-only project reader can search real project knowledge", async () => {
@@ -785,7 +810,7 @@ test("a writable project creates an upload with the exact session and file contr
     restoredIdentity: IDENTITY,
   });
 
-  const input = await screen.findByLabelText("上传知识资料");
+  const input = await readyUploadInput();
   await user.upload(
     input,
     new File(["route-upload"], "route-upload.pdf", { type: "application/pdf" }),
@@ -842,7 +867,7 @@ test("an upload-create 404 conceals the whole project knowledge workspace", asyn
   );
 
   await user.upload(
-    await screen.findByLabelText("上传知识资料"),
+    await readyUploadInput(),
     new File(["create"], "create.pdf", { type: "application/pdf" }),
   );
   await user.click(screen.getByRole("button", { name: "开始上传" }));
@@ -890,7 +915,7 @@ test("an upload-complete 404 stays local when a fresh resource check still succe
   });
 
   await user.upload(
-    await screen.findByLabelText("上传知识资料"),
+    await readyUploadInput(),
     new File(["complete"], "complete.pdf", { type: "application/pdf" }),
   );
   await user.click(screen.getByRole("button", { name: "开始上传" }));
@@ -948,7 +973,7 @@ test("an upload-complete 404 conceals when the fresh resource boundary is also g
     restoredIdentity: IDENTITY,
   });
 
-  await screen.findByLabelText("上传知识资料");
+  await readyUploadInput();
   const projectKey = [
     "project-knowledge",
     IDENTITY.organization.id,
@@ -1042,7 +1067,7 @@ test("a batch 404 conceals after a fresh resource 404 and removes the project ca
     uploadBatchResponse(),
   );
   await user.upload(
-    screen.getByLabelText("上传知识资料"),
+    await readyUploadInput(),
     new File(["batch"], "batch-404.pdf", { type: "application/pdf" }),
   );
   await user.click(screen.getByRole("button", { name: "开始上传" }));
@@ -1108,7 +1133,7 @@ test.each(["create", "complete"] as const)(
     );
 
     await user.upload(
-      await screen.findByLabelText("上传知识资料"),
+      await readyUploadInput(),
       new File([stage], `${stage}.pdf`, { type: "application/pdf" }),
     );
     await user.click(screen.getByRole("button", { name: "开始上传" }));
@@ -1192,8 +1217,10 @@ test("a citation-only 404 keeps the project workspace and refreshes only resourc
   );
   expect(await screen.findByRole("heading", { name: "还没有知识资料" }))
     .toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "搜索" })).toBeInTheDocument();
+  await user.click(screen.getByRole("tab", { name: "搜索" }));
   expect(screen.getByLabelText("搜索项目知识")).toBeInTheDocument();
-  expect(screen.getByText("撤销前搜索摘录")).toBeInTheDocument();
+  expect(screen.queryByText("撤销前搜索摘录")).toBeNull();
   expect(searchRequests).toBe(1);
   expect(resourceListRequests).toBe(2);
   expect(screen.queryByRole("link", { name: "下载原文件（新标签页）" })).toBeNull();
@@ -1620,7 +1647,7 @@ test("project navigation aborts an active upload and its batch query without reu
     { restoredIdentity: IDENTITY },
   );
 
-  const input = await screen.findByLabelText("上传知识资料");
+  const input = await readyUploadInput();
   await user.upload(input, [
     new File(["first"], "first.pdf", { type: "application/pdf" }),
     new File(["second"], "second.pdf", { type: "application/pdf" }),
@@ -1640,7 +1667,7 @@ test("project navigation aborts an active upload and its batch query without reu
 
   await waitFor(() => expect(batchRequest.signal.aborted).toBe(true));
   expect(xhrs[1]?.abort).toHaveBeenCalledTimes(1);
-  expect(await screen.findByLabelText("上传知识资料")).toBeInTheDocument();
+  expect(await readyUploadInput()).toBeInTheDocument();
   expect(screen.queryByText("first.pdf")).toBeNull();
   expect(screen.queryByText("second.pdf")).toBeNull();
   expect(requests.some((request) =>
@@ -1681,7 +1708,7 @@ test("logout aborts an active upload and its batch query and clears private stat
     { restoredIdentity: IDENTITY },
   );
 
-  await user.upload(await screen.findByLabelText("上传知识资料"), [
+  await user.upload(await readyUploadInput(), [
     new File(["first"], "logout-first.pdf", { type: "application/pdf" }),
     new File(["second"], "logout-second.pdf", { type: "application/pdf" }),
   ]);
@@ -1795,7 +1822,7 @@ test.each([
     );
 
     expect(await screen.findByText("旧会话资料.pdf")).toBeInTheDocument();
-    await user.upload(screen.getByLabelText("上传知识资料"), [
+    await user.upload(await readyUploadInput(), [
       new File(["first"], "old-session-first.pdf", { type: "application/pdf" }),
       new File(["second"], "old-session-second.pdf", { type: "application/pdf" }),
     ]);
@@ -2271,24 +2298,32 @@ test("the project knowledge route renders resource metadata and every processing
   expect(await screen.findByText("只读访问")).toBeInTheDocument();
   const list = screen.getByRole("list", { name: "知识资料" });
   expect(within(list).getAllByRole("listitem")).toHaveLength(6);
-  expect(within(list).getByText("架构决策.pdf").closest("li")).toHaveTextContent(
-    "等待处理PDF1.5 KB2026年8月22日",
+  for (const [title, state] of [
+    ["架构决策.pdf", "等待处理"], ["交付清单.docx", "处理中"],
+    ["值班说明.txt", "可检索"], ["损坏报告.pdf", "处理失败"],
+    ["等待版本.md", "等待版本"], ["等待上传版本.txt", "等待版本"],
+  ] as const) {
+    expect(within(within(list).getByText(title).closest("li") as HTMLElement)
+      .getByText(state, { selector: ".knowledge-resource-status .workbench-sr-only" })).toBeInTheDocument();
+  }
+  expect(within(list).getByText("架构决策.pdf").closest("li")?.querySelector(".knowledge-resource-metadata")).toHaveTextContent(
+    "PDF1.5 KB2026年8月22日",
   );
-  expect(within(list).getByText("交付清单.docx").closest("li")).toHaveTextContent(
-    "处理中DOCX2.0 MB",
+  expect(within(list).getByText("交付清单.docx").closest("li")?.querySelector(".knowledge-resource-metadata")).toHaveTextContent(
+    "DOCX2.0 MB",
   );
-  expect(within(list).getByText("值班说明.txt").closest("li")).toHaveTextContent(
-    "可检索纯文本512 B",
+  expect(within(list).getByText("值班说明.txt").closest("li")?.querySelector(".knowledge-resource-metadata")).toHaveTextContent(
+    "纯文本512 B",
   );
-  expect(within(list).getByText("损坏报告.pdf").closest("li")).toHaveTextContent(
-    "处理失败PDF10.0 MB",
+  expect(within(list).getByText("损坏报告.pdf").closest("li")?.querySelector(".knowledge-resource-metadata")).toHaveTextContent(
+    "PDF10.0 MB",
   );
-  expect(within(list).getByText("等待版本.md").closest("li")).toHaveTextContent(
-    "等待版本文件类型待生成文件大小待生成ZIP 内文件",
+  expect(within(list).getByText("等待版本.md").closest("li")?.querySelector(".knowledge-resource-metadata")).toHaveTextContent(
+    "文件类型待生成文件大小待生成ZIP 内文件",
   );
   const uploadWithoutVersion = within(list).getByText("等待上传版本.txt").closest("li");
-  expect(uploadWithoutVersion).toHaveTextContent(
-    "等待版本文件类型待生成文件大小待生成",
+  expect(uploadWithoutVersion?.querySelector(".knowledge-resource-metadata")).toHaveTextContent(
+    "文件类型待生成文件大小待生成",
   );
   expect(within(uploadWithoutVersion as HTMLElement).queryByText("ZIP 内文件")).toBeNull();
 });
@@ -2321,19 +2356,19 @@ test("resource details abort on collapse and reauthorize on every reopen", async
   renderTestRoutes(`/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, { restoredIdentity: IDENTITY });
 
   const row = (await screen.findByText(detail.title)).closest("li");
-  const toggle = within(row as HTMLElement).getByRole("button", { name: "查看资料详情" });
-  expect(toggle).toHaveAttribute("aria-expanded", "false");
+  const toggle = within(row as HTMLElement).getByRole("button", { name: /^查看.*资料详情$/ });
+  expect(toggle).toHaveAttribute("aria-pressed", "false");
   await user.click(toggle);
-  expect(toggle).toHaveAttribute("aria-expanded", "true");
-  expect(toggle.getAttribute("aria-controls")).toMatch(/^knowledge-resource-detail-/);
+  expect(toggle).toHaveAttribute("aria-pressed", "true");
+  expect(toggle.getAttribute("aria-controls")).toMatch(/^knowledge-center-resource-/);
   expect(screen.getByText("正在读取资料详情…")).toBeVisible();
 
-  await user.click(toggle);
+  await user.click(screen.getByRole("button", { name: `关闭${detail.title}标签` }));
 
-  await waitFor(() => expect(toggle).toHaveAttribute("aria-expanded", "false"));
+  await waitFor(() => expect(toggle).toHaveAttribute("aria-pressed", "false"));
   expect(screen.queryByText("正在读取资料详情…")).toBeNull();
   expect(detailRequests[0]?.signal.aborted).toBe(true);
-  expect(document.activeElement).toBe(toggle);
+  expect(screen.queryByRole("tab", { name: detail.title })).toBeNull();
   await user.click(toggle);
   expect(await screen.findByRole("region", { name: `${detail.title} 资料详情` })).toBeVisible();
   expect(detailRequests).toHaveLength(2);
@@ -2369,7 +2404,7 @@ test("a session-invalid resource detail expires the real session boundary", asyn
   );
 
   const row = (await screen.findByText(detail.title)).closest("li");
-  await user.click(within(row as HTMLElement).getByRole("button", { name: "查看资料详情" }));
+  await user.click(within(row as HTMLElement).getByRole("button", { name: /^查看.*资料详情$/ }));
 
   expect(await screen.findByRole("heading", { name: "登录 Cairn" })).toBeInTheDocument();
   expect(requests).toHaveLength(2);
@@ -2433,7 +2468,7 @@ test("a writer retry refreshes the exact list and only marks existing search res
   await user.type(screen.getByLabelText("搜索项目知识"), "人工重试");
   await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
   expect(await screen.findByText("重试前仍可见的搜索结果")).toBeVisible();
-  await user.click(within(row).getByRole("button", { name: "查看资料详情" }));
+  await user.click(within(row).getByRole("button", { name: /^查看.*资料详情$/ }));
   await user.click(await screen.findByRole("button", { name: "重新处理失败版本" }));
 
   await waitFor(() => expect(listRequests).toBe(2));
@@ -2506,7 +2541,7 @@ test("confirmed delete cancels reads before purging facts, resets visible search
     "project-knowledge", IDENTITY.organization.id, OTHER_KNOWLEDGE_PROJECT_ID,
     "resource", resourceId,
   ], { private: "unrelated project" });
-  await user.click(within(row).getByRole("button", { name: "查看资料详情" }));
+  await user.click(within(row).getByRole("button", { name: /^查看.*资料详情$/ }));
   await user.click(await screen.findByRole("button", { name: "删除资料" }));
   await user.click(screen.getByRole("button", { name: "确认删除资料" }));
 
@@ -2565,7 +2600,7 @@ test.each([
     const user = userEvent.setup();
     renderTestRoutes(`/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, { restoredIdentity: IDENTITY });
     const row = (await screen.findByText(target.title)).closest("li")!;
-    await user.click(within(row).getByRole("button", { name: "查看资料详情" }));
+    await user.click(within(row).getByRole("button", { name: /^查看.*资料详情$/ }));
     await user.click(await screen.findByRole("button", { name: "删除资料" }));
     await user.click(screen.getByRole("button", { name: "确认删除资料" }));
 
@@ -2607,7 +2642,7 @@ test("a 409 retry conflict refreshes the resource before another action is possi
   const user = userEvent.setup();
   renderTestRoutes(`/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, { restoredIdentity: IDENTITY });
   const row = (await screen.findByText(failed.title)).closest("li")!;
-  await user.click(within(row).getByRole("button", { name: "查看资料详情" }));
+  await user.click(within(row).getByRole("button", { name: /^查看.*资料详情$/ }));
   await user.click(await screen.findByRole("button", { name: "重新处理失败版本" }));
 
   await waitFor(() => expect(detailReads).toBe(2));
@@ -2645,7 +2680,7 @@ test.each(["retry", "delete"] as const)(
       `/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, { restoredIdentity: IDENTITY },
     );
     const row = (await screen.findByText(target.title)).closest("li")!;
-    await user.click(within(row).getByRole("button", { name: "查看资料详情" }));
+    await user.click(within(row).getByRole("button", { name: /^查看.*资料详情$/ }));
     if (operation === "retry") {
       await user.click(await screen.findByRole("button", { name: "重新处理失败版本" }));
     } else {
@@ -2688,7 +2723,7 @@ test("a project change aborts a pending delete and its late response cannot purg
     `/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, { restoredIdentity: IDENTITY },
   );
   const row = (await screen.findByText(oldTarget.title)).closest("li")!;
-  await user.click(within(row).getByRole("button", { name: "查看资料详情" }));
+  await user.click(within(row).getByRole("button", { name: /^查看.*资料详情$/ }));
   await user.click(await screen.findByRole("button", { name: "删除资料" }));
   await user.click(screen.getByRole("button", { name: "确认删除资料" }));
   await waitFor(() => expect(deleteRequest).not.toBeNull());
@@ -2736,7 +2771,7 @@ test("a same-project session generation change aborts retry and ignores its late
     `/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, { restoredIdentity: IDENTITY },
   );
   const row = (await screen.findByText(oldTarget.title)).closest("li")!;
-  await user.click(within(row).getByRole("button", { name: "查看资料详情" }));
+  await user.click(within(row).getByRole("button", { name: /^查看.*资料详情$/ }));
   await user.click(await screen.findByRole("button", { name: "重新处理失败版本" }));
   await waitFor(() => expect(retryRequest).not.toBeNull());
 
@@ -2780,14 +2815,14 @@ test("closing and reopening the same resource aborts a mutation and never reveal
   const user = userEvent.setup();
   renderTestRoutes(`/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, { restoredIdentity: IDENTITY });
   const row = (await screen.findByText(target.title)).closest("li")!;
-  const toggle = within(row).getByRole("button", { name: "查看资料详情" });
+  const toggle = within(row).getByRole("button", { name: /^查看.*资料详情$/ });
   await user.click(toggle);
   await user.click(await screen.findByRole("button", { name: "重新处理失败版本" }));
   await waitFor(() => expect(retryRequest).not.toBeNull());
 
-  await user.click(within(row).getByRole("button", { name: "收起资料详情" }));
+  await user.click(screen.getByRole("button", { name: `关闭${target.title}标签` }));
   expect((retryRequest as Request | null)?.signal.aborted).toBe(true);
-  await user.click(within(row).getByRole("button", { name: "查看资料详情" }));
+  await user.click(within(row).getByRole("button", { name: /^查看.*资料详情$/ }));
   expect(await screen.findByText("文件解析失败，请刷新状态或联系管理员。")).toBeVisible();
   expect(detailReads).toBe(2);
   await act(async () => lateRetry.resolve(jsonResponse(queued)));
@@ -2831,7 +2866,7 @@ test.each(["retry", "delete"] as const)(
       strictMode: true,
     });
     const row = (await screen.findByText(target.title)).closest("li")!;
-    await user.click(within(row).getByRole("button", { name: "查看资料详情" }));
+    await user.click(within(row).getByRole("button", { name: /^查看.*资料详情$/ }));
     if (operation === "retry") {
       await user.click(await screen.findByRole("button", { name: "重新处理失败版本" }));
       expect(await screen.findByText("等待处理", { selector: "dd" })).toBeVisible();
@@ -2893,7 +2928,7 @@ test.each(["retry", "delete"] as const)(
       `/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, { restoredIdentity: IDENTITY },
     );
     const row = (await screen.findByText(oldTarget.title)).closest("li")!;
-    await user.click(within(row).getByRole("button", { name: "查看资料详情" }));
+    await user.click(within(row).getByRole("button", { name: /^查看.*资料详情$/ }));
     if (operation === "retry") {
       await user.click(await screen.findByRole("button", { name: "重新处理失败版本" }));
     } else {
@@ -2979,7 +3014,7 @@ test.each([
     await user.type(screen.getByLabelText("搜索项目知识"), "详情撤销前搜索");
     await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
     expect(await screen.findByText("详情撤销前搜索摘录")).toBeVisible();
-    await user.click(within(row as HTMLElement).getByRole("button", { name: "查看资料详情" }));
+    await user.click(within(row as HTMLElement).getByRole("button", { name: /^查看.*资料详情$/ }));
     await waitFor(() => expect(listRequests).toBe(2));
 
     expect(searchRequests).toBe(1);
@@ -2992,7 +3027,7 @@ test.each([
       expect(await screen.findByText("该资料已不可用，正在重新检查项目知识访问权限。"))
         .toBeVisible();
       expect(screen.getByRole("region", { name: "项目知识工作区" })).toBeVisible();
-      expect(screen.getByText(detail.title)).toBeVisible();
+      expect(screen.getByText(detail.title, { selector: ".knowledge-resource-select strong" })).toBeVisible();
     } else {
       expect(await screen.findByRole("alert")).toHaveTextContent("项目或知识资料不存在");
       expect(screen.queryByText(detail.title)).toBeNull();
@@ -3033,7 +3068,7 @@ test("a project transition aborts a pending detail and cannot reveal its late re
     { restoredIdentity: IDENTITY },
   );
   const oldRow = (await screen.findByText(oldResource.title)).closest("li");
-  await user.click(within(oldRow as HTMLElement).getByRole("button", { name: "查看资料详情" }));
+  await user.click(within(oldRow as HTMLElement).getByRole("button", { name: /^查看.*资料详情$/ }));
   expect(screen.getByText("正在读取资料详情…")).toBeVisible();
 
   rendered.navigate(`/projects/${OTHER_KNOWLEDGE_PROJECT_ID}/knowledge`);
@@ -3080,7 +3115,7 @@ test("a same-project session generation change destroys authorized detail state"
     { restoredIdentity: IDENTITY },
   );
   const oldRow = (await screen.findByText(oldResource.title)).closest("li");
-  await user.click(within(oldRow as HTMLElement).getByRole("button", { name: "查看资料详情" }));
+  await user.click(within(oldRow as HTMLElement).getByRole("button", { name: /^查看.*资料详情$/ }));
   expect(await screen.findByRole("link", { name: /下载资料.*新标签页/ })).toBeVisible();
 
   rendered.establishSession({
@@ -3212,7 +3247,7 @@ test("a pagination capability downgrade removes upload UI and aborts active tran
   });
 
   await user.upload(
-    await screen.findByLabelText("上传知识资料"),
+    await readyUploadInput(),
     new File(["pending"], "pending-capability.pdf", { type: "application/pdf" }),
   );
   await user.click(screen.getByRole("button", { name: "开始上传" }));
@@ -3268,7 +3303,7 @@ test("an upload-driven resource refetch revokes capability and stops upload and 
   });
 
   expect(await screen.findByText("仍可只读检索.pdf")).toBeInTheDocument();
-  await user.upload(screen.getByLabelText("上传知识资料"), [
+  await user.upload(await readyUploadInput(), [
     new File(["first"], "refetch-first.pdf", { type: "application/pdf" }),
     new File(["second"], "refetch-second.pdf", { type: "application/pdf" }),
   ]);
@@ -3592,13 +3627,11 @@ test("the project knowledge assistant keeps its context with a trailing slash", 
       nextCursor: null,
     })),
   );
-  const user = userEvent.setup();
-
   renderTestRoutes(`/projects/${projectId}/knowledge/`, { restoredIdentity: IDENTITY });
 
-  expect(await screen.findByRole("heading", { level: 1, name: "项目知识" })).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "打开岑宁助手" }));
-  expect(screen.getByRole("dialog", { name: "岑宁助手" })).toHaveTextContent("项目知识助手");
+  expect(await screen.findByRole("heading", { level: 1, name: "测试项目" })).toBeInTheDocument();
+  expect(await screen.findByRole("complementary", { name: "岑宁问答面板" }))
+    .toHaveTextContent("岑宁项目问答 · 单轮");
 });
 
 test("account menu exposes identity and logout without duplicating session state", async () => {
@@ -3609,4 +3642,282 @@ test("account menu exposes identity and logout without duplicating session state
   expect(screen.getByText("demo@cairn.dev")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "退出" }));
   expect(await screen.findByRole("heading", { name: "登录 Cairn" })).toBeInTheDocument();
+});
+
+test("a direct knowledge link shows its exact project and opens resource details in the center", async () => {
+  const resource = knowledgeResource({
+    id: "00000000-0000-4000-8000-000000005081",
+    title: "入职手册.pdf", mediaType: "application/pdf", sizeBytes: 1024, status: "ready",
+  });
+  const requests: Request[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    requests.push(request);
+    const pathname = new URL(request.url).pathname;
+    if (pathname === `/api/v1/projects/${KNOWLEDGE_PROJECT_ID}`) return jsonResponse({
+      id: KNOWLEDGE_PROJECT_ID, name: "核心攫取验收", description: null,
+      createdAt: "2026-08-01T08:00:00Z", updatedAt: "2026-08-08T08:00:00Z",
+    });
+    if (pathname.endsWith("/knowledge/resources")) return jsonResponse({
+      capabilities: { canWrite: false }, items: [resource], nextCursor: null,
+    });
+    if (pathname.endsWith(`/knowledge/resources/${resource.id}`)) return jsonResponse(resource);
+    throw new Error(`Unexpected ${pathname}`);
+  }));
+  const user = userEvent.setup();
+  renderTestRoutes(`/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, {
+    restoredIdentity: IDENTITY, projectName: "核心攫取验收",
+  });
+
+  expect(await screen.findByRole("heading", { level: 1, name: "核心攫取验收" })).toBeInTheDocument();
+  expect(screen.getByRole("contentinfo", { name: "工作台状态" }))
+    .toHaveTextContent("核心攫取验收");
+  await waitFor(() => expect(screen.getByRole("contentinfo", { name: "工作台状态" }))
+    .toHaveTextContent("已加载 1 项资料"));
+  await user.click(await screen.findByRole("button", { name: "查看入职手册.pdf资料详情" }));
+  expect(await screen.findByRole("region", { name: `${resource.title} 资料详情` }))
+    .toBeInTheDocument();
+  expect(screen.getByRole("region", { name: "知识内容" }))
+    .toContainElement(screen.getByRole("region", { name: `${resource.title} 资料详情` }));
+  await user.click(screen.getByRole("button", { name: `关闭${resource.title}标签` }));
+  expect(screen.queryByRole("region", { name: `${resource.title} 资料详情` })).toBeNull();
+  await user.click(screen.getByRole("button", { name: "查看入职手册.pdf资料详情" }));
+  expect(await screen.findByRole("region", { name: `${resource.title} 资料详情` }))
+    .toBeInTheDocument();
+  expect(requests.filter((request) => new URL(request.url).pathname.endsWith(`/knowledge/resources/${resource.id}`)))
+    .toHaveLength(2);
+  expect(screen.queryByLabelText("上传知识资料")).toBeNull();
+});
+
+test("a project-detail 404 conceals all knowledge controls", async () => {
+  const resourceFetch = vi.fn(async () => jsonResponse(writableResourcePage()));
+  vi.stubGlobal("fetch", resourceFetch);
+  renderTestRoutes(`/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, {
+    restoredIdentity: IDENTITY,
+    projectResponse: () => jsonResponse({
+      code: "not_found", message: "项目不可用", traceId: "trace-project-missing",
+    }, 404),
+  });
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("项目不可用");
+  expect(screen.getByText("请求编号：trace-project-missing")).toBeInTheDocument();
+  expect(screen.queryByRole("region", { name: "知识内容" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "上传资料" })).toBeNull();
+  expect(screen.queryByRole("textbox", { name: "向项目知识提问" })).toBeNull();
+  expect(resourceFetch).not.toHaveBeenCalled();
+});
+
+test("project-detail network failure keeps knowledge hidden and offers explicit recovery", async () => {
+  let attempts = 0;
+  vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(writableResourcePage())));
+  const user = userEvent.setup();
+  renderTestRoutes(`/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, {
+    restoredIdentity: IDENTITY,
+    projectResponse: () => {
+      attempts += 1;
+      if (attempts === 1) throw new TypeError("temporary network issue");
+      return jsonResponse({ id: KNOWLEDGE_PROJECT_ID, name: "恢复后的项目", description: null,
+        createdAt: "2026-08-01T08:00:00Z", updatedAt: "2026-08-08T08:00:00Z" });
+    },
+  });
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("无法连接服务器");
+  expect(screen.queryByRole("region", { name: "知识内容" })).toBeNull();
+  await user.click(screen.getByRole("button", { name: "重新加载项目" }));
+  expect(await screen.findByRole("heading", { level: 1, name: "恢复后的项目" })).toBeInTheDocument();
+  expect(attempts).toBe(2);
+});
+
+test.each(["project", "session"] as const)(
+  "a late metadata 401 from the old %s cannot expire a newer knowledge workspace",
+  async (change) => {
+    const oldResponse = trackedResponse(() => jsonResponse({
+      code: "session_invalid", message: "旧请求会话已过期", traceId: "late-metadata",
+    }, 401));
+    let metadataCalls = 0;
+    let oldRequest: Request | null = null;
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({
+      capabilities: { canWrite: false }, items: [], nextCursor: null,
+    })));
+    const workspace = renderTestRoutes(`/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, {
+      restoredIdentity: IDENTITY,
+      projectResponse: (id, request) => {
+        metadataCalls += 1;
+        if (metadataCalls === 1) {
+          oldRequest = request;
+          return oldResponse.promise;
+        }
+        return jsonResponse({ id, name: "新的已授权项目", description: null,
+          createdAt: "2026-08-01T08:00:00Z", updatedAt: "2026-08-08T08:00:00Z" });
+      },
+    });
+    await waitFor(() => expect(oldRequest).not.toBeNull());
+    if (change === "project") {
+      workspace.navigate(`/projects/${OTHER_KNOWLEDGE_PROJECT_ID}/knowledge`);
+    } else {
+      workspace.establishSession({
+        ...IDENTITY,
+        user: { ...IDENTITY.user, id: "00000000-0000-4000-8000-000000001099" },
+      });
+    }
+    expect(await screen.findByRole("heading", { level: 1, name: "新的已授权项目" }))
+      .toBeInTheDocument();
+    expect((oldRequest as Request | null)?.signal.aborted).toBe(true);
+    await act(async () => oldResponse.resolve(jsonResponse({
+      code: "session_invalid", message: "旧请求会话已过期", traceId: "late-metadata",
+    }, 401)));
+    expect(screen.getByRole("link", { name: "Cairn" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "新的已授权项目" }))
+      .toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "登录 Cairn" })).toBeNull();
+  },
+);
+
+test("collapsing an active upload keeps its live summary and browser transfer", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    const pathname = new URL(request.url).pathname;
+    if (pathname.endsWith("/knowledge/resources")) return jsonResponse(writableResourcePage());
+    if (pathname.endsWith("/knowledge/uploads")) return jsonResponse(uploadCreateResponse(), 201);
+    throw new Error(`Unexpected ${pathname}`);
+  }));
+  const xhrs = installRouteXhr();
+  const user = userEvent.setup();
+  renderTestRoutes(`/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, { restoredIdentity: IDENTITY });
+  await user.upload(await readyUploadInput(), new File(["file"], "live.pdf", { type: "application/pdf" }));
+  await user.click(screen.getByRole("button", { name: "开始上传" }));
+  await waitFor(() => expect(xhrs).toHaveLength(1));
+  await user.click(screen.getByRole("button", { name: "上传资料" }));
+
+  expect(screen.getByRole("status", { name: "上传进度摘要" })).toHaveTextContent("正在上传");
+  expect(xhrs[0]!.abort).not.toHaveBeenCalled();
+  await user.click(screen.getByRole("button", { name: "上传资料" }));
+  expect(screen.getByText("live.pdf")).toBeInTheDocument();
+});
+
+test("search citations open authorized context in the center and reauthorize after close", async () => {
+  const resourceId = "00000000-0000-4000-8000-000000005091";
+  const versionId = "00000000-0000-4000-8000-000000006091";
+  const chunkId = "00000000-0000-4000-8000-000000007091";
+  const citation = { resourceId, resourceVersionId: versionId, chunkId,
+    title: "来源手册.pdf", mediaType: "application/pdf", excerpt: "真实搜索摘录",
+    locator: { type: "pdf", page: 2 }, score: 0.8 };
+  const contextRequests: Request[] = [];
+  const searchRequests: Request[] = [];
+  const focusFrames: FrameRequestCallback[] = [];
+  vi.spyOn(window, "requestAnimationFrame").mockImplementation(callback => {
+    focusFrames.push(callback);
+    return focusFrames.length;
+  });
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    const pathname = new URL(request.url).pathname;
+    if (pathname.endsWith("/knowledge/resources")) return jsonResponse({
+      capabilities: { canWrite: false }, items: [], nextCursor: null,
+    });
+    if (pathname.endsWith("/knowledge/search")) {
+      searchRequests.push(request);
+      return jsonResponse({ retrievalMode: "hybrid", results: [citation] });
+    }
+    if (pathname.endsWith(`/knowledge/resources/${resourceId}/content`)) {
+      contextRequests.push(request);
+      return jsonResponse({ resourceId, resourceVersionId: versionId, title: citation.title,
+        mediaType: "text/markdown", format: "markdown", content: "# 来源手册\n\n服务器授权原文\n\nEOF",
+        lineCount: 5, highlight: { chunkId, lineStart: 3, lineEnd: 3, text: "服务器授权原文", matchType: "exact" } });
+    }
+    throw new Error(`Unexpected ${pathname}`);
+  }));
+  const user = userEvent.setup();
+  renderTestRoutes(`/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, { restoredIdentity: IDENTITY });
+  await user.type(await screen.findByLabelText("搜索项目知识"), "来源手册");
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+  expect(await screen.findByText("真实搜索摘录")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "查看引用上下文" }));
+  expect(await screen.findByText("服务器授权原文")).toBeInTheDocument();
+  expect(screen.getByRole("region", { name: "知识内容" }))
+    .toContainElement(screen.getByRole("region", { name: `${citation.title} 正文` }));
+  expect(screen.getByText("EOF")).toBeInTheDocument();
+  expect(screen.getByText("服务器授权原文")).toHaveAttribute("data-citation-hit", "true");
+  await user.click(screen.getByRole("button", { name: `关闭${citation.title} · 引用上下文标签` }));
+  expect(screen.queryByRole("region", { name: `${citation.title} 正文` })).toBeNull();
+  const reopenedInput = screen.getByLabelText("搜索项目知识");
+  await user.click(reopenedInput);
+  // Simulate a delayed paint after the user has already moved on to typing.
+  act(() => { for (const callback of focusFrames.splice(0)) callback(performance.now()); });
+  expect(reopenedInput).toHaveFocus();
+  await user.type(reopenedInput, "来源手册", { skipClick: true });
+  expect(reopenedInput).toHaveValue("来源手册");
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+  await screen.findByText("真实搜索摘录");
+  expect(searchRequests).toHaveLength(2);
+  expect(await searchRequests[1]!.clone().json()).toEqual({ query: "来源手册", limit: 10 });
+  await user.click(screen.getByRole("button", { name: "查看引用上下文" }));
+  expect(await screen.findByText("服务器授权原文")).toBeInTheDocument();
+  expect(contextRequests).toHaveLength(2);
+});
+
+test("mobile pane switches preserve the unsent assistant draft and hide inactive controls", async () => {
+  vi.stubGlobal("matchMedia", vi.fn((query: string) => ({
+    matches: query.includes("max-width"), media: query, onchange: null,
+    addEventListener: vi.fn(), removeEventListener: vi.fn(),
+    addListener: vi.fn(), removeListener: vi.fn(), dispatchEvent: vi.fn(),
+  })));
+  vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({
+    capabilities: { canWrite: false }, items: [], nextCursor: null,
+  })));
+  const user = userEvent.setup();
+  renderTestRoutes(`/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, { restoredIdentity: IDENTITY });
+  await screen.findByRole("button", { name: "岑宁" });
+  expect(screen.queryByRole("textbox", { name: "向项目知识提问" })).toBeNull();
+  await user.click(screen.getByRole("button", { name: "岑宁" }));
+  await user.type(screen.getByLabelText("向项目知识提问"), "我的未发送问题");
+  await user.click(screen.getByRole("button", { name: "内容" }));
+  expect(screen.queryByRole("textbox", { name: "向项目知识提问" })).toBeNull();
+  await user.click(screen.getByRole("button", { name: "岑宁" }));
+  expect(screen.getByLabelText("向项目知识提问")).toHaveValue("我的未发送问题");
+});
+
+test("the docked assistant shows the submitted question and opens answer citations in the center", async () => {
+  const resourceId = "00000000-0000-4000-8000-000000005092";
+  const versionId = "00000000-0000-4000-8000-000000006092";
+  const chunkId = "00000000-0000-4000-8000-000000007092";
+  const citation = { id: "S1", resourceId, resourceVersionId: versionId, chunkId,
+    title: "架构说明.md", mediaType: "text/markdown", excerpt: "架构来源摘录",
+    locator: { type: "text", lineStart: 3, lineEnd: 4 }, score: 0.9 };
+  const requests: Request[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input as Request;
+    requests.push(request);
+    const pathname = new URL(request.url).pathname;
+    if (pathname.endsWith("/knowledge/resources")) return jsonResponse({
+      capabilities: { canWrite: false }, items: [], nextCursor: null,
+    });
+    if (pathname.endsWith("/knowledge/answers")) return jsonResponse({
+      status: "answered", retrievalMode: "hybrid",
+      paragraphs: [{ text: "真实生成回答", citationIds: ["S1"] }], citations: [citation],
+    });
+    if (pathname.endsWith(`/knowledge/resources/${resourceId}/content`)) {
+      return jsonResponse({ resourceId, resourceVersionId: versionId, title: citation.title,
+        mediaType: "text/markdown", format: "markdown", content: "# 架构\n\n答案引用原文\n\nEOF",
+        lineCount: 5, highlight: { chunkId, lineStart: 3, lineEnd: 3, text: "答案引用原文", matchType: "exact" } });
+    }
+    throw new Error(`Unexpected ${pathname}`);
+  }));
+  const user = userEvent.setup();
+  renderTestRoutes(`/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, { restoredIdentity: IDENTITY });
+  await user.type(await screen.findByLabelText("向项目知识提问"), "这个项目怎么部署？");
+  await user.click(screen.getByRole("button", { name: "生成回答" }));
+  expect(await screen.findByText("真实生成回答")).toBeInTheDocument();
+  expect(screen.getByLabelText("向项目知识提问")).toHaveValue("");
+  expect(screen.getByText("这个项目怎么部署?", { selector: ".knowledge-answer-question span" }))
+    .toBeInTheDocument();
+  await user.click(within(screen.getByRole("region", { name: "生成式回答" }))
+    .getByRole("button", { name: "查看引用上下文" }));
+  expect(await screen.findByText("答案引用原文")).toBeInTheDocument();
+  expect(screen.getByRole("region", { name: "知识内容" }))
+    .toContainElement(screen.getByRole("region", { name: `${citation.title} 正文` }));
+  expect(screen.getByText("EOF")).toBeInTheDocument();
+  expect(screen.getByText("答案引用原文")).toHaveAttribute("data-citation-hit", "true");
+  expect(requests.filter((request) => request.method === "POST" &&
+    new URL(request.url).pathname.endsWith("/knowledge/answers"))).toHaveLength(1);
 });

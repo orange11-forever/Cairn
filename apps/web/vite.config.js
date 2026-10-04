@@ -8,21 +8,39 @@
 // 结论：构建步骤是必需的，不是可选的。Node 能跑 .ts（strip-only）不代表浏览器能。
 // 这个文件就是那个构建步骤。
 
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import { join } from "node:path";
 
 const WEB_ROOT = import.meta.dirname;
 const REPOSITORY_ROOT = join(WEB_ROOT, "../..");
 
-export default defineConfig({
+// Email proofs are fragment-only, but their document also forbids caching/referral.
+export function registrationPagePrivacy() {
+  function install(server) {
+    server.middlewares.use((request, response, next) => {
+      const path = (request.url ?? "").split("?")[0];
+      if (path === "/register" || path === "/register/verify") {
+        response.setHeader("Cache-Control", "no-store");
+        response.setHeader("Referrer-Policy", "no-referrer");
+      }
+      next();
+    });
+  }
+  return { name: "cairn-registration-page-privacy", configureServer: install, configurePreviewServer: install };
+}
+
+export default defineConfig(({ mode }) => {
+  const environment = loadEnv(mode, REPOSITORY_ROOT, "");
+  const apiProxyTarget = environment.CAIRN_API_PROXY_TARGET || process.env.CAIRN_API_PROXY_TARGET;
+  return {
   // Day 8：JSX 也是浏览器读不懂的语法，和上面的 .ts 同理——
   // `<div>` 在 .tsx 里是表达式，浏览器的解析器只会看到一个小于号。
   // 插件负责把 JSX 转成 React.createElement 调用，并在 dev 下提供组件热更新。
   //
   // 版本说明：装 6.0.4 时 pnpm 报未满足的 peer（要 vite ^8，我们是 7.1.12）。
   // 降到 5.2.0，它的 peer 范围同时含 ^7 和 ^8——现在可用，将来升 vite 8 也不用再动。
-  plugins: [react()],
+  plugins: [react(), registrationPagePrivacy()],
 
   // 配置文件现在和 index.html 一起属于 apps/web，使用绝对路径确保从
   // workspace 根或 package 目录调用 Vite 时都指向同一个入口。
@@ -46,6 +64,8 @@ export default defineConfig({
     // verify-web.mjs 硬编码了 5500，静默换端口会让验证脚本连到一个空端口，
     // 报出来的错是「页面加载失败」，掩盖真正原因。
     strictPort: true,
+    // OAuth callbacks share the APP_URL origin and must reach the API server.
+    proxy: apiProxyTarget ? { "/api": { target: apiProxyTarget, changeOrigin: false } } : undefined,
   },
 
   build: {
@@ -54,4 +74,5 @@ export default defineConfig({
     // 不发布包含完整前端源码的 source map；生产诊断使用服务端 traceId 和版本号。
     sourcemap: false,
   },
+  };
 });

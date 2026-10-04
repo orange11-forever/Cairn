@@ -149,6 +149,7 @@ def _source(database: Database, org_id: UUID, project_id: UUID) -> KnowledgeSour
         external_id=f"doc-{uuid4().hex}",
         credential_ref=f"credential_{uuid4().hex}",
         access_policy="project_members",
+        access_state="available",
     )
     with database.session_factory.begin() as session:
         session.add(source)
@@ -156,9 +157,11 @@ def _source(database: Database, org_id: UUID, project_id: UUID) -> KnowledgeSour
 
 
 @pytest.mark.integration
-def test_configured_feishu_is_readable_then_disable_revokes_every_content_boundary(
+@pytest.mark.parametrize("revocation", ["disabled", "access_denied", "not_found", "unverified"])
+def test_feishu_state_revokes_every_content_boundary(
     database: Database,
     test_database_url: str,
+    revocation: str,
 ) -> None:
     actor = seed_actor(database, MembershipRole.OWNER)
     project_id = seed_project(database, actor, permission=None)
@@ -206,8 +209,11 @@ def test_configured_feishu_is_readable_then_disable_revokes_every_content_bounda
             for source_id in (source.id, failed_source.id):
                 stored = session.get(KnowledgeSource, source_id)
                 assert stored is not None
-                stored.status = "disabled"
-                stored.disabled_at = datetime.now(UTC)
+                if revocation == "disabled":
+                    stored.status = "disabled"
+                    stored.disabled_at = datetime.now(UTC)
+                else:
+                    stored.access_state = revocation
 
         listing = client.get(f"/api/v1/projects/{project_id}/knowledge/resources")
         detail = client.get(f"/api/v1/projects/{project_id}/knowledge/resources/{ready_id}")

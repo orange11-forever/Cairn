@@ -30,6 +30,9 @@ export interface KnowledgeUploadBatchProps {
   csrfToken: string;
   sessionSignal: AbortSignal;
   onAccessUnavailable(error: ApiError): void;
+  collapsible?: boolean;
+  open?: boolean;
+  onToggle?: () => void;
 }
 
 const FILE_PHASE_LABELS: Record<KnowledgeUploadFilePhase, string> = {
@@ -39,9 +42,9 @@ const FILE_PHASE_LABELS: Record<KnowledgeUploadFilePhase, string> = {
   uploading: "正在上传",
   completing: "正在确认",
   awaiting_upload: "等待服务器接收上传",
-  queued: "已确认，等待 Worker 处理",
-  processing: "Worker 正在处理",
-  ready: "Worker 处理完成，可用于知识检索",
+  queued: "已确认，等待处理",
+  processing: "后台处理中",
+  ready: "处理完成，可用于知识检索",
   failed: "处理失败",
   cancelled: "已取消",
 };
@@ -87,22 +90,22 @@ function batchSummary(upload: KnowledgeUploadBatchState): string {
   if (upload.batch !== null) {
     switch (upload.batch.status) {
       case "pending":
-        return "服务器已接收上传批次，正在等待 Worker。";
+        return "文件已上传，等待后台处理。";
       case "processing":
-        return "Worker 正在处理已确认的文件。";
+        return "已确认的文件正在后台处理。";
       case "completed":
-        return "Worker 已完成本批次处理，可在知识资料中查看就绪文件。";
+        return "本批次已处理完成，可在知识资料中查看就绪文件。";
       case "completed_with_errors":
-        return "Worker 已完成本批次处理，部分文件处理失败。";
+        return "本批次已处理完成，部分文件处理失败。";
       case "failed":
-        return "Worker 无法完成本批次处理，请检查失败文件。";
+        return "本批次处理失败，请检查失败文件。";
     }
   }
   if (upload.files.some(({ phase }) => phase === "failed")) {
     return "部分文件失败，请查看文件旁的错误和可用操作。";
   }
   if (upload.files.every(({ phase }) => phase === "ready")) {
-    return "所有文件均已由 Worker 处理就绪。";
+    return "所有文件均已处理就绪。";
   }
   return `已选择 ${upload.files.length} 个文件，可以开始上传。`;
 }
@@ -179,6 +182,8 @@ function BatchChildList({
 
 export function KnowledgeUploadBatch(props: KnowledgeUploadBatchProps) {
   const inputId = useId();
+  const [localOpen, setLocalOpen] = useState(!props.collapsible);
+  const open = props.open ?? localOpen;
   const hintId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const dragDepth = useRef(0);
@@ -276,12 +281,23 @@ export function KnowledgeUploadBatch(props: KnowledgeUploadBatchProps) {
 
   return (
     <section className="knowledge-upload-batch" aria-labelledby={`${inputId}-heading`}>
-      <div className="knowledge-upload-heading">
+      <div className="knowledge-upload-heading" hidden={props.onToggle !== undefined && !open}>
         <h2 id={`${inputId}-heading`}>批量上传知识资料</h2>
-        <p>先上传文件并确认到服务器，再由 Worker 异步处理；只有就绪文件可用于知识检索。</p>
+        <p>上传后，资料会在后台处理；就绪后可用于检索。</p>
+        {props.collapsible && props.onToggle === undefined ? <button type="button" aria-controls={`${inputId}-form`}
+          aria-expanded={open} onClick={() => setLocalOpen((value) => !value)}>
+          {open ? "收起上传面板" : "打开上传面板"}
+        </button> : null}
       </div>
 
-      <form className="knowledge-upload-form" aria-label="知识资料批量上传" onSubmit={submit}>
+      {props.collapsible && !open && (upload.files.length > 0 || upload.batchId !== null || retainedSummary !== null) ? (
+        <p className="knowledge-upload-summary" role="status" aria-label="上传进度摘要" aria-live="polite">
+          {batchSummary(upload)}
+        </p>
+      ) : null}
+
+      <form id={`${inputId}-form`} hidden={props.collapsible && !open}
+        className="knowledge-upload-form" aria-label="知识资料批量上传" onSubmit={submit}>
         <div
           className="knowledge-upload-drop-region"
           data-drag-active={dragActive ? "true" : undefined}
@@ -408,7 +424,7 @@ export function KnowledgeUploadBatch(props: KnowledgeUploadBatchProps) {
 
         {upload.files.length === 0 ? null : (
           <p className="knowledge-upload-cancel-note">
-            取消只会停止当前浏览器中的上传，不会撤销已在服务器确认的工作；Worker 仍可能继续处理。
+            取消只会停止当前浏览器中的上传，不会撤销已确认的后台处理。
           </p>
         )}
         {upload.batchId === null ? null : (
@@ -422,7 +438,7 @@ export function KnowledgeUploadBatch(props: KnowledgeUploadBatchProps) {
         )}
         {hasWorkerFailure ? (
           <p className="knowledge-upload-retry-note">
-            Worker 处理失败的文件不能原地重试，请修正后重新选择。
+            后台处理失败的文件不能原地重试，请修正后重新选择。
           </p>
         ) : null}
 

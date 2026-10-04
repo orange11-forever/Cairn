@@ -40,14 +40,23 @@ function contractError(context: string): ApiError {
 }
 
 function requestError(error: unknown, context: string, signal: AbortSignal): ApiError {
-  if (error instanceof ApiError) return error;
   if (signal.aborted) {
     return new ApiError("aborted", "请求已被取消", { context, cause: error });
   }
+  if (error instanceof ApiError) return error;
   return new ApiError("network", "无法连接服务器，请检查网络", {
     context,
     cause: error,
   });
+}
+
+function parseJsonBody(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function fetchProjects({
@@ -68,6 +77,34 @@ export async function fetchProjects({
       throw contractError(context);
     }
     throw responseError(error, response, context);
+  } catch (error) {
+    throw requestError(error, context, signal);
+  }
+}
+
+export async function fetchProject({
+  projectId,
+  signal,
+}: {
+  projectId: string;
+  signal: AbortSignal;
+}): Promise<Project> {
+  const context = "GET /api/v1/projects/{project_id}";
+  try {
+    const { data, error, response } = await projectsClient().GET(
+      "/api/v1/projects/{project_id}",
+      { params: { path: { project_id: projectId } }, parseAs: "text", signal },
+    );
+    const parsedData = parseJsonBody(data);
+    if (response.ok) {
+      if (
+        response.status === 200 &&
+        matchesComponentSchema("ProjectResponse", parsedData) &&
+        parsedData.id.toLowerCase() === projectId.toLowerCase()
+      ) return parsedData;
+      throw contractError(context);
+    }
+    throw responseError(parseJsonBody(error), response, context);
   } catch (error) {
     throw requestError(error, context, signal);
   }

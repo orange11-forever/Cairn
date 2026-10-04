@@ -17,15 +17,19 @@
 // ---------------------------------------------------------------------------
 
 import { useState } from "react";
+import { OAuthLoginButtons } from "./OAuthLoginButtons.tsx";
+import { OAuthNotice } from "./OAuthNotice.tsx";
 import { LogIn } from "lucide-react";
 
 import { FormField, fieldAria } from "./FormField.tsx";
+import { BrandMark } from "./BrandMark.tsx";
 import { MascotFigure } from "./MascotFigure.tsx";
 import { login, type IdentityContext } from "../api/auth.ts";
 import { useAbortableAction } from "../hooks/useAbortableAction.ts";
 import { PASSWORD_MIN_LENGTH, validateEmail, validatePassword } from "../lib/validation.ts";
 
 interface LoginFormProps {
+  oauthOutcome?: string | null;
   /** 登录成功后把用户交出去。这个组件不决定登录后干什么。 */
   onSuccess: (identity: IdentityContext) => void;
 }
@@ -37,7 +41,7 @@ interface FieldErrors {
 
 const NO_ERRORS: FieldErrors = { email: null, password: null };
 
-export function LoginForm({ onSuccess }: LoginFormProps) {
+export function LoginForm({ onSuccess, oauthOutcome }: LoginFormProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>(NO_ERRORS);
@@ -50,15 +54,6 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
   //
   // 换句话说：**错误的消失可以是即时的，错误的出现不行。**
   const [submitted, setSubmitted] = useState(false);
-
-  // wordmark 图片是否加载失败。
-  //
-  // 不用 event.currentTarget.hidden = true 直接改 DOM：
-  // 图片外面包了一层白色胶囊（因为素材自带不透明白底，做成胶囊才不会
-  // 在深色渐变上露出一个白矩形）。只隐藏 <img> 会留下一个空的白色圆块，
-  // 那比不显示 logo 更糟。用 state 控制整个胶囊的渲染，
-  // "图片没了胶囊也没了" 这件事由 React 保证，而不是靠记得同时改两个地方。
-  const [wordmarkFailed, setWordmarkFailed] = useState(false);
 
   const action = useAbortableAction(login);
 
@@ -134,26 +129,15 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
     <main className="login-page">
       <div className="login-layout">
         <section className="login-brand-scene" aria-label="Cairn 品牌场景">
-          {!wordmarkFailed && (
-            <span className="login-wordmark-chip">
-              {/* className 必须留在 <img> 上：scripts/verify-responsive.mjs
-                  用 .login-wordmark 抓图片做加载健康检查。 */}
-              <img
-                className="login-wordmark"
-                src="/assets/brand/cairn-wordmark.png"
-                alt="Cairn"
-                onError={() => {
-                  setWordmarkFailed(true);
-                }}
-              />
-            </span>
-          )}
-          <MascotFigure variant="full" state="idle" label="岑宁，Cairn 知识向导" />
+          <span className="login-wordmark-chip login-wordmark"><BrandMark /></span>
+          <MascotFigure variant="full" state="idle" label="岑宁，Cairn 知识向导"
+            idleCaption="岑宁，知识向导" />
         </section>
 
         <section className="login-card" aria-labelledby="login-title">
           <h1 id="login-title">登录 Cairn</h1>
-          <p>用企业邮箱登录，查看属于你的知识文档。</p>
+          <OAuthNotice outcome={oauthOutcome} />
+          <p>使用邮箱密码或第三方账号，进入你的知识空间。</p>
 
           {/*
             noValidate 关掉浏览器自带的表单校验。
@@ -219,6 +203,8 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
               {action.pending ? "登录中…" : "登录"}
             </button>
           </form>
+          <OAuthLoginButtons />
+          <a className="registration-login-link" href="/register">创建邮箱账号</a>
 
           {/* 演示账号是 mock 阶段的临时便利，接入真实鉴权时必须移除。 */}
           {import.meta.env.DEV && (

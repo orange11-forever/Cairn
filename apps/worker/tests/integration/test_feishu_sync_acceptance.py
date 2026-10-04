@@ -302,6 +302,35 @@ def sync_case(migrated_engine: Engine) -> SyncCase:
 
 
 @pytest.mark.integration
+def test_sync_of_soft_deleted_resource_reports_safe_actionable_code_without_revival(
+    sync_case: SyncCase,
+) -> None:
+    case = sync_case
+    assert case.run()
+    with case.factory.begin() as session:
+        resource = session.scalar(select(KnowledgeResource))
+        assert resource is not None
+        resource.deleted_at = case.now
+        resource.deleted_by = case.user_id
+        old_version = resource.current_version_id
+    case.next_sync()
+
+    assert case.run()
+
+    with case.factory() as session:
+        resource = session.scalar(select(KnowledgeResource))
+        source = session.get(KnowledgeSource, case.source_id)
+        sync = session.get(KnowledgeSourceSync, case.sync_id)
+        assert resource is not None and resource.deleted_at is not None
+        assert resource.current_version_id == old_version
+        assert source is not None and source.access_state == "available"
+        assert sync is not None and sync.failure_code == "feishu_resource_deleted"
+        assert session.scalar(select(func.count()).select_from(KnowledgeResource)) == 1
+        assert session.scalar(select(func.count()).select_from(KnowledgeResourceVersion)) == 1
+    assert case.job().status == "failed"
+
+
+@pytest.mark.integration
 @pytest.mark.parametrize("index_status", ["queued", "running", "failed", "completed"])
 def test_duplicate_revision_reuses_version_and_preserves_index_lifecycle(
     sync_case: SyncCase,
@@ -807,7 +836,7 @@ def test_sync_then_real_index_publishes_searchable_snapshot(sync_case: SyncCase)
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("change", ["credential_ref", "external_id", "deleted_resource"])
+@pytest.mark.parametrize("change", ["credential_ref", "external_id", "generation", "deleted_resource"])
 def test_changed_source_identity_and_deleted_resource_cannot_publish(
     sync_case: SyncCase,
     change: str,
@@ -827,6 +856,9 @@ def test_changed_source_identity_and_deleted_resource_cannot_publish(
                 assert resource is not None
                 resource.deleted_at = case.now
                 resource.deleted_by = case.user_id
+            elif change == "generation":
+                source.generation += 1
+                source.access_state = "unverified"
             else:
                 setattr(source, change, "ChangedIdentity")
 
@@ -877,6 +909,126 @@ def test_upstream_failure_keeps_previously_shared_snapshot(
         ) == original
         assert session.scalar(select(func.count()).select_from(KnowledgeResourceVersion)) == 1
     assert case.store.objects == objects and len(case.store.writes) == 1
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    ("failure_code", "retryable", "expected_state"),
+    [
+        ("feishu_access_denied", False, "access_denied"),
+        ("feishu_not_found", False, "not_found"),
+        ("feishu_auth_failed", False, "unverified"),
+        ("feishu_rate_limited", True, "available"),
+        ("feishu_unavailable", True, "available"),
+        ("feishu_document_changed", True, "available"),
+        ("feishu_request_rejected", False, "available"),
+    ],
+)
+def test_failed_read_persists_safe_outcome_after_handler_rollback(
+    sync_case: SyncCase, failure_code: str, retryable: bool, expected_state: str,
+) -> None:
+    case = sync_case
+    assert case.run()
+    with case.factory() as session:
+        prior = session.get(KnowledgeSource, case.source_id)
+        assert prior is not None and prior.access_state == "available"
+        last_success = prior.last_success_at
+    case.next_sync()
+    case.reader.value = FeishuFailure(failure_code, PRIVATE, retryable=retryable)
+
+    assert case.run()
+
+    with case.factory() as session:
+        source = session.get(KnowledgeSource, case.source_id)
+        sync = session.get(KnowledgeSourceSync, case.sync_id)
+        assert source is not None and sync is not None
+        assert source.access_state == expected_state
+        assert source.last_error_code == failure_code
+        assert source.last_success_at == last_success
+        assert sync.failure_code == failure_code
+        assert source.last_checked_at == (last_success if failure_code == "feishu_auth_failed" else case.now)
+        assert session.scalar(select(func.count()).select_from(KnowledgeResourceVersion)) == 1
+    assert case.job().status == ("queued" if retryable else "failed")
+    assert PRIVATE not in repr((source.last_error_code, sync.failure_code))
+
+
+@pytest.mark.integration
+def test_stale_generation_failure_cannot_change_new_source_state(sync_case: SyncCase) -> None:
+    case = sync_case
+    assert case.run()
+    case.next_sync()
+    case.reader.value = FeishuFailure("feishu_access_denied", PRIVATE, retryable=False)
+
+    def replace_identity() -> None:
+        with case.factory.begin() as session:
+            source = session.get(KnowledgeSource, case.source_id)
+            assert source is not None
+            source.generation += 1
+            source.access_state = "unverified"
+            source.credential_ref = "replacement"
+            source.last_error_code = None
+
+    case.reader.after_read = replace_identity
+    assert case.run()
+    with case.factory() as session:
+        source = session.get(KnowledgeSource, case.source_id)
+        sync = session.get(KnowledgeSourceSync, case.sync_id)
+        assert source is not None and source.generation == 2
+        assert source.access_state == "unverified" and source.last_error_code is None
+        assert sync is not None and sync.failure_code == "feishu_access_denied"
+
+
+@pytest.mark.integration
+def test_reclaimed_lease_rejects_old_failure_outcome(sync_case: SyncCase) -> None:
+    case = sync_case
+    assert case.run()
+    case.next_sync()
+    case.reader.value = FeishuFailure("feishu_access_denied", PRIVATE, retryable=False)
+
+    def reclaim() -> None:
+        case.now += timedelta(minutes=6)
+        with case.factory.begin() as session:
+            assert claim_next_job(session, worker_id="replacement:1", now=case.now,
+                job_kinds={JobKind.SYNC_FEISHU_SOURCE}) is not None
+
+    case.reader.after_read = reclaim
+    with pytest.raises(WorkerFailure, match="lease_lost"):
+        case.run()
+    with case.factory() as session:
+        source = session.get(KnowledgeSource, case.source_id)
+        sync = session.get(KnowledgeSourceSync, case.sync_id)
+        job = session.get(IngestionJob, case.job_id)
+        assert source is not None and source.access_state == "available"
+        assert source.last_error_code is None
+        assert sync is not None and sync.failure_code is None
+        assert job is not None and job.status == "running" and job.lease_owner == "replacement:1"
+
+
+@pytest.mark.integration
+def test_successful_recheck_restores_explicit_shared_source_without_duplicate_version(
+    sync_case: SyncCase,
+) -> None:
+    case = sync_case
+    assert case.run()
+    case.next_sync()
+    case.reader.value = FeishuFailure("feishu_access_denied", PRIVATE, retryable=False)
+    assert case.run()
+    with case.factory() as session:
+        denied = session.get(KnowledgeSource, case.source_id)
+        assert denied is not None and denied.access_state == "access_denied"
+    case.next_sync()
+    case.reader.value = snapshot()
+
+    assert case.run()
+
+    with case.factory() as session:
+        source = session.get(KnowledgeSource, case.source_id)
+        sync = session.get(KnowledgeSourceSync, case.sync_id)
+        assert source is not None and source.access_state == "available"
+        assert source.last_error_code is None and source.last_success_at == case.now
+        assert sync is not None and sync.failure_code is None
+        assert sync.resource_version_id is not None
+        assert session.scalar(select(func.count()).select_from(KnowledgeResourceVersion)) == 1
 
 
 @pytest.mark.integration

@@ -474,7 +474,7 @@ def fail_job(
     claim: ClaimedJob,
     failure: WorkerFailure,
     now: datetime,
-) -> None:
+) -> bool:
     job, attempt = _claim_records(session, claim)
     if (
         job is not None
@@ -482,7 +482,7 @@ def fail_job(
         and attempt.status == IngestionJobAttemptStatus.FAILED
         and job.status != IngestionJobStatus.RUNNING
     ):
-        return
+        return False
     if not _is_owned_running(job, attempt, claim, now=now):
         _raise_lease_lost()
     assert job is not None and attempt is not None
@@ -503,7 +503,7 @@ def fail_job(
         job.completed_at = None
         _clear_lease(job)
         session.flush()
-        return
+        return True
 
     job.status = IngestionJobStatus.FAILED
     job.last_error_code = effective_code
@@ -525,6 +525,7 @@ def fail_job(
         target_details=target_details,
     )
     session.flush()
+    return True
 
 
 __all__ = [

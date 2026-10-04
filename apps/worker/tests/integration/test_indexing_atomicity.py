@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from http.client import HTTPMessage
 from io import BytesIO
 from threading import Event, Thread
+from time import monotonic, sleep
 from typing import Any, BinaryIO, Self, cast
 from urllib.error import HTTPError
 from uuid import UUID, uuid4
@@ -35,6 +36,7 @@ from cairn_api.knowledge.models import (
     ResourceVersionStatus,
 )
 from cairn_api.knowledge.object_store import ObjectStoreUnavailable
+from cairn_api.knowledge.source_access import validate_index_source
 from cairn_api.knowledge.source_models import KnowledgeSource
 from cairn_api.projects.models import OutboxEvent
 from cairn_worker.embedding import OpenAIEmbeddingClient
@@ -46,7 +48,7 @@ from cairn_worker.indexing import (
 )
 from cairn_worker.leases import ClaimedJob, claim_next_job
 from cairn_worker.runner import run_once
-from sqlalchemy import Engine, delete, event, func, select, update
+from sqlalchemy import Engine, delete, event, func, select, text, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from .conftest import seed_job
@@ -348,6 +350,7 @@ def _configure_feishu_source(
                 external_id=external_id,
                 credential_ref=f"credential_{uuid4().hex}",
                 access_policy="project_members",
+                access_state="available",
                 status="disabled" if disabled else "configured",
                 disabled_at=seed.now if disabled else None,
             )
@@ -439,24 +442,33 @@ def test_disable_during_embedding_rolls_back_index_and_publication(
 
 
 @pytest.mark.integration
-def test_final_publication_lock_serializes_disable(
+@pytest.mark.parametrize("revocation", ["disabled", "access_denied", "not_found"])
+def test_final_publication_lock_serializes_source_revocation(
     migrated_engine: Engine,
     monkeypatch: pytest.MonkeyPatch,
+    revocation: str,
 ) -> None:
     seed = _seed(migrated_engine)
     source_id = _configure_feishu_source(migrated_engine, seed)
     attempted, finished = Event(), Event()
     errors: list[BaseException] = []
     threads: list[Thread] = []
+    waiter_pid: list[int] = []
 
-    def disable() -> None:
+    def revoke() -> None:
         try:
             with Session(migrated_engine) as session, session.begin():
+                pid = session.scalar(text("SELECT pg_backend_pid()"))
+                assert isinstance(pid, int)
+                waiter_pid.append(pid)
                 attempted.set()
                 session.execute(
                     update(KnowledgeSource)
                     .where(KnowledgeSource.id == source_id)
-                    .values(status="disabled", disabled_at=seed.now)
+                    .values(
+                        {"status": "disabled", "disabled_at": seed.now}
+                        if revocation == "disabled" else {"access_state": revocation}
+                    )
                 )
         except BaseException as exc:  # noqa: BLE001
             errors.append(exc)
@@ -465,15 +477,28 @@ def test_final_publication_lock_serializes_disable(
 
     original_publish = indexing_module._publish  # pyright: ignore[reportPrivateUsage]
 
-    def publish_while_disable_waits(*args: Any, **kwargs: Any) -> None:
-        thread = Thread(target=disable)
+    def publish_while_revoke_waits(*args: Any, **kwargs: Any) -> None:
+        holder_pid = args[0].scalar(text("SELECT pg_backend_pid()"))
+        assert isinstance(holder_pid, int)
+        thread = Thread(target=revoke)
         threads.append(thread)
         thread.start()
         assert attempted.wait(2)
-        assert not finished.wait(0.2)
+        deadline = monotonic() + 3
+        observed = False
+        while monotonic() < deadline:
+            with migrated_engine.connect() as connection:
+                blockers = connection.scalar(text("SELECT pg_blocking_pids(:pid)"), {"pid": waiter_pid[0]})
+            if holder_pid in blockers:
+                observed = True
+                break
+            if finished.is_set():
+                break
+            sleep(0.01)
+        assert observed, "revocation did not block on the index publication transaction"
         original_publish(*args, **kwargs)
 
-    monkeypatch.setattr(indexing_module, "_publish", publish_while_disable_waits)
+    monkeypatch.setattr(indexing_module, "_publish", publish_while_revoke_waits)
 
     assert _run(migrated_engine, seed, _Store(), _Embedding())
 
@@ -484,8 +509,11 @@ def test_final_publication_lock_serializes_disable(
     with Session(migrated_engine) as session:
         source = session.get(KnowledgeSource, source_id)
         resource = session.get(KnowledgeResource, seed.resource_id)
-        assert source is not None and source.status == "disabled"
+        assert source is not None
+        assert (source.status == "disabled" if revocation == "disabled" else source.access_state == revocation)
         assert resource is not None and resource.current_version_id == seed.target_version_id
+        assert not validate_index_source(session, org_id=seed.org_id, project_id=seed.project_id,
+            resource_id=seed.resource_id, version_id=seed.target_version_id, lock_source=False)
 
 
 @pytest.mark.integration

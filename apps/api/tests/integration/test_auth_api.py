@@ -426,8 +426,63 @@ def test_logout_rejects_bad_csrf_without_revoking_session(
 
 
 @pytest.mark.integration
+def test_logout_rejects_non_ascii_csrf_without_revoking_valid_session(
+    database: Database,
+    migrated_engine: Engine,
+    api_settings: Settings,
+) -> None:
+    del migrated_engine
+    seed_demo_identity(api_settings, database)
+    with TestClient(create_app(api_settings, database), raise_server_exceptions=False) as client:
+        signed_in = login(client)
+        assert signed_in.status_code == 200
+        csrf_token = signed_in.json()["csrfToken"]
+
+        rejected = client.post(
+            "/api/v1/logout",
+            headers={
+                b"origin": APP_ORIGIN.encode("ascii"),
+                b"x-csrf-token": b"\xff",
+                b"x-request-id": b"req-logout-nonascii-csrf",
+            },
+        )
+
+        assert rejected.status_code == 403
+        assert rejected.json() == {
+            "message": "请求来源或 CSRF 令牌无效",
+            "code": "csrf_failed",
+            "traceId": "req-logout-nonascii-csrf",
+        }
+        assert rejected.headers["x-request-id"] == "req-logout-nonascii-csrf"
+        assert rejected.headers["access-control-allow-origin"] == APP_ORIGIN
+        assert rejected.headers["access-control-allow-credentials"] == "true"
+        assert {
+            value.strip().lower()
+            for value in rejected.headers["access-control-expose-headers"].split(",")
+        } == {"x-request-id", "retry-after"}
+        assert "Origin" in rejected.headers["vary"]
+        assert rejected.headers["content-type"] == "application/json"
+        for header in ("set-cookie", "cache-control", "allow", "retry-after"):
+            assert header not in rejected.headers
+        with database.session_factory() as session:
+            assert session.scalar(select(AuthSession.revoked_at)) is None
+            assert session.scalar(
+                select(func.count()).select_from(AuditLog).where(AuditLog.action == "auth.logout")
+            ) == 0
+
+        assert client.get("/api/v1/session").status_code == 200
+        accepted = client.post(
+            "/api/v1/logout",
+            headers={"Origin": APP_ORIGIN, "X-CSRF-Token": csrf_token},
+        )
+        assert accepted.status_code == 204
+        assert accepted.content == b""
+        assert "Max-Age=0" in accepted.headers["set-cookie"]
+
+
+@pytest.mark.integration
 @pytest.mark.parametrize("state", ["expired", "revoked"])
-def test_expired_or_revoked_session_is_invalid_and_clears_cookie(
+def test_expired_or_revoked_session_is_invalid_without_mutating_newer_cookie(
     client: TestClient,
     database: Database,
     state: str,
@@ -443,11 +498,14 @@ def test_expired_or_revoked_session_is_invalid_and_clears_cookie(
     response = client.get("/api/v1/session")
     assert response.status_code == 401
     assert response.json()["code"] == "session_invalid"
-    assert "Max-Age=0" in response.headers["set-cookie"]
+    assert "set-cookie" not in response.headers
+    # Explicit same-origin initialization safely removes the invalid cookie.
+    prepared = client.post("/api/v1/auth/login-context", headers={"Origin": APP_ORIGIN})
+    assert prepared.status_code == 204
 
 
 @pytest.mark.integration
-def test_non_ascii_session_cookie_is_invalid_and_clears_cookie(client: TestClient) -> None:
+def test_non_ascii_session_cookie_is_invalid_without_mutating_newer_cookie(client: TestClient) -> None:
     response = client.get(
         "/api/v1/session",
         headers=[(b"cookie", b"cairn_session=\xe9")],
@@ -455,7 +513,10 @@ def test_non_ascii_session_cookie_is_invalid_and_clears_cookie(client: TestClien
 
     assert response.status_code == 401
     assert response.json()["code"] == "session_invalid"
-    assert "Max-Age=0" in response.headers["set-cookie"]
+    assert "set-cookie" not in response.headers
+    # Explicit same-origin initialization safely removes the invalid cookie.
+    prepared = client.post("/api/v1/auth/login-context", headers={"Origin": APP_ORIGIN})
+    assert prepared.status_code == 204
 
 
 @pytest.mark.integration

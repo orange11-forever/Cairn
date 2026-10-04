@@ -436,9 +436,9 @@ test.each([
   ["uploading", "正在上传"],
   ["completing", "正在确认"],
   ["awaiting_upload", "等待服务器接收上传"],
-  ["queued", "已确认，等待 Worker 处理"],
-  ["processing", "Worker 正在处理"],
-  ["ready", "Worker 处理完成，可用于知识检索"],
+  ["queued", "已确认，等待处理"],
+  ["processing", "后台处理中"],
+  ["ready", "处理完成，可用于知识检索"],
   ["failed", "处理失败"],
   ["cancelled", "已取消"],
 ] satisfies [KnowledgeUploadFilePhase, string][])(
@@ -484,7 +484,7 @@ test("explains cancellation boundaries and cancels only the current browser uplo
   const user = userEvent.setup();
   renderUploadBatch();
 
-  expect(screen.getByText("取消只会停止当前浏览器中的上传，不会撤销已在服务器确认的工作；Worker 仍可能继续处理。"))
+  expect(screen.getByText("取消只会停止当前浏览器中的上传，不会撤销已确认的后台处理。"))
     .toBeInTheDocument();
   expect(screen.queryByText(/索引完成/)).toBeNull();
   await user.click(screen.getByRole("button", { name: "取消当前上传" }));
@@ -510,7 +510,7 @@ test("keeps upload and confirmation work ahead of Worker status in a mixed batch
   renderUploadBatch();
 
   expect(screen.getByText("正在上传。")).toHaveAttribute("aria-live", "polite");
-  expect(screen.queryByText("Worker 正在处理已确认的文件。")).toBeNull();
+  expect(screen.queryByText("已确认的文件正在后台处理。")).toBeNull();
 });
 
 test("offers retry only for failed transfer or confirmation stages", async () => {
@@ -525,7 +525,7 @@ test("offers retry only for failed transfer or confirmation stages", async () =>
   const user = userEvent.setup();
   const workerOnly = renderUploadBatch();
 
-  expect(screen.getByText("Worker 处理失败的文件不能原地重试，请修正后重新选择。"))
+  expect(screen.getByText("后台处理失败的文件不能原地重试，请修正后重新选择。"))
     .toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "重新上传失败文件" })).toBeNull();
   workerOnly.unmount();
@@ -646,7 +646,7 @@ test("shows an observable elapsed tracking state while preserving manual refresh
   renderUploadBatch();
 
   expect(screen.getByText(/后台仍在处理/)).toBeInTheDocument();
-  expect(screen.queryByText("Worker 无法完成本批次处理，请检查失败文件。")).toBeNull();
+  expect(screen.queryByText("本批次处理失败，请检查失败文件。")).toBeNull();
   await user.click(screen.getByRole("button", { name: "刷新处理状态" }));
   expect(actionSpies.refreshBatch).toHaveBeenCalledTimes(1);
 });
@@ -667,7 +667,7 @@ test("offers stop tracking after transfer work settles while keeping processing 
   await user.click(screen.getByRole("button", { name: "停止自动跟踪" }));
 
   expect(actionSpies.cancel).toHaveBeenCalledTimes(1);
-  expect(within(fileRow(processing.name)).getByText("Worker 正在处理")).toBeInTheDocument();
+  expect(within(fileRow(processing.name)).getByText("后台处理中")).toBeInTheDocument();
 });
 
 test.each([
@@ -729,7 +729,7 @@ test.each(["processing", "completed"] as const)(
     try {
       fireEvent.change(screen.getByLabelText("上传知识资料"), { target: { files: [selected] } });
       fireEvent.click(screen.getByRole("button", { name: "开始上传" }));
-      const phase = status === "completed" ? "Worker 处理完成，可用于知识检索" : "Worker 正在处理";
+      const phase = status === "completed" ? "处理完成，可用于知识检索" : "后台处理中";
       await waitFor(() => expect(within(fileRow(selected.name)).getByText(phase)).toBeInTheDocument());
       if (status === "processing") fireEvent.click(screen.getByRole("button", { name: "停止自动跟踪" }));
       fireEvent.click(screen.getByRole("button", { name: "刷新处理状态" }));

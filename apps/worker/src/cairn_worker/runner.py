@@ -26,6 +26,8 @@ from cairn_worker.embedding import (
     parse_embedding_response,
 )
 from cairn_worker.errors import WorkerFailure
+from cairn_worker.feishu_outcomes import FeishuSyncFailure, persist_feishu_failure
+from cairn_worker.feishu_schedule import schedule_due_sources
 from cairn_worker.leases import (
     HEARTBEAT_INTERVAL,
     ClaimedJob,
@@ -213,7 +215,10 @@ def run_once(
         if failure.code == "lease_lost":
             raise
         with _transaction(session_factory) as session:
-            fail_job(session, claim=claim, failure=failure, now=current_time())
+            failed_at = current_time()
+            changed = fail_job(session, claim=claim, failure=failure, now=failed_at)
+            if changed and isinstance(failure, FeishuSyncFailure):
+                persist_feishu_failure(session, claim=claim, failure=failure, now=failed_at)
     except Exception:  # noqa: BLE001 -- persist a bounded fact for unexpected handler failures.
         failure = WorkerFailure(
             "parser_failed",
@@ -336,6 +341,7 @@ class WorkerRuntime(Runtime):
         self._embedding_readiness(self._settings)
 
     def run_once(self) -> bool:
+        schedule_due_sources(self._database.session_factory, datetime.now(UTC))
         return run_once(
             session_factory=self._database.session_factory,
             worker_id=self._worker_id,

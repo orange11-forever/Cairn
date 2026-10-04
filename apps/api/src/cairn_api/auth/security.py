@@ -43,6 +43,8 @@ def derive_csrf_token(session_token: str, csrf_secret: bytes) -> str:
 
 
 def verify_csrf_token(session_token: str, csrf_token: str, csrf_secret: bytes) -> bool:
+    if not session_token.isascii() or not csrf_token.isascii():
+        return False
     expected = derive_csrf_token(session_token, csrf_secret)
     return hmac.compare_digest(expected, csrf_token)
 

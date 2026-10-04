@@ -1,7 +1,7 @@
 from uuid import uuid4
 
 import pytest
-from cairn_api.knowledge.source_schemas import FeishuSourceCreateRequest
+from cairn_api.knowledge.source_schemas import FeishuSourceCreateRequest, FeishuSourcePatchRequest
 from pydantic import ValidationError
 
 
@@ -22,6 +22,20 @@ def test_feishu_source_request_requires_explicit_project_member_sharing() -> Non
     assert request.document_id == "Doc123"
     assert request.credential_ref == "engineering_feishu"
     assert request.access_policy == "project_members"
+
+
+def test_lifecycle_requests_validate_interval_and_reconfirmation() -> None:
+    with pytest.raises(ValidationError):
+        FeishuSourceCreateRequest.model_validate(_payload(syncIntervalSeconds=True))
+    with pytest.raises(ValidationError):
+        FeishuSourcePatchRequest.model_validate({"status": "configured"})
+    with pytest.raises(ValidationError):
+        FeishuSourcePatchRequest.model_validate({"credentialRef": "other"})
+    with pytest.raises(ValidationError):
+        FeishuSourcePatchRequest.model_validate({"syncIntervalSeconds": False})
+    assert FeishuSourcePatchRequest.model_validate(
+        {"syncIntervalSeconds": None}
+    ).sync_interval_seconds is None
 
 
 @pytest.mark.parametrize(
