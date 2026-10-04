@@ -37,11 +37,7 @@ def _membership_response(record: MembershipWithUser) -> MembershipDetailResponse
         id=membership.id,
         user_id=membership.user_id,
         email=record.user.email,
-        display_name=(
-            record.user.display_name
-            if record.user.display_name is not None
-            else record.user.email
-        ),
+        display_name=record.user.display_name or record.user.email or "Cairn 用户",
         role=MembershipRole(membership.role),
         created_at=membership.created_at,
     )

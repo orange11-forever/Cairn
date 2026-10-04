@@ -2,6 +2,8 @@ import { Navigate, Outlet, Route, Routes, useNavigate, useSearchParams } from "r
 import type { IdentityContext } from "../api/auth.ts";
 
 import { AuthenticatedLayout } from "../components/AuthenticatedLayout.tsx";
+import { RegistrationForm } from "../components/RegistrationForm.tsx";
+import { EmailVerification } from "../components/EmailVerification.tsx";
 import { LoginForm } from "../components/LoginForm.tsx";
 import { OAuthFinalize } from "../components/OAuthFinalize.tsx";
 import { KnowledgePage } from "../pages/KnowledgePage.tsx";
@@ -39,7 +41,7 @@ function FallbackRoute() {
   return <Navigate to={status === "anonymous" ? "/login" : "/projects"} replace />;
 }
 
-export function AppRoutes() {
+function SessionRoutes() {
   const { status, restoreError, retryRestore, restartLogin } = useSession();
   if (status === "restoring") {
     return <main className="session-status-page" aria-busy="true">正在恢复会话…</main>;
@@ -75,4 +77,13 @@ export function AppRoutes() {
       <Route path="*" element={<FallbackRoute />} />
     </Routes>
   );
+}
+
+// Public email proof does not depend on restoring or preparing browser login state.
+export function AppRoutes() {
+  return <Routes>
+    <Route path="/register" element={<RegistrationForm />} />
+    <Route path="/register/verify" element={<EmailVerification />} />
+    <Route path="*" element={<SessionRoutes />} />
+  </Routes>;
 }

@@ -145,7 +145,6 @@ export function KnowledgeSearch({
   return (
     <section className="knowledge-search" aria-label="项目知识检索">
       <div className="knowledge-search-heading">
-        <span className="knowledge-search-kicker">项目资料</span>
         <h2>搜索项目知识</h2>
         <p id={helpId}>搜索当前项目已索引的资料片段。</p>
       </div>

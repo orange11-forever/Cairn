@@ -137,7 +137,7 @@ export function LoginForm({ onSuccess, oauthOutcome }: LoginFormProps) {
         <section className="login-card" aria-labelledby="login-title">
           <h1 id="login-title">登录 Cairn</h1>
           <OAuthNotice outcome={oauthOutcome} />
-          <p>用企业邮箱登录，查看属于你的知识文档。</p>
+          <p>使用邮箱密码或第三方账号，进入你的知识空间。</p>
 
           {/*
             noValidate 关掉浏览器自带的表单校验。
@@ -204,6 +204,7 @@ export function LoginForm({ onSuccess, oauthOutcome }: LoginFormProps) {
             </button>
           </form>
           <OAuthLoginButtons />
+          <a className="registration-login-link" href="/register">创建邮箱账号</a>
 
           {/* 演示账号是 mock 阶段的临时便利，接入真实鉴权时必须移除。 */}
           {import.meta.env.DEV && (

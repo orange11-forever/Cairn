@@ -43,9 +43,10 @@ export function useProjectQuery(
   });
 }
 
-export function useProjectsQuery(organizationId: string, sessionSignal: AbortSignal) {
+export function useProjectsQuery(organizationId: string, sessionSignal: AbortSignal, enabled = true) {
   return useInfiniteQuery({
     queryKey: projectKeys.list(organizationId),
+    enabled,
     queryFn: ({ pageParam, signal }) => fetchProjects({
       cursor: pageParam,
       signal: sessionQuerySignal(signal, sessionSignal),

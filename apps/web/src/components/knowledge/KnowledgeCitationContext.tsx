@@ -1,3 +1,5 @@
+import { Download, Link2 } from "lucide-react";
+import { KnowledgeText } from "./KnowledgeText.tsx";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLayoutEffect, useRef } from "react";
 
@@ -13,11 +15,13 @@ import {
   useKnowledgeChunkContextQuery,
 } from "../../queries/knowledge.ts";
 
+export type KnowledgeCitationReference = Pick<KnowledgeCitation, "resourceId" | "resourceVersionId" | "chunkId" | "title">;
+
 interface KnowledgeCitationContextProps {
   id: string;
   organizationId: string;
   projectId: string;
-  citation: KnowledgeCitation;
+  citation: KnowledgeCitationReference;
   sessionSignal: AbortSignal;
 }
 
@@ -120,6 +124,7 @@ export function KnowledgeCitationContext({
       )}
       {query.isSuccess && !authorizing ? (
         <ContextSuccess
+          title={citation.title}
           context={query.data}
           downloadUrl={buildKnowledgeDownloadUrl(projectId, citation.resourceId)}
         />
@@ -130,9 +135,11 @@ export function KnowledgeCitationContext({
 
 function ContextSuccess({
   context,
+  title,
   downloadUrl,
 }: {
   context: KnowledgeChunkContext;
+  title: string;
   downloadUrl: string;
 }) {
   const chunks = [
@@ -147,6 +154,8 @@ function ContextSuccess({
 
   return (
     <div className="knowledge-citation-context-success">
+      <header className="knowledge-context-header"><h2>{title}</h2><p><Link2 size={16} aria-hidden="true" />引用上下文 · 命中片段与相邻内容</p></header>
+      <p className="knowledge-context-boundary">以下是当前引用附近的片段，不是完整文档。可下载原文件核对完整内容。</p>
       <div className="knowledge-citation-chunks">
         {chunks.map(({ label, chunk, hit }) => (
           <div
@@ -158,7 +167,7 @@ function ContextSuccess({
               <strong>{label}</strong>
               <span>{formatKnowledgeLocator(chunk.locator)}</span>
             </div>
-            <p>{chunk.text}</p>
+            <KnowledgeText text={chunk.text} />
           </div>
         ))}
       </div>
@@ -168,7 +177,7 @@ function ContextSuccess({
         rel="noopener noreferrer"
         target="_blank"
       >
-        下载原文件（新标签页）
+        <Download size={17} aria-hidden="true" />下载原文件（新标签页）
       </a>
     </div>
   );

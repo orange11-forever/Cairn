@@ -35,4 +35,5 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         response.headers["X-Request-ID"] = request_id
         if request.url.path.startswith("/api/v1/projects/") and "/knowledge/" in request.url.path:
             response.headers["Cache-Control"] = "private, no-store"
+            response.headers["X-Content-Type-Options"] = "nosniff"
         return response

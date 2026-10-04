@@ -76,7 +76,7 @@ export async function checkFeishuHistoryReachability(page) {
 }
 
 async function runOfflineFixture() {
-  const stylesheet = await readFile(new URL("../styles/main.css", import.meta.url), "utf8");
+  const stylesheet = (await Promise.all(["main.css", "workbench.css"].map(name => readFile(new URL(`../styles/${name}`, import.meta.url), "utf8")))).join("\n");
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage({ viewport: { width: 360, height: 850 } });

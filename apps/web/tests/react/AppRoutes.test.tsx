@@ -697,7 +697,7 @@ test("the project knowledge route loads the selected project inside the shared k
   expect(await readyUploadInput()).toBeVisible();
   expect(screen.queryByText("上传入口将在后续任务接入")).toBeNull();
   expect(screen.getByText("可维护资料")).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "返回项目" })).toHaveAttribute("href", "/projects");
+  expect(screen.getByRole("link", { name: "Cairn" })).toHaveAttribute("href", "/projects");
   expect(screen.getByRole("link", { name: "知识资料" })).toHaveAttribute(
     "aria-current",
     "page",
@@ -710,7 +710,7 @@ test("the project knowledge route loads the selected project inside the shared k
 
   expect(screen.queryByRole("button", { name: "打开岑宁助手" })).toBeNull();
   expect(await screen.findByRole("complementary", { name: "岑宁问答面板" }))
-    .toHaveTextContent("岑宁 · 项目问答");
+    .toHaveTextContent("岑宁项目问答 · 单轮");
 });
 
 test("a read-only project reader can search real project knowledge", async () => {
@@ -1217,8 +1217,10 @@ test("a citation-only 404 keeps the project workspace and refreshes only resourc
   );
   expect(await screen.findByRole("heading", { name: "还没有知识资料" }))
     .toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "搜索" })).toBeInTheDocument();
+  await user.click(screen.getByRole("tab", { name: "搜索" }));
   expect(screen.getByLabelText("搜索项目知识")).toBeInTheDocument();
-  expect(screen.getByText("撤销前搜索摘录")).toBeInTheDocument();
+  expect(screen.queryByText("撤销前搜索摘录")).toBeNull();
   expect(searchRequests).toBe(1);
   expect(resourceListRequests).toBe(2);
   expect(screen.queryByRole("link", { name: "下载原文件（新标签页）" })).toBeNull();
@@ -2302,7 +2304,7 @@ test("the project knowledge route renders resource metadata and every processing
     ["等待版本.md", "等待版本"], ["等待上传版本.txt", "等待版本"],
   ] as const) {
     expect(within(within(list).getByText(title).closest("li") as HTMLElement)
-      .getByText(state, { selector: ".knowledge-resource-status" })).toBeInTheDocument();
+      .getByText(state, { selector: ".knowledge-resource-status .workbench-sr-only" })).toBeInTheDocument();
   }
   expect(within(list).getByText("架构决策.pdf").closest("li")?.querySelector(".knowledge-resource-metadata")).toHaveTextContent(
     "PDF1.5 KB2026年8月22日",
@@ -2355,18 +2357,18 @@ test("resource details abort on collapse and reauthorize on every reopen", async
 
   const row = (await screen.findByText(detail.title)).closest("li");
   const toggle = within(row as HTMLElement).getByRole("button", { name: /^查看.*资料详情$/ });
-  expect(toggle).toHaveAttribute("aria-expanded", "false");
+  expect(toggle).toHaveAttribute("aria-pressed", "false");
   await user.click(toggle);
-  expect(toggle).toHaveAttribute("aria-expanded", "true");
+  expect(toggle).toHaveAttribute("aria-pressed", "true");
   expect(toggle.getAttribute("aria-controls")).toMatch(/^knowledge-center-resource-/);
   expect(screen.getByText("正在读取资料详情…")).toBeVisible();
 
-  await user.click(toggle);
+  await user.click(screen.getByRole("button", { name: `关闭${detail.title}标签` }));
 
-  await waitFor(() => expect(toggle).toHaveAttribute("aria-expanded", "false"));
+  await waitFor(() => expect(toggle).toHaveAttribute("aria-pressed", "false"));
   expect(screen.queryByText("正在读取资料详情…")).toBeNull();
   expect(detailRequests[0]?.signal.aborted).toBe(true);
-  expect(document.activeElement).toBe(toggle);
+  expect(screen.queryByRole("tab", { name: detail.title })).toBeNull();
   await user.click(toggle);
   expect(await screen.findByRole("region", { name: `${detail.title} 资料详情` })).toBeVisible();
   expect(detailRequests).toHaveLength(2);
@@ -2818,7 +2820,7 @@ test("closing and reopening the same resource aborts a mutation and never reveal
   await user.click(await screen.findByRole("button", { name: "重新处理失败版本" }));
   await waitFor(() => expect(retryRequest).not.toBeNull());
 
-  await user.click(within(row).getByRole("button", { name: /^收起.*资料详情$/ }));
+  await user.click(screen.getByRole("button", { name: `关闭${target.title}标签` }));
   expect((retryRequest as Request | null)?.signal.aborted).toBe(true);
   await user.click(within(row).getByRole("button", { name: /^查看.*资料详情$/ }));
   expect(await screen.findByText("文件解析失败，请刷新状态或联系管理员。")).toBeVisible();
@@ -3629,7 +3631,7 @@ test("the project knowledge assistant keeps its context with a trailing slash", 
 
   expect(await screen.findByRole("heading", { level: 1, name: "测试项目" })).toBeInTheDocument();
   expect(await screen.findByRole("complementary", { name: "岑宁问答面板" }))
-    .toHaveTextContent("岑宁 · 项目问答");
+    .toHaveTextContent("岑宁项目问答 · 单轮");
 });
 
 test("account menu exposes identity and logout without duplicating session state", async () => {
@@ -3677,7 +3679,7 @@ test("a direct knowledge link shows its exact project and opens resource details
     .toBeInTheDocument();
   expect(screen.getByRole("region", { name: "知识内容" }))
     .toContainElement(screen.getByRole("region", { name: `${resource.title} 资料详情` }));
-  await user.click(screen.getByRole("button", { name: "关闭当前内容" }));
+  await user.click(screen.getByRole("button", { name: `关闭${resource.title}标签` }));
   expect(screen.queryByRole("region", { name: `${resource.title} 资料详情` })).toBeNull();
   await user.click(screen.getByRole("button", { name: "查看入职手册.pdf资料详情" }));
   expect(await screen.findByRole("region", { name: `${resource.title} 资料详情` }))
@@ -3801,20 +3803,27 @@ test("search citations open authorized context in the center and reauthorize aft
     title: "来源手册.pdf", mediaType: "application/pdf", excerpt: "真实搜索摘录",
     locator: { type: "pdf", page: 2 }, score: 0.8 };
   const contextRequests: Request[] = [];
+  const searchRequests: Request[] = [];
+  const focusFrames: FrameRequestCallback[] = [];
+  vi.spyOn(window, "requestAnimationFrame").mockImplementation(callback => {
+    focusFrames.push(callback);
+    return focusFrames.length;
+  });
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
     const request = input as Request;
     const pathname = new URL(request.url).pathname;
     if (pathname.endsWith("/knowledge/resources")) return jsonResponse({
       capabilities: { canWrite: false }, items: [], nextCursor: null,
     });
-    if (pathname.endsWith("/knowledge/search")) return jsonResponse({
-      retrievalMode: "hybrid", results: [citation],
-    });
-    if (pathname.endsWith(`/knowledge/resources/${resourceId}/chunks/${chunkId}`)) {
+    if (pathname.endsWith("/knowledge/search")) {
+      searchRequests.push(request);
+      return jsonResponse({ retrievalMode: "hybrid", results: [citation] });
+    }
+    if (pathname.endsWith(`/knowledge/resources/${resourceId}/content`)) {
       contextRequests.push(request);
-      return jsonResponse({ resourceId, resourceVersionId: versionId, before: null,
-        hit: { id: chunkId, ordinal: 2, text: "服务器授权原文", locator: citation.locator },
-        after: null });
+      return jsonResponse({ resourceId, resourceVersionId: versionId, title: citation.title,
+        mediaType: "text/markdown", format: "markdown", content: "# 来源手册\n\n服务器授权原文\n\nEOF",
+        lineCount: 5, highlight: { chunkId, lineStart: 3, lineEnd: 3, text: "服务器授权原文", matchType: "exact" } });
     }
     throw new Error(`Unexpected ${pathname}`);
   }));
@@ -3826,9 +3835,22 @@ test("search citations open authorized context in the center and reauthorize aft
   await user.click(screen.getByRole("button", { name: "查看引用上下文" }));
   expect(await screen.findByText("服务器授权原文")).toBeInTheDocument();
   expect(screen.getByRole("region", { name: "知识内容" }))
-    .toContainElement(screen.getByRole("region", { name: "引用上下文" }));
-  await user.click(screen.getByRole("button", { name: "关闭当前内容" }));
-  expect(screen.queryByRole("region", { name: "引用上下文" })).toBeNull();
+    .toContainElement(screen.getByRole("region", { name: `${citation.title} 正文` }));
+  expect(screen.getByText("EOF")).toBeInTheDocument();
+  expect(screen.getByText("服务器授权原文")).toHaveAttribute("data-citation-hit", "true");
+  await user.click(screen.getByRole("button", { name: `关闭${citation.title} · 引用上下文标签` }));
+  expect(screen.queryByRole("region", { name: `${citation.title} 正文` })).toBeNull();
+  const reopenedInput = screen.getByLabelText("搜索项目知识");
+  await user.click(reopenedInput);
+  // Simulate a delayed paint after the user has already moved on to typing.
+  act(() => { for (const callback of focusFrames.splice(0)) callback(performance.now()); });
+  expect(reopenedInput).toHaveFocus();
+  await user.type(reopenedInput, "来源手册", { skipClick: true });
+  expect(reopenedInput).toHaveValue("来源手册");
+  await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
+  await screen.findByText("真实搜索摘录");
+  expect(searchRequests).toHaveLength(2);
+  expect(await searchRequests[1]!.clone().json()).toEqual({ query: "来源手册", limit: 10 });
   await user.click(screen.getByRole("button", { name: "查看引用上下文" }));
   expect(await screen.findByText("服务器授权原文")).toBeInTheDocument();
   expect(contextRequests).toHaveLength(2);
@@ -3874,10 +3896,10 @@ test("the docked assistant shows the submitted question and opens answer citatio
       status: "answered", retrievalMode: "hybrid",
       paragraphs: [{ text: "真实生成回答", citationIds: ["S1"] }], citations: [citation],
     });
-    if (pathname.endsWith(`/knowledge/resources/${resourceId}/chunks/${chunkId}`)) {
-      return jsonResponse({ resourceId, resourceVersionId: versionId, before: null,
-        hit: { id: chunkId, ordinal: 1, text: "答案引用原文", locator: citation.locator },
-        after: null });
+    if (pathname.endsWith(`/knowledge/resources/${resourceId}/content`)) {
+      return jsonResponse({ resourceId, resourceVersionId: versionId, title: citation.title,
+        mediaType: "text/markdown", format: "markdown", content: "# 架构\n\n答案引用原文\n\nEOF",
+        lineCount: 5, highlight: { chunkId, lineStart: 3, lineEnd: 3, text: "答案引用原文", matchType: "exact" } });
     }
     throw new Error(`Unexpected ${pathname}`);
   }));
@@ -3893,7 +3915,9 @@ test("the docked assistant shows the submitted question and opens answer citatio
     .getByRole("button", { name: "查看引用上下文" }));
   expect(await screen.findByText("答案引用原文")).toBeInTheDocument();
   expect(screen.getByRole("region", { name: "知识内容" }))
-    .toContainElement(screen.getByRole("region", { name: "引用上下文" }));
+    .toContainElement(screen.getByRole("region", { name: `${citation.title} 正文` }));
+  expect(screen.getByText("EOF")).toBeInTheDocument();
+  expect(screen.getByText("答案引用原文")).toHaveAttribute("data-citation-hit", "true");
   expect(requests.filter((request) => request.method === "POST" &&
     new URL(request.url).pathname.endsWith("/knowledge/answers"))).toHaveLength(1);
 });

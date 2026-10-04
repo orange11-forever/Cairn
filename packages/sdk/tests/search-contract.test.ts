@@ -20,3 +20,11 @@ export const responseDefaultsRemainRequired: [
   AssertRequired<components["schemas"]["ReadyResponse"], "status">,
   AssertRequired<components["schemas"]["UploadInstruction"], "method">,
 ] = [true, true, true, true];
+
+export const previewWireFieldsRequired: [
+  AssertRequired<components["schemas"]["KnowledgeContent"], "resourceId">,
+  AssertRequired<components["schemas"]["KnowledgeContent"], "resourceVersionId">,
+  AssertRequired<components["schemas"]["KnowledgeContent"], "content">,
+  AssertRequired<components["schemas"]["KnowledgeContent"], "lineCount">,
+  AssertRequired<components["schemas"]["KnowledgeContent"], "highlight">,
+] = [true, true, true, true, true];

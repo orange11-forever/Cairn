@@ -11,33 +11,45 @@
 </p>
 
 > [!IMPORTANT]
-> Cairn 已在真实 PostgreSQL/pgvector 知识链路上交付项目范围单轮生成式知识问答。`verify:core` 使用确定性本地回答 Provider；`dev:core` 的问答需显式配置 `ANSWER_BASE_URL`、`ANSWER_API_KEY`、`ANSWER_MODEL`，并通过 `ANSWER_PROTOCOL` 选择协议，未配置时其他知识功能仍可用。浏览器验收覆盖上传、索引、混合搜索、生成回答、引用上下文与授权下载；默认验证不访问外网或真实 Provider。飞书单文档管理、手动与周期同步已通过本地模拟飞书验收，真实租户仍待验证；流式/多轮问答、其他连接器和全文格式化预览仍在后续任务。
+> Cairn 已在真实 PostgreSQL/pgvector 知识链路上交付项目范围单轮生成式知识问答。`verify:core` 使用确定性本地回答 Provider；`dev:core` 的问答需显式配置 `ANSWER_BASE_URL`、`ANSWER_API_KEY`、`ANSWER_MODEL`，并通过 `ANSWER_PROTOCOL` 选择协议，未配置时其他知识功能仍可用。浏览器验收覆盖上传、索引、混合搜索、生成回答、全文与引用定位及授权下载；默认验证不访问外网或真实 Provider。飞书单文档管理、手动与周期同步已通过本地模拟飞书验收，指定测试文档的真实同步、索引与项目读权限已通过隔离副本验收；实际上游撤权/删除仍待验收。流式/多轮问答和其他连接器仍在后续任务。
 >
-> 当前 Web 项目知识页是 IDE 式工作台：左侧查看实际资料和上传进度，中间打开搜索、已授权资源详情或纯文本引用上下文，右侧由岑宁回答当前单个问题。手机端可切换资料、内容、岑宁区域；本地切换保留草稿与上传状态，项目或会话变化会销毁私有状态。品牌使用演示图中的山峰轮廓 SVG 标记，已提供可复用的 mark 与 wordmark；岑宁全身版更新为 `cenning-full-v2-20260928.png`，紧凑头像仍用原 Q 版。当前没有全文格式化预览、终端、Agent 执行、多轮会话或模型设置入口。
->
-> Task 15 真实知识搜索结果已交付，展示服务端排序的摘录、文件类型、类型化 locator 定位信息、混合检索标签与关键词降级结果，并覆盖取消、错误、会话失效和访问权撤销状态。Task 16 按需引用上下文与授权下载已交付：引用上下文以“前文 → 命中片段 → 后文”展示纯文本，重新展开会重新授权；下载只把新标签页导航到 Identity API，实时授权后由 `307` 重定向到短时效对象地址，Web 不缓存或读取最终预签名 URL。
->
-> Task 17 真实上传批次已交付：`/projects/:projectId/knowledge` 仅向 `canWrite` 用户提供文件选择和拖放，最多 20 个文件先完成校验与 SHA-256 摘要，再以最多 2 个并发 `PUT` 直传对象存储并显示逐文件进度，随后调用 `complete` 确认；批次每 2 秒跟踪一次，终止或首次查询满 5 分钟后停止自动跟踪，保留手动刷新且不伪造处理失败。取消只停止当前浏览器操作，已确认的服务端任务仍会继续；可重试的传输或 `complete` 失败使用全新批次与预签名 URL，`contract` 错误不允许重试。
->
-> Task 18A Web 资源详情已交付：资源行按需在中心内容区打开详情，通过生成 SDK、Cookie credentials 和真实 `GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}` 读取详情。收起会取消请求并销毁局部详情，项目切换或会话代际变化同样取消并销毁旧状态；重新展开和手动刷新都会重新授权，请求中及离线等待期间隐藏旧详情和下载，并禁用自动重连刷新，不进行周期轮询。详情展示安全元数据与处理状态，并把已知失败码映射为安全中文错误指引；仅 `latestVersion.status=ready` 时提供指向 Identity API 的新标签页下载，Web 不读取或缓存最终预签名 URL。详情 `404` 会重新检查当前资源列表，并只把当前搜索标记 stale，不自动重跑搜索；资源列表仍为 `200` 时保留工作区，列表 `404` 才隐藏工作区。
->
-> Task 18B 资源操作已交付：仅最新资源列表声明 `canWrite` 且 `latestVersion.status=failed`、服务端返回 `latestVersion.retryable=true` 时显示重试；重试使用当前 CSRF 和请求中的精确 `resource_id`/`version_id`，成功必须是 `200`，且返回体 `id` 与请求 `resource_id`、`latestVersion.id` 与请求 `version_id` 匹配。软删除使用列出当前资源名的行内确认，取消不发送请求，确认后严格接受 `204` 空响应；变更不自动重试或离线回放，取消只取消浏览器操作且不承诺回滚。删除会先取消当前项目相关的列表、详情、引用和搜索读取，再清理其缓存并重置当前项目可见搜索而不自动发起 `POST`，保留其他项目和上传跟踪。`401 session_invalid` 由 MutationCache 清理会话，已取消操作的迟到 `401` 不会使新会话失效；`404` 重检列表并按列表 `200`/`404` 决定局部资源或工作区隐藏，`409` 先刷新详情，契约错误须手动详情恢复后才重新提供操作。
->
-> 最新 Web 壳与项目工作台已完成响应式和可访问性抛光：知识向导“岑宁”使用透明全身图与视觉居中的 Q 版紧凑头像，项目选择控件与当前任务区域建立明确关联，独立状态区域播报选择变化，真实浏览器验收覆盖 360/768/1280 像素及亮暗主题。这是现有 Web 边界的界面完善，不增加新的 Stage 3A Task 或 API 契约。
+> 当前 Web 项目知识页采用 IDE 式工作台：左侧是资料与上传状态，中间是搜索、全文阅读和引用定位，右侧是岑宁单轮项目问答。“来源与同步”独立管理飞书接入。桌面、平板与手机均支持亮暗主题；切换区域保留草稿，切换项目或会话清理私有状态。使用与边界见 [工作台说明](docs/workbench.md)。
 
 ## 当前交付快照
 
+更新日期：2026-10-04。身份、项目、任务、知识摄取、搜索及正文读取已连接真实 FastAPI、PostgreSQL/pgvector 和 MinIO；开发与默认验收使用本地确定性模型服务，外部模型需单独配置。
+
 | 边界 | 当前状态 |
 |---|---|
-| Web | 项目知识页已接入真实上传批次和 Task 18A 资源详情；详情按需读取、重新授权、离线隐藏旧数据且仅 ready 版本提供安全下载。提供校验、SHA-256 绑定直传进度、complete、批次状态、停止自动跟踪、手动刷新和全新批次上传重试。身份、项目/任务和项目知识工作区连接真实 FastAPI；知识资源列表展示元数据、处理状态、只读权限和游标续页，项目知识搜索展示服务端排序摘录、文件类型、类型化 locator、混合检索/关键词降级模式，并在中心内容区按需打开“前文 → 命中片段 → 后文”纯文本引用和打开授权下载。重新展开会重新授权；下载只把新标签页导航到 Identity API，由实时授权后的 `307` 进入短时效对象地址，Web 不缓存或读取最终预签名 URL。应用壳与项目工作台采用响应式 IDE 式三栏布局，资料导航、中心详情/引用/检索和岑宁单轮问答各有明确区域；知识向导“岑宁”使用版本化透明全身图和视觉居中的 Q 版紧凑头像，项目选择控件与当前任务区域建立明确关联，独立状态区域播报选择变化，验收覆盖 360、768、1280 像素及亮暗主题。查询和变更请求返回规范化 `401 session_invalid` 时，统一清理本地会话与查询缓存、重置变更缓存并回到登录页。 |
-| API / SDK | FastAPI 已提供会话、项目/任务、RBAC/ACL、知识摄取、资源、混合搜索、带引用的单轮回答以及飞书来源登记/手动同步契约；生成 SDK 导出 OpenAPI schema 与运行时校验器，Web API 适配器使用该校验器检查身份、项目/任务和知识响应，并对 OpenAPI `date-time` 字段执行运行时校验。 |
+| Web | 三栏资料、内容与问答布局，实际项目切换、上传批次进度、资源状态、混合检索/关键词降级模式、资料详情、重试、删除和授权下载。验收覆盖 360、768、1280 像素及亮暗主题。查询和变更请求返回规范化 `401 session_invalid` 时，统一清理本地会话与查询缓存、重置变更缓存并回到登录页。 |
+| 全文与引用 | Markdown、TXT、飞书文本快照阅读全文；支持标题、列表、代码复制、表格和文末状态。引用绑定版本与片段，定位并高亮对应段落、列表项或表格行，可回到引用；不支持格式保留纯文本引用上下文及授权下载。正文最多原始 1 MiB / 20,000 行，超限不截断；离线隐藏，恢复后手动重新读取。 |
+| 账号 | 原生邮箱密码注册要求邮件验证与原密码确认，验证成功后显式登录。GitHub/飞书首次注册、身份绑定和再次登录已完成真实授权验收；原生注册已通过本机 SMTP 捕获验收，真实外部邮件投递仍待配置验收。 |
+| API / SDK | FastAPI 已提供会话、注册、项目/任务、RBAC/ACL、知识摄取、资源、全文读取、混合搜索、带引用的单轮回答以及飞书来源登记/手动同步契约；生成 SDK 导出 OpenAPI schema 与运行时校验器，Web API 适配器检查身份、项目/任务和知识响应，并对 OpenAPI `date-time` 字段执行运行时校验。 |
 | 项目知识问答 | 基于当前项目授权资料生成单轮回答；模型调用前后重新核验权限与证据，引用可展开上下文并授权下载。支持 Chat Completions、Responses、Claude Messages 和 Gemini GenerateContent 协议，真实厂商密钥联调仍需部署者完成。 |
 | Worker | 独立 Worker 已进入知识摄取核心链路；Python Worker 通过 PostgreSQL 持久化任务完成受限归档、解析、切分、Embedding 与原子索引发布。 |
-| 飞书单文档连接 | 管理员在 Web 登记来源并显式确认项目共享，可手动或每 5 分钟至一周同步、查看记录、停用和恢复。快照保存后仍需等待索引 ready；明确的上游撤权/删除在下次检查后隐藏旧内容。本地模拟飞书的完整门禁上一轮已通过；本次窄屏布局修复待最终复核，真实租户未验证。 |
+| 飞书单文档连接 | 管理员在 Web 登记来源并显式确认项目共享，可手动或每 5 分钟至一周同步、查看记录、停用和恢复。快照保存后仍需等待索引 ready；明确的上游撤权/删除在下次检查后隐藏旧内容。完整门禁和响应式浏览器验收已通过；指定测试文档的真实读取、同步、新版索引及项目只读权限已通过隔离副本验收。实际上游撤权/删除仍待验收。 |
 | 基础设施 | 核心开发链路使用 PostgreSQL 16/pgvector 与 S3 兼容 MinIO；Redis、正式 Compose/Helm 部署和 OpenTelemetry 仍在规划。 |
-| 延后 | 全文格式化预览、流式/多轮问答、周期性资源详情轮询、其他连接器、Agent 执行和完整模型 Provider 策略层尚未交付。 |
+| 延后 | 自定义助手、skills、助手/项目模型配置、项目分析、可执行规划、路线节点图与项目操作 Agent；流式/多轮问答、长期记忆、周期性资源详情轮询及其他连接器仍在后续任务。 |
 
-## 多模型问答与飞书接入进度
+## 下一阶段：可操作的项目助手
+
+以下是后续开发方向：
+
+- 自定义多个 AI 助手，配置名称、头像、行为说明和模型；岑宁作为默认可选助手。
+- 助手可启用可复用的 skills，明确输入、输出、工具和权限；实际项目权限仍由服务端校验。
+- 分析项目目标、资料、阶段、任务和依赖，生成有依据的风险判断、路线图及后续开发计划。
+- 将规划落成真实阶段、里程碑、任务和依赖节点，并通过项目 API 执行用户指令，保留操作记录。
+
+完整方向见 [项目助手、项目分析与路线节点图](docs/assistant-project-analysis-direction.md)。
+
+## 账号登录方式
+
+原生邮箱密码注册默认关闭，部署者启用注册并配置 SMTP 后可从登录页创建账号。提交申请后须打开邮件链接、输入原密码并明确确认，验证成功后再正常登录；完整步骤见 [原生邮箱注册](docs/native-registration.md)。本机捕获已验证注册和组织隔离流程，真实外部 SMTP 投递仍需单独验收。
+
+GitHub 和飞书首次授权可在最终确认时注册独立个人账号及个人组织，邮箱可为空；已有 Cairn 账号也可显式绑定两种登录方式。账号归属使用已验证的提供方稳定身份，不按相同邮箱或名称合并，也不自动加入已有组织。
+两家首次注册、绑定和再次登录已完成真实授权验收。部署者仍需配置自己的应用凭证和固定回调地址；功能默认关闭，配置步骤见 [OAuth 登录说明](docs/oauth-login.md)。飞书身份登录与资料来源接入分别配置，登录授权不自动授予文档读取权限。
+
+## 多模型问答与飞书接入
 
 项目知识页已提供单轮问答。模型协议由 `ANSWER_PROTOCOL` 配置，模型 ID、端点和密钥分别由 `ANSWER_MODEL`、`ANSWER_BASE_URL` 和 `ANSWER_API_KEY` 配置：
 
@@ -54,34 +66,11 @@ Stage 3B 首个切片为 Worker 包中的飞书新版文档读取客户端：自
 
 Stage 3B 来源登记 API 接续读取基础：组织 owner/admin 可以登记飞书文档来源、绑定项目、分页查看并幂等停用。登记必须显式声明 `accessPolicy=project_members`，确认允许向有项目读取权限的成员共享；仅保存部署凭证引用，API 不接收密钥。`configured` 表示登记成功，不表示凭证已经验证或文档已经同步。来源变更、审计和项目 Outbox 在同一事务提交。
 
-Worker 现可从唯一可选部署变量 `CAIRN_FEISHU_CREDENTIALS_JSON` 按组织 UUID 与不透明 `credentialRef` 精确解析凭证，并按次创建隔离的读取客户端；缺失配置不影响现有上传 Worker。已有知识内容读取、搜索、问答、重试、删除和索引发布会按当前 `project_members` 来源状态重新授权：停用后新请求立即不可见，索引发布与停用通过来源行锁串行化。解析器本身不授予权限；手动和周期同步、管理界面及明确的上游拒绝传播已通过本地模拟飞书验收，真实租户尚未验证。使用方式见 [API 来源管理说明](apps/api/README.md#stage-3b-飞书项目来源登记)与 [Worker 说明](apps/worker/README.md)，范围与验收要求见[来源登记设计](docs/stage-3b-feishu-sources-design.md)、[凭证解析设计](docs/stage-3b-feishu-credentials-design.md)和[飞书读取基础设计](docs/stage-3b-feishu-reader-design.md)。
+Worker 现可从唯一可选部署变量 `CAIRN_FEISHU_CREDENTIALS_JSON` 按组织 UUID 与不透明 `credentialRef` 精确解析凭证，并按次创建隔离的读取客户端；缺失配置不影响现有上传 Worker。已有知识内容读取、搜索、问答、重试、删除和索引发布会按当前 `project_members` 来源状态重新授权：停用后新请求立即不可见，索引发布与停用通过来源行锁串行化。解析器本身不授予权限；手动和周期同步、管理界面及明确的上游拒绝传播已通过本地模拟飞书验收，指定测试文档已通过隔离副本真实验收；实际上游撤权/删除仍待验收。使用方式见 [API 来源管理说明](apps/api/README.md#stage-3b-飞书项目来源登记)与 [Worker 说明](apps/worker/README.md)，范围与验收要求见[来源登记设计](docs/stage-3b-feishu-sources-design.md)、[凭证解析设计](docs/stage-3b-feishu-credentials-design.md)和[飞书读取基础设计](docs/stage-3b-feishu-reader-design.md)。
 
 管理员还可通过来源同步端点手动排队单文档快照；`completed` 表示快照和资源版本已持久化且索引任务已排队，内容须待既有索引任务发布后可检索。同步按 revision/hash 幂等，拒绝复活软删除资源和发布较旧飞书 revision。管理界面与周期同步已通过本地模拟验收；不提供 webhook，因此上游变化只能在下次检查时被发现。
 
-## Stage 3A Task 1–20 已交付边界
-
-共享 API 契约、响应式 Web 与真实身份基础已经完成。阶段 2 已完成并交付项目、任务、依赖、状态机、事务性 Outbox 和有界 SSE 查询；Cairn 已完成阶段 2.5A，交付组织角色、项目 ACL 与成员角色管理 API；Stage 3A Task 1–11 已交付文件摄取和可发布索引基础，Task 12 混合搜索 API、Task 13 Web 知识工作区基础、Task 14 真实知识资源列表与 Task 15 真实知识搜索结果均已交付。Task 16 按需引用上下文与授权下载已交付。Task 17 真实上传批次已交付。
-
-- `@cairn/sdk` 统一 Web 使用的 OpenAPI 网络契约与运行时校验；
-- Web 保留本地容错、请求取消、查询缓存和 UI 状态边界；
-- 工作台支持 360、768、1280 像素布局，以及日间、夜间和跟随系统偏好；
-- 已登录用户可在 Web 项目视图中查看游标分页的项目和任务，并通过服务端状态机更新任务状态；
-- 组织、用户、成员、Cookie 会话、登录限流状态和审计写入 PostgreSQL，Web 身份请求连接 FastAPI；
-- 项目、任务、依赖、审计行和 Outbox 事件写入 PostgreSQL；每次已接受的命令在同一事务中提交业务变更、审计记录和事件；
-- 项目读取和写入在数据库查询中同时应用组织边界、成员角色与规范化 ACL，不先取回无权资源再隐藏；
-- Web 项目页把 `viewer` 的任务视图呈现为只读；服务端始终是授权权威；
-- 项目可以一次创建 1–20 个文件的上传批次，客户端通过绑定 SHA-256 校验和的 S3/MinIO 预签名 `PUT` 直传对象；
-- 独立 Worker 从 PostgreSQL 租用持久化任务，执行受限 ZIP 展开、支持文档解析、结构化切分、OpenAI 兼容的 1024 维 Embedding 和原子索引发布；
-- 项目知识搜索在候选限制前应用组织、项目、当前版本、资源状态与 ACL 过滤，并以关键词和 pgvector 结果执行确定性混合排序；
-- Web 已提供受保护的 `/projects/:projectId/knowledge` 工作区，接入真实资源分页与搜索；资源列表显示标题、文件类型、大小、更新时间及处理状态，搜索结果按服务端顺序显示摘录、文件类型、类型化 locator 定位信息和混合检索/关键词降级标签，并保持取消、错误、会话失效、访问权撤销与响应式应用壳边界；
-- 搜索卡片可按需展开“前文 → 命中片段 → 后文”纯文本；重新展开会重新授权。下载只把新标签页导航到 Identity API，实时授权后由 `307` 重定向到短时效对象地址；Web 不缓存或读取最终预签名 URL；
-- 项目知识页真实上传支持逐文件进度、ZIP 子条目与部分失败，传输或 complete 重试创建全新批次。
-- Task 18A 资源详情按需读取真实 GET；收起、项目切换与会话代际变化取消请求并销毁局部状态，重新展开与手动刷新重新授权，离线等待隐藏旧数据，且不自动重连刷新或周期轮询。只有 ready 最新版本显示 Identity API 新标签页下载。
-- Task 18B 资源操作支持 writer 且失败版本由服务端声明可重试时的版本重试，以及列出资源名的行内软删除确认。重试使用当前 CSRF、精确资源/版本 ID 并校验精确 `200` 返回；删除取消不发 `DELETE`，确认严格接受 `204` 空响应。变更不自动重试或离线回放；删除清理当前项目的相关读取、详情/引用缓存和搜索结果而不自动搜索，保留其他项目和上传跟踪，`404` 列表重检、`409` 详情刷新、契约错误手动恢复和取消迟到 `401` 会话隔离均已交付。
-- 对象存储公开 `PUT` URL 必须与 Web 页面使用不同 origin；客户端拒绝同源上传 URL，避免浏览器自动携带同源 Cookie。对象存储 `PUT` 不携带 Identity credentials；预签名上传 URL 与签名 headers 仅存于局部运行时，不进入 DOM、Query/Mutation 缓存、日志或浏览器存储。文件与 ZIP 子条目展示安全状态和局部错误，完成确认及批次终止时刷新资源列表，搜索仅标记 stale，不自动重跑。取消、路由切换、批次替换和会话失效会停止未完成的浏览器操作；自动跟踪超时保留已知 queued/processing 事实，显示“后台仍在处理”并允许手动刷新。
-- 应用壳使用单一专用 Cairn wordmark；亮暗主题下图片背景与顶栏融合，资源加载失败时回退为可访问的文字品牌；
-- Web 壳与项目工作台完成响应式和可访问性抛光：知识向导“岑宁”使用透明原创全身图与视觉居中的 Q 版紧凑头像，项目选择控件与当前任务区域建立明确关联，独立状态区域播报选择变化，保留 360/768/1280 像素及亮暗主题验收；
-- 登录后默认进入 `/projects`；旧 `/documents` 与 `/ask` 书签在会话边界内重定向到项目工作台。`/projects/:projectId/knowledge` 的资源、详情、搜索、引用上下文/授权下载、真实上传批次和资源操作均连接真实 API。
+飞书接入配置与历史验收范围见[来源管理与周期同步验收](docs/stage-3b-feishu-completion-acceptance.md)。
 
 ## 项目与任务 API
 
@@ -123,7 +112,7 @@ Cookie 会话下的成员 `PATCH` 与 ACL `PUT`/`DELETE` 都要求合法 Origin 
 
 ## 知识摄取、资源与搜索 API
 
-Stage 3A Task 1–12 在项目授权边界内提供上传批次状态、资源列表/详情、失败版本重试、软删除、下载重定向、切片引用上下文和项目范围混合搜索。知识资源的不存在、跨组织和权限不足统一使用不泄露的 `404 not_found`；所有变更端点和搜索 `POST` 在 Cookie 会话下都要求合法 Origin 和 `X-CSRF-Token`。下载会重新授权，然后返回指向短时效对象 URL 的 `307`。
+项目授权边界内提供上传批次状态、资源列表/详情、全文读取、失败版本重试、软删除、下载重定向、切片引用上下文和项目范围混合搜索。知识资源的不存在、跨组织和权限不足统一使用不泄露的 `404 not_found`；所有变更端点和搜索 `POST` 在 Cookie 会话下都要求合法 Origin 和 `X-CSRF-Token`。下载会重新授权，然后返回指向短时效对象 URL 的 `307`。全文读取在存储 I/O 前后复核活跃用户、成员权限、来源与版本；引用通过 `version_id` 和 `chunk_id` 固定位置。
 
 | 操作 | 端点 |
 |---|---|
@@ -132,6 +121,7 @@ Stage 3A Task 1–12 在项目授权边界内提供上传批次状态、资源�
 | 查询批次处理状态 | `GET /api/v1/projects/{project_id}/knowledge/batches/{batch_id}` |
 | 分页列出知识资源 | `GET /api/v1/projects/{project_id}/knowledge/resources` |
 | 读取资源与最新版本 | `GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}` |
+| 读取授权全文与引用定位 | `GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}/content` |
 | 重试可重试的失败版本 | `POST /api/v1/projects/{project_id}/knowledge/resources/{resource_id}/versions/{version_id}/retry` |
 | 软删除资源 | `DELETE /api/v1/projects/{project_id}/knowledge/resources/{resource_id}` |
 | 重新授权并下载 | `GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}/download` |
@@ -144,7 +134,7 @@ Stage 3A Task 1–12 在项目授权边界内提供上传批次状态、资源�
 - 完整阶段/里程碑编辑 UI、React Flow/ELK 图编辑、拖拽 Kanban 和时间线可视化延后；
 - Outbox worker 发布、长连接重连 SSE、Redis fan-out、评论、通知和任务执行延后；
 - 群组、邀请和成员移除未实现；ACL 管理 UI 与成员管理 UI 未实现；
-- Bearer/OIDC 延后；知识摄取、项目搜索和单轮生成式回答已交付。全文格式化预览、流式/多轮问答和周期性详情轮询仍在后续任务；飞书单文档周期同步和连接管理界面已通过本地模拟验收，真实租户仍待验证；其他连接器、Agent 执行和完整模型 Provider 策略层尚未交付。
+- Bearer/OIDC 延后；知识摄取、项目搜索和单轮生成式回答已交付。Markdown/TXT/飞书快照全文引用定位已交付。流式/多轮问答和周期性详情轮询仍在后续任务；飞书单文档周期同步和连接管理界面已通过本地模拟验收，指定测试文档的真实同步、索引与项目读权限已通过隔离副本验收；实际上游撤权/删除仍待验收。其他连接器、Agent 执行和完整模型 Provider 策略层尚未交付。
 
 ## 核心能力
 
@@ -262,7 +252,10 @@ pnpm dev:worker
 
 `pnpm worker:preflight` 只校验数据库、对象存储和当前 Embedding Profile/Provider 依赖；`pnpm dev:worker` 持续处理任务。调试一个当前可租用任务时使用 `pnpm worker:once`。
 
+项目问答需配置前述 `ANSWER_*` 服务端变量；原生注册和第三方登录分别按对应文档配置。仅运行 `pnpm dev:web` 会启动 Web，完整上传、索引和资料读取请使用 `pnpm dev:core`。
+
 - 登录：`http://localhost:5500`
+- 登录后进入 `/projects`；旧 `/documents` 和 `/ask` 书签重定向到项目工作台。
 - Web：`http://localhost:5500`
 - Identity API：`http://127.0.0.1:8080`
 
@@ -290,7 +283,7 @@ pnpm dev:api
 
 API 现已提供 PostgreSQL 与对象存储 readiness、登录、会话恢复、注销、当前组织、项目任务、成员角色、项目 ACL 与上述知识资源和混合搜索接口。登录失败限制由 PostgreSQL 持久化：同一规范化邮箱在 15 分钟窗口内最多失败 5 次，同一来源 IP 最多失败 30 次，达到阈值后阻止 15 分钟；表中仅保存使用 `CAIRN_AUTH_RATE_LIMIT_SECRET` 生成的 HMAC 摘要，不保存明文邮箱或 IP。项目知识页真实上传使用 Identity API 与对象存储。
 
-当前切片不包含 Bearer/OIDC、群组、邀请、成员移除、ACL/成员管理 UI、全文格式化预览、流式/多轮问答、周期性资源详情轮询、连接器、Agent 任务执行或完整 AI Provider 策略层。
+当前切片不包含 Bearer/OIDC、群组、邀请、成员移除、ACL/成员管理 UI、流式/多轮问答、周期性资源详情轮询、其他连接器、Agent 任务执行或完整 AI Provider 策略层。
 
 可按需清理过期或已撤销的认证状态：
 
@@ -315,12 +308,10 @@ pnpm verify
 
 `pnpm verify:core` 会创建独立 Compose project 和临时 PostgreSQL/MinIO 卷，执行迁移、对象存储与活动 Embedding Profile 初始化、API/Worker 集成测试和 SDK 漂移检查，然后启动本地假 Embedding、API 与 Worker。Chromium 通过真实签名 PUT 上传中英文文本，等待 Worker 发布索引，再验证混合搜索、行号引用上下文和授权下载。最后一段验收继续验证生产构建和 HTTPS 反向代理后的 CORS、Cookie、CSRF 与可信来源 IP。临时证书、进程及 Compose project 会在成功、失败或信号中断后清理；该命令不会接触开发数据库和卷，也不使用外部 Provider 或真实密钥。
 
-`pnpm verify` 是完整的跨 package 门禁：它覆盖 OpenAPI 生成 SDK 测试与漂移检查、Web、API、Worker、Ruff、Pyright、发行包构建与最后的真实核心验证。浏览器部分使用生产构建，覆盖登录、刷新恢复、组织显示、注销、兼容路由、360/768/1280 像素布局、亮暗主题、真实项目与项目知识导航、上传、搜索、引用上下文、资源重试/删除、长内容换行、触摸目标、无横向溢出和品牌像素契约。Worker package 测试覆盖租约、归档、解析、切分、Embedding 与原子索引语义；真实核心验证覆盖 pgvector、MinIO 签名对象往返、Worker 摄取、项目范围混合搜索和知识 API/SDK 一致性。
+`pnpm verify` 是完整的跨 package 门禁：它覆盖 OpenAPI 生成 SDK 测试与漂移检查、Web、API、Worker、Ruff、Pyright、发行包构建与最后的真实核心验证。浏览器部分使用生产构建，覆盖登录、刷新恢复、组织显示、注销、兼容路由、360/768/1280 像素布局、亮暗主题、真实项目与项目知识导航、上传、搜索、全文与引用定位、长列表/表格引用、引用上下文、资源重试/删除、长内容换行、触摸目标、无横向溢出和品牌像素契约。Worker package 测试覆盖租约、归档、解析、切分、Embedding 与原子索引语义；真实核心验证覆盖 pgvector、MinIO 签名对象往返、Worker 摄取、项目范围混合搜索和知识 API/SDK 一致性。
 
 也可以使用 `pnpm test:sdk`、`pnpm typecheck:sdk`、`pnpm check:sdk`、`pnpm test:web`、`pnpm test:api`、`pnpm typecheck:web`、`pnpm typecheck:api`、`pnpm test:worker`、`pnpm lint:worker`、`pnpm typecheck:worker`、`pnpm build:web` 和 `pnpm build:api` 分别检查单个 package 或生成契约。
 
 ## 开源许可证
 
 Cairn 采用 [ISC License](LICENSE) 开源。
-
-飞书来源管理、周期同步与撤权处理的本地验收及真实租户待验事项见[完成验收记录](docs/stage-3b-feishu-completion-acceptance.md)。真实租户检查尚无通过证据。

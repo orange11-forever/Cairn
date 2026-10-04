@@ -15,6 +15,21 @@ import { join } from "node:path";
 const WEB_ROOT = import.meta.dirname;
 const REPOSITORY_ROOT = join(WEB_ROOT, "../..");
 
+// Email proofs are fragment-only, but their document also forbids caching/referral.
+export function registrationPagePrivacy() {
+  function install(server) {
+    server.middlewares.use((request, response, next) => {
+      const path = (request.url ?? "").split("?")[0];
+      if (path === "/register" || path === "/register/verify") {
+        response.setHeader("Cache-Control", "no-store");
+        response.setHeader("Referrer-Policy", "no-referrer");
+      }
+      next();
+    });
+  }
+  return { name: "cairn-registration-page-privacy", configureServer: install, configurePreviewServer: install };
+}
+
 export default defineConfig(({ mode }) => {
   const environment = loadEnv(mode, REPOSITORY_ROOT, "");
   const apiProxyTarget = environment.CAIRN_API_PROXY_TARGET || process.env.CAIRN_API_PROXY_TARGET;
@@ -25,7 +40,7 @@ export default defineConfig(({ mode }) => {
   //
   // 版本说明：装 6.0.4 时 pnpm 报未满足的 peer（要 vite ^8，我们是 7.1.12）。
   // 降到 5.2.0，它的 peer 范围同时含 ^7 和 ^8——现在可用，将来升 vite 8 也不用再动。
-  plugins: [react()],
+  plugins: [react(), registrationPagePrivacy()],
 
   // 配置文件现在和 index.html 一起属于 apps/web，使用绝对路径确保从
   // workspace 根或 package 目录调用 Vite 时都指向同一个入口。

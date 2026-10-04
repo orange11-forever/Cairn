@@ -27,7 +27,7 @@ router = APIRouter(prefix="/api/v1/auth", tags=["identity"])
 SessionDependency = Annotated[Session, Depends(get_db)]
 ERRORS: dict[int | str, dict[str, Any]] = {
     status: {"model": ErrorBody, "description": "授权或身份管理请求失败"}
-    for status in (400, 401, 403, 404, 409, 422, 429, 502, 503)
+    for status in (400, 401, 403, 404, 409, 422, 429, 500, 502, 503)
 }
 
 

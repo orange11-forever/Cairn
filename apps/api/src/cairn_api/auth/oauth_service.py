@@ -1,4 +1,4 @@
-"""Explicit account linking; no email-based lookup or membership provisioning."""
+"""Explicit account linking and isolated first-use OAuth registration."""
 
 import hmac
 import secrets
@@ -7,14 +7,14 @@ from datetime import UTC, datetime, timedelta
 from typing import cast
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from cairn_api.audit.repository import add_audit_log
 from cairn_api.auth.models import AuthSession, User
 from cairn_api.auth.oauth_claims import claim_login, lock_claim, require_login_claim
-from cairn_api.auth.oauth_models import ExternalIdentity, OAuthAttempt
+from cairn_api.auth.oauth_models import BrowserLoginClaim, ExternalIdentity, OAuthAttempt
 from cairn_api.auth.oauth_providers import OAuthProvider, ProviderIdentity
 from cairn_api.auth.oauth_schemas import (
     LinkedIdentitiesResponse,
@@ -28,6 +28,7 @@ from cairn_api.auth.repository import SessionRecord, get_memberships_for_user, g
 from cairn_api.auth.security import derive_csrf_token, digest_token, issue_session_material
 from cairn_api.auth.service import AuthService, LoginResult, RequestAuditContext, identity_context
 from cairn_api.errors import ApiProblem
+from cairn_api.organizations.models import Membership, Organization
 from cairn_api.settings import Settings
 
 ATTEMPT_TTL = 300
@@ -298,7 +299,12 @@ class OAuthService:
                     )
                 )
                 if linked is None:
-                    raise problem("identity_not_linked", "请先用已有账号登录并绑定此第三方身份")
+                    claim.pending_provider = provider
+                    claim.pending_client_id = adapter.client_id
+                    claim.pending_subject = remote.subject
+                    claim.pending_display_name = (remote.display_name or "").strip()[:120] or None
+                    claim.expires_at = datetime.now(UTC) + timedelta(seconds=ATTEMPT_TTL)
+                    return None
                 user = self.session.scalar(
                     select(User).where(User.id == linked.user_id).with_for_update()
                 )
@@ -336,9 +342,21 @@ class OAuthService:
             if (
                 claim is None
                 or claim.claimed_session_digest is not None
-                or claim.pending_identity_id is None
+                or (claim.pending_identity_id is None and claim.pending_provider is None)
             ):
                 raise problem("session_changed", "授权已使用或失效，请重新登录")
+            if claim.pending_identity_id is None:
+                try:
+                    return self._register(claim, login_browser, enabled_clients, audit)
+                except IntegrityError as exc:
+                    # Explicit linking can win after our identity lookup. The
+                    # transaction still rolls back every new registration fact.
+                    constraint = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
+                    if constraint == "uq_external_identities_provider_client_id_subject":
+                        raise problem(
+                            "identity_conflict", "此第三方身份已绑定其他账号，请重新登录"
+                        ) from None
+                    raise
             linked = self.session.get(ExternalIdentity, claim.pending_identity_id)
             if (
                 linked is None
@@ -377,8 +395,82 @@ class OAuthService:
             )
             self._audit(record, "auth.oauth_login_succeeded", linked.provider, audit, linked.id)
             return LoginResult(
-                identity_context(record, user=user, csrf_token=material.csrf_token), material.session_token
+                identity_context(record, user=user, csrf_token=material.csrf_token),
+                material.session_token,
             )
+
+    def _register(
+        self,
+        claim: BrowserLoginClaim,
+        login_browser: str | None,
+        enabled_clients: dict[ProviderName, str],
+        audit: RequestAuditContext,
+    ) -> LoginResult:
+        provider, client_id, subject = (
+            claim.pending_provider,
+            claim.pending_client_id,
+            claim.pending_subject,
+        )
+        if (
+            provider not in ("github", "feishu")
+            or not client_id
+            or not subject
+            or enabled_clients.get(provider) != client_id
+        ):
+            raise problem("provider_not_configured", "此登录方式当前不可用，请重新登录")
+        # Serialize independent browser confirmations for one stable provider identity.
+        self.session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:identity_key, 0))"),
+            {"identity_key": provider + ":" + client_id + ":" + subject},
+        )
+        if (
+            self.session.scalar(
+                select(ExternalIdentity.id).where(
+                    ExternalIdentity.provider == provider,
+                    ExternalIdentity.client_id == client_id,
+                    ExternalIdentity.subject == subject,
+                )
+            )
+            is not None
+        ):
+            raise problem("identity_conflict", "此第三方身份已绑定其他账号，请重新登录")
+        user = User(
+            email=None,
+            normalized_email=None,
+            display_name=claim.pending_display_name or "Cairn 用户",
+            password_hash=None,
+        )
+        organization = Organization(slug="personal-" + secrets.token_hex(12), name="个人空间")
+        self.session.add_all((user, organization))
+        self.session.flush()
+        membership = Membership(org_id=organization.id, user_id=user.id, role="owner")
+        linked = ExternalIdentity(
+            user_id=user.id,
+            provider=provider,
+            client_id=client_id,
+            subject=subject,
+            display_name=claim.pending_display_name,
+        )
+        self.session.add_all((membership, linked))
+        self.session.flush()
+        material = issue_session_material(self.settings.csrf_secret.encode())
+        claim_login(self.session, login_browser, material.session_digest, required=True)
+        auth_session = AuthSession(
+            user_id=user.id,
+            org_id=organization.id,
+            token_digest=material.session_digest,
+            csrf_digest=material.csrf_digest,
+            expires_at=datetime.now(UTC) + timedelta(seconds=self.settings.session_ttl_seconds),
+        )
+        self.session.add(auth_session)
+        self.session.flush()
+        record = SessionRecord(auth_session, user, membership, organization)
+        self._audit(record, "auth.oauth_registered", provider, audit, linked.id)
+        self._audit(record, "auth.oauth_login_succeeded", provider, audit, linked.id)
+        return LoginResult(
+            identity_context(record, user=user, csrf_token=material.csrf_token),
+            material.session_token,
+        )
 
     def identities(self, session_token: str | None) -> LinkedIdentitiesResponse:
         with self.session.begin():

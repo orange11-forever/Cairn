@@ -39,7 +39,7 @@ export function KnowledgeSourcesPage() {
   const role = session.identity.membership.role;
   if (role !== "owner" && role !== "admin") {
     return <section aria-label="飞书来源管理" className="feishu-page">
-      <WorkspaceHeader id="feishu-page-title" title="飞书来源" description="当前账号无法管理项目来源。"
+      <WorkspaceHeader id="feishu-page-title" title="来源与同步" description="当前账号无法管理项目来源。"
         actions={<Link className="task-knowledge-link" to={`/projects/${projectId}/knowledge`}>
           <ArrowLeft aria-hidden="true" size={17} />返回项目知识</Link>} />
       <p role="status" className="feishu-access-message">仅组织管理员可以管理飞书来源。</p>
@@ -194,15 +194,15 @@ function KnowledgeSourcesWorkspace({ organizationId, projectId, csrfToken, sessi
     <p role="status">{active ? "正在确认项目访问权限…" : "页面暂停显示。恢复网络并返回此页面后重新检查权限。"}</p>
   </section>;
   if (project.isError || accessLost || sourceAccessLost || historyAccessLost || syncAccessLost) return <section className="feishu-page" aria-label="飞书来源管理">
-    <WorkspaceHeader id="feishu-page-title" title="飞书来源" description="当前项目的来源管理暂不可用。" actions={back} />
+    <WorkspaceHeader id="feishu-page-title" title="来源与同步" description="当前项目的来源管理暂不可用。" actions={back} />
     <div className="feishu-access-message"><p role="alert">{accessLost || sourceAccessLost || historyAccessLost || syncAccessLost ? "项目来源不可用或你已失去管理权限。" : displayedError(project.error)}</p>
       {!accessLost && !sourceAccessLost && !historyAccessLost && !syncAccessLost && project.error instanceof ApiError && project.error.retryable ?
         <button type="button" onClick={() => void project.refetch()}>重新加载项目</button> : null}</div>
   </section>;
 
   return <section className="feishu-page" aria-label="飞书来源管理">
-    <WorkspaceHeader id="feishu-page-title" title="飞书来源"
-      description={`${project.data.name} · 登记文档、安排同步并查看读取结果。`}
+    <WorkspaceHeader id="feishu-page-title" title="来源与同步"
+      description={`${project.data.name} · 飞书文档来源、同步安排与读取记录。`}
       actions={<>{back}<button type="button" className="primary-btn" onClick={() => {
         setMode("create"); setMobileDetail(true); setConfirmDisable(false); setOperationError(null);
       }}><Plus aria-hidden="true" size={17} />添加来源</button></>} />

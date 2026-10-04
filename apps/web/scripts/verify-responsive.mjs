@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { checkWorkbenchExplorerReachability } from "./verify-workbench-layout.mjs";
 
 const VIEWPORTS = [
   { name: "mobile", width: 360, height: 800 },
@@ -797,7 +798,7 @@ async function checkKnowledgeResourceLayout(
     const rect = panel.getBoundingClientRect();
     const grid = panel.querySelector(".knowledge-resource-detail-grid");
     const download = panel.querySelector(".knowledge-resource-download");
-    const toggle = document.querySelector('.knowledge-resource-select[aria-expanded="true"]');
+    const toggle = document.querySelector('.knowledge-resource-select[aria-pressed="true"]');
     return {
       insideViewport: rect.left >= 0 && rect.right <= innerWidth,
       columnCount: grid === null ? 0 : getComputedStyle(grid).gridTemplateColumns.split(" ").length,
@@ -805,13 +806,13 @@ async function checkKnowledgeResourceLayout(
       downloadTarget: download?.getAttribute("target"),
       downloadRel: download?.getAttribute("rel"),
       controlledId: toggle?.getAttribute("aria-controls"),
-      panelId: panel.id,
-      expanded: toggle?.getAttribute("aria-expanded"),
+      panelId: panel.closest(".knowledge-document")?.id ?? panel.id,
+      expanded: toggle?.getAttribute("aria-pressed"),
     };
   });
   expect(detailLayout.insideViewport, `${viewport.name} 资料详情超出视口`);
   expect(
-    detailLayout.columnCount === (viewport.width === 360 ? 1 : viewport.width === 768 ? 2 : 3),
+    detailLayout.columnCount === (viewport.width <= 600 ? 1 : 2),
     `${viewport.name} 资料详情列数错误：${detailLayout.columnCount}`,
   );
   expect(detailLayout.text.includes("上传文件"), `${viewport.name} 资料详情缺少来源`);
@@ -834,14 +835,13 @@ async function checkKnowledgeResourceLayout(
     path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-resource-detail.png`),
     fullPage: true,
   });
-  if (viewport.width <= 900) await page.getByRole("button", { name: "资料", exact: true }).click();
-  await detailRow.getByRole("button", { name: `收起${KNOWLEDGE_RESOURCE_DETAIL.title}资料详情` }).click();
+  await page.getByRole("button", { name: `关闭${KNOWLEDGE_RESOURCE_DETAIL.title}标签` }).click();
   await detailPanel.waitFor({ state: "detached" });
+  expect(await page.getByRole("tab", { name: KNOWLEDGE_RESOURCE_DETAIL.title, exact: true }).count() === 0,
+    `${viewport.name} 关闭标签后资料控制器仍保留`);
+  if (viewport.width <= 900) await page.getByRole("button", { name: "资料", exact: true }).click();
   const collapsedToggle = detailRow.getByRole("button", { name: `查看${KNOWLEDGE_RESOURCE_DETAIL.title}资料详情` });
-  expect(await collapsedToggle.getAttribute("aria-expanded") === "false",
-    `${viewport.name} 资料详情未收起`);
-  expect(await collapsedToggle.evaluate((button) => document.activeElement === button),
-    `${viewport.name} 收起资料详情后焦点未保留在控件上`);
+  expect(await collapsedToggle.getAttribute("aria-pressed") === "false", `${viewport.name} 关闭标签后资料仍选中`);
   const reopenedRequest = page.waitForRequest((request) =>
     request.method() === "GET" &&
     new URL(request.url()).pathname.endsWith(`/knowledge/resources/${KNOWLEDGE_RESOURCE_DETAIL.id}`)
@@ -853,9 +853,10 @@ async function checkKnowledgeResourceLayout(
   }).waitFor();
 
   await checkKnowledgeUploadLayout(page, expect, screenshotDir, viewport, themeValue);
+  await checkWorkbenchExplorerReachability(page);
 
   if (viewport.width <= 900) await page.getByRole("button", { name: "内容", exact: true }).click();
-  await page.getByRole("button", { name: "搜索", exact: true }).click();
+  await page.getByRole("tab", { name: "搜索", exact: true }).click();
   await page.getByLabel("搜索项目知识").fill("跨区域故障恢复");
   await page.getByRole("button", { name: "搜索项目知识" }).click();
   await page.waitForSelector(".knowledge-search-result-list");
@@ -950,7 +951,7 @@ async function checkKnowledgeResourceLayout(
     fullPage: true,
   });
 
-  await page.getByRole("button", { name: "搜索", exact: true }).click();
+  await page.getByRole("tab", { name: "搜索", exact: true }).click();
   await page.getByLabel("搜索项目知识").fill(KNOWLEDGE_SEARCH_ERROR_QUERY);
   await page.getByRole("button", { name: "搜索项目知识" }).click();
   await page.waitForSelector(".knowledge-search-error");
@@ -1131,6 +1132,7 @@ async function checkKnowledgeResourceLayout(
     await deleteNotice.elementHandle(),
   );
   expect(await failedRow.count() === 0, `${viewport.name} 删除成功后资料仍在列表中`);
+  await page.getByRole("tab", { name: "搜索", exact: true }).click();
   expect(await page.getByLabel("搜索项目知识").inputValue() === "",
     `${viewport.name} 删除成功后搜索输入未清空`);
   expect(operationState.searchRequests === searchRequestsBeforeDelete,
@@ -1145,7 +1147,7 @@ async function checkKnowledgeResourceLayout(
     path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-resource-delete.png`),
     fullPage: true,
   });
-  await page.getByRole("link", { name: "返回项目" }).click();
+  await page.getByRole("link", { name: "Cairn", exact: true }).click();
   await page.waitForSelector(".projects-page");
 }
 
@@ -1911,6 +1913,14 @@ export async function checkResponsiveFoundation({
     },
   );
   await page.route(
+    `**/api/v1/projects/${KNOWLEDGE_PROJECT_ID}/knowledge/resources/*/content?*`,
+    async (route) => {
+      expect(route.request().method() === "GET", "二进制正文能力检查必须使用 GET");
+      await route.fulfill({ status: 415, headers: { "X-Request-ID": "trace-binary-preview" },
+        json: { message: "该格式暂不支持全文预览，请下载原文件", code: "preview_unsupported", traceId: "trace-binary-preview" } });
+    },
+  );
+  await page.route(
     `**/api/v1/projects/${KNOWLEDGE_PROJECT_ID}/knowledge/resources/*/chunks/*`,
     async (route) => {
       const request = route.request();
@@ -2047,7 +2057,7 @@ export async function checkResponsiveFoundation({
         knowledgeOperationState,
       );
 
-      if (viewport.width <= 900) {
+      if (viewport.width <= 600) {
         expect(projectsLayout.navPosition === "fixed", "紧凑导航必须固定在视口底部");
         expect(
           projectsLayout.navBottom !== null && Math.abs(projectsLayout.navBottom - projectsLayout.viewportHeight) < 1,

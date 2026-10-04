@@ -14,7 +14,7 @@ class UserResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     id: UUID
-    email: str
+    email: str | None
     display_name: str | None = Field(serialization_alias="displayName")
 
 

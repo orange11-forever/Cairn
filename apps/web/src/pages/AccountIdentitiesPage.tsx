@@ -38,7 +38,7 @@ export function AccountIdentitiesPage() {
   return <section className="identity-page" aria-labelledby="identity-title">
     <h1 id="identity-title">登录方式</h1>
     <p>把飞书和 GitHub 绑定到当前 Cairn 账号，使用任一种方式访问你的知识文档。</p>
-    <p className="identity-account">当前账号：{session.user.email}</p>
+    <p className="identity-account">当前账号：{session.user.displayName ?? session.user.email ?? "Cairn 用户"} · {session.user.email ?? "未提供邮箱"}</p>
     <OAuthNotice outcome={params.get("oauth")} />
     {identities.isPending || providers.isPending ? <p role="status">正在读取登录方式…</p> : null}
     {identities.isError || providers.isError ? <div>

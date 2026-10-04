@@ -75,7 +75,7 @@ def cleanup_identity_rows(
     with engine.begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE TABLE chunk_embeddings, knowledge_chunks, "
+                "TRUNCATE TABLE pending_registrations, registration_rate_limits, chunk_embeddings, knowledge_chunks, "
                 "ingestion_job_attempts, ingestion_jobs, upload_sessions, "
                 "ingestion_items, knowledge_resource_versions, knowledge_resources, "
                 "ingestion_batches, search_rate_limit_buckets, "

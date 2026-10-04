@@ -38,13 +38,26 @@ class ExternalIdentity(Base):
 
 class BrowserLoginClaim(Base):
     __tablename__ = "browser_login_claims"
-    __table_args__ = (Index("ix_browser_login_claims_expires_at", "expires_at"),)
+    __table_args__ = (
+        Index("ix_browser_login_claims_expires_at", "expires_at"),
+        CheckConstraint(
+            "(pending_provider IS NULL AND pending_client_id IS NULL AND pending_subject IS NULL) "
+            "OR (pending_provider IS NOT NULL AND pending_provider IN ('github', 'feishu') "
+            "AND pending_client_id IS NOT NULL AND pending_subject IS NOT NULL "
+            "AND pending_identity_id IS NULL)",
+            name="pending_registration_complete",
+        ),
+    )
 
     token_digest: Mapped[bytes] = mapped_column(LargeBinary(32), primary_key=True)
     claimed_session_digest: Mapped[bytes | None] = mapped_column(LargeBinary(32), nullable=True)
     pending_identity_id: Mapped[UUID | None] = mapped_column(
         PostgreSQLUUID(as_uuid=True), nullable=True
     )
+    pending_provider: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    pending_client_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    pending_subject: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    pending_display_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 

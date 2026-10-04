@@ -27,6 +27,24 @@ import { cleanup } from "@testing-library/react";
 // aria-describedby 的整个过程（多个 id、空格分隔、拼接顺序）。
 import "@testing-library/jest-dom/vitest";
 
+// JSDOM has scroll offsets but no Element.scrollTo or layout. Preserve the
+// browser method's offset side effect here; real viewport clipping is checked
+// in Chromium and the citation geometry regression supplies independent boxes.
+if (HTMLElement.prototype.scrollTo === undefined) {
+  Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+    configurable: true,
+    value: function (this: HTMLElement, options?: ScrollToOptions | number, y?: number) {
+      if (typeof options === "number") {
+        this.scrollLeft = options;
+        this.scrollTop = y ?? 0;
+      } else {
+        if (options?.left !== undefined) this.scrollLeft = options.left;
+        if (options?.top !== undefined) this.scrollTop = options.top;
+      }
+    },
+  });
+}
+
 // 每个测试后卸载渲染的组件。
 //
 // 不做的后果：上一个测试的 DOM 留在 document.body 里，下一个测试

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from cairn_api.auth.models import AuthRateLimit, AuthSession
 from cairn_api.auth.rate_limit import RateLimitPolicy
 from cairn_api.auth.rate_limit_repository import utcnow
+from cairn_api.auth.registration_models import PendingRegistration, RegistrationRateLimit
 from cairn_api.db.session import Database
 from cairn_api.settings import Settings
 
@@ -22,6 +23,8 @@ from cairn_api.settings import Settings
 class CleanupCounts:
     sessions_deleted: int = 0
     rate_limits_deleted: int = 0
+    registrations_deleted: int = 0
+    registration_rate_limits_deleted: int = 0
 
 
 def _delete_expired_session_batch(
@@ -80,7 +83,8 @@ def _delete_stale_rate_limit_batch(
             .cte("stale_auth_rate_limits")
         )
         deleted_rows = session.execute(
-            delete(AuthRateLimit).where(
+            delete(AuthRateLimit)
+            .where(
                 tuple_(AuthRateLimit.bucket_type, AuthRateLimit.key_digest).in_(
                     select(stale_keys.c.bucket_type, stale_keys.c.key_digest)
                 )
@@ -88,6 +92,63 @@ def _delete_stale_rate_limit_batch(
             .returning(AuthRateLimit.bucket_type, AuthRateLimit.key_digest)
         ).all()
         return len(deleted_rows)
+
+
+def _delete_registration_batch(
+    session_factory: sessionmaker[Session],
+    *,
+    now: datetime,
+    batch_size: int,
+) -> int:
+    with session_factory() as session, session.begin():
+        stale = (
+            select(PendingRegistration.id)
+            .where(
+                or_(
+                    PendingRegistration.expires_at <= now,
+                    PendingRegistration.consumed_at.is_not(None),
+                )
+            )
+            .order_by(PendingRegistration.id)
+            .limit(batch_size)
+            .with_for_update(skip_locked=True)
+            .cte("stale_registrations")
+        )
+        return len(
+            session.execute(
+                delete(PendingRegistration)
+                .where(PendingRegistration.id.in_(select(stale.c.id)))
+                .returning(PendingRegistration.id)
+            ).all()
+        )
+
+
+def _delete_registration_limit_batch(
+    session_factory: sessionmaker[Session],
+    *,
+    now: datetime,
+    batch_size: int,
+) -> int:
+    with session_factory() as session, session.begin():
+        stale = (
+            select(RegistrationRateLimit.purpose, RegistrationRateLimit.key_digest)
+            .where(RegistrationRateLimit.expires_at <= now)
+            .order_by(RegistrationRateLimit.purpose, RegistrationRateLimit.key_digest)
+            .limit(batch_size)
+            .with_for_update(skip_locked=True)
+            .cte("stale_registration_limits")
+        )
+        return len(
+            session.execute(
+                delete(RegistrationRateLimit)
+                .where(
+                    tuple_(RegistrationRateLimit.purpose, RegistrationRateLimit.key_digest).in_(
+                        select(stale.c.purpose, stale.c.key_digest)
+                    )
+                )
+                .returning(RegistrationRateLimit.purpose, RegistrationRateLimit.key_digest)
+            ).all()
+        )
 
 
 def _delete_in_batches(
@@ -130,7 +191,21 @@ def cleanup_auth_state(
         ),
         batch_size=batch_size,
     )
+    registrations_deleted = _delete_in_batches(
+        lambda: _delete_registration_batch(
+            session_factory, now=current_time, batch_size=batch_size
+        ),
+        batch_size=batch_size,
+    )
+    registration_rate_limits_deleted = _delete_in_batches(
+        lambda: _delete_registration_limit_batch(
+            session_factory, now=current_time, batch_size=batch_size
+        ),
+        batch_size=batch_size,
+    )
     return CleanupCounts(
+        registrations_deleted=registrations_deleted,
+        registration_rate_limits_deleted=registration_rate_limits_deleted,
         sessions_deleted=sessions_deleted,
         rate_limits_deleted=rate_limits_deleted,
     )
@@ -151,6 +226,8 @@ def run_auth_cleanup() -> int:
     print(
         "auth-cleanup complete: "
         f"sessions_deleted={counts.sessions_deleted} "
-        f"rate_limits_deleted={counts.rate_limits_deleted}"
+        f"rate_limits_deleted={counts.rate_limits_deleted} "
+        f"registrations_deleted={counts.registrations_deleted} "
+        f"registration_rate_limits_deleted={counts.registration_rate_limits_deleted}"
     )
     return 0

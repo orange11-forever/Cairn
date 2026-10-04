@@ -159,9 +159,15 @@ test.each(["索引", "😀😀", "知".repeat(501)])(
     vi.stubGlobal("fetch", fetchSpy);
     const user = userEvent.setup();
     renderKnowledgeSearch();
-    await user.type(screen.getByLabelText("搜索项目知识"), query);
+    const input = screen.getByLabelText("搜索项目知识");
+    // Exercise a complete pasted query; 501 serial typing timers test the
+    // runner's scheduling and can continue into the next test after timeout.
+    await user.click(input);
+    await user.paste(query);
+    expect(input).toHaveValue(query);
     await user.click(screen.getByRole("button", { name: "搜索项目知识" }));
     expect(screen.getByRole("alert")).toHaveAttribute("id", "knowledge-search-error");
+    expect(input).toHaveAttribute("aria-invalid", "true");
     expect(screen.getByLabelText("搜索项目知识")).toHaveAttribute(
       "aria-describedby",
       expect.stringContaining("knowledge-search-error"),

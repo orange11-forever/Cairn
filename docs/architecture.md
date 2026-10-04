@@ -11,9 +11,11 @@
 - PostgreSQL 16/pgvector 与 S3 兼容 MinIO 当前已使用：PostgreSQL 保存业务事实、持久化摄取任务、知识资源、切片和向量，MinIO 保存原始对象与 ZIP 展开产物；生成的 TypeScript SDK 对齐 OpenAPI。Redis 仍是规划中基础设施。
 - Stage 3A Task 1–11 的独立 Worker 已交付，用租约和心跳处理受限归档展开、文档解析、结构化切分、OpenAI 兼容 1024 维 Embedding 与原子索引发布。
 - 项目知识单轮回答复用混合搜索与共享限流，在模型调用前后核验全部证据及 `read` 权限，并返回服务器分配的 `S1`–`S6` 引用。真实部署通过可选 `ANSWER_*` 配置接入 Chat Completions、Responses、Claude Messages 或 Gemini GenerateContent 的结构化 JSON 输出；缺失配置时其余 API 保持可用。流式、多轮、历史持久化和网页检索尚未实现；飞书手动同步通过独立来源任务接入知识链路。
-- 全文格式化预览、流式/多轮问答与周期性详情轮询仍在后续任务。
+- Markdown/TXT/飞书文本快照已接入全文预览与可信引用行号定位；流式/多轮问答与周期性详情轮询仍在后续任务。
 
-Task 18A Web 资源详情已交付：资源行按需内联展开，通过生成 SDK、Cookie credentials 和真实 `GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}` 读取详情。收起会取消请求并销毁局部详情，项目切换或会话代际变化同样取消并销毁旧状态；重新展开和手动刷新都会重新授权，请求中及离线等待期间隐藏旧详情和下载，并禁用自动重连刷新，不进行周期轮询。详情展示安全元数据与处理状态，并把已知失败码映射为安全中文错误指引；仅 `latestVersion.status=ready` 时提供指向 Identity API 的新标签页下载，Web 不读取或缓存最终预签名 URL。详情 `404` 会重新检查当前资源列表，并只把当前搜索标记 stale，不自动重跑搜索；资源列表仍为 `200` 时保留工作区，列表 `404` 才隐藏工作区。
+Task 18A Web 资源详情已交付：资源行在工作台中央打开资料标签，通过生成 SDK、Cookie credentials 和真实 `GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}` 读取详情。切换或关闭活动资料标签会取消请求并销毁局部详情，项目切换或会话代际变化同样取消并销毁旧状态；重新打开和手动刷新都会重新授权，请求中及离线等待期间隐藏旧详情和下载，并禁用自动重连刷新，不进行周期轮询。详情展示安全元数据与处理状态，并把已知失败码映射为安全中文错误指引；仅 `latestVersion.status=ready` 时提供指向 Identity API 的新标签页下载，Web 不读取或缓存最终预签名 URL。详情 `404` 会重新检查当前资源列表，并只把当前搜索标记 stale，不自动重跑搜索；资源列表仍为 `200` 时保留工作区，列表 `404` 才隐藏工作区。
+
+项目知识界面采用连续 IDE 工作台：真实项目选择器、资料栏、中央文件/搜索/引用标签、独立滚动的单轮助手与固定输入区。飞书来源位于独立的 `/projects/:projectId/knowledge/sources` 页面。标签只保留必要标识和标题，只有活动阅读器保留正文；旧活动正文、详情与引用读取取消并销毁。全文通过 `GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}/content` 获取当前已发布 ready 版本，可用 `version_id`/`chunk_id` 固定引用。服务在对象 I/O 前后刷新成员角色、ACL、来源和资源版本，事务外分块读取并验证原始大小/SHA256，仅支持严格 UTF-8 Markdown/TXT，最多 1 MiB/20,000 行，超限不截断。生成 SDK 与前端分别验证正文/行数/资源版本引用一致性；Markdown 使用成熟 AST 的源位置渲染，不执行 raw HTML、危险链接或远程媒体。精确唯一匹配显示引用原文，其他情况明确显示可信区块范围。二进制保留真实详情、下载及有界上下文。见[工作台](workbench.md)与[预览契约](2026-10-04-document-preview-design.md)。
 
 Task 18B 资源操作已交付：仅最新资源列表声明 `canWrite` 且 `latestVersion.status=failed`、服务端返回 `latestVersion.retryable=true` 时允许重试；重试使用 Cookie CSRF 和请求中的精确 `resource_id`/`version_id`，严格接受 `200`，且返回体 `id` 与请求 `resource_id`、`latestVersion.id` 与请求 `version_id` 匹配。软删除使用列出当前资源名的行内确认，取消不发送请求，确认严格接受 `204` 空响应。变更不自动重试或离线回放，取消只取消浏览器操作且不承诺回滚；删除先取消当前项目相关读取，再清理列表、详情、引用缓存并重置当前项目搜索而不自动发起 `POST`，保留其他项目与上传跟踪。`401 session_invalid` 由 MutationCache 清理会话，已取消操作的迟到 `401` 不会使新会话失效；`404` 重检列表并按列表 `200`/`404` 决定局部资源或工作区隐藏，`409` 先刷新详情，契约错误须手动详情恢复后才重新提供操作。
 

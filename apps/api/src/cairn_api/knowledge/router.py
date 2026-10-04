@@ -13,10 +13,13 @@ from cairn_api.auth.dependencies import (
     get_request_settings,
 )
 from cairn_api.auth.service import RequestAuditContext
+from cairn_api.db.errors import DATABASE_UNAVAILABLE_ERRORS
 from cairn_api.db.session import get_db
-from cairn_api.errors import ErrorBody
+from cairn_api.errors import ApiProblem, ErrorBody
 from cairn_api.knowledge.answer_schemas import KnowledgeAnswerRequest, KnowledgeAnswerResponse
 from cairn_api.knowledge.answer_service import KnowledgeAnswerService
+from cairn_api.knowledge.content_schemas import KnowledgeContent
+from cairn_api.knowledge.content_service import KnowledgeContentService
 from cairn_api.knowledge.dependencies import (
     AnswerProviderDependency,
     EmbeddingClientDependency,
@@ -438,6 +441,39 @@ def get_knowledge_chunk_context(
         resource_id=resource_id,
         chunk_id=chunk_id,
     )
+
+
+@router.get(
+    "/projects/{project_id}/knowledge/resources/{resource_id}/content",
+    response_model=KnowledgeContent,
+    description="读取当前已发布 UTF-8 Markdown/TXT 全文。chunk_id 必须同时提供 version_id；引用固定版本须为当前 ready 版本。最大原始 1 MiB、20,000 行，超限不截断。",
+    responses={
+        200: {"description": "经过重新授权的完整正文与引用位置", "headers": REQUEST_ID_HEADER},
+        **RESOURCE_READ_ERRORS,
+        409: _error("固定版本或读取期间资料发生变化"),
+        413: _error("超过全文预览限制"),
+        415: _error("格式或 UTF-8 编码不支持全文预览"),
+    },
+)
+def get_knowledge_content(
+    project_id: UUID,
+    resource_id: UUID,
+    identity: CurrentIdentity,
+    session: SessionDependency,
+    object_store: ObjectStoreDependency,
+    version_id: Annotated[UUID | None, Query(description="固定当前已发布版本；chunk_id 存在时必填")] = None,
+    chunk_id: Annotated[UUID | None, Query(description="属于固定资源版本的引用片段")] = None,
+) -> KnowledgeContent:
+    try:
+        return KnowledgeContentService(session, object_store).get_content(
+            identity=identity, project_id=project_id, resource_id=resource_id,
+            version_id=version_id, chunk_id=chunk_id,
+        )
+    except (ApiProblem, *DATABASE_UNAVAILABLE_ERRORS):
+        raise
+    except Exception:  # noqa: BLE001 — unknown provider errors must not expose storage details
+        # Never log arbitrary object-provider exception details or payloads.
+        raise ApiProblem(status_code=500, code="internal_error", message="服务器内部错误") from None
 
 
 __all__ = ["router"]

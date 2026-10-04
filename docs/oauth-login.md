@@ -1,10 +1,12 @@
-# GitHub / 飞书登录与身份绑定
+# GitHub / 飞书注册、登录与身份绑定
 
 ## 本地功能与验收边界
 
-默认不启用任何真实 provider。适配器测试使用 `httpx.MockTransport`，API 回归使用 mock provider 与独立临时 PostgreSQL；这不代表真实 GitHub / 飞书登录已验收。
+默认不启用任何真实 provider。适配器测试使用 `httpx.MockTransport`，API 回归使用 mock provider 与独立临时 PostgreSQL。2026-10-03 已另外完成 GitHub / 飞书首次注册、显式身份绑定和再次登录的真实授权验收；部署者仍需配置自己的应用与回调地址，自动化门禁不使用真实凭据。
 
-用户先通过已有 Cairn 登录方式登录，再在账号菜单的「登录方式」页面绑定 GitHub 或飞书。绑定要求当前会话、同源请求、CSRF 和十分钟内的认证；用户过期后应退出并重新登录。以后两个已绑定的身份都进入同一 Cairn 用户及其唯一组织成员身份。第三方回调只记录待确认的已验证身份，不设置会话 cookie；返回页面点击「完成登录」后，由浏览器锁保护的一次性 POST 确认发放会话。首次出现的外部身份不会自动创建用户或组织，不会按邮箱、昵称、GitHub login 或飞书 union_id 自动合并账号。GitHub 使用数值用户 ID，飞书使用当前应用的 open_id，唯一键包含 provider 与 client ID。
+首次 GitHub／飞书授权在第三方回调中只保存短期已验证身份，不创建账号、组织或会话。用户返回 Cairn 并完成最终确认后，首次身份在同一事务中创建独立 User、个人 Organization、owner Membership、ExternalIdentity 与会话；没有邮箱时 email 和 normalized_email 为 null，不制造邮箱地址。新账号不能读取已有组织或项目，也不会按邮箱、昵称、GitHub login、飞书租户或 union_id 自动合并或加入已有组织。GitHub 使用数值用户 ID，飞书使用当前应用的 open_id，唯一键包含 provider 与 client ID。
+
+已有 Cairn 用户可先登录，再在账号菜单的「登录方式」页面显式绑定另一身份。绑定要求当前会话、同源请求、CSRF 和十分钟内的认证；认证过期后应退出并重新登录。以后两种已绑定身份都进入同一 Cairn 用户及其唯一组织成员身份。回调不设置会话 cookie；最终确认由浏览器锁和一次性服务端 claim 保护。已有绑定在回调后被解绑或用户被禁用，最终确认拒绝，不创建替代账号。
 
 解绑要求明确确认、CSRF 和近期认证。没有密码时，只有当前已启用、client ID 相同的另一绑定才算可用备选；不能删除最后一种登录方式。服务端行锁与唯一约束处理并发绑定、解绑和登录。第三方令牌只用于一次身份交换，不落库、不交给浏览器，也不用于文档或仓库访问。
 
@@ -12,10 +14,10 @@
 
 1. 确定浏览器入口 `APP_URL`，例如本地 `http://localhost:<Web端口>`，生产必须使用 HTTPS。它只能是 origin，不能含路径、查询参数或凭据。浏览器入口上的 `/api` 必须代理到 API。开发可设置 `CAIRN_API_PROXY_TARGET=http://localhost:<API端口>`；生产由现有反向代理配置。浏览器端 `VITE_IDENTITY_API_URL` 应填写该入口 origin，确保 cookies 与回调使用同一主机。
 2. 在 GitHub Developer settings 创建 **OAuth App**，设置 Homepage URL 为 `APP_URL`，Authorization callback URL 精确填写 `${APP_URL}/api/v1/auth/oauth/github/callback`。客户端使用 S256 PKCE；代码不请求仓库、邮箱、离线等额外 scope。勿使用已有授予私有仓库访问的应用来扩大登录授权。
-3. 在飞书开放平台准备独立的企业自建网页应用，按当前控制台配置登录授权、适用用户和重定向 URL，精确填写 `${APP_URL}/api/v1/auth/oauth/feishu/callback`。仅配置获取用户基本身份所必需的权限，确认可取得 open_id；本功能不需要文档、知识库、邮箱或离线权限。应用发布及组织管理员允许访问的步骤由用户按本租户规则完成。本阶段没有替用户创建应用或授予权限。
+3. 先检查已有飞书自建应用的网页登录能力、安全设置和适用用户；能支持当前授权码流程时可复用，无需重复建应用。需要添加应用能力、扩大权限或新建应用时由用户单独确认。按当前控制台配置重定向 URL，精确填写 `${APP_URL}/api/v1/auth/oauth/feishu/callback`。仅配置获取用户基本身份所必需的权限，确认可取得 open_id；本功能不需要文档、知识库、邮箱或离线权限。应用发布及组织管理员允许访问的步骤由用户按本租户规则完成。本阶段没有替用户创建应用或授予权限。
 4. 只在 API 进程的本地受保护环境中注入 `CAIRN_OAUTH_GITHUB_CLIENT_ID` / `CAIRN_OAUTH_GITHUB_CLIENT_SECRET` 和（或）`CAIRN_OAUTH_FEISHU_CLIENT_ID` / `CAIRN_OAUTH_FEISHU_CLIENT_SECRET`。每组必须成对、非空。不要提交 secret，也不要添加 `VITE_` 前缀。飞书登录变量与文档 Worker 的 `CAIRN_FEISHU_CREDENTIALS_JSON` 完全独立。
-5. 由整合任务先备份目标数据库，执行迁移 `0010_oauth_identities`，再重启目标 API。缺少配置时 provider 显示未启用。当前任务未修改原数据卷或原服务。
-6. 用已有密码登录 Cairn，依次绑定两种外部身份。退出后分别完成真实提供方授权，核实 Cairn 用户和组织 ID 相同；同时检查拒绝授权、已被其他账号绑定、已过期、重复回调和退出中途回调的结果。真实第三方授权验收仍须用户配置后执行。
+5. 首次验收使用全新隔离数据库并完成最新迁移，当前为 `0012_native_registration`。升级已有部署时按既定备份和迁移流程处理；缺少配置时 provider 显示未启用。
+6. 用未绑定身份分别验收两家首次注册，确认产生独立个人组织、没有邮箱时保持为空、不能访问既有项目。再从该账号绑定第二身份，退出后分别授权登录，核实 Cairn 用户和组织 ID 相同。已有密码账号绑定、拒绝授权、已被其他账号绑定、过期、重复回调和退出中途回调也须检查。更换应用或回调配置后，须针对该部署重新验证。
 
 ## 登录协议与浏览器要求
 
@@ -27,8 +29,8 @@
 
 ## 整合注意事项
 
-- 本分支基于 `6a80fe8`，另一个飞书验收任务完成后由父会话整合；本任务不合并 main、推送或部署。
-- 迁移在 `0009_feishu_sync_lifecycle` 之后。`users.password_hash` 可为空。已有用户数据保持不变。若存在外部身份或无密码用户，downgrade 拒绝销毁认证方式，需先由管理员完成账号恢复方案。
+- OAuth、原生注册、项目工作台和生成 SDK 必须作为完整版本部署；服务启动前应完成数据库迁移。
+- OAuth 基线迁移为 `0010_oauth_identities`，首次注册迁移为 `0011_oauth_registration`。`users.email`、`normalized_email`、`password_hash` 可为空，已有用户数据和标准化邮箱唯一约束保持不变。首次注册迁移降级遇到无邮箱用户时拒绝；OAuth 基线降级遇到外部身份或无密码用户也拒绝，需先由管理员完成账号恢复方案。
 - `packages/sdk` 的 OpenAPI、类型及运行时 schema 必须和 API 一起整合；账号菜单、登录页、会话门控与 `/account/identities` 路由也必须同时带入。
 - API 全量测试使用独立临时库。现有 PostgreSQL 集成清理 fixture 增加 browser_login_claims，避免新表跨测试遗留。
 - 本轮不包含 RAG streaming、多轮会话或 long memory。

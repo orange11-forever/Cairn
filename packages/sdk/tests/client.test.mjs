@@ -3,6 +3,23 @@ import test from "node:test";
 
 import { createCairnClient, matchesComponentSchema } from "../src/index.ts";
 
+test("generated full preview schema requires aliases, complete body and safe highlight shape", () => {
+  const valid = { resourceId: "00000000-0000-4000-8000-000000005001", resourceVersionId: "00000000-0000-4000-8000-000000006001",
+    title: "Manual", mediaType: "text/plain", format: "text", content: "first\nEOF", lineCount: 2, highlight: null };
+  assert.equal(matchesComponentSchema("KnowledgeContent", valid), true);
+  for (const field of Object.keys(valid)) {
+    const missing = { ...valid }; delete missing[field];
+    assert.equal(matchesComponentSchema("KnowledgeContent", missing), false, field);
+  }
+  assert.equal(matchesComponentSchema("KnowledgeContent", { ...valid, resource_id: valid.resourceId }), false);
+  assert.equal(matchesComponentSchema("KnowledgeContent", { ...valid, lineCount: 20001 }), false);
+  assert.equal(matchesComponentSchema("KnowledgeContent", { ...valid, format: "html" }), false);
+  const highlight = { chunkId: "00000000-0000-4000-8000-000000007001", lineStart: 1, lineEnd: 1, text: "first", matchType: "exact" };
+  assert.equal(matchesComponentSchema("KnowledgeContent", { ...valid, highlight }), true);
+  assert.equal(matchesComponentSchema("KnowledgeContent", { ...valid, highlight: { ...highlight, lineStart: 0 } }), false);
+  assert.equal(matchesComponentSchema("KnowledgeContent", { ...valid, highlight: { ...highlight, matchType: "guess" } }), false);
+});
+
 test("SDK uses credentialed fetch and the configured base URL", async () => {
   const calls = [];
   const identityFixture = {
@@ -50,6 +67,7 @@ test("SDK validates identity responses from generated OpenAPI component schemas"
   };
 
   assert.equal(matchesComponentSchema("IdentityContextResponse", valid), true);
+  assert.equal(matchesComponentSchema("IdentityContextResponse", { ...valid, user: { ...valid.user, email: null } }), true);
   assert.equal(matchesComponentSchema("IdentityContextResponse", { ...valid, user: null }), false);
   assert.equal(
     matchesComponentSchema("IdentityContextResponse", {
@@ -71,6 +89,7 @@ test("SDK validates OpenAPI date-time formats before consumers parse them", () =
   };
 
   assert.equal(matchesComponentSchema("MembershipDetailResponse", membership), true);
+  assert.equal(matchesComponentSchema("MembershipDetailResponse", { ...membership, email: null }), true);
   assert.equal(
     matchesComponentSchema("MembershipDetailResponse", {
       ...membership,
@@ -390,4 +409,32 @@ test("SDK queues and polls sync with exact routes, credentials, CSRF and empty J
   assert.deepEqual(await calls[0].json(), {});
   assert.equal(calls[1].body, null);
   assert.ok(calls.every((request) => request.credentials === "include"));
+});
+
+test("registration SDK preserves exact credentialed requests and validates public proof contracts", async () => {
+  const calls = [];
+  const client = createCairnClient({ baseUrl: "https://api.cairn.test", fetch: async request => {
+    calls.push(request);
+    return Response.json(request.method === "GET" ? { enabled: true } : { message: "accepted", registrationReceipt: "receipt", resendAfterSeconds: 60 }, { status: request.method === "GET" ? 200 : 202 });
+  } });
+  await client.GET("/api/v1/auth/registration");
+  await client.POST("/api/v1/auth/register", { body: { email: "new@example.com", password: "  original-password-2026  " } });
+  await client.POST("/api/v1/auth/register/resend", { body: { email: "new@example.com", password: "  original-password-2026  ", registrationReceipt: "receipt" } });
+  await client.POST("/api/v1/auth/register/verify", { body: { token: "token", password: "  original-password-2026  " } });
+  assert.deepEqual(calls.map(request => new URL(request.url).pathname), ["/api/v1/auth/registration", "/api/v1/auth/register", "/api/v1/auth/register/resend", "/api/v1/auth/register/verify"]);
+  assert.ok(calls.every(request => request.credentials === "include"));
+  assert.equal((await calls[1].json()).password, "  original-password-2026  ");
+  assert.equal(matchesComponentSchema("RegistrationAvailability", { enabled: true }), true);
+  assert.equal(matchesComponentSchema("RegistrationAvailability", {}), false);
+  const accepted = { message: "accepted", registrationReceipt: "receipt", resendAfterSeconds: 60 };
+  assert.equal(matchesComponentSchema("RegistrationAccepted", accepted), true);
+  for (const key of Object.keys(accepted)) {
+    const missing = { ...accepted }; delete missing[key];
+    assert.equal(matchesComponentSchema("RegistrationAccepted", missing), false, key);
+  }
+  assert.equal(matchesComponentSchema("RegistrationVerified", { message: "verified" }), true);
+  for (const token of ["☃", "token\n", "x".repeat(129)]) {
+    assert.equal(matchesComponentSchema("RegistrationVerifyRequest", { token, password: "original-password" }), false);
+  }
+  assert.equal(matchesComponentSchema("RegistrationVerifyRequest", { token: "safe-token_1", password: "original-password" }), true);
 });

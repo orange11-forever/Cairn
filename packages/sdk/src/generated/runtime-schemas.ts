@@ -1246,6 +1246,110 @@ export const componentSchemas = {
     "title": "KnowledgeCitation",
     "type": "object"
   },
+  "KnowledgeContent": {
+    "additionalProperties": false,
+    "properties": {
+      "content": {
+        "title": "Content",
+        "type": "string"
+      },
+      "format": {
+        "enum": [
+          "markdown",
+          "text"
+        ],
+        "title": "Format",
+        "type": "string"
+      },
+      "highlight": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/KnowledgeContentHighlight"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "lineCount": {
+        "maximum": 20000,
+        "minimum": 1,
+        "title": "Linecount",
+        "type": "integer"
+      },
+      "mediaType": {
+        "title": "Mediatype",
+        "type": "string"
+      },
+      "resourceId": {
+        "format": "uuid",
+        "title": "Resourceid",
+        "type": "string"
+      },
+      "resourceVersionId": {
+        "format": "uuid",
+        "title": "Resourceversionid",
+        "type": "string"
+      },
+      "title": {
+        "title": "Title",
+        "type": "string"
+      }
+    },
+    "required": [
+      "resourceId",
+      "resourceVersionId",
+      "title",
+      "mediaType",
+      "format",
+      "content",
+      "lineCount",
+      "highlight"
+    ],
+    "title": "KnowledgeContent",
+    "type": "object"
+  },
+  "KnowledgeContentHighlight": {
+    "additionalProperties": false,
+    "properties": {
+      "chunkId": {
+        "format": "uuid",
+        "title": "Chunkid",
+        "type": "string"
+      },
+      "lineEnd": {
+        "minimum": 1,
+        "title": "Lineend",
+        "type": "integer"
+      },
+      "lineStart": {
+        "minimum": 1,
+        "title": "Linestart",
+        "type": "integer"
+      },
+      "matchType": {
+        "enum": [
+          "exact",
+          "range"
+        ],
+        "title": "Matchtype",
+        "type": "string"
+      },
+      "text": {
+        "title": "Text",
+        "type": "string"
+      }
+    },
+    "required": [
+      "chunkId",
+      "lineStart",
+      "lineEnd",
+      "text",
+      "matchType"
+    ],
+    "title": "KnowledgeContentHighlight",
+    "type": "object"
+  },
   "KnowledgeResourcePage": {
     "properties": {
       "capabilities": {
@@ -1922,9 +2026,16 @@ export const componentSchemas = {
         "type": "string"
       },
       "email": {
-        "format": "email",
-        "title": "Email",
-        "type": "string"
+        "anyOf": [
+          {
+            "format": "email",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Email"
       },
       "id": {
         "format": "uuid",
@@ -2286,6 +2397,145 @@ export const componentSchemas = {
       }
     },
     "title": "ReadyResponse",
+    "type": "object"
+  },
+  "RegistrationAccepted": {
+    "properties": {
+      "message": {
+        "default": "如可为此邮箱创建账号，请查收验证邮件；已有账号请直接登录。",
+        "title": "Message",
+        "type": "string"
+      },
+      "registrationReceipt": {
+        "title": "Registrationreceipt",
+        "type": "string"
+      },
+      "resendAfterSeconds": {
+        "default": 60,
+        "title": "Resendafterseconds",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "message",
+      "registrationReceipt",
+      "resendAfterSeconds"
+    ],
+    "title": "RegistrationAccepted",
+    "type": "object"
+  },
+  "RegistrationAvailability": {
+    "properties": {
+      "enabled": {
+        "title": "Enabled",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "enabled"
+    ],
+    "title": "RegistrationAvailability",
+    "type": "object"
+  },
+  "RegistrationRequest": {
+    "properties": {
+      "displayName": {
+        "anyOf": [
+          {
+            "maxLength": 120,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Displayname"
+      },
+      "email": {
+        "format": "email",
+        "maxLength": 320,
+        "title": "Email",
+        "type": "string"
+      },
+      "password": {
+        "maxLength": 128,
+        "minLength": 12,
+        "title": "Password",
+        "type": "string"
+      }
+    },
+    "required": [
+      "email",
+      "password"
+    ],
+    "title": "RegistrationRequest",
+    "type": "object"
+  },
+  "RegistrationResendRequest": {
+    "properties": {
+      "email": {
+        "format": "email",
+        "maxLength": 320,
+        "title": "Email",
+        "type": "string"
+      },
+      "password": {
+        "maxLength": 128,
+        "minLength": 12,
+        "title": "Password",
+        "type": "string"
+      },
+      "registrationReceipt": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
+        "title": "Registrationreceipt",
+        "type": "string"
+      }
+    },
+    "required": [
+      "email",
+      "password",
+      "registrationReceipt"
+    ],
+    "title": "RegistrationResendRequest",
+    "type": "object"
+  },
+  "RegistrationVerified": {
+    "properties": {
+      "message": {
+        "default": "邮箱验证成功，请使用邮箱和密码登录。",
+        "title": "Message",
+        "type": "string"
+      }
+    },
+    "required": [
+      "message"
+    ],
+    "title": "RegistrationVerified",
+    "type": "object"
+  },
+  "RegistrationVerifyRequest": {
+    "properties": {
+      "password": {
+        "maxLength": 128,
+        "minLength": 1,
+        "title": "Password",
+        "type": "string"
+      },
+      "token": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
+        "title": "Token",
+        "type": "string"
+      }
+    },
+    "required": [
+      "token",
+      "password"
+    ],
+    "title": "RegistrationVerifyRequest",
     "type": "object"
   },
   "ResourceType": {
@@ -2778,8 +3028,15 @@ export const componentSchemas = {
         "title": "Displayname"
       },
       "email": {
-        "title": "Email",
-        "type": "string"
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Email"
       },
       "id": {
         "format": "uuid",

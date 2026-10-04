@@ -27,10 +27,11 @@ class User(Base):
         primary_key=True,
         default=uuid4,
     )
-    email: Mapped[str] = mapped_column(String(320))
-    normalized_email: Mapped[str] = mapped_column(String(320), unique=True)
+    email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    normalized_email: Mapped[str | None] = mapped_column(String(320), unique=True, nullable=True)
     display_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     password_hash: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

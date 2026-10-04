@@ -102,7 +102,7 @@ test("establishing a new subject synchronously isolates private state before pub
     csrfToken: "csrf-next-user",
   };
   const events: string[] = [];
-  const sessions: Array<{ email: string; generation: number; signal: AbortSignal }> = [];
+  const sessions: Array<{ email: string | null; generation: number; signal: AbortSignal }> = [];
   const originalClear = queryClient.clear.bind(queryClient);
   vi.spyOn(queryClient, "clear").mockImplementation(() => {
     events.push("cache:clear");

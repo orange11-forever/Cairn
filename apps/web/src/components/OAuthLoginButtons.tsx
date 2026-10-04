@@ -10,7 +10,8 @@ export function OAuthLoginButtons({ navigate = (url: string) => window.location.
     if (url !== undefined) navigate(url);
   }
   return <div className="oauth-login">
-    <p className="oauth-login-label">或使用已绑定的账号</p>
+    <p className="oauth-login-label">或使用第三方账号登录</p>
+    <p>首次授权并确认后，将创建个人账号和个人空间。</p>
     <div className="oauth-login-actions">
       <button type="button" disabled={action.pending} onClick={() => void begin("github")}>使用 GitHub 登录</button>
       <button type="button" disabled={action.pending} onClick={() => void begin("feishu")}>使用飞书登录</button>

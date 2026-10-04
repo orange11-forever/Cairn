@@ -55,7 +55,7 @@ def ensure_claim(
         )
         session.add(claim)
         session.flush()
-    if claim.pending_identity_id is None:
+    if claim.pending_identity_id is None and claim.pending_provider is None:
         claim.expires_at = now + timedelta(seconds=300)
     assert token is not None
     return token, claim
@@ -91,6 +91,10 @@ def claim_login(
     elif claim.claimed_session_digest is None:
         claim.claimed_session_digest = new_digest
         claim.pending_identity_id = None
+        claim.pending_provider = None
+        claim.pending_client_id = None
+        claim.pending_subject = None
+        claim.pending_display_name = None
         claim.expires_at = datetime.now(UTC) + timedelta(days=31)
         return
     elif (
@@ -101,6 +105,10 @@ def claim_login(
         # An explicit password sign-in from the already established session may rotate it.
         claim.claimed_session_digest = new_digest
         claim.pending_identity_id = None
+        claim.pending_provider = None
+        claim.pending_client_id = None
+        claim.pending_subject = None
+        claim.pending_display_name = None
         claim.expires_at = datetime.now(UTC) + timedelta(days=31)
         return
     raise ApiProblem(
@@ -114,7 +122,9 @@ def claim_login(
 def require_login_claim(session: Session, token: str | None) -> BrowserLoginClaim:
     claim = lock_claim(session, token)
     if claim is not None and (
-        claim.claimed_session_digest is not None or claim.pending_identity_id is not None
+        claim.claimed_session_digest is not None
+        or claim.pending_identity_id is not None
+        or claim.pending_provider is not None
     ):
         raise ApiProblem(
             status_code=409, code="session_changed", message="当前登录状态已改变，请刷新页面"

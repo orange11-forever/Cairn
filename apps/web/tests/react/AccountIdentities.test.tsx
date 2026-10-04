@@ -16,10 +16,10 @@ const linkedId = "00000000-0000-4000-8000-000000004001";
 const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status, headers: { "Content-Type": "application/json" },
 });
-function mount() {
+function mount(restoredIdentity: import("../../src/api/auth.ts").IdentityContext = identity) {
   const queries = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(<MemoryRouter><QueryClientProvider client={queries}>
-    <SessionProvider restoredIdentity={identity}><AccountIdentitiesPage /></SessionProvider>
+    <SessionProvider restoredIdentity={restoredIdentity}><AccountIdentitiesPage /></SessionProvider>
   </QueryClientProvider></MemoryRouter>);
   return queries;
 }
@@ -40,7 +40,7 @@ test("显示当前账号绑定状态并在明确确认后携带 CSRF 解绑", as
   }));
   const queries = mount();
   expect(await screen.findByText("My Github")).toBeInTheDocument();
-  expect(screen.getByText("当前账号：demo@cairn.dev")).toBeInTheDocument();
+  expect(screen.getByText("当前账号：演示用户 · demo@cairn.dev")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "绑定 飞书" })).toBeDisabled();
   await userEvent.click(screen.getByRole("button", { name: "解绑 GitHub" }));
   expect(deletes).toHaveLength(0);
@@ -64,6 +64,19 @@ test("近期认证不足时显示重新登录入口并保留账号状态", async
   await userEvent.click(await screen.findByRole("button", { name: "绑定 GitHub" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("重新登录");
   expect(screen.getByRole("button", { name: "重新登录" })).toBeInTheDocument();
-  expect(screen.getByText("当前账号：demo@cairn.dev")).toBeInTheDocument();
+  expect(screen.getByText("当前账号：演示用户 · demo@cairn.dev")).toBeInTheDocument();
+  queries.clear();
+});
+
+
+test("OAuth account without email shows its name and missing-email status", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    if (new URL((input as Request).url).pathname.endsWith("providers")) return response([{ provider: "github", enabled: true }, { provider: "feishu", enabled: true }]);
+    return response({ passwordAvailable: false, identities: [] });
+  }));
+  const queries = mount({ ...identity, user: { ...identity.user, email: null } });
+  expect(await screen.findByText("尚未设置")).toBeInTheDocument();
+  expect(screen.getByText(/当前账号：演示用户/)).toBeInTheDocument();
+  expect(screen.getByText(/未提供邮箱/)).toBeInTheDocument();
   queries.clear();
 });

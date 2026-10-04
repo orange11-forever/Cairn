@@ -86,7 +86,7 @@ def test_cleanup_runs_bounded_batches_in_stable_order() -> None:
         ]
     )
     factory = _FakeFactory(
-        [session_one, session_one, session_one, session_two, session_two, session_two]
+        [session_one, session_one, session_one, session_two, session_two, session_two, _FakeSession([[]]), _FakeSession([[]])]
     )
     clock = MagicMock(return_value=datetime(2026, 8, 5, tzinfo=UTC))
 
@@ -111,7 +111,7 @@ def test_cleanup_rejects_non_positive_batch_size() -> None:
 def test_rate_limit_cleanup_locks_and_deletes_each_batch_atomically() -> None:
     session_cleanup = _FakeSession([[]])
     rate_limit_cleanup = _FakeSession([[("email", b"e" * 32)]])
-    factory = _FakeFactory([session_cleanup, rate_limit_cleanup])
+    factory = _FakeFactory([session_cleanup, rate_limit_cleanup, _FakeSession([[]]), _FakeSession([[]])])
 
     result = cleanup_auth_state(
         cast(sessionmaker[Session], factory),
@@ -132,7 +132,7 @@ def test_rate_limit_cleanup_locks_and_deletes_each_batch_atomically() -> None:
 def test_session_cleanup_locks_and_deletes_each_batch_atomically() -> None:
     session_cleanup = _FakeSession([[uuid4()]])
     rate_limit_cleanup = _FakeSession([[]])
-    factory = _FakeFactory([session_cleanup, rate_limit_cleanup])
+    factory = _FakeFactory([session_cleanup, rate_limit_cleanup, _FakeSession([[]]), _FakeSession([[]])])
 
     result = cleanup_auth_state(
         cast(sessionmaker[Session], factory),

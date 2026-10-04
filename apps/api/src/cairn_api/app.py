@@ -15,6 +15,8 @@ from starlette.types import ASGIApp
 from cairn_api import __version__
 from cairn_api.auth.oauth_providers import configured_providers
 from cairn_api.auth.oauth_router import router as oauth_router
+from cairn_api.auth.registration_mail import RegistrationMailSender, SMTPRegistrationMailSender
+from cairn_api.auth.registration_router import router as registration_router
 from cairn_api.auth.router import router as auth_router
 from cairn_api.authorization.router import router as authorization_router
 from cairn_api.db.errors import DATABASE_UNAVAILABLE_ERRORS
@@ -94,6 +96,7 @@ def create_app(
     object_store: ObjectStore | None = None,
     embedding_client: SearchEmbeddingClient | None = None,
     answer_provider: AnswerProvider | None = None,
+    registration_mail_sender: RegistrationMailSender | None = None,
 ) -> FastAPI:
     current_settings = settings or Settings()
     current_database = database or Database(current_settings.database_url)
@@ -146,6 +149,7 @@ def create_app(
 
     application = CairnFastAPI(title="Cairn API", version=__version__, lifespan=lifespan)
     application.cairn_cors_origins = tuple(current_settings.cors_origins)
+    application.state.registration_mail_sender = registration_mail_sender or SMTPRegistrationMailSender(current_settings)
     application.state.oauth_providers = configured_providers(current_settings)
     application.state.settings = current_settings
     application.state.database = current_database
@@ -247,12 +251,17 @@ def create_app(
             exc_info=exc,
             extra={"request_id": trace_id},
         )
-        return error_response(
+        response = error_response(
             status_code=500,
             code="internal_error",
             message="服务器内部错误",
             trace_id=trace_id,
         )
+        # ServerErrorMiddleware handles unexpected errors outside the HTTP middleware.
+        if request.url.path.startswith("/api/v1/auth/"):
+            response.headers["Cache-Control"] = "no-store"
+            response.headers["Referrer-Policy"] = "no-referrer"
+        return response
 
     @application.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:  # pyright: ignore[reportUnusedFunction]
@@ -304,6 +313,7 @@ def create_app(
 
     application.include_router(auth_router)
     application.include_router(oauth_router)
+    application.include_router(registration_router)
     application.include_router(organizations_router)
     application.include_router(authorization_router)
     application.include_router(projects_router)

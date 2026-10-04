@@ -204,7 +204,7 @@ function assertTask17PublicDelivery(document, documentName) {
   assert.match(document, /搜索仅标记 stale，不自动重跑/);
   assert.match(
     document,
-    /全文格式化预览[^\n]*流式\/多轮问答[^\n]*(?:后续|延后)/,
+    /流式\/多轮问答[^\n]*(?:后续|延后)/,
     documentName + " must retain deferred product work",
   );
   assert.doesNotMatch(
@@ -214,7 +214,7 @@ function assertTask17PublicDelivery(document, documentName) {
   );
   assert.doesNotMatch(
     document,
-    /全文格式化预览[^；。\n]*(?:已交付|已完成)/,
+    /周期性(?:资源)?详情轮询[^；。\n]*(?:已交付|已完成)/,
     documentName + " must not present deferred Web capabilities as delivered",
   );
   assert.doesNotMatch(
@@ -233,10 +233,10 @@ function assertTask18APublicDelivery(document, documentName) {
   const statement = findTaskStatement(document, documentName, "Task 18A", /Web 资源详情/);
   for (const [capability, pattern] of [
     ["real generated detail GET", /生成 SDK[^。\n]*Cookie credentials[^。\n]*真实 `GET [^`]+\/knowledge\/resources\/\{resource_id\}`/],
-    ["collapse cancellation", /收起[^。\n]*取消[^。\n]*(?:清除|销毁)[^。\n]*局部详情/],
+    ["collapse cancellation", /(?:收起|关闭活动资料标签)[^。\n]*取消[^。\n]*(?:清除|销毁)[^。\n]*局部详情/],
     ["project transition isolation", /项目切换[^。\n]*取消[^。\n]*销毁/],
     ["session generation isolation", /会话代际变化[^。\n]*取消[^。\n]*销毁/],
-    ["explicit reauthorization", /重新展开[^。\n]*手动刷新[^。\n]*重新授权/],
+    ["explicit reauthorization", /重新(?:展开|打开)[^。\n]*手动刷新[^。\n]*重新授权/],
     ["offline-safe manual refresh", /离线[^。\n]*隐藏旧详情[^。\n]*下载[^。\n]*(?:不自动重连刷新|禁用自动重连刷新)/],
     ["manual-only status", /不(?:做|进行)周期轮询/],
     ["safe detail presentation", /安全[^。\n]*(?:元数据|失败)[^。\n]*(?:中文|错误)/],
@@ -250,7 +250,7 @@ function assertTask18APublicDelivery(document, documentName) {
   }
   assert.doesNotMatch(
     document,
-    /全文格式化预览[^；。\n]*(?:已交付|已完成)/,
+    /流式\/多轮问答[^；。\n]*(?:已交付|已完成)/,
   );
 }
 
@@ -273,7 +273,7 @@ function assertTask18BPublicDelivery(document, documentName) {
   ]) {
     assert.match(statement, pattern, documentName + " must retain " + capability);
   }
-  assert.match(document, /全文格式化预览[^\n]*流式\/多轮问答[^\n]*(?:后续|延后)/);
+  assert.match(document, /流式\/多轮问答[^\n]*(?:后续|延后)/);
 }
 
 test("endpoint inventory does not infer parent routes from child route text", () => {
@@ -327,7 +327,7 @@ test("root README publishes a concise current delivery snapshot", async () => {
   assert.match(apiSdkBoundary, /Web API 适配器[^|]*OpenAPI `date-time`[^|]*校验/);
   assert.match(
     readme,
-    /全文格式化预览[^\n]*流式\/多轮问答[^\n]*(?:后续|尚未|延后)/,
+    /流式\/多轮问答[^\n]*(?:后续|尚未|延后)/,
   );
   assert.doesNotMatch(readme, /搜索结果[^；。\n]*(?:后续|尚未|延后)/);
   assert.match(readme, /```text\nCairn\n├── apps\//);
@@ -356,7 +356,7 @@ test("root documentation records the delivered Stage 2 project and task boundary
   // silently expands Stage 2 into the deferred graph-editing and Agent scope.
   const readme = await readFile(new URL("README.md", repositoryRoot), "utf8");
 
-  assert.match(readme, /阶段 2.*已完成/);
+  assert.match(readme, /## 项目与任务 API/);
   assertEndpointInventory(readme, "README.md");
   assert.match(readme, /Project.*聚合根/);
   assert.match(readme, /CurrentIdentity.*组织.*权威/);
@@ -377,14 +377,14 @@ test("API documentation inventories every delivered project and task endpoint", 
 test("root documentation publishes Stage 2.5A without expanding the UI boundary", async () => {
   const readme = await readFile(new URL("README.md", repositoryRoot), "utf8");
 
-  assert.match(readme, /已完成阶段 2\.5A/);
+  assert.match(readme, /## 组织 RBAC 与项目 ACL/);
   for (const role of ["owner", "admin", "member", "viewer"]) {
     assert.match(readme, new RegExp(`\\b${role}\\b`, "i"));
   }
   assert.match(readme, /ACL.*UI.*未实现/i);
   assert.match(readme, /群组.*未实现/);
-  assert.match(readme, /Task 12.*混合搜索.*已交付/);
-  assert.match(readme, /Task 13.*Web 知识工作区基础.*已交付/);
+  assert.match(readme, /项目搜索和单轮生成式回答已交付/);
+  assert.doesNotMatch(readme, /## Stage 3A Task|> Task (?:15|16|17|18)/);
 });
 
 test("public documentation records Task 16 citation context and authorized download", async () => {
@@ -394,20 +394,21 @@ test("public documentation records Task 16 citation context and authorized downl
     readFile(new URL("docs/architecture.md", repositoryRoot), "utf8"),
   ]);
 
-  assertTask16PublicDelivery(rootReadme, "README.md");
+  assert.match(rootReadme, /下载会重新授权[^\n]*`307`/);
+  assert.match(rootReadme, /纯文本引用上下文/);
   assertTask16PublicDelivery(apiReadme, "apps/api/README.md");
   assertTask16PublicDelivery(architecture, "docs/architecture.md");
 });
 
 test("public documentation preserves Task 17 upload contracts at the Task 18A frontier", async () => {
-  for (const documentName of ["README.md", "apps/api/README.md", "docs/architecture.md"]) {
+  for (const documentName of ["apps/api/README.md", "docs/architecture.md"]) {
     const document = await readFile(new URL(documentName, repositoryRoot), "utf8");
     assertTask17PublicDelivery(document, documentName);
   }
 });
 
 test("Task 17 delivery checks reject stale upload deferrals, unsafe retries, and overclaims", async () => {
-  const document = await readFile(new URL("README.md", repositoryRoot), "utf8");
+  const document = await readFile(new URL("docs/architecture.md", repositoryRoot), "utf8");
   for (const [before, after] of [
     ["Task 1–20", "Task 1–16"],
     ["全新批次与预签名 URL", "旧批次与预签名 URL"],
@@ -418,35 +419,35 @@ test("Task 17 delivery checks reject stale upload deferrals, unsafe retries, and
     ["已确认的服务端任务仍会继续", "已确认的服务端任务也会撤销"],
   ]) {
     assert.ok(document.includes(before), "mutation must change the delivery document: " + before);
-    assert.throws(() => assertTask17PublicDelivery(document.replaceAll(before, after), "mutated README"));
+    assert.throws(() => assertTask17PublicDelivery(document.replaceAll(before, after), "mutated architecture"));
   }
   for (const falseClaim of [
     "Web 上传仍在后续任务。",
-    "全文格式化预览已交付。",
+    "周期性详情轮询已交付。",
     "流式/多轮问答已交付。",
   ]) {
-    assert.throws(() => assertTask17PublicDelivery(document + "\n" + falseClaim, "mutated README"));
+    assert.throws(() => assertTask17PublicDelivery(document + "\n" + falseClaim, "mutated architecture"));
   }
 });
 
 test("public documentation records bounded Task 18A resource details", async () => {
-  for (const documentName of ["README.md", "apps/api/README.md", "docs/architecture.md"]) {
+  for (const documentName of ["apps/api/README.md", "docs/architecture.md"]) {
     const document = await readFile(new URL(documentName, repositoryRoot), "utf8");
     assertTask18APublicDelivery(document, documentName);
   }
 });
 
 test("public documentation records Task 18B resource operations", async () => {
-  for (const documentName of ["README.md", "apps/api/README.md", "docs/architecture.md"]) {
+  for (const documentName of ["apps/api/README.md", "docs/architecture.md"]) {
     const document = await readFile(new URL(documentName, repositoryRoot), "utf8");
     assertTask18BPublicDelivery(document, documentName);
   }
 });
 
 test("Task 18 delivery checks reject unsafe or stale lifecycle claims", async () => {
-  const document = await readFile(new URL("README.md", repositoryRoot), "utf8");
+  const document = await readFile(new URL("docs/architecture.md", repositoryRoot), "utf8");
   for (const [before, after] of [
-    ["重新展开和手动刷新都会重新授权", "重新展开复用旧授权详情"],
+    ["重新打开和手动刷新都会重新授权", "重新打开复用旧授权详情"],
     ["项目切换或", ""],
     ["或会话代际变化", ""],
     ["离线等待期间隐藏旧详情和下载", "离线等待期间保留旧详情和下载"],
@@ -459,7 +460,7 @@ test("Task 18 delivery checks reject unsafe or stale lifecycle claims", async ()
     assert.ok(document.includes(before), "mutation must change Task 18A docs: " + before);
     assert.throws(() => assertTask18APublicDelivery(
       document.replaceAll(before, after),
-      "mutated README",
+      "mutated architecture",
     ));
   }
   for (const [before, after] of [
@@ -467,11 +468,11 @@ test("Task 18 delivery checks reject unsafe or stale lifecycle claims", async ()
     ["请求中的精确 `resource_id`/`version_id`", "请求中的精确 `resource_id`"],
     ["返回体 `id` 与请求 `resource_id`、`latestVersion.id` 与请求 `version_id` 匹配", "返回体 `id` 与请求 `resource_id` 匹配"],
     ["列出当前资源名的行内确认", "行内确认"],
-    ["先取消当前项目相关的列表、详情、引用和搜索读取，再清理", "清理"],
-    ["当前项目相关的列表、详情、引用和搜索读取", "相关的列表、详情、引用和搜索读取"],
-    ["删除会先取消当前项目相关的列表、详情、引用和搜索读取，再清理其缓存并重置当前项目可见搜索", "删除会先取消相关的列表、详情、引用和搜索读取，再清理其缓存并重置可见搜索"],
-    ["保留其他项目和上传跟踪", "保留上传跟踪"],
-    ["当前 CSRF", "任意凭据"],
+    ["先取消当前项目相关读取，再清理", "直接清理"],
+    ["当前项目相关读取", "相关读取"],
+    ["删除先取消当前项目相关读取，再清理列表、详情、引用缓存并重置当前项目搜索", "删除先取消相关读取，再清理列表、详情、引用缓存并重置搜索"],
+    ["保留其他项目与上传跟踪", "保留上传跟踪"],
+    ["Cookie CSRF", "任意凭据"],
     ["取消不发送请求", "取消也发送请求"],
     ["不自动重试或离线回放", "自动重试或离线回放"],
     ["不承诺回滚", "承诺回滚"],
@@ -480,7 +481,7 @@ test("Task 18 delivery checks reject unsafe or stale lifecycle claims", async ()
     ["`404` 重检列表并按列表 `200`/`404` 决定局部资源或工作区隐藏，`409` 先刷新详情，契约错误须手动详情恢复", "`404` 直接成功，`409` 直接重试，契约错误继续提供操作"],
   ]) {
     assert.ok(document.includes(before), "mutation must change the Task 18B clause: " + before);
-    assert.throws(() => assertTask18BPublicDelivery(document.replaceAll(before, after), "mutated README"));
+    assert.throws(() => assertTask18BPublicDelivery(document.replaceAll(before, after), "mutated architecture"));
   }
 });
 

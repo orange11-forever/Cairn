@@ -17,13 +17,18 @@ import {
 } from "./process-utils.mjs";
 import { checkResponsiveFoundation } from "./verify-responsive.mjs";
 import { checkFeishuHistoryReachability } from "./verify-feishu-history-layout.mjs";
+import { checkLongMarkdownCitationBlocks } from "./verify-document-citation.mjs";
+import { checkFormattedReaderResponsive } from "./verify-document-responsive.mjs";
+import { installSourceFormDiagnostics, waitForSourceResponse } from "./verify-source-diagnostics.mjs";
 
 const WEB_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const ROOT = join(WEB_ROOT, "../..");
 const SHOT_DIR = join(ROOT, "apps/web/screenshots");
 const FEISHU_SHOT_DIR = join(ROOT, "output/playwright/feishu");
+const PREVIEW_SHOT_DIR = join(ROOT, "output/playwright/document-preview");
 mkdirSync(SHOT_DIR, { recursive: true });
 mkdirSync(FEISHU_SHOT_DIR, { recursive: true });
+mkdirSync(PREVIEW_SHOT_DIR, { recursive: true });
 
 function readPort(name, fallback) {
   const raw = process.env[name] ?? String(fallback);
@@ -134,7 +139,7 @@ async function checkCompatibilityRoutes() {
 async function checkCoreKnowledgeIngestion() {
   const fileName = "task20-核心摄取验收.txt";
   const content = Buffer.from(
-    `核心摄取验收\n${CORE_PHRASE}\nThis bilingual source proves upload, indexing, retrieval, citation, and download.\n`,
+    `核心摄取验收\n${CORE_PHRASE}\nThis bilingual source proves upload, indexing, retrieval, citation, and download.\nTXT_EOF_COMPLETE_20261004\n`,
     "utf8",
   );
   await page.goto(`${WEB}/projects/${CORE_PROJECT_ID}/knowledge`, { waitUntil: "networkidle" });
@@ -189,20 +194,63 @@ async function checkCoreKnowledgeIngestion() {
   );
   const search = page.getByRole("region", { name: "项目知识检索" });
   await search.getByRole("button", { name: "查看引用上下文" }).first().click();
-  const context = page.getByRole("region", { name: "知识内容" })
-    .getByRole("region", { name: "引用上下文" })
-    .locator(".knowledge-citation-context-success");
+  const context = page.locator(".knowledge-document");
   await context.waitFor({ timeout: 30_000 });
-  expect(await context.getByText(CORE_PHRASE, { exact: false }).isVisible(), "引用上下文应包含命中文本");
+  await context.getByText("TXT_EOF_COMPLETE_20261004", { exact: false }).waitFor();
+  expect(await context.getByText(CORE_PHRASE, { exact: false }).isVisible(), "全文应包含引用命中文本");
+  expect(await context.locator('[data-citation-hit="true"]').count() > 0, "引用应突出正文中的可信位置");
+  await context.getByRole("button", { name: "回到引用" }).click();
+  expect(await context.locator('[data-citation-hit="true"]').evaluateAll(nodes => nodes.some(node => node === document.activeElement)), "返回引用应聚焦实际正文位置");
   expect(/第\s*\d+(?:[–-]\d+)?\s*行/.test(await context.innerText()), "文本引用应显示行号 locator");
 
   const downloadHref = await context
-    .getByRole("link", { name: "下载原文件（新标签页）" })
+    .getByRole("link", { name: "下载原文件", exact: true })
     .getAttribute("href");
   expect(downloadHref !== null, "引用上下文应提供授权下载入口");
   const downloadResponse = await page.request.get(new URL(downloadHref, WEB).href);
   expect(downloadResponse.ok(), `授权下载应成功，实际 ${downloadResponse.status()}`);
   expect((await downloadResponse.body()).equals(content), "授权下载应返回刚上传的原始字节");
+}
+
+async function checkMarkdownFullPreview() {
+  const fileName = "preview-完整文档阅读与跨区域资料核对及引用定位验收运行手册.md";
+  const phrase = "松石全文引用确认部署顺序";
+  const content = Buffer.from(`# 全文阅读验收\n\n${phrase}\n\n- 配置\n- 启动\n\n\`\`\`sh\necho preview-ready --profile synthetic-preview --region synthetic-zone --notes source-line-preserving-markdown-reader\n\`\`\`\n\n| 步骤 | 状态 |\n| --- | --- |\n| 读取全文并核对来源与引用位置 | 完整且经过授权 |\n\nMARKDOWN_EOF_COMPLETE_20261004\n`, "utf8");
+  await page.goto(`${WEB}/projects/${CORE_PROJECT_ID}/knowledge`, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "上传资料" }).click();
+  await page.getByLabel("上传知识资料", { exact: true }).setInputFiles({ name: fileName, mimeType: "text/markdown", buffer: content });
+  await page.getByRole("button", { name: "开始上传" }).click();
+  await page.locator('.knowledge-upload-file[data-phase="ready"]').waitFor({ timeout: 120_000 });
+  await page.getByRole("button", { name: `查看${fileName}资料详情` }).click();
+  const document = page.locator(".knowledge-document");
+  await document.getByText("MARKDOWN_EOF_COMPLETE_20261004").waitFor();
+  expect(await document.getByRole("heading", { name: "全文阅读验收" }).isVisible(), "Markdown 标题应按语义渲染");
+  expect(await document.getByRole("table").isVisible(), "Markdown 表格应真实渲染");
+  expect(await document.getByRole("button", { name: "复制代码" }).isVisible(), "代码复制应保留");
+  expect(await document.getByText("已到文档末尾 · 正文完整").isVisible(), "全文应有完整 EOF 状态");
+  await document.getByRole("button", { name: "资料详情", exact: true }).click();
+  await document.getByRole("region", { name: `${fileName} 资料详情` }).waitFor();
+  expect(await document.getByRole("button", { name: "删除资料", exact: true }).isVisible(), "正文工具栏应可打开真实资料管理");
+  await document.getByRole("button", { name: "资料详情", exact: true }).click();
+  await page.getByRole("tab", { name: "搜索", exact: true }).click();
+  await page.getByLabel("搜索项目知识", { exact: true }).fill(phrase);
+  await page.getByRole("button", { name: "搜索项目知识", exact: true }).click();
+  const search = page.getByRole("region", { name: "项目知识检索" });
+  await search.locator(".knowledge-search-result").filter({ hasText: phrase }).first().waitFor();
+  await search.getByRole("button", { name: "查看引用上下文" }).first().click();
+  await document.getByRole("button", { name: "回到引用" }).waitFor();
+  expect(await document.locator('[data-citation-hit="true"]').count() > 0, "搜索引用应定位 Markdown 正文");
+  await document.getByText("MARKDOWN_EOF_COMPLETE_20261004").scrollIntoViewIfNeeded();
+  await page.screenshot({ path: join(PREVIEW_SHOT_DIR, "markdown-full-body-citation.png"), fullPage: true });
+  const answers = page.getByRole("region", { name: "项目知识问答" });
+  await answers.getByLabel("向项目知识提问", { exact: true }).fill(`按资料说明：${phrase}`);
+  await answers.getByRole("button", { name: "生成回答" }).click();
+  const generated = answers.getByRole("region", { name: "生成式回答" });
+  await generated.waitFor({ timeout: 30_000 });
+  await generated.getByRole("button", { name: /查看.*引用上下文/ }).first().click();
+  await document.getByRole("button", { name: "回到引用" }).waitFor();
+  expect(await document.locator('[data-citation-hit="true"]').count() > 0, "回答引用应定位完整正文");
+  await checkFormattedReaderResponsive({ page, expect, screenshotDir: PREVIEW_SHOT_DIR });
 }
 
 async function checkFeishuSources() {
@@ -213,7 +261,9 @@ async function checkFeishuSources() {
     }
   });
   await page.goto(`${WEB}/projects/${CORE_PROJECT_ID}/knowledge`, { waitUntil: "networkidle" });
-  await page.getByRole("link", { name: "飞书来源" }).click();
+  await page.getByRole("link", { name: "来源与同步", exact: true }).click();
+  await installSourceFormDiagnostics(page, [FEISHU_DOCUMENT_ID, `https://team.feishu.cn/docx/${FEISHU_DOCUMENT_ID}`,
+    "verify_feishu", "飞书浏览器验收"]);
   let created;
   if (process.env.CAIRN_VERIFY_FEISHU_REUSE_SOURCE === "1") {
     const existingResponse = await page.request.get(`${IDENTITY_ORIGIN}/api/v1/projects/${CORE_PROJECT_ID}/knowledge/sources`);
@@ -235,22 +285,18 @@ async function checkFeishuSources() {
     await form.getByLabel("凭证别名").fill("verify_feishu");
     expect(await form.getByRole("button", { name: "添加来源" }).isDisabled(), "未确认共享时不得创建来源");
     await form.getByRole("checkbox", { name: /我确认将此文档共享/ }).check();
-    const [createdResponse] = await Promise.all([
-      page.waitForResponse((response) => response.request().method() === "POST" &&
-        response.url().endsWith("/knowledge/sources/feishu")),
-      form.getByRole("button", { name: "添加来源" }).click(),
-    ]);
+    const createdResponse = await waitForSourceResponse({ page, label: "feishu-create", screenshotDir: PREVIEW_SHOT_DIR,
+      predicate: response => response.request().method() === "POST" && response.url().endsWith("/knowledge/sources/feishu"),
+      action: () => form.getByRole("button", { name: "添加来源" }).click() });
     expect(createdResponse.status() === 201, `来源登记应返回201，实际 ${createdResponse.status()}`);
     created = await createdResponse.json();
     await page.getByText("来源已登记。现在可以手动同步文档。").waitFor();
   }
   expect(created.documentId === FEISHU_DOCUMENT_ID && created.credentialRef === "verify_feishu",
     "来源响应应匹配合成文档与凭证别名");
-  const [queuedResponse] = await Promise.all([
-    page.waitForResponse((response) => response.request().method() === "POST" &&
-      response.url().endsWith(`/knowledge/sources/${created.id}/syncs`)),
-    page.getByRole("button", { name: "立即同步" }).click(),
-  ]);
+  const queuedResponse = await waitForSourceResponse({ page, label: "feishu-initial-sync", screenshotDir: PREVIEW_SHOT_DIR,
+    predicate: response => response.request().method() === "POST" && response.url().endsWith(`/knowledge/sources/${created.id}/syncs`),
+    action: () => page.getByRole("button", { name: "立即同步" }).click() });
   expect(queuedResponse.status() === 202, `同步排队应返回202，实际 ${queuedResponse.status()}`);
   const queued = await queuedResponse.json();
   expect(queued.sourceId === created.id && queued.projectId === CORE_PROJECT_ID,
@@ -302,8 +348,13 @@ async function checkFeishuSources() {
   await page.getByRole("button", { name: "搜索项目知识" }).click();
   await page.locator(".knowledge-search-result").filter({ hasText: FEISHU_PHRASE })
     .first().waitFor({ timeout: 30_000 });
+  await page.getByRole("region", { name: "项目知识检索" }).getByRole("button", { name: "查看引用上下文" }).first().click();
+  const snapshot = page.locator(".knowledge-document");
+  await snapshot.getByRole("button", { name: "回到引用" }).waitFor();
+  await snapshot.locator(".knowledge-document-body").getByText(FEISHU_PHRASE, { exact: false }).first().waitFor();
+  expect(await snapshot.locator(".knowledge-document-body").innerText().then(text => text.includes(FEISHU_PHRASE)), "合成飞书快照应从真实全文接口读取");
 
-  await page.getByRole("link", { name: "飞书来源" }).click();
+  await page.getByRole("link", { name: "来源与同步", exact: true }).click();
   await page.getByRole("button", { name: /飞书浏览器验收/ }).click();
   await page.getByRole("button", { name: "编辑设置" }).click();
   const targetInterval = created.syncIntervalSeconds === 900 ? "300" : "900";
@@ -321,11 +372,9 @@ async function checkFeishuSources() {
     `停用后资源详情应404，实际 ${deniedResource.status()}`);
   await page.getByRole("link", { name: "返回项目知识" }).click();
   await page.getByLabel("搜索项目知识", { exact: true }).fill(FEISHU_PHRASE);
-  const [stoppedSearch] = await Promise.all([
-    page.waitForResponse((response) => response.request().method() === "POST" &&
-      response.url().endsWith("/knowledge/search")),
-    page.getByRole("button", { name: "搜索项目知识" }).click(),
-  ]);
+  const stoppedSearch = await waitForSourceResponse({ page, label: "feishu-denied-search", screenshotDir: PREVIEW_SHOT_DIR,
+    predicate: response => response.request().method() === "POST" && response.url().endsWith("/knowledge/search"),
+    action: () => page.getByRole("button", { name: "搜索项目知识" }).click() });
   expect(stoppedSearch.status() === 200, "停用后搜索仍应返回成功响应");
   const stoppedResults = await stoppedSearch.json();
   expect(stoppedResults.results.every((result) => result.resourceId !== sync.resourceId),
@@ -333,18 +382,16 @@ async function checkFeishuSources() {
   expect(await page.locator(".knowledge-search-result").filter({ hasText: FEISHU_PHRASE }).count() === 0,
     "旧飞书片段不能留在搜索界面");
 
-  await page.getByRole("link", { name: "飞书来源" }).click();
+  await page.getByRole("link", { name: "来源与同步", exact: true }).click();
   await page.getByRole("button", { name: /飞书浏览器验收/ }).click();
   const restore = page.getByRole("button", { name: "恢复来源" });
   expect(await restore.isDisabled(), "恢复来源必须重新确认共享");
   await page.getByRole("checkbox", { name: /我确认将此文档共享/ }).check();
   await restore.click();
   await page.getByText(/来源已恢复。请手动同步/).waitFor();
-  const [recoveryQueueResponse] = await Promise.all([
-    page.waitForResponse((response) => response.request().method() === "POST" &&
-      response.url().endsWith(`/knowledge/sources/${created.id}/syncs`)),
-    page.getByRole("button", { name: "立即同步" }).click(),
-  ]);
+  const recoveryQueueResponse = await waitForSourceResponse({ page, label: "feishu-restored-sync", screenshotDir: PREVIEW_SHOT_DIR,
+    predicate: response => response.request().method() === "POST" && response.url().endsWith(`/knowledge/sources/${created.id}/syncs`),
+    action: () => page.getByRole("button", { name: "立即同步" }).click() });
   expect(recoveryQueueResponse.status() === 202, "恢复后手动同步应返回202");
   const recoveryQueue = await recoveryQueueResponse.json();
   await page.waitForTimeout(2_500);
@@ -403,6 +450,9 @@ try {
   await login();
   await checkAuthenticatedShell();
   await checkCoreKnowledgeIngestion();
+  await checkMarkdownFullPreview();
+  await checkLongMarkdownCitationBlocks({ page, webOrigin: WEB, projectId: CORE_PROJECT_ID,
+    expect, screenshotDir: PREVIEW_SHOT_DIR });
   await checkFeishuSources();
 
   await page.goto(`${WEB}/projects`, { waitUntil: "networkidle" });

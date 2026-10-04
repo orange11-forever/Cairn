@@ -8,7 +8,7 @@ import { SessionProvider } from "../../src/session/SessionContext.tsx";
 import { ApiError } from "../../src/api/errors.ts";
 
 const identity = {
-  user: { id: "00000000-0000-4000-8000-000000001001", email: "demo@cairn.dev", displayName: "演示用户" },
+  user: { id: "00000000-0000-4000-8000-000000001001", email: null, displayName: "演示用户" },
   organization: { id: "00000000-0000-4000-8000-000000002001", slug: "cairn-demo", name: "Cairn Demo" },
   membership: { id: "00000000-0000-4000-8000-000000003001", role: "owner" as const }, csrfToken: "csrf-test",
 };

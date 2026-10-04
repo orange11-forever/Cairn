@@ -1,4 +1,4 @@
-import { RefreshCw } from "lucide-react";
+import { Download, FileText, Info, RefreshCw } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 
@@ -45,7 +45,7 @@ const FAILURE: Record<string, string> = {
 };
 
 function sourceLabel(sourceType: string): string {
-  return sourceType === "zip_entry" ? "ZIP 内文件" : "上传文件";
+  return sourceType === "feishu_document" ? "飞书文档" : sourceType === "zip_entry" ? "ZIP 内文件" : "上传文件";
 }
 
 function failureMessage(code: string | null): string | null {
@@ -70,6 +70,7 @@ export interface KnowledgeResourceDetailsProps {
   csrfToken: string;
   canWrite: boolean;
   actionsDisabled?: boolean;
+  readingMode?: "full";
   sessionSignal: AbortSignal;
   onResourceMissing(): void | Promise<void>;
   onRetrySucceeded(resource: KnowledgeResource): void | Promise<void>;
@@ -84,6 +85,7 @@ export function KnowledgeResourceDetails(props: KnowledgeResourceDetailsProps) {
   const operation = useRef<AbortController | null>(null);
   const operationLocked = useRef(false);
   const deleteButton = useRef<HTMLButtonElement | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(true);
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [pendingOperation, setPendingOperation] = useState<"retry" | "delete" | null>(null);
   const [operationError, setOperationError] = useState<unknown>(null);
@@ -242,14 +244,19 @@ export function KnowledgeResourceDetails(props: KnowledgeResourceDetailsProps) {
 
   return <section id={props.id} className="knowledge-resource-details" aria-label={`${resource.title} 资料详情`}>
     <div className="knowledge-resource-detail-heading">
-      <div><strong>{resource.title}</strong><p>状态仅在手动刷新时更新。</p></div>
+      <div><FileText size={24} aria-hidden="true" /><h2>{resource.title}</h2><p>状态仅在手动刷新时更新。</p></div>
       <button type="button" disabled={query.isFetching || pending} onClick={() => {
         void refreshDetail();
       }}>
         <RefreshCw aria-hidden="true" size={17} />{query.isFetching ? "正在刷新资料状态" : "刷新资料状态"}
       </button>
     </div>
-    <dl className="knowledge-resource-detail-grid">
+    <div className="knowledge-reader-actions">
+      {version?.status === "ready" ? <a className="knowledge-resource-download" href={buildKnowledgeDownloadUrl(props.projectId, props.resourceId)} target="_blank" rel="noopener noreferrer"><Download size={17} aria-hidden="true" />下载资料（在新标签页打开）</a> : null}
+      <button type="button" aria-expanded={detailsOpen} onClick={() => setDetailsOpen(value => !value)}><Info size={17} aria-hidden="true" />{detailsOpen ? "收起资料信息" : "资料信息"}</button>
+    </div>
+    {props.readingMode === "full" ? null : <div className="knowledge-resource-reading-note"><h3>资料详情</h3><p>当前工作台提供资料信息与引用上下文。完整内容请下载原文件查看；搜索命中后可在这里核对相邻片段。</p></div>}
+    <dl className="knowledge-resource-detail-grid" hidden={!detailsOpen}>
       <div><dt>来源</dt><dd>{sourceLabel(resource.sourceType)}</dd></div>
       <div><dt>创建时间</dt><dd><time dateTime={resource.createdAt}>{formatCalendarDate(resource.createdAt, DATE_TIME)}</time></dd></div>
       <div><dt>更新时间</dt><dd><time dateTime={resource.updatedAt}>{formatCalendarDate(resource.updatedAt, DATE_TIME)}</time></dd></div>
@@ -262,9 +269,6 @@ export function KnowledgeResourceDetails(props: KnowledgeResourceDetailsProps) {
       </>}
     </dl>
     {failure === null ? null : <p className="knowledge-resource-failure" role="alert">{failure}</p>}
-    {version?.status === "ready" ? <a className="knowledge-resource-download"
-      href={buildKnowledgeDownloadUrl(props.projectId, props.resourceId)} target="_blank"
-      rel="noopener noreferrer">下载资料（在新标签页打开）</a> : null}
     {props.canWrite && props.actionsDisabled !== true ? <div className="knowledge-resource-operations">
       {contractRecoveryRequired ? null : <><div className="knowledge-resource-operation-actions">
         {version?.status === "failed" && version.retryable === true ? (
