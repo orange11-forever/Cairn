@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Plus } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, Navigate, useParams } from "react-router-dom";
+import { Link, Navigate, useParams, useLocation } from "react-router-dom";
 
 import { ApiError } from "../api/errors.ts";
 import {
@@ -32,6 +32,7 @@ const showDate = (value: string | null) => value === null ? "尚无" : new Date(
 const displayedError = (value: unknown) => value instanceof Error ? value.message : "来源暂时无法加载，请重试";
 
 export function KnowledgeSourcesPage() {
+  const location = useLocation();
   const { projectId } = useParams<{ projectId: string }>();
   const { session } = useSession();
   if (projectId === undefined) return <Navigate to="/projects" replace />;
@@ -40,7 +41,7 @@ export function KnowledgeSourcesPage() {
   if (role !== "owner" && role !== "admin") {
     return <section aria-label="飞书来源管理" className="feishu-page">
       <WorkspaceHeader id="feishu-page-title" title="来源与同步" description="当前账号无法管理项目来源。"
-        actions={<Link className="task-knowledge-link" to={`/projects/${projectId}/knowledge`}>
+        actions={<Link className="task-knowledge-link" to={`/projects/${projectId}/knowledge${location.search}`}>
           <ArrowLeft aria-hidden="true" size={17} />返回项目知识</Link>} />
       <p role="status" className="feishu-access-message">仅组织管理员可以管理飞书来源。</p>
     </section>;
@@ -54,6 +55,7 @@ export function KnowledgeSourcesPage() {
 function KnowledgeSourcesWorkspace({ organizationId, projectId, csrfToken, sessionSignal }: {
   organizationId: string; projectId: string; csrfToken: string; sessionSignal: AbortSignal;
 }) {
+  const location = useLocation();
   const queryClient = useQueryClient();
   const active = usePrivatePageActive(sessionSignal);
   const project = useProjectQuery(organizationId, projectId, sessionSignal);
@@ -188,7 +190,7 @@ function KnowledgeSourcesWorkspace({ organizationId, projectId, csrfToken, sessi
     }
   }, [active, clearPrivate, deny, history, mutation, sessionSignal, source, sources]);
 
-  const back = <Link className="task-knowledge-link" to={`/projects/${projectId}/knowledge`}>
+  const back = <Link className="task-knowledge-link" to={`/projects/${projectId}/knowledge${location.search}`}>
     <ArrowLeft aria-hidden="true" size={17} strokeWidth={1.8} />返回项目知识</Link>;
   if (project.isPending || project.isFetching || !active) return <section className="feishu-page" aria-busy="true">
     <p role="status">{active ? "正在确认项目访问权限…" : "页面暂停显示。恢复网络并返回此页面后重新检查权限。"}</p>

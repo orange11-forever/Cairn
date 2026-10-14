@@ -109,6 +109,55 @@ export const componentSchemas = {
     "title": "ActorType",
     "type": "string"
   },
+  "AnswerModelOption": {
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "title": "Id",
+        "type": "string"
+      },
+      "model": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Model"
+      },
+      "name": {
+        "title": "Name",
+        "type": "string"
+      },
+      "protocol": {
+        "anyOf": [
+          {
+            "enum": [
+              "openai-compatible",
+              "openai-responses",
+              "anthropic",
+              "gemini"
+            ],
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Protocol"
+      }
+    },
+    "required": [
+      "id",
+      "name",
+      "model",
+      "protocol"
+    ],
+    "title": "AnswerModelOption",
+    "type": "object"
+  },
   "ApiVersionResponse": {
     "properties": {
       "service": {
@@ -125,6 +174,242 @@ export const componentSchemas = {
       }
     },
     "title": "ApiVersionResponse",
+    "type": "object"
+  },
+  "AssigneePage": {
+    "properties": {
+      "items": {
+        "items": {
+          "$ref": "#/components/schemas/AssigneeResponse"
+        },
+        "title": "Items",
+        "type": "array"
+      },
+      "nextCursor": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Nextcursor"
+      }
+    },
+    "required": [
+      "items",
+      "nextCursor"
+    ],
+    "title": "AssigneePage",
+    "type": "object"
+  },
+  "AssigneeResponse": {
+    "properties": {
+      "displayName": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Displayname"
+      },
+      "role": {
+        "title": "Role",
+        "type": "string"
+      },
+      "userId": {
+        "format": "uuid",
+        "title": "Userid",
+        "type": "string"
+      }
+    },
+    "required": [
+      "userId",
+      "displayName",
+      "role"
+    ],
+    "title": "AssigneeResponse",
+    "type": "object"
+  },
+  "AssistantCatalogResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "items": {
+        "items": {
+          "$ref": "#/components/schemas/AssistantProfileSummary"
+        },
+        "maxItems": 20,
+        "title": "Items",
+        "type": "array"
+      }
+    },
+    "required": [
+      "items"
+    ],
+    "title": "AssistantCatalogResponse",
+    "type": "object"
+  },
+  "AssistantProfileSummary": {
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "format": "uuid",
+        "title": "Id",
+        "type": "string"
+      },
+      "modelId": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Modelid"
+      },
+      "name": {
+        "maxLength": 60,
+        "minLength": 1,
+        "title": "Name",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "name",
+      "modelId"
+    ],
+    "title": "AssistantProfileSummary",
+    "type": "object"
+  },
+  "AssistantSelectionRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "expectedRevision": {
+        "minimum": 0,
+        "title": "Expectedrevision",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "expectedRevision"
+    ],
+    "title": "AssistantSelectionRequest",
+    "type": "object"
+  },
+  "AssistantSettingsRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "enabledSkillIds": {
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 22,
+        "title": "Enabledskillids",
+        "type": "array"
+      },
+      "expectedRevision": {
+        "minimum": 0,
+        "title": "Expectedrevision",
+        "type": "integer"
+      },
+      "instructions": {
+        "maxLength": 2000,
+        "title": "Instructions",
+        "type": "string"
+      },
+      "modelId": {
+        "anyOf": [
+          {
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Modelid"
+      },
+      "name": {
+        "maxLength": 60,
+        "minLength": 1,
+        "title": "Name",
+        "type": "string"
+      }
+    },
+    "required": [
+      "expectedRevision",
+      "name",
+      "instructions",
+      "enabledSkillIds"
+    ],
+    "title": "AssistantSettingsRequest",
+    "type": "object"
+  },
+  "AssistantSettingsResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "enabledSkillIds": {
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 22,
+        "title": "Enabledskillids",
+        "type": "array"
+      },
+      "id": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Id"
+      },
+      "instructions": {
+        "maxLength": 2000,
+        "title": "Instructions",
+        "type": "string"
+      },
+      "modelId": {
+        "anyOf": [
+          {
+            "maxLength": 64,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Modelid"
+      },
+      "name": {
+        "maxLength": 60,
+        "minLength": 1,
+        "title": "Name",
+        "type": "string"
+      },
+      "revision": {
+        "minimum": 0,
+        "title": "Revision",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "name",
+      "instructions",
+      "enabledSkillIds",
+      "revision"
+    ],
+    "title": "AssistantSettingsResponse",
     "type": "object"
   },
   "BatchDetailResponse": {
@@ -321,6 +606,34 @@ export const componentSchemas = {
       "rowEnd"
     ],
     "title": "CsvLocator",
+    "type": "object"
+  },
+  "DependencyPage": {
+    "properties": {
+      "items": {
+        "items": {
+          "$ref": "#/components/schemas/DependencyResponse"
+        },
+        "title": "Items",
+        "type": "array"
+      },
+      "nextCursor": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Nextcursor"
+      }
+    },
+    "required": [
+      "items",
+      "nextCursor"
+    ],
+    "title": "DependencyPage",
     "type": "object"
   },
   "DependencyResponse": {
@@ -752,6 +1065,53 @@ export const componentSchemas = {
     ],
     "title": "FeishuSourcePatchRequest"
   },
+  "GithubSkillSource": {
+    "additionalProperties": false,
+    "properties": {
+      "path": {
+        "anyOf": [
+          {
+            "maxLength": 500,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Path"
+      },
+      "ref": {
+        "anyOf": [
+          {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Ref"
+      },
+      "type": {
+        "const": "github",
+        "title": "Type",
+        "type": "string"
+      },
+      "url": {
+        "maxLength": 1024,
+        "minLength": 1,
+        "title": "Url",
+        "type": "string"
+      }
+    },
+    "required": [
+      "type",
+      "url"
+    ],
+    "title": "GithubSkillSource",
+    "type": "object"
+  },
   "HealthResponse": {
     "properties": {
       "service": {
@@ -1060,6 +1420,70 @@ export const componentSchemas = {
     "title": "KnowledgeAnswerCitation",
     "type": "object"
   },
+  "KnowledgeAnswerModelStatus": {
+    "additionalProperties": false,
+    "properties": {
+      "configured": {
+        "title": "Configured",
+        "type": "boolean"
+      },
+      "defaultModelId": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Defaultmodelid"
+      },
+      "model": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Model"
+      },
+      "models": {
+        "items": {
+          "$ref": "#/components/schemas/AnswerModelOption"
+        },
+        "title": "Models",
+        "type": "array"
+      },
+      "protocol": {
+        "anyOf": [
+          {
+            "enum": [
+              "openai-compatible",
+              "openai-responses",
+              "anthropic",
+              "gemini"
+            ],
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Protocol"
+      }
+    },
+    "required": [
+      "configured",
+      "model",
+      "protocol",
+      "defaultModelId",
+      "models"
+    ],
+    "title": "KnowledgeAnswerModelStatus",
+    "type": "object"
+  },
   "KnowledgeAnswerParagraph": {
     "additionalProperties": false,
     "properties": {
@@ -1350,6 +1774,440 @@ export const componentSchemas = {
     "title": "KnowledgeContentHighlight",
     "type": "object"
   },
+  "KnowledgeConversationCompleteEvent": {
+    "additionalProperties": false,
+    "properties": {
+      "conversation": {
+        "$ref": "#/components/schemas/KnowledgeConversationResponse"
+      },
+      "conversationId": {
+        "format": "uuid",
+        "title": "Conversationid",
+        "type": "string"
+      },
+      "turnId": {
+        "format": "uuid",
+        "title": "Turnid",
+        "type": "string"
+      },
+      "type": {
+        "const": "complete",
+        "title": "Type",
+        "type": "string"
+      }
+    },
+    "required": [
+      "type",
+      "conversationId",
+      "turnId",
+      "conversation"
+    ],
+    "title": "KnowledgeConversationCompleteEvent",
+    "type": "object"
+  },
+  "KnowledgeConversationCreateRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "format": "uuid",
+        "title": "Id",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id"
+    ],
+    "title": "KnowledgeConversationCreateRequest",
+    "type": "object"
+  },
+  "KnowledgeConversationErrorEvent": {
+    "additionalProperties": false,
+    "properties": {
+      "code": {
+        "title": "Code",
+        "type": "string"
+      },
+      "conversationId": {
+        "format": "uuid",
+        "title": "Conversationid",
+        "type": "string"
+      },
+      "message": {
+        "title": "Message",
+        "type": "string"
+      },
+      "retryAfter": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Retryafter"
+      },
+      "status": {
+        "maximum": 599,
+        "minimum": 400,
+        "title": "Status",
+        "type": "integer"
+      },
+      "traceId": {
+        "title": "Traceid",
+        "type": "string"
+      },
+      "turnId": {
+        "format": "uuid",
+        "title": "Turnid",
+        "type": "string"
+      },
+      "type": {
+        "const": "error",
+        "title": "Type",
+        "type": "string"
+      }
+    },
+    "required": [
+      "type",
+      "conversationId",
+      "turnId",
+      "status",
+      "code",
+      "message",
+      "traceId",
+      "retryAfter"
+    ],
+    "title": "KnowledgeConversationErrorEvent",
+    "type": "object"
+  },
+  "KnowledgeConversationPage": {
+    "additionalProperties": false,
+    "properties": {
+      "items": {
+        "items": {
+          "$ref": "#/components/schemas/KnowledgeConversationSummary"
+        },
+        "title": "Items",
+        "type": "array"
+      },
+      "nextCursor": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Nextcursor"
+      }
+    },
+    "required": [
+      "items",
+      "nextCursor"
+    ],
+    "title": "KnowledgeConversationPage",
+    "type": "object"
+  },
+  "KnowledgeConversationParagraphEvent": {
+    "additionalProperties": false,
+    "properties": {
+      "conversationId": {
+        "format": "uuid",
+        "title": "Conversationid",
+        "type": "string"
+      },
+      "index": {
+        "maximum": 7,
+        "minimum": 0,
+        "title": "Index",
+        "type": "integer"
+      },
+      "paragraph": {
+        "$ref": "#/components/schemas/KnowledgeAnswerParagraph"
+      },
+      "turnId": {
+        "format": "uuid",
+        "title": "Turnid",
+        "type": "string"
+      },
+      "type": {
+        "const": "paragraph",
+        "title": "Type",
+        "type": "string"
+      }
+    },
+    "required": [
+      "type",
+      "conversationId",
+      "turnId",
+      "index",
+      "paragraph"
+    ],
+    "title": "KnowledgeConversationParagraphEvent",
+    "type": "object"
+  },
+  "KnowledgeConversationResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "createdAt": {
+        "format": "date-time",
+        "title": "Createdat",
+        "type": "string"
+      },
+      "id": {
+        "format": "uuid",
+        "title": "Id",
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 51,
+        "minimum": 1,
+        "title": "Revision",
+        "type": "integer"
+      },
+      "title": {
+        "maxLength": 60,
+        "minLength": 1,
+        "title": "Title",
+        "type": "string"
+      },
+      "turns": {
+        "items": {
+          "$ref": "#/components/schemas/KnowledgeConversationTurnResponse"
+        },
+        "maxItems": 50,
+        "title": "Turns",
+        "type": "array"
+      },
+      "updatedAt": {
+        "format": "date-time",
+        "title": "Updatedat",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "title",
+      "revision",
+      "createdAt",
+      "updatedAt",
+      "turns"
+    ],
+    "title": "KnowledgeConversationResponse",
+    "type": "object"
+  },
+  "KnowledgeConversationStreamEvent": {
+    "discriminator": {
+      "mapping": {
+        "complete": "#/components/schemas/KnowledgeConversationCompleteEvent",
+        "error": "#/components/schemas/KnowledgeConversationErrorEvent",
+        "paragraph": "#/components/schemas/KnowledgeConversationParagraphEvent"
+      },
+      "propertyName": "type"
+    },
+    "oneOf": [
+      {
+        "$ref": "#/components/schemas/KnowledgeConversationParagraphEvent"
+      },
+      {
+        "$ref": "#/components/schemas/KnowledgeConversationCompleteEvent"
+      },
+      {
+        "$ref": "#/components/schemas/KnowledgeConversationErrorEvent"
+      }
+    ],
+    "title": "KnowledgeConversationStreamEvent"
+  },
+  "KnowledgeConversationSummary": {
+    "additionalProperties": false,
+    "properties": {
+      "createdAt": {
+        "format": "date-time",
+        "title": "Createdat",
+        "type": "string"
+      },
+      "id": {
+        "format": "uuid",
+        "title": "Id",
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 51,
+        "minimum": 1,
+        "title": "Revision",
+        "type": "integer"
+      },
+      "title": {
+        "maxLength": 60,
+        "minLength": 1,
+        "title": "Title",
+        "type": "string"
+      },
+      "updatedAt": {
+        "format": "date-time",
+        "title": "Updatedat",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "title",
+      "revision",
+      "createdAt",
+      "updatedAt"
+    ],
+    "title": "KnowledgeConversationSummary",
+    "type": "object"
+  },
+  "KnowledgeConversationTurnRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "assistantRevision": {
+        "default": 0,
+        "minimum": 0,
+        "title": "Assistantrevision",
+        "type": "integer"
+      },
+      "expectedRevision": {
+        "exclusiveMinimum": 0,
+        "title": "Expectedrevision",
+        "type": "integer"
+      },
+      "id": {
+        "format": "uuid",
+        "title": "Id",
+        "type": "string"
+      },
+      "question": {
+        "maxLength": 500,
+        "minLength": 3,
+        "title": "Question",
+        "type": "string"
+      },
+      "skillId": {
+        "anyOf": [
+          {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Skillid"
+      }
+    },
+    "required": [
+      "question",
+      "id",
+      "expectedRevision"
+    ],
+    "title": "KnowledgeConversationTurnRequest",
+    "type": "object"
+  },
+  "KnowledgeConversationTurnResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "answer": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/KnowledgeAnswerResponse"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "answerUnavailable": {
+        "title": "Answerunavailable",
+        "type": "boolean"
+      },
+      "assistantId": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Assistantid"
+      },
+      "assistantName": {
+        "default": "岑宁",
+        "title": "Assistantname",
+        "type": "string"
+      },
+      "assistantRevision": {
+        "default": 0,
+        "minimum": 0,
+        "title": "Assistantrevision",
+        "type": "integer"
+      },
+      "contextTruncated": {
+        "title": "Contexttruncated",
+        "type": "boolean"
+      },
+      "createdAt": {
+        "format": "date-time",
+        "title": "Createdat",
+        "type": "string"
+      },
+      "id": {
+        "format": "uuid",
+        "title": "Id",
+        "type": "string"
+      },
+      "model": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/AnswerModelOption"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "question": {
+        "maxLength": 500,
+        "minLength": 3,
+        "title": "Question",
+        "type": "string"
+      },
+      "sequence": {
+        "maximum": 50,
+        "minimum": 1,
+        "title": "Sequence",
+        "type": "integer"
+      },
+      "skillId": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Skillid"
+      }
+    },
+    "required": [
+      "id",
+      "sequence",
+      "question",
+      "answer",
+      "answerUnavailable",
+      "contextTruncated",
+      "createdAt"
+    ],
+    "title": "KnowledgeConversationTurnResponse",
+    "type": "object"
+  },
   "KnowledgeResourcePage": {
     "properties": {
       "capabilities": {
@@ -1475,6 +2333,273 @@ export const componentSchemas = {
       "results"
     ],
     "title": "KnowledgeSearchResponse",
+    "type": "object"
+  },
+  "KnowledgeSkillCatalogResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "items": {
+        "items": {
+          "$ref": "#/components/schemas/KnowledgeSkillItem"
+        },
+        "title": "Items",
+        "type": "array"
+      }
+    },
+    "required": [
+      "items"
+    ],
+    "title": "KnowledgeSkillCatalogResponse",
+    "type": "object"
+  },
+  "KnowledgeSkillImportResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "body": {
+        "title": "Body",
+        "type": "string"
+      },
+      "capabilities": {
+        "items": {
+          "const": "knowledge.read",
+          "type": "string"
+        },
+        "title": "Capabilities",
+        "type": "array"
+      },
+      "defaultQuestion": {
+        "title": "Defaultquestion",
+        "type": "string"
+      },
+      "description": {
+        "title": "Description",
+        "type": "string"
+      },
+      "digest": {
+        "title": "Digest",
+        "type": "string"
+      },
+      "id": {
+        "format": "uuid",
+        "title": "Id",
+        "type": "string"
+      },
+      "name": {
+        "title": "Name",
+        "type": "string"
+      },
+      "resources": {
+        "items": {
+          "$ref": "#/components/schemas/SkillResource"
+        },
+        "title": "Resources",
+        "type": "array"
+      },
+      "runnable": {
+        "title": "Runnable",
+        "type": "boolean"
+      },
+      "sourceMetadata": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "title": "Sourcemetadata",
+        "type": "object"
+      },
+      "sourceType": {
+        "enum": [
+          "markdown",
+          "zip",
+          "github"
+        ],
+        "title": "Sourcetype",
+        "type": "string"
+      },
+      "version": {
+        "const": "v1",
+        "default": "v1",
+        "title": "Version",
+        "type": "string"
+      },
+      "warnings": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Warnings",
+        "type": "array"
+      }
+    },
+    "required": [
+      "name",
+      "description",
+      "defaultQuestion",
+      "capabilities",
+      "sourceType",
+      "sourceMetadata",
+      "runnable",
+      "warnings",
+      "body",
+      "resources",
+      "digest",
+      "id"
+    ],
+    "title": "KnowledgeSkillImportResponse",
+    "type": "object"
+  },
+  "KnowledgeSkillItem": {
+    "additionalProperties": false,
+    "properties": {
+      "capabilities": {
+        "items": {
+          "const": "knowledge.read",
+          "type": "string"
+        },
+        "title": "Capabilities",
+        "type": "array"
+      },
+      "defaultQuestion": {
+        "title": "Defaultquestion",
+        "type": "string"
+      },
+      "description": {
+        "title": "Description",
+        "type": "string"
+      },
+      "id": {
+        "title": "Id",
+        "type": "string"
+      },
+      "name": {
+        "title": "Name",
+        "type": "string"
+      },
+      "runnable": {
+        "title": "Runnable",
+        "type": "boolean"
+      },
+      "sourceType": {
+        "enum": [
+          "builtin",
+          "markdown",
+          "zip",
+          "github"
+        ],
+        "title": "Sourcetype",
+        "type": "string"
+      },
+      "version": {
+        "const": "v1",
+        "default": "v1",
+        "title": "Version",
+        "type": "string"
+      },
+      "warnings": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Warnings",
+        "type": "array"
+      }
+    },
+    "required": [
+      "id",
+      "name",
+      "description",
+      "defaultQuestion",
+      "capabilities",
+      "sourceType",
+      "runnable",
+      "warnings"
+    ],
+    "title": "KnowledgeSkillItem",
+    "type": "object"
+  },
+  "KnowledgeSkillPreview": {
+    "additionalProperties": false,
+    "properties": {
+      "body": {
+        "title": "Body",
+        "type": "string"
+      },
+      "capabilities": {
+        "items": {
+          "const": "knowledge.read",
+          "type": "string"
+        },
+        "title": "Capabilities",
+        "type": "array"
+      },
+      "defaultQuestion": {
+        "title": "Defaultquestion",
+        "type": "string"
+      },
+      "description": {
+        "title": "Description",
+        "type": "string"
+      },
+      "digest": {
+        "title": "Digest",
+        "type": "string"
+      },
+      "name": {
+        "title": "Name",
+        "type": "string"
+      },
+      "resources": {
+        "items": {
+          "$ref": "#/components/schemas/SkillResource"
+        },
+        "title": "Resources",
+        "type": "array"
+      },
+      "runnable": {
+        "title": "Runnable",
+        "type": "boolean"
+      },
+      "sourceMetadata": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "title": "Sourcemetadata",
+        "type": "object"
+      },
+      "sourceType": {
+        "enum": [
+          "markdown",
+          "zip",
+          "github"
+        ],
+        "title": "Sourcetype",
+        "type": "string"
+      },
+      "version": {
+        "const": "v1",
+        "default": "v1",
+        "title": "Version",
+        "type": "string"
+      },
+      "warnings": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Warnings",
+        "type": "array"
+      }
+    },
+    "required": [
+      "name",
+      "description",
+      "defaultQuestion",
+      "capabilities",
+      "sourceType",
+      "sourceMetadata",
+      "runnable",
+      "warnings",
+      "body",
+      "resources",
+      "digest"
+    ],
+    "title": "KnowledgeSkillPreview",
     "type": "object"
   },
   "KnowledgeSourcePage": {
@@ -2014,6 +3139,35 @@ export const componentSchemas = {
     "title": "LoginRequest",
     "type": "object"
   },
+  "MarkdownSkillSource": {
+    "additionalProperties": false,
+    "properties": {
+      "content": {
+        "maxLength": 65536,
+        "minLength": 1,
+        "title": "Content",
+        "type": "string"
+      },
+      "fileName": {
+        "maxLength": 120,
+        "minLength": 1,
+        "title": "Filename",
+        "type": "string"
+      },
+      "type": {
+        "const": "markdown",
+        "title": "Type",
+        "type": "string"
+      }
+    },
+    "required": [
+      "type",
+      "fileName",
+      "content"
+    ],
+    "title": "MarkdownSkillSource",
+    "type": "object"
+  },
   "MembershipDetailResponse": {
     "properties": {
       "createdAt": {
@@ -2130,6 +3284,621 @@ export const componentSchemas = {
     ],
     "title": "MembershipRoleUpdateRequest",
     "type": "object"
+  },
+  "MilestoneCreateRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "acceptanceCriteria": {
+        "anyOf": [
+          {
+            "maxLength": 10000,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Acceptancecriteria"
+      },
+      "description": {
+        "anyOf": [
+          {
+            "maxLength": 4000,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Description"
+      },
+      "dueAt": {
+        "anyOf": [
+          {
+            "format": "date-time",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Dueat"
+      },
+      "expectedProjectRevision": {
+        "minimum": 1,
+        "title": "Expectedprojectrevision",
+        "type": "integer"
+      },
+      "name": {
+        "maxLength": 160,
+        "minLength": 1,
+        "title": "Name",
+        "type": "string"
+      },
+      "stageId": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Stageid"
+      }
+    },
+    "required": [
+      "expectedProjectRevision",
+      "name"
+    ],
+    "title": "MilestoneCreateRequest",
+    "type": "object"
+  },
+  "MilestonePage": {
+    "properties": {
+      "items": {
+        "items": {
+          "$ref": "#/components/schemas/MilestoneResponse"
+        },
+        "title": "Items",
+        "type": "array"
+      },
+      "nextCursor": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Nextcursor"
+      }
+    },
+    "required": [
+      "items",
+      "nextCursor"
+    ],
+    "title": "MilestonePage",
+    "type": "object"
+  },
+  "MilestoneResponse": {
+    "properties": {
+      "acceptanceCriteria": {
+        "anyOf": [
+          {
+            "maxLength": 10000,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Acceptancecriteria"
+      },
+      "archived": {
+        "title": "Archived",
+        "type": "boolean"
+      },
+      "createdAt": {
+        "format": "date-time",
+        "title": "Createdat",
+        "type": "string"
+      },
+      "description": {
+        "anyOf": [
+          {
+            "maxLength": 4000,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Description"
+      },
+      "dueAt": {
+        "anyOf": [
+          {
+            "format": "date-time",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Dueat"
+      },
+      "id": {
+        "format": "uuid",
+        "title": "Id",
+        "type": "string"
+      },
+      "name": {
+        "maxLength": 160,
+        "minLength": 1,
+        "title": "Name",
+        "type": "string"
+      },
+      "projectId": {
+        "format": "uuid",
+        "title": "Projectid",
+        "type": "string"
+      },
+      "revision": {
+        "minimum": 1,
+        "title": "Revision",
+        "type": "integer"
+      },
+      "stageId": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Stageid"
+      },
+      "updatedAt": {
+        "format": "date-time",
+        "title": "Updatedat",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "projectId",
+      "revision",
+      "archived",
+      "name",
+      "description",
+      "acceptanceCriteria",
+      "dueAt",
+      "stageId",
+      "createdAt",
+      "updatedAt"
+    ],
+    "title": "MilestoneResponse",
+    "type": "object"
+  },
+  "MilestoneUpdateRequest": {
+    "anyOf": [
+      {
+        "additionalProperties": false,
+        "properties": {
+          "acceptanceCriteria": false,
+          "archived": {
+            "title": "Archived",
+            "type": "boolean"
+          },
+          "description": false,
+          "dueAt": false,
+          "expectedProjectRevision": {
+            "minimum": 1,
+            "title": "Expectedprojectrevision",
+            "type": "integer"
+          },
+          "expectedRevision": {
+            "minimum": 1,
+            "title": "Expectedrevision",
+            "type": "integer"
+          },
+          "name": false,
+          "stageId": false
+        },
+        "required": [
+          "expectedProjectRevision",
+          "expectedRevision",
+          "archived"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "acceptanceCriteria": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acceptancecriteria"
+          },
+          "archived": false,
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "dueAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dueat"
+          },
+          "expectedProjectRevision": {
+            "minimum": 1,
+            "title": "Expectedprojectrevision",
+            "type": "integer"
+          },
+          "expectedRevision": {
+            "minimum": 1,
+            "title": "Expectedrevision",
+            "type": "integer"
+          },
+          "name": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "stageId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stageid"
+          }
+        },
+        "required": [
+          "expectedProjectRevision",
+          "expectedRevision",
+          "name"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "acceptanceCriteria": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acceptancecriteria"
+          },
+          "archived": false,
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "dueAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dueat"
+          },
+          "expectedProjectRevision": {
+            "minimum": 1,
+            "title": "Expectedprojectrevision",
+            "type": "integer"
+          },
+          "expectedRevision": {
+            "minimum": 1,
+            "title": "Expectedrevision",
+            "type": "integer"
+          },
+          "name": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "stageId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stageid"
+          }
+        },
+        "required": [
+          "expectedProjectRevision",
+          "expectedRevision",
+          "description"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "acceptanceCriteria": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acceptancecriteria"
+          },
+          "archived": false,
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "dueAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dueat"
+          },
+          "expectedProjectRevision": {
+            "minimum": 1,
+            "title": "Expectedprojectrevision",
+            "type": "integer"
+          },
+          "expectedRevision": {
+            "minimum": 1,
+            "title": "Expectedrevision",
+            "type": "integer"
+          },
+          "name": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "stageId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stageid"
+          }
+        },
+        "required": [
+          "expectedProjectRevision",
+          "expectedRevision",
+          "acceptanceCriteria"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "acceptanceCriteria": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acceptancecriteria"
+          },
+          "archived": false,
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "dueAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dueat"
+          },
+          "expectedProjectRevision": {
+            "minimum": 1,
+            "title": "Expectedprojectrevision",
+            "type": "integer"
+          },
+          "expectedRevision": {
+            "minimum": 1,
+            "title": "Expectedrevision",
+            "type": "integer"
+          },
+          "name": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "stageId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stageid"
+          }
+        },
+        "required": [
+          "expectedProjectRevision",
+          "expectedRevision",
+          "dueAt"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "acceptanceCriteria": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acceptancecriteria"
+          },
+          "archived": false,
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "dueAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dueat"
+          },
+          "expectedProjectRevision": {
+            "minimum": 1,
+            "title": "Expectedprojectrevision",
+            "type": "integer"
+          },
+          "expectedRevision": {
+            "minimum": 1,
+            "title": "Expectedrevision",
+            "type": "integer"
+          },
+          "name": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "stageId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stageid"
+          }
+        },
+        "required": [
+          "expectedProjectRevision",
+          "expectedRevision",
+          "stageId"
+        ],
+        "type": "object"
+      }
+    ],
+    "title": "MilestoneUpdateRequest"
   },
   "OAuthProviderResponse": {
     "properties": {
@@ -2371,6 +4140,18 @@ export const componentSchemas = {
         "title": "Name",
         "type": "string"
       },
+      "revision": {
+        "anyOf": [
+          {
+            "minimum": 1,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Revision"
+      },
       "updatedAt": {
         "format": "date-time",
         "title": "Updatedat",
@@ -2555,6 +4336,313 @@ export const componentSchemas = {
     "title": "ResourceVersionStatus",
     "type": "string"
   },
+  "SkillImportRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "expectedDigest": {
+        "pattern": "^[0-9a-f]{64}$",
+        "title": "Expecteddigest",
+        "type": "string"
+      },
+      "id": {
+        "format": "uuid",
+        "title": "Id",
+        "type": "string"
+      },
+      "source": {
+        "discriminator": {
+          "mapping": {
+            "github": "#/components/schemas/GithubSkillSource",
+            "markdown": "#/components/schemas/MarkdownSkillSource",
+            "zip": "#/components/schemas/ZipSkillSource"
+          },
+          "propertyName": "type"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/MarkdownSkillSource"
+          },
+          {
+            "$ref": "#/components/schemas/ZipSkillSource"
+          },
+          {
+            "$ref": "#/components/schemas/GithubSkillSource"
+          }
+        ],
+        "title": "Source"
+      }
+    },
+    "required": [
+      "source",
+      "id",
+      "expectedDigest"
+    ],
+    "title": "SkillImportRequest",
+    "type": "object"
+  },
+  "SkillPreviewRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "source": {
+        "discriminator": {
+          "mapping": {
+            "github": "#/components/schemas/GithubSkillSource",
+            "markdown": "#/components/schemas/MarkdownSkillSource",
+            "zip": "#/components/schemas/ZipSkillSource"
+          },
+          "propertyName": "type"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/MarkdownSkillSource"
+          },
+          {
+            "$ref": "#/components/schemas/ZipSkillSource"
+          },
+          {
+            "$ref": "#/components/schemas/GithubSkillSource"
+          }
+        ],
+        "title": "Source"
+      }
+    },
+    "required": [
+      "source"
+    ],
+    "title": "SkillPreviewRequest",
+    "type": "object"
+  },
+  "SkillResource": {
+    "additionalProperties": false,
+    "properties": {
+      "content": {
+        "title": "Content",
+        "type": "string"
+      },
+      "path": {
+        "title": "Path",
+        "type": "string"
+      }
+    },
+    "required": [
+      "path",
+      "content"
+    ],
+    "title": "SkillResource",
+    "type": "object"
+  },
+  "StageCreateRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "expectedProjectRevision": {
+        "minimum": 1,
+        "title": "Expectedprojectrevision",
+        "type": "integer"
+      },
+      "name": {
+        "maxLength": 120,
+        "minLength": 1,
+        "title": "Name",
+        "type": "string"
+      },
+      "position": {
+        "maximum": 2147483647,
+        "minimum": 0,
+        "title": "Position",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "expectedProjectRevision",
+      "name",
+      "position"
+    ],
+    "title": "StageCreateRequest",
+    "type": "object"
+  },
+  "StagePage": {
+    "properties": {
+      "items": {
+        "items": {
+          "$ref": "#/components/schemas/StageResponse"
+        },
+        "title": "Items",
+        "type": "array"
+      },
+      "nextCursor": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Nextcursor"
+      }
+    },
+    "required": [
+      "items",
+      "nextCursor"
+    ],
+    "title": "StagePage",
+    "type": "object"
+  },
+  "StageResponse": {
+    "properties": {
+      "archived": {
+        "title": "Archived",
+        "type": "boolean"
+      },
+      "createdAt": {
+        "format": "date-time",
+        "title": "Createdat",
+        "type": "string"
+      },
+      "id": {
+        "format": "uuid",
+        "title": "Id",
+        "type": "string"
+      },
+      "name": {
+        "maxLength": 120,
+        "minLength": 1,
+        "title": "Name",
+        "type": "string"
+      },
+      "position": {
+        "title": "Position",
+        "type": "integer"
+      },
+      "projectId": {
+        "format": "uuid",
+        "title": "Projectid",
+        "type": "string"
+      },
+      "revision": {
+        "minimum": 1,
+        "title": "Revision",
+        "type": "integer"
+      },
+      "updatedAt": {
+        "format": "date-time",
+        "title": "Updatedat",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "projectId",
+      "revision",
+      "archived",
+      "name",
+      "position",
+      "createdAt",
+      "updatedAt"
+    ],
+    "title": "StageResponse",
+    "type": "object"
+  },
+  "StageUpdateRequest": {
+    "anyOf": [
+      {
+        "additionalProperties": false,
+        "properties": {
+          "archived": {
+            "title": "Archived",
+            "type": "boolean"
+          },
+          "expectedProjectRevision": {
+            "minimum": 1,
+            "title": "Expectedprojectrevision",
+            "type": "integer"
+          },
+          "expectedRevision": {
+            "minimum": 1,
+            "title": "Expectedrevision",
+            "type": "integer"
+          },
+          "name": false,
+          "position": false
+        },
+        "required": [
+          "expectedProjectRevision",
+          "expectedRevision",
+          "archived"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "archived": false,
+          "expectedProjectRevision": {
+            "minimum": 1,
+            "title": "Expectedprojectrevision",
+            "type": "integer"
+          },
+          "expectedRevision": {
+            "minimum": 1,
+            "title": "Expectedrevision",
+            "type": "integer"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "position": {
+            "maximum": 2147483647,
+            "minimum": 0,
+            "title": "Position",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expectedProjectRevision",
+          "expectedRevision",
+          "name"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "archived": false,
+          "expectedProjectRevision": {
+            "minimum": 1,
+            "title": "Expectedprojectrevision",
+            "type": "integer"
+          },
+          "expectedRevision": {
+            "minimum": 1,
+            "title": "Expectedrevision",
+            "type": "integer"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "position": {
+            "maximum": 2147483647,
+            "minimum": 0,
+            "title": "Position",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expectedProjectRevision",
+          "expectedRevision",
+          "position"
+        ],
+        "type": "object"
+      }
+    ],
+    "title": "StageUpdateRequest"
+  },
   "TaskCreateRequest": {
     "additionalProperties": false,
     "properties": {
@@ -2570,6 +4658,30 @@ export const componentSchemas = {
         ],
         "title": "Acceptancecriteria"
       },
+      "assigneeUserId": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Assigneeuserid"
+      },
+      "description": {
+        "anyOf": [
+          {
+            "maxLength": 10000,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Description"
+      },
       "dueAt": {
         "anyOf": [
           {
@@ -2581,6 +4693,30 @@ export const componentSchemas = {
           }
         ],
         "title": "Dueat"
+      },
+      "expectedProjectRevision": {
+        "anyOf": [
+          {
+            "minimum": 1,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Expectedprojectrevision"
+      },
+      "milestoneId": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Milestoneid"
       },
       "parentTaskId": {
         "anyOf": [
@@ -2626,6 +4762,18 @@ export const componentSchemas = {
   "TaskDependencyCreateRequest": {
     "additionalProperties": false,
     "properties": {
+      "expectedRevision": {
+        "anyOf": [
+          {
+            "minimum": 1,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Expectedrevision"
+      },
       "predecessorTaskId": {
         "description": "The predecessor task. The task identified by the route is the successor, forming predecessor -> successor.",
         "format": "uuid",
@@ -2691,10 +4839,34 @@ export const componentSchemas = {
         ],
         "title": "Acceptancecriteria"
       },
+      "assigneeUserId": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Assigneeuserid"
+      },
       "createdAt": {
         "format": "date-time",
         "title": "Createdat",
         "type": "string"
+      },
+      "description": {
+        "anyOf": [
+          {
+            "maxLength": 10000,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Description"
       },
       "dueAt": {
         "anyOf": [
@@ -2712,6 +4884,18 @@ export const componentSchemas = {
         "format": "uuid",
         "title": "Id",
         "type": "string"
+      },
+      "milestoneId": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Milestoneid"
       },
       "parentTaskId": {
         "anyOf": [
@@ -2732,6 +4916,11 @@ export const componentSchemas = {
         "format": "uuid",
         "title": "Projectid",
         "type": "string"
+      },
+      "revision": {
+        "minimum": 1,
+        "title": "Revision",
+        "type": "integer"
       },
       "stageId": {
         "anyOf": [
@@ -2763,8 +4952,12 @@ export const componentSchemas = {
     "required": [
       "id",
       "projectId",
+      "revision",
+      "description",
+      "assigneeUserId",
       "title",
       "stageId",
+      "milestoneId",
       "parentTaskId",
       "status",
       "priority",
@@ -2791,6 +4984,18 @@ export const componentSchemas = {
   "TaskStatusUpdateRequest": {
     "additionalProperties": false,
     "properties": {
+      "expectedRevision": {
+        "anyOf": [
+          {
+            "minimum": 1,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Expectedrevision"
+      },
       "status": {
         "$ref": "#/components/schemas/TaskStatus"
       }
@@ -2800,6 +5005,729 @@ export const componentSchemas = {
     ],
     "title": "TaskStatusUpdateRequest",
     "type": "object"
+  },
+  "TaskUpdateRequest": {
+    "anyOf": [
+      {
+        "additionalProperties": false,
+        "properties": {
+          "acceptanceCriteria": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acceptancecriteria"
+          },
+          "assigneeUserId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigneeuserid"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "dueAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dueat"
+          },
+          "expectedProjectRevision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "expectedRevision": {
+            "minimum": 1,
+            "title": "Expectedrevision",
+            "type": "integer"
+          },
+          "milestoneId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Milestoneid"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/TaskPriority"
+          },
+          "stageId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stageid"
+          },
+          "title": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expectedRevision",
+          "stageId",
+          "expectedProjectRevision"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "acceptanceCriteria": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acceptancecriteria"
+          },
+          "assigneeUserId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigneeuserid"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "dueAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dueat"
+          },
+          "expectedProjectRevision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "expectedRevision": {
+            "minimum": 1,
+            "title": "Expectedrevision",
+            "type": "integer"
+          },
+          "milestoneId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Milestoneid"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/TaskPriority"
+          },
+          "stageId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stageid"
+          },
+          "title": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expectedRevision",
+          "milestoneId",
+          "expectedProjectRevision"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "acceptanceCriteria": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acceptancecriteria"
+          },
+          "assigneeUserId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigneeuserid"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "dueAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dueat"
+          },
+          "expectedProjectRevision": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expectedprojectrevision"
+          },
+          "expectedRevision": {
+            "minimum": 1,
+            "title": "Expectedrevision",
+            "type": "integer"
+          },
+          "milestoneId": false,
+          "priority": {
+            "$ref": "#/components/schemas/TaskPriority"
+          },
+          "stageId": false,
+          "title": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expectedRevision",
+          "title"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "acceptanceCriteria": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acceptancecriteria"
+          },
+          "assigneeUserId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigneeuserid"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "dueAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dueat"
+          },
+          "expectedProjectRevision": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expectedprojectrevision"
+          },
+          "expectedRevision": {
+            "minimum": 1,
+            "title": "Expectedrevision",
+            "type": "integer"
+          },
+          "milestoneId": false,
+          "priority": {
+            "$ref": "#/components/schemas/TaskPriority"
+          },
+          "stageId": false,
+          "title": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expectedRevision",
+          "description"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "acceptanceCriteria": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acceptancecriteria"
+          },
+          "assigneeUserId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigneeuserid"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "dueAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dueat"
+          },
+          "expectedProjectRevision": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expectedprojectrevision"
+          },
+          "expectedRevision": {
+            "minimum": 1,
+            "title": "Expectedrevision",
+            "type": "integer"
+          },
+          "milestoneId": false,
+          "priority": {
+            "$ref": "#/components/schemas/TaskPriority"
+          },
+          "stageId": false,
+          "title": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expectedRevision",
+          "assigneeUserId"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "acceptanceCriteria": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acceptancecriteria"
+          },
+          "assigneeUserId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigneeuserid"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "dueAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dueat"
+          },
+          "expectedProjectRevision": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expectedprojectrevision"
+          },
+          "expectedRevision": {
+            "minimum": 1,
+            "title": "Expectedrevision",
+            "type": "integer"
+          },
+          "milestoneId": false,
+          "priority": {
+            "$ref": "#/components/schemas/TaskPriority"
+          },
+          "stageId": false,
+          "title": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expectedRevision",
+          "priority"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "acceptanceCriteria": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acceptancecriteria"
+          },
+          "assigneeUserId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigneeuserid"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "dueAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dueat"
+          },
+          "expectedProjectRevision": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expectedprojectrevision"
+          },
+          "expectedRevision": {
+            "minimum": 1,
+            "title": "Expectedrevision",
+            "type": "integer"
+          },
+          "milestoneId": false,
+          "priority": {
+            "$ref": "#/components/schemas/TaskPriority"
+          },
+          "stageId": false,
+          "title": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expectedRevision",
+          "dueAt"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "acceptanceCriteria": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acceptancecriteria"
+          },
+          "assigneeUserId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigneeuserid"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "dueAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dueat"
+          },
+          "expectedProjectRevision": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expectedprojectrevision"
+          },
+          "expectedRevision": {
+            "minimum": 1,
+            "title": "Expectedrevision",
+            "type": "integer"
+          },
+          "milestoneId": false,
+          "priority": {
+            "$ref": "#/components/schemas/TaskPriority"
+          },
+          "stageId": false,
+          "title": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expectedRevision",
+          "acceptanceCriteria"
+        ],
+        "type": "object"
+      }
+    ],
+    "title": "TaskUpdateRequest"
   },
   "TextLocator": {
     "properties": {
@@ -3074,6 +6002,35 @@ export const componentSchemas = {
       "cellRange"
     ],
     "title": "XlsxLocator",
+    "type": "object"
+  },
+  "ZipSkillSource": {
+    "additionalProperties": false,
+    "properties": {
+      "contentBase64": {
+        "maxLength": 349528,
+        "minLength": 1,
+        "title": "Contentbase64",
+        "type": "string"
+      },
+      "fileName": {
+        "maxLength": 120,
+        "minLength": 1,
+        "title": "Filename",
+        "type": "string"
+      },
+      "type": {
+        "const": "zip",
+        "title": "Type",
+        "type": "string"
+      }
+    },
+    "required": [
+      "type",
+      "fileName",
+      "contentBase64"
+    ],
+    "title": "ZipSkillSource",
     "type": "object"
   }
 } as const;

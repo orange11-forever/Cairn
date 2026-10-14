@@ -1,11 +1,25 @@
-import { BookOpenText, CalendarDays, ClipboardCheck, Flag, ListChecks } from "lucide-react";
-import { useState } from "react";
+import {
+  BookOpenText,
+  CalendarDays,
+  ClipboardCheck,
+  Flag,
+  ListChecks,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { TaskEditor } from "../components/projects/TaskEditor.tsx";
+import { TaskDetails } from "../components/projects/TaskDetails.tsx";
+import { ProjectStructure } from "../components/projects/ProjectStructure.tsx";
 import { Link } from "react-router-dom";
 
 import type { Project, Task, TaskStatus } from "../api/projects.ts";
 import { MascotFigure } from "../components/MascotFigure.tsx";
 import { formatCalendarDate } from "../lib/dateTime.ts";
 import {
+  taskKeys,
+  refreshProjectStructure,
+  useStagesQuery,
+  useMilestonesQuery,
   useProjectsQuery,
   useProjectTasksQuery,
   useTaskTransition,
@@ -51,7 +65,9 @@ const DUE_DATE_FORMAT = new Intl.DateTimeFormat("zh-CN", {
 });
 
 function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message.trim() ? error.message : fallback;
+  return error instanceof Error && error.message.trim()
+    ? error.message
+    : fallback;
 }
 
 function taskWorkspaceId(projectId: string): string {
@@ -64,6 +80,7 @@ export function ProjectsPage() {
 
   return (
     <ProjectsWorkspace
+      key={session.identity.organization.id}
       csrfToken={session.identity.csrfToken}
       membershipRole={session.identity.membership.role}
       organizationId={session.identity.organization.id}
@@ -84,18 +101,27 @@ function ProjectsWorkspace({
   signal: AbortSignal;
 }) {
   const projects = useProjectsQuery(organizationId, signal);
-  const [requestedProjectId, setRequestedProjectId] = useState<string | null>(null);
+  const [requestedProjectId, setRequestedProjectId] = useState<string | null>(
+    null,
+  );
   const [selectionAnnouncement, setSelectionAnnouncement] = useState("");
 
   if (projects.isPending) {
     return (
-      <section className="projects-page" aria-busy="true" aria-label="项目工作区">
+      <section
+        className="projects-page"
+        aria-busy="true"
+        aria-label="项目工作区"
+      >
         <PageHeading />
         <div className="project-workbench project-workbench-skeleton">
           <div className="project-skeleton project-skeleton-rail">
             <span>正在加载项目</span>
           </div>
-          <div className="project-skeleton project-skeleton-tasks" aria-hidden="true" />
+          <div
+            className="project-skeleton project-skeleton-tasks"
+            aria-hidden="true"
+          />
         </div>
       </section>
     );
@@ -119,18 +145,19 @@ function ProjectsWorkspace({
 
   const projectItems = projects.data.pages.flatMap((page) => page.items);
   const firstProject = projectItems[0];
-  const projectRefreshError = projects.isRefetchError && !projects.isFetchNextPageError ? (
-    <RefreshError
-      className="project-refresh-error"
-      context="项目列表可能不是最新。"
-      error={projects.error}
-      errorFallback="项目列表刷新失败，请重试"
-      idleLabel="重试刷新项目"
-      loadingLabel="正在刷新项目"
-      pending={projects.isRefetching}
-      onRetry={() => void projects.refetch()}
-    />
-  ) : null;
+  const projectRefreshError =
+    projects.isRefetchError && !projects.isFetchNextPageError ? (
+      <RefreshError
+        className="project-refresh-error"
+        context="项目列表可能不是最新。"
+        error={projects.error}
+        errorFallback="项目列表刷新失败，请重试"
+        idleLabel="重试刷新项目"
+        loadingLabel="正在刷新项目"
+        pending={projects.isRefetching}
+        onRetry={() => void projects.refetch()}
+      />
+    ) : null;
 
   if (firstProject === undefined) {
     return (
@@ -153,13 +180,15 @@ function ProjectsWorkspace({
   }
 
   const selectedProject =
-    projectItems.find((project) => project.id === requestedProjectId) ?? firstProject;
+    projectItems.find((project) => project.id === requestedProjectId) ??
+    firstProject;
   const selectedWorkspaceId = taskWorkspaceId(selectedProject.id);
   const selectProject = (projectId: string) => {
     if (projectId === selectedProject.id) return;
     const project = projectItems.find((item) => item.id === projectId);
     setRequestedProjectId(projectId);
-    if (project !== undefined) setSelectionAnnouncement(`已选择项目：${project.name}`);
+    if (project !== undefined)
+      setSelectionAnnouncement(`已选择项目：${project.name}`);
   };
 
   return (
@@ -175,7 +204,9 @@ function ProjectsWorkspace({
           onChange={(event) => selectProject(event.target.value)}
         >
           {projectItems.map((project) => (
-            <option key={project.id} value={project.id}>{project.name}</option>
+            <option key={project.id} value={project.id}>
+              {project.name}
+            </option>
           ))}
         </select>
       </div>
@@ -223,7 +254,9 @@ function ProjectsWorkspace({
           className="project-pagination"
           error={projects.isFetchNextPageError ? projects.error : null}
           errorFallback="更多项目暂时无法加载，请重试"
-          idleLabel={projects.isFetchNextPageError ? "重新加载更多项目" : "加载更多项目"}
+          idleLabel={
+            projects.isFetchNextPageError ? "重新加载更多项目" : "加载更多项目"
+          }
           loadingLabel="正在加载更多项目"
           pending={projects.isFetchingNextPage}
           onLoadMore={() => void projects.fetchNextPage()}
@@ -259,20 +292,68 @@ function TaskWorkspace({
   signal: AbortSignal;
   workspaceId: string;
 }) {
-  const tasks = useProjectTasksQuery(organizationId, project.id, signal);
+  const scopeSignal = signal;
+  const queryClient = useQueryClient();
+  const [creating, setCreating] = useState(false);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [editorBusy, setEditorBusy] = useState(false);
+  const [structureBusy, setStructureBusy] = useState(false);
+  const [createRecovery, setCreateRecovery] = useState<"conflict" | "refresh_failed" | null>(null);
+  const [createRereading, setCreateRereading] = useState(false);
+  const [createGeneration, setCreateGeneration] = useState(0);
+  const [createRecoveryError, setCreateRecoveryError] = useState("");
+  const mounted = useRef(true);
+  useEffect(() => {mounted.current = true; return () => {mounted.current = false;};}, []);
+  const current = () => mounted.current && !scopeSignal.aborted;
+  const createBlocked = createRecovery !== null || createRereading;
+  const stages = useStagesQuery(organizationId, project.id, scopeSignal);
+  const milestones = useMilestonesQuery(organizationId, project.id, scopeSignal);
+  const tasks = useProjectTasksQuery(organizationId, project.id, scopeSignal);
   const transition = useTaskTransition({
     organizationId,
     csrfToken,
-    sessionSignal: signal,
+    sessionSignal: scopeSignal,
   });
-  const canTransition = membershipRole === "owner"
-    || membershipRole === "admin"
-    || membershipRole === "member";
+  const canTransition =
+    membershipRole === "owner" ||
+    membershipRole === "admin" ||
+    membershipRole === "member";
   const taskItems = tasks.data?.pages.flatMap((page) => page.items) ?? [];
-  const hasTaskRefetchError = tasks.isRefetchError && !tasks.isFetchNextPageError;
-  const transitionRefreshFailed = hasTaskRefetchError
-    && transition.isSuccess
-    && tasks.dataUpdatedAt <= transition.submittedAt;
+  const hasTaskRefetchError =
+    tasks.isRefetchError && !tasks.isFetchNextPageError;
+  const transitionRefreshFailed =
+    transition.recovery?.kind === "refresh_failed";
+  const statusBlocked =
+    transition.isPending ||
+    transition.rereading ||
+    transition.recovery !== null;
+  const replacesDraft = selectedTaskId !== null || creating;
+  const recoveryLabel = replacesDraft
+    ? "重新读取最新版本（替换草稿）"
+    : "重新读取最新任务";
+
+  async function refreshCreateData() {
+    await Promise.all([
+      refreshProjectStructure(queryClient, organizationId, project.id),
+      queryClient.refetchQueries({queryKey: taskKeys.list(organizationId, project.id), exact: true}, {throwOnError: true}),
+    ]);
+  }
+
+  async function reloadCreate() {
+    if (!current() || createRereading || createRecovery !== "conflict") return;
+    setCreateRereading(true);
+    setCreateRecoveryError("");
+    try {
+      await refreshCreateData();
+      if (!current()) return;
+      setCreateRecovery(null);
+      setCreateGeneration(value => value + 1);
+    } catch (error) {
+      if (current()) setCreateRecoveryError(errorMessage(error, "最新项目数据读取失败，请重试"));
+    } finally {
+      if (current()) setCreateRereading(false);
+    }
+  }
 
   return (
     <section
@@ -294,10 +375,76 @@ function TaskWorkspace({
             <BookOpenText aria-hidden="true" size={17} strokeWidth={1.8} />
             <span>知识资料</span>
           </Link>
+          {canTransition && (
+            <button
+              type="button"
+              disabled={editorBusy || structureBusy || statusBlocked || createBlocked}
+              onClick={() => {
+                setSelectedTaskId(null);
+                setCreating((value) => !value);
+              }}
+            >
+              {creating ? "取消创建" : "创建任务"}
+            </button>
+          )}
           <ListChecks aria-hidden="true" size={22} strokeWidth={1.8} />
         </div>
       </header>
 
+      <ProjectStructure organizationId={organizationId} projectId={project.id} csrfToken={csrfToken} signal={scopeSignal} canWrite={canTransition} lifecycleDisabled={creating || selectedTaskId !== null} disabled={editorBusy || statusBlocked || createBlocked} onBusy={setStructureBusy}/>
+
+      {creating && (
+        <TaskEditor
+          key={`${transition.rereadVersion}:${createGeneration}`}
+          disabled={statusBlocked || structureBusy || createRereading}
+          organizationId={organizationId}
+          projectId={project.id}
+          csrfToken={csrfToken}
+          signal={scopeSignal}
+          onBusy={setEditorBusy}
+          rereading={createRereading}
+          onConflict={(conflict) => {if (current()) setCreateRecovery(conflict ? "conflict" : null);}}
+          onReload={() => void reloadCreate()}
+          onSaved={async () => {
+            if (!current()) return false;
+            try {
+              await refreshCreateData();
+              if (!current()) return false;
+              setCreating(false);
+              setCreateRecovery(null);
+              setCreateRecoveryError("");
+              return true;
+            } catch {
+              if (current()) setCreateRecovery("refresh_failed");
+              return false;
+            }
+          }}
+        />
+      )}
+      {createRecoveryError && <p role="alert">{createRecoveryError}</p>}
+      {selectedTaskId && (
+        <TaskDetails
+          key={selectedTaskId}
+          taskId={selectedTaskId}
+          projectId={project.id}
+          organizationId={organizationId}
+          csrfToken={csrfToken}
+          signal={scopeSignal}
+          canWrite={canTransition}
+          statusBaseRevision={transition.variables?.expectedRevision}
+          externalBlocked={statusBlocked || structureBusy || createBlocked}
+          externalRereadVersion={transition.rereadVersion}
+          statusRevision={
+            transition.isSuccess &&
+            transition.variables?.taskId === selectedTaskId &&
+            transition.recovery === null
+              ? transition.data?.revision
+              : undefined
+          }
+          onBusy={setEditorBusy}
+          onClose={() => setSelectedTaskId(null)}
+        />
+      )}
       {tasks.isPending ? (
         <div className="task-loading" aria-busy="true">
           <span className="project-skeleton">正在加载任务</span>
@@ -307,7 +454,9 @@ function TaskWorkspace({
 
       {tasks.isError && tasks.data === undefined ? (
         <div className="project-state project-state-error task-state">
-          <p role="alert">{errorMessage(tasks.error, "任务暂时无法加载，请重试")}</p>
+          <p role="alert">
+            {errorMessage(tasks.error, "任务暂时无法加载，请重试")}
+          </p>
           <button type="button" onClick={() => void tasks.refetch()}>
             重新加载任务
           </button>
@@ -317,15 +466,23 @@ function TaskWorkspace({
       {hasTaskRefetchError ? (
         <RefreshError
           className="task-state"
-          context={transitionRefreshFailed
-            ? "任务更新已提交，但列表刷新失败，当前数据可能不是最新。"
-            : "任务列表可能不是最新。"}
+          context={
+            transitionRefreshFailed
+              ? "任务更新已提交，但列表刷新失败，当前数据可能不是最新。"
+              : "任务列表可能不是最新。"
+          }
           error={tasks.error}
           errorFallback="任务列表刷新失败，请重试"
-          idleLabel="重试刷新任务"
+          idleLabel={
+            transition.recovery && replacesDraft
+              ? recoveryLabel
+              : "重试刷新任务"
+          }
           loadingLabel="正在刷新任务"
-          pending={tasks.isRefetching}
-          onRetry={() => void tasks.refetch()}
+          pending={tasks.isRefetching || transition.rereading}
+          onRetry={() =>
+            void (transition.recovery ? transition.reread() : tasks.refetch())
+          }
         />
       ) : null}
 
@@ -339,7 +496,25 @@ function TaskWorkspace({
         </div>
       ) : null}
 
-      {transition.isError ? (
+      {transition.recovery && !hasTaskRefetchError && (
+        <div className="project-state project-state-error task-state">
+          <p role="alert">
+            {transitionRefreshFailed
+              ? "任务更新已提交，但刷新失败，当前数据可能不是最新。"
+              : transition.recovery.message}{" "}
+            {transitionRefreshFailed && transition.recovery.message}
+          </p>
+          <button
+            type="button"
+            disabled={transition.rereading || editorBusy}
+            onClick={() => void transition.reread()}
+          >
+            {transition.rereading ? "正在重新读取" : recoveryLabel}
+          </button>
+        </div>
+      )}
+      {transition.recovery && replacesDraft && <p>重新读取会替换当前草稿。</p>}
+      {transition.isError && !transition.recovery ? (
         <p className="task-transition-error" role="alert">
           {errorMessage(transition.error, "任务状态更新失败，请重试")}
         </p>
@@ -351,15 +526,26 @@ function TaskWorkspace({
             <TaskRow
               key={task.id}
               task={task}
+              stageName={task.stageId ? stages.data?.pages.flatMap(page=>page.items).find(row=>row.id===task.stageId)?.name ?? "阶段尚未加载" : "未设置"}
+              milestoneName={task.milestoneId ? milestones.data?.pages.flatMap(page=>page.items).find(row=>row.id===task.milestoneId)?.name ?? "里程碑尚未加载" : "未设置"}
               canTransition={canTransition}
-              actionsDisabled={transition.isPending || hasTaskRefetchError}
+              actionsDisabled={
+                statusBlocked || hasTaskRefetchError || editorBusy || structureBusy || createBlocked
+              }
               pending={transition.isPending}
               pendingTaskId={transition.variables?.taskId ?? null}
-              onTransition={(status) => transition.mutate({
-                projectId: project.id,
-                taskId: task.id,
-                status,
-              })}
+              onTransition={(status) =>
+                transition.mutate({
+                  projectId: project.id,
+                  taskId: task.id,
+                  status,
+                  expectedRevision: task.revision,
+                })
+              }
+              onOpen={() => {
+                setCreating(false);
+                setSelectedTaskId(task.id);
+              }}
             />
           ))}
           {tasks.hasNextPage ? (
@@ -367,7 +553,9 @@ function TaskWorkspace({
               className="task-pagination"
               error={tasks.isFetchNextPageError ? tasks.error : null}
               errorFallback="更多任务暂时无法加载，请重试"
-              idleLabel={tasks.isFetchNextPageError ? "重新加载更多任务" : "加载更多任务"}
+              idleLabel={
+                tasks.isFetchNextPageError ? "重新加载更多任务" : "加载更多任务"
+              }
               loadingLabel="正在加载更多任务"
               pending={tasks.isFetchingNextPage}
               onLoadMore={() => void tasks.fetchNextPage()}
@@ -398,7 +586,9 @@ function PaginationAction({
 }) {
   return (
     <div className={className}>
-      {error !== null ? <p role="alert">{errorMessage(error, errorFallback)}</p> : null}
+      {error !== null ? (
+        <p role="alert">{errorMessage(error, errorFallback)}</p>
+      ) : null}
       <button type="button" disabled={pending} onClick={onLoadMore}>
         {pending ? loadingLabel : idleLabel}
       </button>
@@ -428,7 +618,7 @@ function RefreshError({
   return (
     <div className={`project-state project-state-error ${className}`}>
       <p role="alert">
-        <strong>{context}</strong>{" "}{errorMessage(error, errorFallback)}
+        <strong>{context}</strong> {errorMessage(error, errorFallback)}
       </p>
       <button type="button" disabled={pending} onClick={onRetry}>
         {pending ? loadingLabel : idleLabel}
@@ -439,38 +629,68 @@ function RefreshError({
 
 function TaskRow({
   task,
+  stageName,
+  milestoneName,
   canTransition,
   actionsDisabled,
   pending,
   pendingTaskId,
   onTransition,
+  onOpen,
 }: {
   task: Task;
+  stageName: string;
+  milestoneName: string;
   canTransition: boolean;
   actionsDisabled: boolean;
   pending: boolean;
   pendingTaskId: string | null;
   onTransition(status: TaskStatus): void;
+  onOpen(): void;
 }) {
   const isCurrentTransition = pending && pendingTaskId === task.id;
 
   return (
-    <article className="task-row" aria-label={task.title} data-status={task.status}>
+    <article
+      className="task-row"
+      aria-label={task.title}
+      data-status={task.status}
+    >
       <div className="task-row-main">
         <div className="task-title-line">
           <h3>{task.title}</h3>
+          <button
+            type="button"
+            disabled={actionsDisabled}
+            aria-label={`查看任务：${task.title}`}
+            onClick={onOpen}
+          >
+            查看详情
+          </button>
           <span className="task-status" data-status={task.status}>
             {TASK_STATUS_LABELS[task.status]}
           </span>
         </div>
         <dl className="task-metadata">
+          <div><dt>阶段</dt><dd>{stageName}</dd></div>
+          <div><dt>里程碑</dt><dd>{milestoneName}</dd></div>
           <div>
-            <dt><Flag aria-hidden="true" size={15} strokeWidth={1.8} />优先级</dt>
+            <dt>
+              <Flag aria-hidden="true" size={15} strokeWidth={1.8} />
+              优先级
+            </dt>
             <dd>{TASK_PRIORITY_LABELS[task.priority]}</dd>
           </div>
           <div>
-            <dt><CalendarDays aria-hidden="true" size={15} strokeWidth={1.8} />到期日</dt>
-            <dd>{task.dueAt === null ? "未设置" : formatCalendarDate(task.dueAt, DUE_DATE_FORMAT)}</dd>
+            <dt>
+              <CalendarDays aria-hidden="true" size={15} strokeWidth={1.8} />
+              到期日
+            </dt>
+            <dd>
+              {task.dueAt === null
+                ? "未设置"
+                : formatCalendarDate(task.dueAt, DUE_DATE_FORMAT)}
+            </dd>
           </div>
         </dl>
         <div className="task-acceptance">

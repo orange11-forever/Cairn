@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApiError, toApiError } from "../api/errors.ts";
+import { useSessionErrorReporter } from "../session/SessionContext.tsx";
 
 export type ActionState =
   | { phase: "idle" }
@@ -24,6 +25,7 @@ export function useAbortableAction<Args extends unknown[], Result>(
   fn: (...args: [...Args, AbortSignal]) => Promise<Result>,
   parentSignal?: AbortSignal,
 ): AbortableAction<Args, Result> {
+  const reportSessionError = useSessionErrorReporter();
   const [state, setState] = useState<ActionState>({ phase: "idle" });
   const fnRef = useRef(fn);
   const inFlight = useRef<InFlight | null>(null);
@@ -84,13 +86,15 @@ export function useAbortableAction<Args extends unknown[], Result>(
           return undefined;
         }
 
-        setState({ phase: "error", error: toApiError(error) });
+        const apiError = toApiError(error);
+        reportSessionError(apiError, signal);
+        setState({ phase: "error", error: apiError });
         return undefined;
       } finally {
         if (inFlight.current === current) inFlight.current = null;
       }
     },
-    [parentSignal],
+    [parentSignal, reportSessionError],
   );
 
   const reset = useCallback(() => {

@@ -9,6 +9,7 @@ import { BrandMark } from "./BrandMark.tsx";
 import { MascotAssistant } from "./MascotAssistant.tsx";
 import { PrimaryNavigation } from "./PrimaryNavigation.tsx";
 import { ThemeControl } from "./ThemeControl.tsx";
+import { ProjectConversationsProvider } from "./knowledge/ProjectConversationsContext.tsx";
 
 export function AppShell({ identity, onLogout, logoutError }: { identity: IdentityContext; onLogout: () => Promise<void>; logoutError: ApiError | null }) {
   const { pathname } = useLocation();
@@ -19,6 +20,10 @@ export function AppShell({ identity, onLogout, logoutError }: { identity: Identi
   const page = knowledgePath !== null
       ? "knowledge"
       : "projects";
+  const layout = <div className="app-layout">
+    <PrimaryNavigation currentKnowledgePath={knowledgePath} />
+    <main className="workspace"><Outlet /></main>
+  </div>;
 
   return (
     <div className="app-shell">
@@ -32,12 +37,11 @@ export function AppShell({ identity, onLogout, logoutError }: { identity: Identi
           <AccountMenu identity={identity} onLogout={onLogout} logoutError={logoutError} appearance={<ThemeControl />} />
         </div>
       </header>
-      <div className="app-layout">
-        <PrimaryNavigation currentKnowledgePath={knowledgePath} />
-        <main className="workspace">
-          <Outlet />
-        </main>
-      </div>
+      {knowledgePath !== null && projectId !== null && session !== null ? <ProjectConversationsProvider
+        key={`${session.generation}:${identity.user.id}:${identity.organization.id}:${projectId}`}
+        generation={session.generation} userId={identity.user.id} organizationId={identity.organization.id}
+        projectId={projectId} csrfToken={identity.csrfToken} sessionSignal={session.signal}
+      >{layout}</ProjectConversationsProvider> : layout}
     </div>
   );
 }

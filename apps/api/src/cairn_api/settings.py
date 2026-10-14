@@ -3,6 +3,8 @@ from typing import Annotated, Literal, cast
 
 from pydantic import (
     AnyHttpUrl,
+    BaseModel,
+    ConfigDict,
     EmailStr,
     Field,
     SecretStr,
@@ -15,6 +17,39 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from cairn_api.client_ip import parse_trusted_proxy_cidrs
 
 
+class AnswerModelSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True, hide_input_in_errors=True)
+
+    id: str = Field(pattern=r"^[a-z][a-z0-9_-]{0,63}$")
+    name: str = Field(min_length=1, max_length=80)
+    model: str = Field(min_length=1, max_length=200)
+    protocol: Literal["openai-compatible", "openai-responses", "anthropic", "gemini"]
+    base_url: AnyHttpUrl
+    api_key: SecretStr
+    timeout_seconds: float = Field(default=30.0, gt=0, le=60)
+
+    @field_validator("name", "model")
+    @classmethod
+    def valid_model_text(cls, value: str) -> str:
+        if "\x00" in value:
+            raise ValueError("model name cannot contain NUL")
+        value.encode("utf-8")
+        return value
+
+    @model_validator(mode="after")
+    def validate_profile(self) -> "AnswerModelSettings":
+        if self.id == "default":
+            raise ValueError("model ID 'default' is reserved for ANSWER_MODEL")
+        key = self.api_key.get_secret_value()
+        if not key.strip() or any(character in key for character in "\r\n\x00"):
+            raise ValueError("model API key cannot be blank or contain control characters")
+        if any(value is not None for value in (
+            self.base_url.username, self.base_url.password, self.base_url.query, self.base_url.fragment
+        )):
+            raise ValueError("model URL cannot contain credentials, a query or fragment")
+        return self
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -22,6 +57,7 @@ class Settings(BaseSettings):
         env_prefix="",
         extra="ignore",
         populate_by_name=True,
+        hide_input_in_errors=True,
     )
 
     environment: Literal["development", "test", "production"] = Field(
@@ -124,6 +160,16 @@ class Settings(BaseSettings):
     answer_timeout_seconds: float = Field(
         default=30.0, gt=0, le=60, validation_alias="ANSWER_TIMEOUT_SECONDS"
     )
+    answer_models: list[AnswerModelSettings] = Field(
+        default_factory=list[AnswerModelSettings], max_length=20, validation_alias="ANSWER_MODELS"
+    )
+
+    @field_validator("answer_models")
+    @classmethod
+    def require_unique_answer_model_ids(cls, value: list[AnswerModelSettings]) -> list[AnswerModelSettings]:
+        if len({item.id for item in value}) != len(value):
+            raise ValueError("answer model IDs must be unique")
+        return value
     bind_host: str = Field(default="127.0.0.1", validation_alias="CAIRN_BIND_HOST")
     http_port: int = Field(default=8080, ge=1, le=65535, validation_alias="CAIRN_HTTP_PORT")
     app_url: AnyHttpUrl | None = Field(default=None, validation_alias="APP_URL")
@@ -239,15 +285,18 @@ class Settings(BaseSettings):
                 embedding_is_loopback = False
         if self.embedding_base_url.scheme != "https" and not embedding_is_loopback:
             raise ValueError("production Embedding URL requires HTTPS or a loopback-only host")
+        answer_urls = [item.base_url for item in self.answer_models]
         if self.answer_base_url is not None:
-            answer_host = (self.answer_base_url.host or "").removeprefix("[").removesuffix("]")
+            answer_urls.append(self.answer_base_url)
+        for answer_url in answer_urls:
+            answer_host = (answer_url.host or "").removeprefix("[").removesuffix("]")
             answer_is_loopback = answer_host.lower() == "localhost"
             if not answer_is_loopback:
                 try:
                     answer_is_loopback = ip_address(answer_host).is_loopback
                 except ValueError:
                     answer_is_loopback = False
-            if self.answer_base_url.scheme != "https" and not answer_is_loopback:
+            if answer_url.scheme != "https" and not answer_is_loopback:
                 raise ValueError("production answer URL requires HTTPS or a loopback-only host")
         if len(self.auth_rate_limit_secret.encode("utf-8")) < 32:
             raise ValueError("production requires an auth rate-limit secret of at least 32 bytes")

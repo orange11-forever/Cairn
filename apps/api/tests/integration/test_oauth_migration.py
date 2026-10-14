@@ -33,7 +33,7 @@ def test_oauth_downgrade_refuses_to_destroy_linked_identities(
         with database.session_factory() as session:
             assert (
                 session.scalar(text("SELECT version_num FROM alembic_version"))
-                == "0012_native_registration"
+                == "0013_task_editing"
             )
             assert session.scalar(text("SELECT count(*) FROM external_identities")) == 1
     finally:
@@ -66,7 +66,7 @@ def test_registration_downgrade_preserves_nullable_user_and_email_uniqueness(
         with database.session_factory() as session:
             assert (
                 session.scalar(text("SELECT version_num FROM alembic_version"))
-                == "0012_native_registration"
+                == "0013_task_editing"
             )
             assert session.scalar(text("SELECT count(*) FROM users WHERE email IS NULL")) == 2
         with pytest.raises(IntegrityError), database.session_factory.begin() as session:

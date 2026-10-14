@@ -11,32 +11,33 @@
 </p>
 
 > [!IMPORTANT]
-> Cairn 已在真实 PostgreSQL/pgvector 知识链路上交付项目范围单轮生成式知识问答。`verify:core` 使用确定性本地回答 Provider；`dev:core` 的问答需显式配置 `ANSWER_BASE_URL`、`ANSWER_API_KEY`、`ANSWER_MODEL`，并通过 `ANSWER_PROTOCOL` 选择协议，未配置时其他知识功能仍可用。浏览器验收覆盖上传、索引、混合搜索、生成回答、全文与引用定位及授权下载；默认验证不访问外网或真实 Provider。飞书单文档管理、手动与周期同步已通过本地模拟飞书验收，指定测试文档的真实同步、索引与项目读权限已通过隔离副本验收；实际上游撤权/删除仍待验收。流式/多轮问答和其他连接器仍在后续任务。
+> Cairn 已交付任务编辑、阶段与里程碑管理，以及项目私有多轮知识问答、多个个人助手、模型选择、只读 Skills 和 Responses 逐段流式回答。知识链路使用真实 FastAPI、PostgreSQL/pgvector 和 MinIO；默认验收使用受控模型服务。项目问答可通过 `ANSWER_BASE_URL`、`ANSWER_API_KEY`、`ANSWER_MODEL` 和 `ANSWER_PROTOCOL` 配置默认模型，也可使用 `ANSWER_MODELS` 配置可选清单。未配置模型时仍可读取历史和使用其他知识功能。
 >
-> 当前 Web 项目知识页采用 IDE 式工作台：左侧是资料与上传状态，中间是搜索、全文阅读和引用定位，右侧是岑宁单轮项目问答。“来源与同步”独立管理飞书接入。桌面、平板与手机均支持亮暗主题；切换区域保留草稿，切换项目或会话清理私有状态。使用与边界见 [工作台说明](docs/workbench.md)。
+> 项目知识工作台由对话区、中央阅读与搜索区、资料栏组成；窄屏可在对话、资料和阅读之间切换。“来源与同步”独立管理飞书接入。桌面、平板与手机支持亮暗主题，切换阅读区域或助手保留问题草稿，切换组织、项目或用户清理对应私有状态。使用与边界见 [工作台说明](docs/workbench.md)。
 
 ## 当前交付快照
 
-更新日期：2026-10-04。身份、项目、任务、知识摄取、搜索及正文读取已连接真实 FastAPI、PostgreSQL/pgvector 和 MinIO；开发与默认验收使用本地确定性模型服务，外部模型需单独配置。
+更新日期：2026-10-14。以下为已实现功能；真实 GPT 等模型、公开 GitHub 技能导入的外网连接、外部 SMTP 投递及飞书上游撤权/删除仍需相应外部环境验收。完整 P2/V1、项目操作 Agent 和正式生产部署尚未完成。
 
 | 边界 | 当前状态 |
 |---|---|
 | Web | 三栏资料、内容与问答布局，实际项目切换、上传批次进度、资源状态、混合检索/关键词降级模式、资料详情、重试、删除和授权下载。验收覆盖 360、768、1280 像素及亮暗主题。查询和变更请求返回规范化 `401 session_invalid` 时，统一清理本地会话与查询缓存、重置变更缓存并回到登录页。 |
 | 全文与引用 | Markdown、TXT、飞书文本快照阅读全文；支持标题、列表、代码复制、表格和文末状态。引用绑定版本与片段，定位并高亮对应段落、列表项或表格行，可回到引用；不支持格式保留纯文本引用上下文及授权下载。正文最多原始 1 MiB / 20,000 行，超限不截断；离线隐藏，恢复后手动重新读取。 |
 | 账号 | 原生邮箱密码注册要求邮件验证与原密码确认，验证成功后显式登录。GitHub/飞书首次注册、身份绑定和再次登录已完成真实授权验收；原生注册已通过本机 SMTP 捕获验收，真实外部邮件投递仍待配置验收。 |
-| API / SDK | FastAPI 已提供会话、注册、项目/任务、RBAC/ACL、知识摄取、资源、全文读取、混合搜索、带引用的单轮回答以及飞书来源登记/手动同步契约；生成 SDK 导出 OpenAPI schema 与运行时校验器，Web API 适配器检查身份、项目/任务和知识响应，并对 OpenAPI `date-time` 字段执行运行时校验。 |
-| 项目知识问答 | 基于当前项目授权资料生成单轮回答；模型调用前后重新核验权限与证据，引用可展开上下文并授权下载。支持 Chat Completions、Responses、Claude Messages 和 Gemini GenerateContent 协议，真实厂商密钥联调仍需部署者完成。 |
+| API / SDK | FastAPI 提供身份、项目结构与任务、知识资源/搜索、单轮与持久化多轮问答、SSE、助手/模型/技能和飞书来源契约；生成 SDK 导出类型及运行时校验器。 |
+| 项目与任务 | 编辑任务详情、负责人、截止时间、验收标准和前置依赖；创建、编辑、归档及恢复阶段和里程碑，设置任务归属。修订号防止覆盖更新，冲突保留草稿。 |
+| 项目知识问答 | 基于当前项目授权资料生成私有多轮回答，支持多个个人项目助手、独立模型/技能配置及 Responses 逐段流式输出；模型调用前后重新核验权限与证据，引用可展开上下文并授权下载。支持 Chat Completions、Responses、Claude Messages 和 Gemini GenerateContent 协议，真实厂商密钥联调仍需部署者完成。 |
+| 助手与 Skills | 每个用户在项目内最多保存20个助手，独立配置名称、行为说明、模型和启用技能。支持 SKILL.md、ZIP 和公开 GitHub 链接的预览、导入与启用；技能提供只读指导，不执行包内脚本或项目写入。 |
 | Worker | 独立 Worker 已进入知识摄取核心链路；Python Worker 通过 PostgreSQL 持久化任务完成受限归档、解析、切分、Embedding 与原子索引发布。 |
 | 飞书单文档连接 | 管理员在 Web 登记来源并显式确认项目共享，可手动或每 5 分钟至一周同步、查看记录、停用和恢复。快照保存后仍需等待索引 ready；明确的上游撤权/删除在下次检查后隐藏旧内容。完整门禁和响应式浏览器验收已通过；指定测试文档的真实读取、同步、新版索引及项目只读权限已通过隔离副本验收。实际上游撤权/删除仍待验收。 |
 | 基础设施 | 核心开发链路使用 PostgreSQL 16/pgvector 与 S3 兼容 MinIO；Redis、正式 Compose/Helm 部署和 OpenTelemetry 仍在规划。 |
-| 延后 | 自定义助手、skills、助手/项目模型配置、项目分析、可执行规划、路线节点图与项目操作 Agent；流式/多轮问答、长期记忆、周期性资源详情轮询及其他连接器仍在后续任务。 |
+| 延后 | 项目分析、可执行规划、路线节点图与项目操作 Agent；长期记忆、周期性资源详情轮询及其他连接器仍在后续任务。 |
 
 ## 下一阶段：可操作的项目助手
 
-以下是后续开发方向：
+多个个人项目助手、模型选择和只读 Skills 已接通；后续开发方向为：
 
-- 自定义多个 AI 助手，配置名称、头像、行为说明和模型；岑宁作为默认可选助手。
-- 助手可启用可复用的 skills，明确输入、输出、工具和权限；实际项目权限仍由服务端校验。
+- 自定义助手头像、长期记忆及具有明确输入、输出和权限范围的工具能力。
 - 分析项目目标、资料、阶段、任务和依赖，生成有依据的风险判断、路线图及后续开发计划。
 - 将规划落成真实阶段、里程碑、任务和依赖节点，并通过项目 API 执行用户指令，保留操作记录。
 
@@ -51,7 +52,7 @@ GitHub 和飞书首次授权可在最终确认时注册独立个人账号及个�
 
 ## 多模型问答与飞书接入
 
-项目知识页已提供单轮问答。模型协议由 `ANSWER_PROTOCOL` 配置，模型 ID、端点和密钥分别由 `ANSWER_MODEL`、`ANSWER_BASE_URL` 和 `ANSWER_API_KEY` 配置：
+项目知识页已提供私有多轮问答和模型选择。默认模型协议由 `ANSWER_PROTOCOL` 配置，模型 ID、端点和密钥分别由 `ANSWER_MODEL`、`ANSWER_BASE_URL` 和 `ANSWER_API_KEY` 配置：
 
 | 协议 | 接入目标 |
 |---|---|
@@ -60,7 +61,11 @@ GitHub 和飞书首次授权可在最终确认时注册独立个人账号及个�
 | `anthropic` | Claude Messages |
 | `gemini` | Gemini GenerateContent |
 
-具体模型必须支持相应的结构化 JSON 输出。当前验收使用确定性本地 Provider 和协议测试，未使用各厂商真实密钥联网测试；更换模型时需验证目标模型的实际能力。配置与 API 边界见 [API 说明](apps/api/README.md)。
+可通过 `ANSWER_MODELS` 配置多个服务端模型，再在“助手与技能”中选择并保存；还可新建和切换多个个人项目助手，各自保留名称、行为说明、模型和启用技能。端点和密钥不会下发到浏览器；配置步骤见 [API 模型选择说明](apps/api/README.md#对话模型选择与配置)。具体模型必须支持相应的结构化 JSON 输出。当前验收使用确定性本地 Provider 和协议测试，未使用各厂商真实密钥联网测试；更换模型时需验证目标模型的实际能力。配置与 API 边界见 [API 说明](apps/api/README.md)。
+
+在项目知识工作台打开“助手与技能”，可新建或选择助手，编辑配置并保存。外部技能先预览、确认导入，再勾选启用并保存，发送前从“使用技能”选择本轮技能。导入目录在个人项目内共享，各助手的启用列表独立，技能不会增加项目访问权限。
+
+每段会话最多50轮；刷新可恢复已保存对话，切换助手保留当前会话和历史。Responses 的临时段落标记“尚未保存”，仅最终成功才保存整轮；其他协议返回完整回答。停止或响应丢失后通过“重新读取会话”确认结果，不自动重发。模型被移除时明确提示不可用，旧回答保留原助手和模型记录。
 
 Stage 3B 首个切片为 Worker 包中的飞书新版文档读取客户端：自建应用凭证获取与缓存、指定文档的标题/版本/纯文本读取、有界响应、版本变化检测和安全失败分类。它是内部接入基础；项目知识页的管理员入口可登记并同步单个文档。前后版本检查不能保证飞书服务端原子快照。
 
@@ -83,15 +88,21 @@ Worker 现可从唯一可选部署变量 `CAIRN_FEISHU_CREDENTIALS_JSON` 按组�
 |---|---|---|
 | 创建、分页列出项目 | `POST /api/v1/projects`、`GET /api/v1/projects` | 创建项目；使用稳定不透明游标读取当前组织项目 |
 | 读取项目 | `GET /api/v1/projects/{project_id}` | 仅返回当前组织中的项目 |
+| 阶段创建、列表与编辑 | `POST /api/v1/projects/{project_id}/stages`、`GET /api/v1/projects/{project_id}/stages`、`PATCH /api/v1/projects/{project_id}/stages/{stage_id}` | 非负排序位置，项目与对象修订保护，按项目分页 |
+| 里程碑创建、列表与编辑 | `POST /api/v1/projects/{project_id}/milestones`、`GET /api/v1/projects/{project_id}/milestones`、`PATCH /api/v1/projects/{project_id}/milestones/{milestone_id}` | 阶段、说明、验收标准和截止时间；绑定任务不允许被隐式移动 |
 | 创建、分页列出任务 | `POST /api/v1/projects/{project_id}/tasks`、`GET /api/v1/projects/{project_id}/tasks` | 创建任务；在项目内使用稳定不透明游标分页 |
 | 转换任务状态 | `PATCH /api/v1/tasks/{task_id}/status` | 由服务端状态机校验转换，不接受任意状态跳转 |
-| 添加任务依赖 | `POST /api/v1/tasks/{task_id}/dependencies` | 请求体中的前置任务指向路由中的后继任务，形成 predecessor → successor |
+| 任务详情与编辑 | `GET/PATCH /api/v1/tasks/{task_id}` | 修订号防止覆盖更新；编辑标题、描述、负责人、优先级、截止时间与验收标准 |
+| 负责人候选 | `GET /api/v1/projects/{project_id}/assignees` | 按项目 READ 权限过滤当前组织启用成员，分页且不公开邮箱 |
+| 任务依赖管理 | `GET /api/v1/tasks/{task_id}/dependencies`、`POST /api/v1/tasks/{task_id}/dependencies`、`DELETE /api/v1/tasks/{task_id}/dependencies/{dependency_id}` | 分页查看、添加和删除前置依赖；修订保护与同项目无环校验 |
 | 查询项目事件 | `GET /api/v1/projects/{project_id}/events` | 按当前组织和项目 aggregate 过滤，返回一次最多 100 条、随后结束的 SSE 批次；不存在或跨租户 ID 均为空 `200` |
 | 列出组织成员 | `GET /api/v1/organizations/{organization_id}/memberships` | `owner` 与 `admin` 可使用稳定游标分页读取当前组织成员 |
 | 更新成员角色 | `PATCH /api/v1/organizations/{organization_id}/memberships/{membership_id}` | 按角色矩阵更新成员；最后一名 `owner` 不能被降级 |
 | 列出项目 ACL | `GET /api/v1/projects/{project_id}/acl` | 需要项目 `manage` 权限；只列出当前有效条目 |
 | 设置项目 ACL | `PUT /api/v1/projects/{project_id}/acl/{principal_type}/{principal_id}` | 幂等设置 `read`、`write` 或 `manage` |
 | 撤销项目 ACL | `DELETE /api/v1/projects/{project_id}/acl/{principal_type}/{principal_id}` | 幂等撤销当前有效条目并保留历史行 |
+
+项目任务界面支持阶段与里程碑创建、编辑、归档与恢复、任务归组、详情编辑和依赖管理；冲突保留草稿，提交成功而刷新失败单独提示并阻止陈旧版本写入。详见[项目结构](docs/project-structure.md)和[任务编辑与依赖](docs/task-editing.md)。路线图和 AI 规划仍在后续范围。
 
 `Project` 是阶段 2 的聚合根：任务创建、状态变化和依赖边都以所属项目作为 Outbox aggregate，项目事件查询也按组织与项目共同隔离。项目与任务列表的 `limit` 为 1–100，默认 50；响应通过 `nextCursor` 续页。
 
@@ -128,13 +139,20 @@ Cookie 会话下的成员 `PATCH` 与 ACL `PUT`/`DELETE` 都要求合法 Origin 
 | 读取命中切片及前后文 | `GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}/chunks/{chunk_id}` |
 | 权限过滤的关键词/向量混合搜索 | `POST /api/v1/projects/{project_id}/knowledge/search` |
 | 生成带核验引用的单轮回答 | `POST /api/v1/projects/{project_id}/knowledge/answers` |
+| 创建、列出和读取私有会话 | `POST/GET .../knowledge/conversations`、`GET .../knowledge/conversations/{conversation_id}` |
+| 追加完整回答或流式回答 | `POST .../knowledge/conversations/{conversation_id}/turns`、`POST .../knowledge/conversations/{conversation_id}/turns/stream` |
+| 模型清单与当前助手配置 | `GET .../knowledge/answer-model`、`GET/PUT .../knowledge/assistant-settings` |
+| 个人助手列表、新建与选择 | `GET/POST .../knowledge/assistants`、`POST .../knowledge/assistants/{assistant_id}/select` |
+| 技能目录、预览和导入 | `GET .../knowledge/skills`、`POST .../knowledge/skills/preview`、`POST .../knowledge/skills/import` |
+
+表中省略的共同前缀为 `/api/v1/projects/{project_id}`。会话和助手由组织、项目、当前用户共同限定私有范围，创建与修改沿用 Cookie/Origin/CSRF 保护。
 
 ## 显式延后
 
-- 完整阶段/里程碑编辑 UI、React Flow/ELK 图编辑、拖拽 Kanban 和时间线可视化延后；
+- React Flow/ELK 路线节点图、拖拽 Kanban 和时间线可视化延后；
 - Outbox worker 发布、长连接重连 SSE、Redis fan-out、评论、通知和任务执行延后；
 - 群组、邀请和成员移除未实现；ACL 管理 UI 与成员管理 UI 未实现；
-- Bearer/OIDC 延后；知识摄取、项目搜索和单轮生成式回答已交付。Markdown/TXT/飞书快照全文引用定位已交付。流式/多轮问答和周期性详情轮询仍在后续任务；飞书单文档周期同步和连接管理界面已通过本地模拟验收，指定测试文档的真实同步、索引与项目读权限已通过隔离副本验收；实际上游撤权/删除仍待验收。其他连接器、Agent 执行和完整模型 Provider 策略层尚未交付。
+- Bearer/OIDC 延后；知识摄取、项目搜索和单轮生成式回答已交付。Markdown/TXT/飞书快照全文引用定位已交付。周期性详情轮询仍在后续任务；飞书单文档周期同步和连接管理界面已通过本地模拟验收，指定测试文档的真实同步、索引与项目读权限已通过隔离副本验收；实际上游撤权/删除仍待验收。其他连接器、Agent 执行和完整模型 Provider 策略层尚未交付。
 
 ## 核心能力
 
@@ -254,6 +272,8 @@ pnpm dev:worker
 
 项目问答需配置前述 `ANSWER_*` 服务端变量；原生注册和第三方登录分别按对应文档配置。仅运行 `pnpm dev:web` 会启动 Web，完整上传、索引和资料读取请使用 `pnpm dev:core`。
 
+从此前版本升级时，先配置目标 `DATABASE_URL` 并执行 `pnpm db:migrate`，再启动服务；当前迁移到 `0019_multiple_assistants`。`0013`–`0015`增加任务编辑与项目结构，`0016`–`0019`增加会话、技能、模型选择和多助手。迁移保留既有数据，可能丢弃已保存业务数据的降级会被拒绝；`dev:core`也会执行升级迁移。
+
 - 登录：`http://localhost:5500`
 - 登录后进入 `/projects`；旧 `/documents` 和 `/ask` 书签重定向到项目工作台。
 - Web：`http://localhost:5500`
@@ -283,7 +303,7 @@ pnpm dev:api
 
 API 现已提供 PostgreSQL 与对象存储 readiness、登录、会话恢复、注销、当前组织、项目任务、成员角色、项目 ACL 与上述知识资源和混合搜索接口。登录失败限制由 PostgreSQL 持久化：同一规范化邮箱在 15 分钟窗口内最多失败 5 次，同一来源 IP 最多失败 30 次，达到阈值后阻止 15 分钟；表中仅保存使用 `CAIRN_AUTH_RATE_LIMIT_SECRET` 生成的 HMAC 摘要，不保存明文邮箱或 IP。项目知识页真实上传使用 Identity API 与对象存储。
 
-当前切片不包含 Bearer/OIDC、群组、邀请、成员移除、ACL/成员管理 UI、流式/多轮问答、周期性资源详情轮询、其他连接器、Agent 任务执行或完整 AI Provider 策略层。
+当前切片不包含 Bearer/OIDC、群组、邀请、成员移除、ACL/成员管理 UI、周期性资源详情轮询、其他连接器、Agent 任务执行或完整 AI Provider 策略层。
 
 可按需清理过期或已撤销的认证状态：
 

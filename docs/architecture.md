@@ -4,18 +4,22 @@
 
 ## 当前已交付
 
-当前交付前沿为 Stage 3A Task 1–20，并包含项目知识单轮生成式回答。
+当前交付前沿为 Stage 3A Task 1–20，并包含项目私有持久化多轮会话、Responses流式回答、模型选择及多个个人项目助手。
 
 - React 19、TypeScript 与 Vite 构成 Web 客户端；登录后默认进入 `/projects`，身份、项目、任务与 `/projects/:projectId/knowledge` 的资源、按需详情、搜索、按需引用上下文、授权下载和真实上传批次连接真实 FastAPI。旧 `/documents` 与 `/ask` 书签重定向到项目工作台。
 - FastAPI 采用模块化单体边界，提供 Cookie 会话、组织身份与 RBAC、项目 ACL、成员角色管理、项目任务、追加式审计、事务性 Outbox、有界 SSE，以及项目授权下的知识上传与资源生命周期 API。
 - PostgreSQL 16/pgvector 与 S3 兼容 MinIO 当前已使用：PostgreSQL 保存业务事实、持久化摄取任务、知识资源、切片和向量，MinIO 保存原始对象与 ZIP 展开产物；生成的 TypeScript SDK 对齐 OpenAPI。Redis 仍是规划中基础设施。
 - Stage 3A Task 1–11 的独立 Worker 已交付，用租约和心跳处理受限归档展开、文档解析、结构化切分、OpenAI 兼容 1024 维 Embedding 与原子索引发布。
-- 项目知识单轮回答复用混合搜索与共享限流，在模型调用前后核验全部证据及 `read` 权限，并返回服务器分配的 `S1`–`S6` 引用。真实部署通过可选 `ANSWER_*` 配置接入 Chat Completions、Responses、Claude Messages 或 Gemini GenerateContent 的结构化 JSON 输出；缺失配置时其余 API 保持可用。流式、多轮、历史持久化和网页检索尚未实现；飞书手动同步通过独立来源任务接入知识链路。
-- Markdown/TXT/飞书文本快照已接入全文预览与可信引用行号定位；流式/多轮问答与周期性详情轮询仍在后续任务。
+- 项目知识单轮回答复用混合搜索与共享限流，在模型调用前后核验全部证据及 `read` 权限，并返回服务器分配的 `S1`–`S6` 引用。真实部署通过可选 `ANSWER_*` 配置接入 Chat Completions、Responses、Claude Messages 或 Gemini GenerateContent 的结构化 JSON 输出；缺失配置时其余 API 保持可用。项目私有会话按组织、项目、创建用户隔离，以客户端 UUID 和 revision 保证完整轮次原子提交、重放与并发保护；每轮重新检索并核验当前/历史引用，历史无效时隐藏回答。历史上下文最多最近 6 轮、12,000 Unicode 码点，每会话最多 50 轮。Responses 会话支持下述逐段流式输出；其他协议保留完整回答方式。服务端允许的模型可在个人项目助手配置中选择，每轮保存实际模型快照；网页检索尚未实现；飞书手动同步通过独立来源任务接入知识链路。
+- Markdown/TXT/飞书文本快照已接入全文预览与可信引用行号定位；周期性详情轮询仍在后续任务。
+
+Responses 会话通过 `POST /api/v1/projects/{project_id}/knowledge/conversations/{conversation_id}/turns/stream` 返回 SSE。上游每生成一个完整段落，服务先校验引用，再刷新会话、项目、助手配置与当前/历史证据授权，之后发送临时段落；仅完整通过校验的最终回答会原子保存。事件由生成 SDK 提供带类型的 `paragraph`、`complete`、`error` 契约，输出前的失败保留普通 JSON HTTP 错误，开始输出后的失败使用安全终止事件。每个生成工作线程独占数据库会话，每进程最多 16 个生成线程、每连接最多排队 1 个事件；网络读取与事件等待不持有数据库事务。浏览器只在收到有效 `complete` 后替换历史并清除未改动的草稿，失败、停止或范围切换清理临时回答，丢失最终响应后通过原有 GET 确认已保存结果。断开会触发服务端协作取消，阻塞中的上游读取仍需等待下一个检查点或超时，已提交的结果不承诺回滚。真实 GPT 外部验收仍待密钥；当前链路验收使用真实 API/PostgreSQL/浏览器及受控 HTTP Responses 上游。
+
+个人项目助手配置按组织、项目和用户隔离，最多20个助手，各自保存名称、行为说明、模型与启用技能。服务端模型清单只向浏览器提供公开选择信息，凭据与端点保留在服务端。助手表的部分唯一索引保证同一私有范围只有一个活动助手；创建、编辑和切换复用用户行锁，活动修订号跨助手单调递增。旧生成请求在下一次配置检查时失败，新完整轮次保存助手ID/名称及实际模型快照。迁移保留原配置和既有历史，有多助手或相关快照数据时拒绝有损降级。
 
 Task 18A Web 资源详情已交付：资源行在工作台中央打开资料标签，通过生成 SDK、Cookie credentials 和真实 `GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}` 读取详情。切换或关闭活动资料标签会取消请求并销毁局部详情，项目切换或会话代际变化同样取消并销毁旧状态；重新打开和手动刷新都会重新授权，请求中及离线等待期间隐藏旧详情和下载，并禁用自动重连刷新，不进行周期轮询。详情展示安全元数据与处理状态，并把已知失败码映射为安全中文错误指引；仅 `latestVersion.status=ready` 时提供指向 Identity API 的新标签页下载，Web 不读取或缓存最终预签名 URL。详情 `404` 会重新检查当前资源列表，并只把当前搜索标记 stale，不自动重跑搜索；资源列表仍为 `200` 时保留工作区，列表 `404` 才隐藏工作区。
 
-项目知识界面采用连续 IDE 工作台：真实项目选择器、资料栏、中央文件/搜索/引用标签、独立滚动的单轮助手与固定输入区。飞书来源位于独立的 `/projects/:projectId/knowledge/sources` 页面。标签只保留必要标识和标题，只有活动阅读器保留正文；旧活动正文、详情与引用读取取消并销毁。全文通过 `GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}/content` 获取当前已发布 ready 版本，可用 `version_id`/`chunk_id` 固定引用。服务在对象 I/O 前后刷新成员角色、ACL、来源和资源版本，事务外分块读取并验证原始大小/SHA256，仅支持严格 UTF-8 Markdown/TXT，最多 1 MiB/20,000 行，超限不截断。生成 SDK 与前端分别验证正文/行数/资源版本引用一致性；Markdown 使用成熟 AST 的源位置渲染，不执行 raw HTML、危险链接或远程媒体。精确唯一匹配显示引用原文，其他情况明确显示可信区块范围。二进制保留真实详情、下载及有界上下文。见[工作台](workbench.md)与[预览契约](2026-10-04-document-preview-design.md)。
+项目知识界面采用连续 IDE 工作台：真实项目选择器、资料栏、中央文件/搜索/引用标签、独立滚动的多轮助手与固定输入区。桌面导航与窄屏对话选择器共享按会话代际/用户/组织/项目隔离的会话状态；URL 的 conversation UUID 支持刷新恢复。发送无自动重试或离线回放，网络失败、停止等待或409需要显式“重新读取会话”确认结果后再发问；读回已保存的请求 UUID 时只清除未经再次编辑的草稿。聊天与草稿只在运行时内存中，切换范围取消读取与变更并清理旧缓存。模型状态仅表示配置，不声称上游连通。飞书来源位于独立的 `/projects/:projectId/knowledge/sources` 页面。标签只保留必要标识和标题，只有活动阅读器保留正文；旧活动正文、详情与引用读取取消并销毁。全文通过 `GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}/content` 获取当前已发布 ready 版本，可用 `version_id`/`chunk_id` 固定引用。服务在对象 I/O 前后刷新成员角色、ACL、来源和资源版本，事务外分块读取并验证原始大小/SHA256，仅支持严格 UTF-8 Markdown/TXT，最多 1 MiB/20,000 行，超限不截断。生成 SDK 与前端分别验证正文/行数/资源版本引用一致性；Markdown 使用成熟 AST 的源位置渲染，不执行 raw HTML、危险链接或远程媒体。精确唯一匹配显示引用原文，其他情况明确显示可信区块范围。二进制保留真实详情、下载及有界上下文。见[工作台](workbench.md)与[预览契约](2026-10-04-document-preview-design.md)。
 
 Task 18B 资源操作已交付：仅最新资源列表声明 `canWrite` 且 `latestVersion.status=failed`、服务端返回 `latestVersion.retryable=true` 时允许重试；重试使用 Cookie CSRF 和请求中的精确 `resource_id`/`version_id`，严格接受 `200`，且返回体 `id` 与请求 `resource_id`、`latestVersion.id` 与请求 `version_id` 匹配。软删除使用列出当前资源名的行内确认，取消不发送请求，确认严格接受 `204` 空响应。变更不自动重试或离线回放，取消只取消浏览器操作且不承诺回滚；删除先取消当前项目相关读取，再清理列表、详情、引用缓存并重置当前项目搜索而不自动发起 `POST`，保留其他项目与上传跟踪。`401 session_invalid` 由 MutationCache 清理会话，已取消操作的迟到 `401` 不会使新会话失效；`404` 重检列表并按列表 `200`/`404` 决定局部资源或工作区隐藏，`409` 先刷新详情，契约错误须手动详情恢复后才重新提供操作。
 
@@ -40,7 +44,7 @@ Task 18B 资源操作已交付：仅最新资源列表声明 `canWrite` 且 `lat
 
 ## 阶段路线
 
-Stage 3B 飞书连接器已建立自建应用凭证和单篇新版文档读取边界，并增加[管理员项目来源登记](stage-3b-feishu-sources-design.md)：组织 owner/admin 登记文档 ID、部署凭证引用和显式项目共享策略，可分页读取或幂等停用；来源、审计和项目 Outbox 同事务提交。Worker 的[凭证解析边界](stage-3b-feishu-credentials-design.md)只从可选部署 JSON 按组织 UUID 与不透明别名精确查找凭证，并按次创建隔离客户端；它不授予内容权限、不检查来源启用状态，也不联网同步。[来源内容授权与撤回](stage-3b-source-revocation-design.md)将配置状态和显式共享策略接入资源、批次、搜索、问答以及 Worker 索引发布：停用提交后，新授权读取不再返回来源内容，处理中任务在发布前重新检查来源；历史对象与索引保留，已经签发的短时效对象 URL 按原到期规则失效。独立的[手动持久化同步切片](stage-3b-feishu-sync-implementation.md)增加管理员排队/查询同步请求、Worker 读取可信来源、快照版本去重和索引任务排队；同步完成表示快照已经持久化，不等于索引已发布，验收状态以该切片记录为准。周期同步、上游删除传播、管理界面和真实生产租户验收仍在后续；范围与约束见[同步设计](stage-3b-feishu-sync-design.md)，读取一致性限制见[飞书读取基础设计](stage-3b-feishu-reader-design.md)。当前 Web 知识工作区尚无来源管理或触发同步入口。
+Stage 3B 飞书连接器已建立自建应用凭证和单篇新版文档读取边界，并增加[管理员项目来源登记](stage-3b-feishu-sources-design.md)：组织 owner/admin 登记文档 ID、部署凭证引用和显式项目共享策略，可分页读取或幂等停用；来源、审计和项目 Outbox 同事务提交。Worker 的[凭证解析边界](stage-3b-feishu-credentials-design.md)只从可选部署 JSON 按组织 UUID 与不透明别名精确查找凭证，并按次创建隔离客户端；它不授予内容权限、不检查来源启用状态，也不联网同步。[来源内容授权与撤回](stage-3b-source-revocation-design.md)将配置状态和显式共享策略接入资源、批次、搜索、问答以及 Worker 索引发布：停用提交后，新授权读取不再返回来源内容，处理中任务在发布前重新检查来源；历史对象与索引保留，已经签发的短时效对象 URL 按原到期规则失效。独立的[手动持久化同步切片](stage-3b-feishu-sync-implementation.md)增加管理员排队/查询同步请求、Worker 读取可信来源、快照版本去重和索引任务排队；同步完成表示快照已经持久化，不等于索引已发布，验收状态以该切片记录为准。周期同步、上游删除传播、管理界面和真实生产租户验收仍在后续；范围与约束见[同步设计](stage-3b-feishu-sync-design.md)，读取一致性限制见[飞书读取基础设计](stage-3b-feishu-reader-design.md)。当前 Web 来源与同步页面已提供来源登记、维护与手动同步入口；真实上游撤权/删除验收仍独立跟踪。
 
 - 阶段 2.5.0：许可证、公开架构、跨平台仓库规则与受 CI 保护的 PR 流程。
 - 阶段 2.5A：RBAC/ACL（已交付），包含组织角色、项目 ACL、成员角色 API、concealment、CSRF，以及权限变化与审计/Outbox 的事务一致性。
@@ -58,3 +62,5 @@ Stage 3B 飞书连接器已建立自建应用凭证和单篇新版文档读取�
 - Stage 3A Task 20：核心摄取验收（已交付），`dev:core`/`verify:core` 托管本地假 Embedding、API 与 Worker，以真实 MinIO 签名 PUT 验证上传、ready、混合检索、行号引用上下文和授权下载；默认验证不需要外网或 Provider 密钥。
 
 后续 Agent、模型 Provider 和工作流能力必须建立在租户、权限、审计和知识边界之上，不能绕过这些基础能力提前接入生产数据。
+
+项目个人助手配置与只读技能实现范围：当前项目/用户可保存名称、行为说明和启用技能，以配置 revision 和轮次 UUID 固定每次实际调用的语义；两项内置技能及私有导入技能通过独立、受限的 guidance JSON 指导模型，仍只按本轮授权证据引用，不执行脚本、网络工具或项目写入。外部来源支持有界 SKILL.md、内存 ZIP 和固定公开 GitHub Contents API，先预览 digest 再显式导入/启用。真实 GitHub 外网请求在当前运行环境受限；受控传输测试与真实外网验收分别记录。

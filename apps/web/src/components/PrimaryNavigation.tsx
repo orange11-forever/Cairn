@@ -2,6 +2,7 @@ import { BookOpenText, FolderKanban, Search, RefreshCw } from "lucide-react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 
 import { navigationItems } from "../app/navigation.ts";
+import { ConversationHistory } from "./knowledge/ConversationHistory.tsx";
 
 export function PrimaryNavigation({ currentKnowledgePath = null }: { currentKnowledgePath?: string | null }) {
   const location = useLocation();
@@ -10,6 +11,10 @@ export function PrimaryNavigation({ currentKnowledgePath = null }: { currentKnow
   const icons = {
     "/projects": FolderKanban,
   } as const;
+  const knowledgeLink = (view: "chat" | "search", sources = false) => {
+    const params = new URLSearchParams(location.search); params.set("view", view);
+    return `${currentKnowledgePath}${sources ? "/sources" : ""}?${params.toString()}`;
+  };
 
   return (
     <nav className="primary-nav" aria-label="主导航">
@@ -27,15 +32,16 @@ export function PrimaryNavigation({ currentKnowledgePath = null }: { currentKnow
           );
         })}
         {currentKnowledgePath === null ? null : <li>
-          <Link to={currentKnowledgePath} aria-current={pathname === currentKnowledgePath && !searchActive ? "page" : undefined} aria-label="知识资料">
+          <Link to={knowledgeLink("chat")} aria-current={pathname === currentKnowledgePath && !searchActive ? "page" : undefined} aria-label="知识工作台">
             <BookOpenText aria-hidden="true" size={18} strokeWidth={1.8} />
-            <span className="nav-label-full">知识资料</span>
-            <span className="nav-label-short">资料</span>
+            <span className="nav-label-full">知识工作台</span>
+            <span className="nav-label-short">工作台</span>
           </Link>
         </li>}
-        {currentKnowledgePath === null ? null : <li><Link aria-current={searchActive ? "page" : undefined} to={`${currentKnowledgePath}?view=search`} aria-label="搜索项目资料"><Search aria-hidden="true" size={22} strokeWidth={1.8} /><span className="nav-label-short">搜索</span></Link></li>}
-        {currentKnowledgePath === null ? null : <li><NavLink to={`${currentKnowledgePath}/sources`} aria-label="来源与同步"><RefreshCw aria-hidden="true" size={22} strokeWidth={1.8} /><span className="nav-label-short">来源</span></NavLink></li>}
+        {currentKnowledgePath === null ? null : <li><Link aria-current={searchActive ? "page" : undefined} to={knowledgeLink("search")} aria-label="搜索项目资料"><Search aria-hidden="true" size={22} strokeWidth={1.8} /><span className="nav-label-full">搜索资料</span><span className="nav-label-short">搜索</span></Link></li>}
+        {currentKnowledgePath === null ? null : <li><NavLink to={knowledgeLink("chat", true)} aria-label="来源与同步"><RefreshCw aria-hidden="true" size={22} strokeWidth={1.8} /><span className="nav-label-full">来源与同步</span><span className="nav-label-short">来源</span></NavLink></li>}
       </ul>
+      {currentKnowledgePath === null ? null : <ConversationHistory />}
     </nav>
   );
 }

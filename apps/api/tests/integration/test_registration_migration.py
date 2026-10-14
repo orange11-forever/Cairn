@@ -41,7 +41,7 @@ def test_native_migration_preserves_legacy_accounts_and_refuses_live_proof_loss(
         with database.session_factory() as session:
             assert (
                 session.scalar(text("SELECT version_num FROM alembic_version"))
-                == "0012_native_registration"
+                == "0013_task_editing"
             )
             assert session.scalar(text("SELECT count(*) FROM pending_registrations")) == 1
         with database.session_factory.begin() as session:

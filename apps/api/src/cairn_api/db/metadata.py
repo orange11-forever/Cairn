@@ -11,6 +11,8 @@ MODEL_MODULES = (
     "cairn_api.auth.registration_models",
     "cairn_api.authorization.models",
     "cairn_api.knowledge.models",
+    "cairn_api.knowledge.conversation_models",
+    "cairn_api.knowledge.assistant_models",
     "cairn_api.knowledge.source_models",
     "cairn_api.organizations.models",
     "cairn_api.projects.models",

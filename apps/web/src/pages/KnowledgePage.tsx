@@ -1,5 +1,5 @@
 import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
-import { ArrowLeft, BookOpenText, CalendarDays, FileText, HardDrive, PackageOpen, Search, UploadCloud, X, PanelLeft, PanelRight, RefreshCw } from "lucide-react";
+import { ArrowLeft, BookOpenText, CalendarDays, FileText, HardDrive, MessageSquare, PackageOpen, Search, UploadCloud, X, PanelLeft, PanelRight, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, Navigate, useParams, useSearchParams, useLocation } from "react-router-dom";
 
@@ -8,6 +8,8 @@ import type { KnowledgeResource, KnowledgeResourcePage } from "../api/knowledge.
 import { type KnowledgeCitationReference } from "../components/knowledge/KnowledgeCitationContext.tsx";
 import { KnowledgeSearch } from "../components/knowledge/KnowledgeSearch.tsx";
 import { KnowledgeAnswers } from "../components/knowledge/KnowledgeAnswers.tsx";
+import { KnowledgeConversations } from "../components/knowledge/KnowledgeConversations.tsx";
+import { useProjectConversations } from "../components/knowledge/ProjectConversationsContext.tsx";
 import { KnowledgeDocument } from "../components/knowledge/KnowledgeDocument.tsx";
 import { KnowledgeUploadBatch } from "../components/knowledge/KnowledgeUploadBatch.tsx";
 import { WorkspaceHeader } from "../components/WorkspaceHeader.tsx";
@@ -147,6 +149,7 @@ function KnowledgeWorkspaceContent({
   canManageSources: boolean;
   onSearchAccessUnavailable(error: ApiError): void;
 }) {
+  const conversations = useProjectConversations();
   const queryClient = useQueryClient();
   const project = useProjectQuery(organizationId, projectId, signal);
   const resources = useKnowledgeResourcesQuery(
@@ -166,9 +169,10 @@ function KnowledgeWorkspaceContent({
   const [searchTabOpen, setSearchTabOpen] = useState(true);
   const [explorerOpen, setExplorerOpen] = useState(true);
   const [assistantOpen, setAssistantOpen] = useState(true);
+  const [contentOpen, setContentOpen] = useState(true);
   const [searchParams] = useSearchParams();
   const location = useLocation();
-  const [mobilePane, setMobilePane] = useState<MobilePane>("content");
+  const [mobilePane, setMobilePane] = useState<MobilePane>("assistant");
   const [compact, setCompact] = useState(() => window.matchMedia?.("(max-width: 900px)").matches ?? window.innerWidth <= 900);
   const [uploadOpen, setUploadOpen] = useState(false);
   const selectionEpoch = useRef(0);
@@ -210,6 +214,7 @@ function KnowledgeWorkspaceContent({
     void queryClient.cancelQueries({ queryKey: [...knowledgeKeys.project(organizationId, projectId), "content"] });
     queryClient.removeQueries({ queryKey: [...knowledgeKeys.project(organizationId, projectId), "content"] });
     setSearchTabOpen(true);
+    setContentOpen(true);
     if (previous === null) return;
     const key = previous.kind === "resource"
       ? knowledgeKeys.resource(organizationId, projectId, previous.resourceId)
@@ -255,6 +260,7 @@ function KnowledgeWorkspaceContent({
     queryClient.removeQueries({ queryKey: key, exact: true });
     setTabs(current => current.some(tab => tabId(tab) === tabId(next)) ? current : [...current, next]);
     setSelection(next);
+    setContentOpen(true);
     setMobilePane("content");
   }, [organizationId, projectId, queryClient, selection, signal]);
   function restoreTabFocus(id: string) {
@@ -288,6 +294,9 @@ function KnowledgeWorkspaceContent({
     if (searchParams.get("view") === "search") {
       void clearSelection();
       setMobilePane("content");
+    } else if (searchParams.get("view") === "chat" || !searchParams.has("view")) {
+      setAssistantOpen(true);
+      setMobilePane("assistant");
     }
   }, [searchParams, location.key]);
   const handleResourceMissing = useCallback(async () => {
@@ -393,10 +402,24 @@ function KnowledgeWorkspaceContent({
       className="knowledge-page"
     >
       <h1 id="knowledge-page-title" className="workbench-sr-only">{project.data.name}</h1>
+      <header className="knowledge-workspace-bar">
+        <div className="knowledge-workspace-title" aria-hidden="true"><BookOpenText size={16} /><span>{project.data.name}</span></div>
+        <div className="knowledge-pane-controls" aria-label="工作台布局">
+          <button type="button" title={explorerOpen ? "收起资料栏" : "展开资料栏"} aria-label={explorerOpen ? "收起资料栏" : "展开资料栏"} aria-expanded={explorerOpen} aria-controls="knowledge-explorer-panel" onClick={() => setExplorerOpen(value => !value)}><BookOpenText size={18} aria-hidden="true" /></button>
+          <button type="button" title={assistantOpen ? "收起助手" : "展开助手"} aria-label={assistantOpen ? "收起助手" : "展开助手"} aria-expanded={assistantOpen} aria-controls="knowledge-assistant-panel" onClick={() => {
+            if (assistantOpen) setContentOpen(true);
+            setAssistantOpen(value => !value);
+          }}><MessageSquare size={18} aria-hidden="true" /></button>
+          <button type="button" title={contentOpen ? "收起阅读区" : "展开阅读区"} aria-label={contentOpen ? "收起阅读区" : "展开阅读区"} aria-expanded={contentOpen} aria-controls="knowledge-content-panel" onClick={() => {
+            if (contentOpen) setAssistantOpen(true);
+            setContentOpen(value => !value);
+          }}><PanelRight size={18} aria-hidden="true" /></button>
+        </div>
+      </header>
       <nav aria-label="工作台分区" className="knowledge-mobile-panes">
-        <button type="button" aria-pressed={mobilePane === "explorer"} onClick={() => setMobilePane("explorer")}>资料</button>
-        <button type="button" aria-pressed={mobilePane === "content"} onClick={() => setMobilePane("content")}>内容</button>
-        <button type="button" aria-pressed={mobilePane === "assistant"} onClick={() => setMobilePane("assistant")}>岑宁</button>
+        <button type="button" aria-pressed={mobilePane === "assistant"} aria-controls="knowledge-assistant-panel" onClick={() => setMobilePane("assistant")}><MessageSquare size={16} aria-hidden="true" />对话</button>
+        <button type="button" aria-pressed={mobilePane === "explorer"} aria-controls="knowledge-explorer-panel" onClick={() => setMobilePane("explorer")}><PanelLeft size={16} aria-hidden="true" />资料</button>
+        <button type="button" aria-pressed={mobilePane === "content"} aria-controls="knowledge-content-panel" onClick={() => setMobilePane("content")}><BookOpenText size={16} aria-hidden="true" />阅读</button>
       </nav>
 
       {resourceDeletion === null ? null : <p
@@ -427,40 +450,17 @@ function KnowledgeWorkspaceContent({
         </div>
       ) : null}
 
-      {!accessUnavailable && resources.data !== undefined ? <div className="knowledge-workbench" data-mobile-pane={mobilePane} data-explorer-open={compact || explorerOpen} data-assistant-open={compact || assistantOpen}>
-        <aside className="knowledge-explorer" aria-label="项目资料" hidden={compact ? mobilePane !== "explorer" : !explorerOpen}>
-          <div className="knowledge-explorer-heading">
-            <h2>项目资料</h2>
-            {capabilities?.canWrite === true ? <button type="button"
-              aria-label="上传资料" aria-expanded={uploadOpen}
-              onClick={() => setUploadOpen((value) => !value)}>
-              <UploadCloud aria-hidden="true" size={18} />
-            </button> : null}
-          </div>
-          <p className="knowledge-explorer-project" title={project.data.name}>{project.data.name}</p>
-          {canManageSources ? <Link className="knowledge-sources-entry" aria-label="打开来源与同步" to={`/projects/${projectId}/knowledge/sources`}><RefreshCw size={15} aria-hidden="true" />来源与同步</Link> : null}
-          {capabilities?.canWrite === true ? <div className="knowledge-explorer-upload">
-            <KnowledgeUploadBatch key={`upload:${organizationId}:${projectId}`}
-              organizationId={organizationId} projectId={projectId} csrfToken={csrfToken}
-              sessionSignal={signal} onAccessUnavailable={onSearchAccessUnavailable}
-              collapsible open={uploadOpen} onToggle={() => setUploadOpen((value) => !value)} />
-          </div> : null}
-          {items.length === 0 ? <div className="knowledge-state knowledge-state-empty">
-            <BookOpenText aria-hidden="true" size={28} strokeWidth={1.8} />
-            <div><h2>还没有知识资料</h2>
-              <p>{capabilities?.canWrite ? "上传资料后可在此检索。" : "当前项目暂时没有可显示的知识资料。"}</p></div>
-          </div> : null}
-          {items.length > 0 ? <KnowledgeResourceList
-          items={items}
-          hasNextPage={resources.hasNextPage}
-          paginationError={resources.isFetchNextPageError ? resources.error : null}
-          pending={resources.isFetchingNextPage}
-          onLoadMore={() => void resources.fetchNextPage()}
-          selectedResourceId={selection?.kind === "resource" ? selection.resourceId : selection?.kind === "citation" ? selection.citation.resourceId : null}
-          onOpenResource={(resource) => void openSelection({ kind: "resource", resourceId: resource.id, title: resource.title })}
-        /> : null}
+      {!accessUnavailable && resources.data !== undefined ? <div className="knowledge-workbench" data-mobile-pane={mobilePane} data-explorer-open={compact || explorerOpen} data-assistant-open={compact || assistantOpen} data-content-open={compact || contentOpen}>
+        <aside id="knowledge-assistant-panel" className="knowledge-assistant" aria-label="岑宁问答面板" hidden={compact ? mobilePane !== "assistant" : !assistantOpen}>
+          {conversations !== null ? <KnowledgeConversations organizationId={organizationId} projectId={projectId}
+            sessionSignal={signal} onAccessUnavailable={onSearchAccessUnavailable} resourceDeletion={resourceDeletion}
+            projectName={project.data.name} onOpenCitation={(citation) => void openSelection({ kind: "citation", citation })} /> : <KnowledgeAnswers key={`answers:${organizationId}:${projectId}`}
+            organizationId={organizationId} projectId={projectId} csrfToken={csrfToken}
+            sessionSignal={signal} onAccessUnavailable={onSearchAccessUnavailable}
+            resourceDeletion={resourceDeletion} docked projectName={project.data.name}
+            onOpenCitation={(citation) => void openSelection({ kind: "citation", citation })} />}
         </aside>
-        <section className="knowledge-content" aria-label="知识内容" hidden={compact && mobilePane !== "content"}>
+        <section id="knowledge-content-panel" className="knowledge-content" aria-label="知识内容" hidden={compact ? mobilePane !== "content" : !contentOpen}>
           <div className="knowledge-content-tabs" role="tablist" aria-label="内容标签" onKeyDown={event => {
             if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key) || (event.target as HTMLElement).getAttribute("role") !== "tab") return;
             const controls = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("[role=tab]"));
@@ -483,10 +483,6 @@ function KnowledgeWorkspaceContent({
           </div>
           <div className="knowledge-reader-toolbar">
             <span className="knowledge-breadcrumb"><BookOpenText size={15} aria-hidden="true" />项目资料<span aria-hidden="true">/</span><span>{selection === null ? searchTabOpen ? "搜索" : "未打开资料" : tabTitle(selection)}</span></span>
-            <div className="knowledge-pane-controls">
-              <button type="button" aria-label={explorerOpen ? "收起资料栏" : "展开资料栏"} aria-pressed={explorerOpen} onClick={() => setExplorerOpen(value => !value)}><PanelLeft size={18} aria-hidden="true" /></button>
-              <button type="button" aria-label={assistantOpen ? "收起助手" : "展开助手"} aria-pressed={assistantOpen} onClick={() => setAssistantOpen(value => !value)}><PanelRight size={18} aria-hidden="true" /></button>
-            </div>
           </div>
           <div className="knowledge-reader-scroll" id="knowledge-active-content" role="tabpanel" aria-labelledby={selection === null ? searchTabOpen ? "knowledge-search-tab" : "knowledge-empty-title" : `knowledge-tab-${tabId(selection)}`}>
           {selection === null && !searchTabOpen ? <div className="knowledge-center-empty"><BookOpenText size={32} aria-hidden="true" /><h2 id="knowledge-empty-title">打开一份项目资料</h2><p>从资料栏选择文件，或搜索项目知识以核对引用。</p><button type="button" onClick={() => void clearSelection()}><Search size={17} aria-hidden="true" />搜索项目资料</button></div> : null}
@@ -516,12 +512,37 @@ function KnowledgeWorkspaceContent({
             onDeleteSucceeded={handleDeleteSucceeded} /> : null}
           </div>
         </section>
-        <aside className="knowledge-assistant" aria-label="岑宁问答面板" hidden={compact ? mobilePane !== "assistant" : !assistantOpen}>
-          <KnowledgeAnswers key={`answers:${organizationId}:${projectId}`}
-            organizationId={organizationId} projectId={projectId} csrfToken={csrfToken}
-            sessionSignal={signal} onAccessUnavailable={onSearchAccessUnavailable}
-            resourceDeletion={resourceDeletion} docked projectName={project.data.name}
-            onOpenCitation={(citation) => void openSelection({ kind: "citation", citation })} />
+        <aside id="knowledge-explorer-panel" className="knowledge-explorer" aria-label="项目资料" hidden={compact ? mobilePane !== "explorer" : !explorerOpen}>
+          <div className="knowledge-explorer-heading">
+            <h2>项目资料</h2>
+            {capabilities?.canWrite === true ? <button type="button"
+              aria-label="上传资料" aria-expanded={uploadOpen}
+              onClick={() => setUploadOpen((value) => !value)}>
+              <UploadCloud aria-hidden="true" size={18} />
+            </button> : null}
+          </div>
+          <p className="knowledge-explorer-project" title={project.data.name}>{project.data.name}</p>
+          {canManageSources ? <Link className="knowledge-sources-entry" aria-label="打开来源与同步" to={`/projects/${projectId}/knowledge/sources${location.search}`}><RefreshCw size={15} aria-hidden="true" />来源与同步</Link> : null}
+          {capabilities?.canWrite === true ? <div className="knowledge-explorer-upload">
+            <KnowledgeUploadBatch key={`upload:${organizationId}:${projectId}`}
+              organizationId={organizationId} projectId={projectId} csrfToken={csrfToken}
+              sessionSignal={signal} onAccessUnavailable={onSearchAccessUnavailable}
+              collapsible open={uploadOpen} onToggle={() => setUploadOpen((value) => !value)} />
+          </div> : null}
+          {items.length === 0 ? <div className="knowledge-state knowledge-state-empty">
+            <BookOpenText aria-hidden="true" size={28} strokeWidth={1.8} />
+            <div><h2>还没有知识资料</h2>
+              <p>{capabilities?.canWrite ? "上传资料后可在此检索。" : "当前项目暂时没有可显示的知识资料。"}</p></div>
+          </div> : null}
+          {items.length > 0 ? <KnowledgeResourceList
+          items={items}
+          hasNextPage={resources.hasNextPage}
+          paginationError={resources.isFetchNextPageError ? resources.error : null}
+          pending={resources.isFetchingNextPage}
+          onLoadMore={() => void resources.fetchNextPage()}
+          selectedResourceId={selection?.kind === "resource" ? selection.resourceId : selection?.kind === "citation" ? selection.citation.resourceId : null}
+          onOpenResource={(resource) => void openSelection({ kind: "resource", resourceId: resource.id, title: resource.title })}
+        /> : null}
         </aside>
       </div> : null}
       <footer className="knowledge-statusbar" aria-label="工作台状态">

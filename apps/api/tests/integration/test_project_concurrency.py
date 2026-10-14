@@ -14,7 +14,6 @@ from cairn_api.db.session import Database
 from cairn_api.errors import ApiProblem
 from cairn_api.organizations.models import Membership, Organization
 from cairn_api.organizations.schemas import MembershipResponse, OrganizationResponse
-from cairn_api.projects import repository
 from cairn_api.projects.models import OutboxEvent, Project, Task, TaskDependency
 from cairn_api.projects.schemas import DependencyResponse, TaskResponse
 from cairn_api.projects.service import ProjectService
@@ -178,34 +177,33 @@ def test_competing_task_transitions_serialize_with_single_side_effect(
     assert isinstance(baseline_audits, int)
 
     gate = LockGate()
-    real_get_task = repository.get_task
+    real_lock_organization = ProjectService._lock_organization  # pyright: ignore[reportPrivateUsage]
 
-    def gated_get_task(
-        session: Session,
+    def gated_lock_organization(self: ProjectService, identity: IdentityContextResponse) -> None:
+        gate.before_locked_read(self._session)  # pyright: ignore[reportPrivateUsage]
+        real_lock_organization(self, identity)
+
+    monkeypatch.setattr(ProjectService, "_lock_organization", gated_lock_organization)
+
+    real_find_project = AuthorizationPolicy.find_project
+
+    def gated_find_project(
+        self: AuthorizationPolicy,
+        identity: IdentityContextResponse,
+        project_id: UUID,
+        required: ProjectPermission,
         *,
-        org_id: UUID,
-        task_id: UUID,
         for_update: bool = False,
-    ) -> Task | None:
-        if not for_update or task_id != target_task_id:
-            return real_get_task(
-                session,
-                org_id=org_id,
-                task_id=task_id,
-                for_update=for_update,
-            )
-        role = gate.before_locked_read(session)
-        task = real_get_task(
-            session,
-            org_id=org_id,
-            task_id=task_id,
-            for_update=for_update,
-        )
+    ) -> Project | None:
+        if not for_update or project_id != target_project_id:
+            return real_find_project(self, identity, project_id, required, for_update=for_update)
+        role = gate.before_locked_read(self._session)  # pyright: ignore[reportPrivateUsage]
+        project = real_find_project(self, identity, project_id, required, for_update=True)
         gate.after_locked_read(role)
-        return task
+        return project
 
-    target_task_id = task_id
-    monkeypatch.setattr(repository, "get_task", gated_get_task)
+    target_project_id = project_id
+    monkeypatch.setattr(AuthorizationPolicy, "find_project", gated_find_project)
 
     def transition(
         role: WorkerRole,
@@ -281,6 +279,7 @@ def test_competing_task_transitions_serialize_with_single_side_effect(
 def test_concurrent_dependency_additions_cannot_close_cycle(
     database: Database,
     migrated_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     identity = _seed_identity(database)
     project_id, task_ids = _create_project_with_tasks(
@@ -310,13 +309,17 @@ def test_concurrent_dependency_additions_cannot_close_cycle(
 
     with database.session_factory() as session:
         baseline_audits = session.scalar(
-            select(func.count()).select_from(AuditLog).where(
+            select(func.count())
+            .select_from(AuditLog)
+            .where(
                 AuditLog.org_id == identity.organization.id,
                 AuditLog.action == "task.dependency_added",
             )
         )
         baseline_events = session.scalar(
-            select(func.count()).select_from(OutboxEvent).where(
+            select(func.count())
+            .select_from(OutboxEvent)
+            .where(
                 OutboxEvent.event_type == "task.dependency_added",
                 OutboxEvent.aggregate_id == project_id,
             )
@@ -325,6 +328,14 @@ def test_concurrent_dependency_additions_cannot_close_cycle(
     assert isinstance(baseline_events, int)
 
     gate = LockGate()
+    real_lock_organization = ProjectService._lock_organization  # pyright: ignore[reportPrivateUsage]
+
+    def gated_lock_organization(self: ProjectService, identity: IdentityContextResponse) -> None:
+        gate.before_locked_read(self._session)  # pyright: ignore[reportPrivateUsage]
+        real_lock_organization(self, identity)
+
+    monkeypatch.setattr(ProjectService, "_lock_organization", gated_lock_organization)
+
     target_project_id = project_id
 
     class GatedAuthorizationPolicy(AuthorizationPolicy):
@@ -436,16 +447,12 @@ def test_concurrent_dependency_additions_cannot_close_cycle(
     assert edges == {(task_b, task_c), (task_d, task_a), (task_a, task_b)}
     assert len(audits) == baseline_audits + 1
     assert len(events) == baseline_events + 1
-    committed_audits = [
-        audit for audit in audits if audit.trace_id == "req-race-dependency-a-b"
-    ]
+    committed_audits = [audit for audit in audits if audit.trace_id == "req-race-dependency-a-b"]
     assert len(committed_audits) == 1
     assert committed_audits[0].resource_id == holder_result.id
     assert "req-race-dependency-c-d" not in {audit.trace_id for audit in audits}
     committed_events = [
-        event
-        for event in events
-        if event.payload.get("dependencyId") == str(holder_result.id)
+        event for event in events if event.payload.get("dependencyId") == str(holder_result.id)
     ]
     assert len(committed_events) == 1
     assert committed_events[0].payload["predecessorTaskId"] == str(task_a)

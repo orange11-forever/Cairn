@@ -698,7 +698,7 @@ test("the project knowledge route loads the selected project inside the shared k
   expect(screen.queryByText("上传入口将在后续任务接入")).toBeNull();
   expect(screen.getByText("可维护资料")).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Cairn" })).toHaveAttribute("href", "/projects");
-  expect(screen.getByRole("link", { name: "知识资料" })).toHaveAttribute(
+  expect(screen.getByRole("link", { name: "知识工作台" })).toHaveAttribute(
     "aria-current",
     "page",
   );
@@ -3867,17 +3867,28 @@ test("mobile pane switches preserve the unsent assistant draft and hide inactive
   })));
   const user = userEvent.setup();
   renderTestRoutes(`/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, { restoredIdentity: IDENTITY });
-  await screen.findByRole("button", { name: "岑宁" });
-  expect(screen.queryByRole("textbox", { name: "向项目知识提问" })).toBeNull();
-  await user.click(screen.getByRole("button", { name: "岑宁" }));
+  await screen.findByRole("textbox", { name: "向项目知识提问" });
   await user.type(screen.getByLabelText("向项目知识提问"), "我的未发送问题");
-  await user.click(screen.getByRole("button", { name: "内容" }));
+  await user.click(screen.getByRole("button", { name: "阅读" }));
   expect(screen.queryByRole("textbox", { name: "向项目知识提问" })).toBeNull();
-  await user.click(screen.getByRole("button", { name: "岑宁" }));
+  await user.click(screen.getByRole("button", { name: "对话" }));
   expect(screen.getByLabelText("向项目知识提问")).toHaveValue("我的未发送问题");
 });
 
-test("the docked assistant shows the submitted question and opens answer citations in the center", async () => {
+test("the current conversation link restores a collapsed assistant without losing its draft", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({
+    capabilities: { canWrite: false }, items: [], nextCursor: null,
+  })));
+  const user = userEvent.setup();
+  renderTestRoutes(`/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, { restoredIdentity: IDENTITY });
+  await user.type(await screen.findByRole("textbox", { name: "向项目知识提问" }), "保留这个项目的问题");
+  await user.click(screen.getByRole("button", { name: "收起助手" }));
+  expect(screen.queryByRole("textbox", { name: "向项目知识提问" })).toBeNull();
+  await user.click(screen.getByRole("link", { name: "打开当前项目问答" }));
+  expect(screen.getByRole("textbox", { name: "向项目知识提问" })).toHaveValue("保留这个项目的问题");
+});
+
+test("the docked assistant shows the submitted question and opens answer citations in the reader", async () => {
   const resourceId = "00000000-0000-4000-8000-000000005092";
   const versionId = "00000000-0000-4000-8000-000000006092";
   const chunkId = "00000000-0000-4000-8000-000000007092";

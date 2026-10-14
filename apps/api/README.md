@@ -2,7 +2,7 @@
 
 `apps/api` 是根 uv workspace 中可安装、可独立启动的 FastAPI package，现已提供 PostgreSQL 组织身份、Cookie 会话、组织 RBAC、项目 ACL、项目任务、审计、事务性 Outbox、有界 SSE、Stage 3A Task 1–11 知识上传与资源生命周期、Task 12 项目范围混合搜索和 Task 18 资源操作契约，以及配置、请求 ID、统一错误、健康检查和 OpenAPI。Agent 执行和完整 Provider 治理能力仍在后续阶段。
 
-Web 的身份、项目任务与项目知识资源、搜索、单轮生成式回答、引用上下文和上传连接本 API。回答协议支持 `openai-compatible`（DeepSeek、Qwen、Kimi、GLM）、`openai-responses`（GPT Responses）、`anthropic`（Claude Messages）与 `gemini`（Gemini GenerateContent）；GPT 也可使用 Chat Completions。模型 ID 由部署配置，须确认具体模型的结构化 JSON 能力。核心验证使用本地确定性 Embedding/回答 Provider，不访问外部模型。流式/多轮问答仍在后续任务。当前产品、架构和阶段路线以 [公开架构说明](../../docs/architecture.md) 为准。
+Web 的身份、项目任务与项目知识资源、搜索、单轮生成式回答、引用上下文和上传连接本 API。回答协议支持 `openai-compatible`（DeepSeek、Qwen、Kimi、GLM）、`openai-responses`（GPT Responses）、`anthropic`（Claude Messages）与 `gemini`（Gemini GenerateContent）；GPT 也可使用 Chat Completions。模型 ID 由部署配置，须确认具体模型的结构化 JSON 能力。核心验证使用本地确定性 Embedding/回答 Provider，不访问外部模型。已支持项目私有多轮会话、Responses逐段流式回答、模型选择与多个个人项目助手。当前产品、架构和阶段路线以 [公开架构说明](../../docs/architecture.md) 为准。
 
 Task 18A Web 资源详情已交付：资源行按需内联展开，通过生成 SDK、Cookie credentials 和真实 `GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}` 读取详情。收起会取消请求并销毁局部详情，项目切换或会话代际变化同样取消并销毁旧状态；重新展开和手动刷新都会重新授权，请求中及离线等待期间隐藏旧详情和下载，并禁用自动重连刷新，不进行周期轮询。详情展示安全元数据与处理状态，并把已知失败码映射为安全中文错误指引；仅 `latestVersion.status=ready` 时提供指向 Identity API 的新标签页下载，Web 不读取或缓存最终预签名 URL。详情 `404` 会重新检查当前资源列表，并只把当前搜索标记 stale，不自动重跑搜索；资源列表仍为 `200` 时保留工作区，列表 `404` 才隐藏工作区。
 
@@ -43,13 +43,13 @@ Docker Desktop 必须保持运行。生产环境必须使用 HTTPS `APP_URL`/`CO
 
 ## 当前能力边界
 
-当前 Web 交付前沿为 Stage 3A Task 1–20；Task 20 交付核心 Worker/假 Embedding 浏览器摄取编排，不新增 API、OpenAPI 或 SDK 功能。
+截至2026-10-14，Stage 3A Task 1–20、项目结构与任务编辑、私有多轮会话、Responses逐段流式回答、模型选择、Skills及多助手管理已接通；完整Agent执行与Provider治理仍在后续阶段。
 
 - 已实现：组织、用户、成员关系、Argon2id 密码、Cookie 会话、CSRF、PostgreSQL 登录限流、当前组织查询、项目、任务、任务依赖、状态机、追加式审计、事务性 Outbox 和有界 SSE 查询。
 - 阶段 2.5A 已交付项目范围的组织 RBAC、规范化 ACL、成员角色列表与更新 API。
 - Stage 3A Task 1–11 已交付：1–20 文件上传批次、校验和绑定的 MinIO/S3 预签名直传、批次状态、知识资源生命周期、切片上下文和独立 Worker 摄取链路。
 - Stage 3A Task 12 混合搜索 API 已交付：项目权限过滤优先的关键词/向量召回、确定性融合、关键词降级、限流、审计与可追溯引用。
-- Stage 3A Task 13 Web 知识工作区基础已交付：受保护路由、真实资源分页、`canWrite` 权限状态展示与搜索请求/query 状态边界；完整 UI 闭环仍在后续任务中。
+- Stage 3A Task 13 Web 知识工作区基础已交付：受保护路由、真实资源分页、`canWrite` 权限状态展示与搜索请求/query 状态边界；后续Task 14–20已补齐相关界面与摄取流程。
 - Stage 3A Task 14 真实知识资源列表已交付：显示标题、文件类型、大小、更新时间和处理状态，支持保留既有项目的游标续页、分页错误恢复与只读能力提示。
 - Stage 3A Task 15 真实知识搜索结果已交付：按服务端顺序显示摘录、文件类型、类型化 locator 定位信息和混合检索/关键词降级标签，并保留取消、错误、`401 session_invalid` 会话失效与访问权撤销状态。
 - Stage 3A Task 16 搜索卡片内按需引用上下文与授权下载已交付：按“前文 → 命中片段 → 后文”展示纯文本，重新展开会重新授权；下载在新标签页中只导航到 Identity API，实时授权后由 `307` 重定向进入短时效对象地址，Web 不缓存或读取最终预签名 URL。
@@ -58,6 +58,8 @@ Docker Desktop 必须保持运行。生产环境必须使用 HTTPS `APP_URL`/`CO
 - Stage 3A Task 18B 资源操作已交付：仅最新资源列表 `canWrite` 且 `latestVersion.status=failed`、服务端返回 `latestVersion.retryable=true` 时提供带 CSRF 的请求 `resource_id`/`version_id` 精确重试，成功严格为 `200` 且返回体 `id` 匹配请求 `resource_id`、`latestVersion.id` 匹配请求 `version_id`；行内命名软删除确认取消零请求，确认严格为 `204` 空响应。无自动 mutation 重试或离线回放，取消不承诺回滚；删除先取消当前项目相关读取，再清理当前项目列表/详情/引用缓存和搜索结果而不自动 `POST`，保留其他项目和上传跟踪，并覆盖迟到 `401` 不使新会话失效、`404` 列表重检、`409` 详情刷新和契约错误手动恢复。
 - Stage 3A Task 19 Mock 退场已交付：默认项目入口、旧书签重定向、生成 SDK 错误校验，以及 Node mock 和手写 contracts workspace 移除。
 - Stage 3A Task 20 核心摄取验收已交付：`dev:core`/`verify:core` 托管本地确定性假 Embedding、API 与 Worker，浏览器验证签名上传、ready、混合检索、行号上下文和授权下载。
+- 项目协作已扩展任务详情/负责人/依赖编辑、阶段与里程碑创建/编辑/归档/恢复和任务归组，使用项目及对象revision保护并发更新。
+- 项目助手已提供私有持久化会话、逐轮证据校验、Responses流式输出、完整轮次原子保存、模型选择、只读技能导入和多个独立配置的助手；接口见下文。
 - 对象存储公开 `PUT` URL 必须与 Web 页面使用不同 origin；客户端拒绝同源上传 URL，避免浏览器自动携带同源 Cookie。对象存储 `PUT` 不携带 Identity credentials；预签名上传 URL 与签名 headers 仅存于局部运行时，不进入 DOM、Query/Mutation 缓存、日志或浏览器存储。文件与 ZIP 子条目展示安全状态和局部错误，完成确认及批次终止时刷新资源列表，搜索仅标记 stale，不自动重跑。取消、路由切换、批次替换和会话失效会停止未完成的浏览器操作；自动跟踪超时保留已知 queued/processing 事实，显示“后台仍在处理”并允许手动刷新。
 - `Bearer/OIDC`：未实现。
 - 群组、邀请、成员移除、ACL 管理 UI 与成员管理 UI：未实现。
@@ -152,9 +154,9 @@ Cookie 会话下的 `POST`/`PATCH`/`PUT`/`DELETE` 命令要求合法 Origin 和�
 
 ### 显式延后
 
-- 完整阶段/里程碑编辑 UI、React Flow/ELK 图编辑、拖拽 Kanban 和时间线可视化延后。
+- React Flow/ELK 路线节点图、拖拽 Kanban 和时间线可视化延后；阶段与里程碑编辑、归档和恢复已接通。
 - Outbox worker 发布、长连接重连 SSE、Redis fan-out、评论、通知和任务执行延后。
-- 群组、邀请、成员移除、ACL/成员管理 UI、Bearer/OIDC、其他连接器、Agent 执行和完整模型 Provider 策略层延后。飞书单文档周期同步和连接管理界面已通过本地模拟验收，真实租户待验证；流式/多轮问答和周期性资源详情轮询仍在后续任务。
+- 群组、邀请、成员移除、ACL/成员管理 UI、Bearer/OIDC、其他连接器、Agent 执行和完整模型 Provider 策略层延后。飞书单文档周期同步和连接管理界面已通过本地模拟验收，真实租户待验证；周期性资源详情轮询仍在后续任务。
 
 ## Stage 3A Task 1–20 知识摄取、资源操作与搜索契约
 
@@ -241,7 +243,7 @@ Cookie 会话下的 `POST`/`PATCH`/`PUT`/`DELETE` 命令要求合法 Origin 和�
 
 ## 后续数据模型不变量
 
-以下内容同时记录已交付的授权和知识边界，以及后续阶段必须遵守的设计约束；流式/多轮问答和周期性资源详情轮询仍在后续任务；飞书单文档周期同步和连接管理界面已通过本地模拟验收，真实租户待验证；其他连接器、Agent 或完整 Provider 治理能力尚未实现。
+以下内容同时记录已交付的授权和知识边界，以及后续阶段必须遵守的设计约束；周期性资源详情轮询仍在后续任务；飞书单文档周期同步和连接管理界面已通过本地模拟验收，真实租户待验证；其他连接器、Agent 或完整 Provider 治理能力尚未实现。
 
 全文读取使用 `GET /api/v1/projects/{project_id}/knowledge/resources/{resource_id}/content`。可选 `version_id` 固定当前 ready 版本；`chunk_id` 需同时给出该版本，仅允许属于相同资源版本的引用片段。仅支持可信 `text/markdown`/`text/plain` UTF-8 快照，最大原始1 MiB、20,000行，先后重新授权并校验大小/SHA256；超限413、格式/编码415、换版409、不可见404、基础设施503，成功与失败都为 `private, no-store`。响应包含完整正文、行数与可信精确/区块引用位置，不返回对象路径。详见[预览契约](../../docs/2026-10-04-document-preview-design.md)。
 
@@ -356,9 +358,42 @@ Cookie 路径启用 CSRF 防护；Bearer 路径不依赖浏览器自动携带凭
 - 普通进度和日志使用 SSE，多人实时编辑等双向场景才使用 WebSocket；
 - 老版本客户端可能长期存在，破坏性契约变化必须通过新 API 版本演进。
 
+## 私有会话与技能接口
+
+以下路径共同位于 `/api/v1/projects/{project_id}/knowledge`，会话与助手配置按组织、项目、当前用户隔离，修改要求现有Cookie/Origin/CSRF保护。
+
+| 方法与相对路径 | 成功响应与行为 |
+|---|---|
+| `GET /conversations` | `200`，稳定分页的个人会话列表 |
+| `POST /conversations` | `201`新建，已提交的相同UUID可返回`200`重放 |
+| `GET /conversations/{conversation_id}` | `200`，重新校验引用后的完整会话 |
+| `POST /conversations/{conversation_id}/turns` | `200`，以请求UUID及expectedRevision保护完整轮次保存 |
+| `POST /conversations/{conversation_id}/turns/stream` | `200 text/event-stream`，`paragraph`、`complete`、`error`事件；只有complete表示已保存 |
+| `GET /skills` | `200`，内置与当前个人项目导入的只读技能目录 |
+| `POST /skills/preview` | `200`，预览并校验SKILL.md、ZIP或公开GitHub来源 |
+| `POST /skills/import` | `201`导入，已提交的相同请求可返回`200`重放；仍需明确启用 |
+
+每段会话最多50轮，模型上下文最多最近6轮、12000码点有效历史；每轮重新检索资料并核验当前及历史证据，失效引用使对应历史回答暂不可用。流式输出前失败返回普通JSON错误，开始输出后返回安全终止事件；未完成轮次不保存。断开触发协作取消，但阻塞的上游读取仍需等待返回或超时；已提交的结果通过GET恢复。Skills只作为回答指导，不执行脚本、工具或项目写入，也不增加权限。真实GPT与公开GitHub外网导入仍需独立验收。
+
+升级现有环境前配置目标`DATABASE_URL`，运行`pnpm db:migrate`到`0019_multiple_assistants`。本次新增迁移`0013`–`0019`，覆盖任务/项目结构、会话、助手/技能、模型选择与多助手；数据保留检查会阻止有损降级。
+
+## 对话模型选择与配置
+
+`ANSWER_BASE_URL`、`ANSWER_API_KEY`、`ANSWER_MODEL`、`ANSWER_PROTOCOL` 与 `ANSWER_TIMEOUT_SECONDS` 保留为默认模型配置。可在服务端增加 `ANSWER_MODELS` JSON数组，为每个允许选择的模型设置独立端点、密钥和协议，例如：
+
+```dotenv
+ANSWER_MODELS='[{"id":"reasoning","name":"推理模型","model":"your-json-capable-model","protocol":"openai-responses","base_url":"https://provider.example/v1","api_key":"CHANGE_ME","timeout_seconds":30}]'
+```
+
+数组最多20项，`id` 唯一，使用小写字母开头的字母、数字、下划线或连字符，最多64字符；`default` 保留给原有默认配置。`name` 是界面名称，`model` 是发送给上游的实际模型ID；协议仍为上文四种，超时默认30秒、上限60秒。配置变更需要重启API。原默认模型存在时优先作为服务端默认，否则使用数组第一项。无有效默认配置且清单为空时问答不可用；清单内无效配置使启动明确失败。生产远端地址要求HTTPS，URL不能携带凭据、查询或片段。此变量包含密钥，只能保存在服务端受保护环境，不能放入浏览器 `VITE_*` 配置。
+
+受项目读取权限保护的 `GET .../knowledge/answer-model` 返回 `configured`、默认 `model/protocol/defaultModelId` 和 `models` 清单，清单每项只有 `id/name/model/protocol`，不会返回密钥或端点，也不探测外部服务。用户通过 `PUT .../knowledge/assistant-settings` 保存可空的 `modelId`，`null` 表示服务端默认；选择仅作用于该用户在该项目的助手。不存在的ID返回 `422 model_not_available`，不更改配置。配置变化递增已有修订号，发送使用 `assistantRevision` 保护生成前后的配置一致性。
+
+对话轮次使用保存的模型，Responses走逐段SSE，其余协议保持完整响应。每个新轮次的 `model` 字段保存实际使用的公开模型信息；迁移前轮次为 `null`，不补造历史。显式选择被服务端移除后，新发送返回 `503 model_not_available`，不会自动切换；已有会话读取和已提交请求重放仍可用。迁移 `0018_answer_model_selection` 增加可空字段，降级遇到已有模型选择或快照时拒绝丢弃数据。
+
 ## 后续模型与 Provider 设计
 
-本节是下游设计约束；当前 API 不读取 Provider 配置，也不发起模型调用。
+本节是完整策略层的后续设计约束；当前已实现上述模型配置、选择和知识问答调用。
 
 模型访问统一经过 LiteLLM Gateway 和 Cairn 策略层。Provider、模型、能力、上下文窗口、成本、数据边界和风险策略分开配置。
 
@@ -378,3 +413,11 @@ Cookie 路径启用 CSRF 防护；Bearer 路径不依赖浏览器自动携带凭
 当前只固定会造成数据迁移、权限漏洞或跨客户端返工的不变量。计费、多可用区、SCIM、按租户密钥和数据驻留策略在对应阶段实现，但接口和表结构不得阻塞后续加入这些能力。
 
 来源生命周期的本地验收、真实租户只读检查与传播时间说明见[飞书完成验收记录](../../docs/stage-3b-feishu-completion-acceptance.md)。
+
+## 私有多助手管理
+
+`GET .../knowledge/assistants` 返回当前用户在项目内的助手摘要 `id/name/modelId`，最多20项。`POST .../knowledge/assistants` 接受 `AssistantSettingsRequest`，成功返回 `201 AssistantSettingsResponse` 并选用新助手；原助手保留。首次创建前若仍使用虚拟默认助手，会将默认配置保留为一个可选择的助手。`POST .../knowledge/assistants/{assistant_id}/select` 接受 `{expectedRevision}`，返回当前选定配置。列表和选择始终限制为组织、项目、当前用户的私有范围；未知或他人的助手返回 `404 not_found`。创建和选择要求现有 Cookie/Origin/CSRF 保护。
+
+现有 `/assistant-settings` 继续读取或编辑当前助手，响应增加可空 `id`。创建、配置保存和选择在同一用户的数据库锁下读取活动修订号；切换将新活动配置的 revision 设为原活动 revision+1，避免不同助手的局部修订号相同而让旧请求通过。重复选择当前助手不递增修订号，前提是 expectedRevision 仍匹配。旧修订号返回 `409 assistant_changed`，达到20项上限返回 `409 assistant_limit`。创建没有自动重试；结果未知时通过 GET 重新确认当前助手与列表。
+
+迁移 `0019_multiple_assistants` 保留现有配置的UUID、字段和revision，将其设为活动助手；部分唯一索引保证同一用户/项目最多一个活动助手。新轮次增加 `assistantId` 快照，既有历史仍保留原名称与内容，旧轮次不推断补填ID。存在多个/非活动助手或已保存的助手ID快照时，降级明确拒绝丢弃数据。生成过程中切换或编辑助手会使旧 revision 失效，未提交回答不会按新助手身份保存。

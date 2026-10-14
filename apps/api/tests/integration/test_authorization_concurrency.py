@@ -24,7 +24,6 @@ from cairn_api.organizations.schemas import (
     OrganizationResponse,
 )
 from cairn_api.organizations.service import OrganizationService
-from cairn_api.projects import repository as project_repository
 from cairn_api.projects.models import OutboxEvent, Project, Task
 from cairn_api.projects.schemas import TaskResponse
 from cairn_api.projects.service import ProjectService
@@ -77,9 +76,7 @@ class CharacteristicWorkerFailure(RuntimeError):
 def test_gate_wait_directly_surfaces_completed_worker_failure() -> None:
     """Break caught: cleanup must not be what reveals a pre-gate worker failure."""
     failed_future: Future[None] = Future()
-    failed_future.set_exception(
-        CharacteristicWorkerFailure("direct pre-gate worker failure")
-    )
+    failed_future.set_exception(CharacteristicWorkerFailure("direct pre-gate worker failure"))
 
     with pytest.raises(
         CharacteristicWorkerFailure,
@@ -147,9 +144,7 @@ def test_bounded_cleanup_preserves_primary_exception_and_joins_worker() -> None:
     assert force_cancel_called.is_set()
     assert exc_info.value is primary_exception
     assert str(exc_info.value) == "observer failed"
-    assert primary_exception.__notes__ == [
-        "force cancellation failed: backend termination failed"
-    ]
+    assert primary_exception.__notes__ == ["force cancellation failed: backend termination failed"]
     assert worker_finished.is_set()
     assert future is not None
     assert future.done()
@@ -370,105 +365,102 @@ def test_concurrent_owner_demotions_preserve_one_owner(
         )
 
     assert sorted(
-        result.code if isinstance(result, ApiProblem) else "success"
-        for result in results
+        result.code if isinstance(result, ApiProblem) else "success" for result in results
     ) == ["last_owner_required", "success"]
     with database.session_factory() as session:
-        assert session.scalar(
-            select(func.count()).select_from(Membership).where(
-                Membership.org_id == actor.organization_id,
-                Membership.role == MembershipRole.OWNER.value,
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(Membership)
+                .where(
+                    Membership.org_id == actor.organization_id,
+                    Membership.role == MembershipRole.OWNER.value,
+                )
             )
-        ) == 1
-        assert session.scalar(
-            select(func.count()).select_from(AuditLog).where(
-                AuditLog.org_id == actor.organization_id,
-                AuditLog.action == "membership.role_changed",
+            == 1
+        )
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(AuditLog)
+                .where(
+                    AuditLog.org_id == actor.organization_id,
+                    AuditLog.action == "membership.role_changed",
+                )
             )
-        ) == 1
-        assert session.scalar(
-            select(func.count()).select_from(OutboxEvent).where(
-                OutboxEvent.org_id == actor.organization_id,
-                OutboxEvent.event_type == "membership.role_changed",
+            == 1
+        )
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(OutboxEvent)
+                .where(
+                    OutboxEvent.org_id == actor.organization_id,
+                    OutboxEvent.event_type == "membership.role_changed",
+                )
             )
-        ) == 1
+            == 1
+        )
 
 
 @pytest.mark.integration
-def test_project_mutation_rechecks_role_after_waiting_for_project_lock(
+def test_project_mutation_rechecks_role_after_waiting_for_organization_lock(
     database: Database,
     migrated_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Break caught: a blocked mutation must not use its restored role snapshot."""
+    """A cached admin identity loses WRITE when an earlier role transaction commits."""
     owner = seed_actor(database, MembershipRole.OWNER)
     admin = seed_actor(database, MembershipRole.ADMIN, owner.organization_id)
+    restored_admin = _identity(admin)
     project_id = uuid4()
     with database.session_factory.begin() as session:
         session.add(
             Project(
                 id=project_id,
                 org_id=owner.organization_id,
-                name="Fresh role after project lock",
+                name="Fresh role after organization lock",
             )
         )
-
     gate = LockGate()
+    real_get_organization = organization_repository.get_organization
 
-    class GatedAuthorizationPolicy(AuthorizationPolicy):
-        def __init__(self, session: Session) -> None:
-            super().__init__(session)
-            self._gate_session = session
+    def gated_get_organization(
+        session: Session, org_id: UUID, *, for_update: bool = False, for_no_key_update: bool = False
+    ) -> Organization | None:
+        role = gate.before_locked_read(session) if for_update or for_no_key_update else None
+        organization = real_get_organization(
+            session, org_id, for_update=for_update, for_no_key_update=for_no_key_update
+        )
+        gate.after_locked_read(role)
+        return organization
 
-        def find_project(
-            self,
-            identity: IdentityContextResponse,
-            project_id: UUID,
-            required: ProjectPermission,
-            *,
-            for_update: bool = False,
-        ) -> Project | None:
-            if not for_update:
-                return super().find_project(
-                    identity,
-                    project_id,
-                    required,
-                    for_update=for_update,
-                )
-            role = gate.before_locked_read(self._gate_session)
-            project = super().find_project(
-                identity,
-                project_id,
-                required,
-                for_update=for_update,
-            )
-            gate.after_locked_read(role)
-            return project
+    monkeypatch.setattr(organization_repository, "get_organization", gated_get_organization)
 
-    def hold_project_lock() -> object:
-        with database.session_factory.begin() as session:
+    class WaitingProjectService(ProjectService):
+        def _lock_organization(self, identity: IdentityContextResponse) -> None:
+            gate.before_locked_read(self._session)
+            super()._lock_organization(identity)
+
+    def demote_before_mutation() -> object:
+        with database.session_factory() as session:
             install_race_session_deadlines(session)
             gate.register(session, "holder")
-            role = gate.before_locked_read(session)
-            project = project_repository.get_project(
-                session,
-                org_id=owner.organization_id,
-                project_id=project_id,
-                for_update=True,
+            return OrganizationService(session).update_membership_role(
+                identity=_identity(owner),
+                organization_id=owner.organization_id,
+                membership_id=admin.membership_id,
+                requested_role=MembershipRole.VIEWER,
+                audit=_audit("req-demote-blocked-admin"),
             )
-            assert project is not None
-            gate.after_locked_read(role)
-        return None
 
     def create_task_with_restored_admin() -> object:
         with database.session_factory() as session:
             install_race_session_deadlines(session)
             gate.register(session, "waiter")
             try:
-                return ProjectService(
-                    session,
-                    policy=GatedAuthorizationPolicy(session),
-                ).create_task(
-                    identity=_identity(admin),
+                return WaitingProjectService(session).create_task(
+                    identity=restored_admin,
                     project_id=project_id,
                     title="Must be concealed after demotion",
                     stage_id=None,
@@ -484,34 +476,24 @@ def test_project_mutation_rechecks_role_after_waiting_for_project_lock(
     executor = ThreadPoolExecutor(max_workers=2)
     futures: list[Future[object]] = []
     try:
-        holder = executor.submit(hold_project_lock)
-        futures.append(holder)
+        demotion = executor.submit(demote_before_mutation)
+        futures.append(demotion)
         wait_for_race_event(
-            gate.holder_locked,
-            futures,
-            awaited_condition="the holder project lock",
+            gate.holder_locked, futures, awaited_condition="the role writer's organization lock"
         )
         mutation = executor.submit(create_task_with_restored_admin)
         futures.append(mutation)
         wait_for_race_event(
             gate.waiter_entered,
             futures,
-            awaited_condition="the blocked project mutation",
+            awaited_condition="the cached-identity mutation waiting for organization",
         )
         assert_waiting_on_lock(migrated_engine, gate, futures)
-
-        with database.session_factory() as session:
-            changed = OrganizationService(session).update_membership_role(
-                identity=_identity(owner),
-                organization_id=owner.organization_id,
-                membership_id=admin.membership_id,
-                requested_role=MembershipRole.VIEWER,
-                audit=_audit("req-demote-blocked-admin"),
-            )
-        assert changed.role is MembershipRole.VIEWER
-
         gate.release_holder.set()
-        holder.result(timeout=FUTURE_SECONDS)
+        changed = demotion.result(timeout=FUTURE_SECONDS)
+        assert (
+            isinstance(changed, MembershipDetailResponse) and changed.role is MembershipRole.VIEWER
+        )
         result = mutation.result(timeout=FUTURE_SECONDS)
     finally:
         shutdown_race_executor(
@@ -521,25 +503,47 @@ def test_project_mutation_rechecks_role_after_waiting_for_project_lock(
             force_cancel=lambda: terminate_race_backends(migrated_engine, gate),
             primary_exception=sys.exception(),
         )
-
     assert isinstance(result, ApiProblem)
     assert (result.status_code, result.code) == (404, "not_found")
     with database.session_factory() as session:
-        assert session.scalar(
-            select(func.count()).select_from(Task).where(Task.project_id == project_id)
-        ) == 0
-        assert session.scalar(
-            select(func.count()).select_from(AuditLog).where(
-                AuditLog.resource_id == project_id,
-                AuditLog.action == "task.created",
+        assert (
+            session.scalar(
+                select(func.count()).select_from(Task).where(Task.project_id == project_id)
             )
-        ) == 0
-        assert session.scalar(
-            select(func.count()).select_from(OutboxEvent).where(
-                OutboxEvent.aggregate_id == project_id,
-                OutboxEvent.event_type == "task.created",
+            == 0
+        )
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(AuditLog)
+                .where(
+                    AuditLog.action == "task.created",
+                    AuditLog.trace_id == "req-stale-admin-mutation",
+                )
             )
-        ) == 0
+            == 0
+        )
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(OutboxEvent)
+                .where(
+                    OutboxEvent.aggregate_id == project_id, OutboxEvent.event_type == "task.created"
+                )
+            )
+            == 0
+        )
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(AuditLog)
+                .where(
+                    AuditLog.action == "membership.role_changed",
+                    AuditLog.resource_id == admin.membership_id,
+                )
+            )
+            == 1
+        )
 
 
 @pytest.mark.integration
@@ -609,11 +613,7 @@ def test_project_mutation_flush_does_not_deadlock_role_update(
         for_update: bool = False,
         for_no_key_update: bool = False,
     ) -> Organization | None:
-        role = (
-            gate.before_locked_read(session)
-            if for_update or for_no_key_update
-            else None
-        )
+        role = gate.before_locked_read(session) if for_update or for_no_key_update else None
         organization = real_get_organization(
             session,
             org_id,
@@ -674,14 +674,15 @@ def test_project_mutation_flush_does_not_deadlock_role_update(
         role_update = executor.submit(demote_after_mutation_lock)
         futures.append(role_update)
         wait_for_race_event(
-            role_organization_locked,
+            gate.waiter_entered,
             futures,
-            awaited_condition="the role-update organization lock",
+            awaited_condition="the role writer attempting the organization lock",
         )
         assert_waiting_on_lock(migrated_engine, gate, futures)
         allow_mutation_flush.set()
         mutation_result = mutation.result(timeout=FUTURE_SECONDS)
         role_result = role_update.result(timeout=FUTURE_SECONDS)
+        assert role_organization_locked.is_set()
     finally:
         shutdown_race_executor(
             executor,
@@ -695,33 +696,56 @@ def test_project_mutation_flush_does_not_deadlock_role_update(
     assert isinstance(role_result, MembershipDetailResponse)
     assert role_result.role is MembershipRole.VIEWER
     with database.session_factory() as session:
-        assert session.scalar(
-            select(func.count()).select_from(Task).where(Task.project_id == project_id)
-        ) == 1
-        assert session.scalar(
-            select(func.count()).select_from(AuditLog).where(
-                AuditLog.action == "task.created",
-                AuditLog.resource_id == mutation_result.id,
+        assert (
+            session.scalar(
+                select(func.count()).select_from(Task).where(Task.project_id == project_id)
             )
-        ) == 1
-        assert session.scalar(
-            select(func.count()).select_from(OutboxEvent).where(
-                OutboxEvent.event_type == "task.created",
-                OutboxEvent.aggregate_id == project_id,
+            == 1
+        )
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(AuditLog)
+                .where(
+                    AuditLog.action == "task.created",
+                    AuditLog.resource_id == mutation_result.id,
+                )
             )
-        ) == 1
-        assert session.scalar(
-            select(func.count()).select_from(AuditLog).where(
-                AuditLog.action == "membership.role_changed",
-                AuditLog.resource_id == admin.membership_id,
+            == 1
+        )
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(OutboxEvent)
+                .where(
+                    OutboxEvent.event_type == "task.created",
+                    OutboxEvent.aggregate_id == project_id,
+                )
             )
-        ) == 1
-        assert session.scalar(
-            select(func.count()).select_from(OutboxEvent).where(
-                OutboxEvent.event_type == "membership.role_changed",
-                OutboxEvent.aggregate_id == owner.organization_id,
+            == 1
+        )
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(AuditLog)
+                .where(
+                    AuditLog.action == "membership.role_changed",
+                    AuditLog.resource_id == admin.membership_id,
+                )
             )
-        ) == 1
+            == 1
+        )
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(OutboxEvent)
+                .where(
+                    OutboxEvent.event_type == "membership.role_changed",
+                    OutboxEvent.aggregate_id == owner.organization_id,
+                )
+            )
+            == 1
+        )
 
 
 @pytest.mark.integration

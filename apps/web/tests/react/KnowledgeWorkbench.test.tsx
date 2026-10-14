@@ -52,6 +52,50 @@ test('always provides reversible explorer and assistant visibility controls', as
   expect(within(assistant).getByText('问答控制器')).toBeVisible();
 });
 
+test('opening a resource restores a collapsed reader without hiding the conversation', async () => {
+  const user = mount();
+  const reader = screen.getByRole('region', { name: '知识内容' });
+  await user.click(screen.getByRole('button', { name: '收起阅读区' }));
+  expect(reader).not.toBeVisible();
+  expect(screen.getByRole('complementary', { name: '岑宁问答面板' })).toBeVisible();
+  await user.click(screen.getByRole('button', { name: '查看运行手册.md资料详情' }));
+  expect(reader).toBeVisible();
+  expect(await screen.findByRole('tab', { name: '运行手册.md' })).toHaveAttribute('aria-selected', 'true');
+  expect(screen.getByRole('complementary', { name: '岑宁问答面板' })).toBeVisible();
+});
+
+test('layout controls remain reachable and keep a main pane open', async () => {
+  const user = mount();
+  const assistant = screen.getByRole('complementary', { name: '岑宁问答面板' });
+  const reader = screen.getByRole('region', { name: '知识内容' });
+  await user.click(screen.getByRole('button', { name: '收起阅读区' }));
+  await user.click(screen.getByRole('button', { name: '收起助手' }));
+  expect(assistant).not.toBeVisible();
+  expect(reader).toBeVisible();
+  await user.click(screen.getByRole('button', { name: '收起阅读区' }));
+  expect(reader).not.toBeVisible();
+  expect(assistant).toBeVisible();
+  await user.click(screen.getByRole('button', { name: '展开阅读区' }));
+  expect(reader).toBeVisible();
+});
+
+test('compact workbench starts in conversation and can return after opening a resource', async () => {
+  vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+  try {
+    const user = mount();
+    const panes = screen.getByRole('navigation', { name: '工作台分区' });
+    expect(screen.getByRole('complementary', { name: '岑宁问答面板' })).toBeVisible();
+    expect(screen.queryByRole('region', { name: '知识内容' })).toBeNull();
+    await user.click(within(panes).getByRole('button', { name: '资料' }));
+    await user.click(screen.getByRole('button', { name: '查看运行手册.md资料详情' }));
+    expect(await screen.findByRole('tab', { name: '运行手册.md' })).toHaveAttribute('aria-selected', 'true');
+    await user.click(within(panes).getByRole('button', { name: '对话' }));
+    expect(screen.getByRole('complementary', { name: '岑宁问答面板' })).toBeVisible();
+    await user.click(within(panes).getByRole('button', { name: '阅读' }));
+    expect(screen.getByRole('tab', { name: '运行手册.md' })).toHaveAttribute('aria-selected', 'true');
+  } finally { vi.unstubAllGlobals(); }
+});
+
 test('scope changes discard open tabs and the old active controller', async () => {
   const user = mount();
   await user.click(screen.getByRole('button', { name: '查看运行手册.md资料详情' }));

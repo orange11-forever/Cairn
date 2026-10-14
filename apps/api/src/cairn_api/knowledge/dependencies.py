@@ -2,6 +2,7 @@ from typing import Annotated, cast
 
 from fastapi import Depends, Request
 
+from cairn_api.knowledge.answer_models import ConfiguredAnswerModel
 from cairn_api.knowledge.answer_provider import AnswerProvider
 from cairn_api.knowledge.object_store import ObjectStore
 from cairn_api.knowledge.search_service import SearchEmbeddingClient
@@ -29,6 +30,13 @@ def get_answer_provider(request: Request) -> AnswerProvider | None:
 
 
 AnswerProviderDependency = Annotated[AnswerProvider | None, Depends(get_answer_provider)]
+
+
+def get_answer_models(request: Request) -> dict[str, ConfiguredAnswerModel]:
+    return cast(dict[str, ConfiguredAnswerModel], request.app.state.answer_models)
+
+
+AnswerModelsDependency = Annotated[dict[str, ConfiguredAnswerModel], Depends(get_answer_models)]
 
 
 __all__ = [

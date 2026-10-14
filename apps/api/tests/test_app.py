@@ -140,8 +140,15 @@ def test_openapi_contains_only_approved_paths(client: TestClient) -> None:
         "/api/v1/projects/{project_id}/knowledge/sources/{source_id}/syncs",
         "/api/v1/projects/{project_id}/knowledge/sources/{source_id}/syncs/{sync_id}",
         "/api/v1/projects/{project_id}/tasks",
+        "/api/v1/projects/{project_id}/assignees",
+        "/api/v1/projects/{project_id}/stages",
+        "/api/v1/projects/{project_id}/stages/{stage_id}",
+        "/api/v1/projects/{project_id}/milestones",
+        "/api/v1/projects/{project_id}/milestones/{milestone_id}",
+        "/api/v1/tasks/{task_id}",
         "/api/v1/tasks/{task_id}/status",
         "/api/v1/tasks/{task_id}/dependencies",
+        "/api/v1/tasks/{task_id}/dependencies/{dependency_id}",
 }
 
 
