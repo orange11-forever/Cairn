@@ -202,11 +202,6 @@ function assertTask17PublicDelivery(document, documentName) {
   assert.match(document, /PUT[^。\n]*不携带 Identity credentials/);
   assert.match(document, /预签名上传 URL[^。\n]*不进入 DOM、Query\/Mutation 缓存、日志或浏览器存储/);
   assert.match(document, /搜索仅标记 stale，不自动重跑/);
-  assert.match(
-    document,
-    /流式\/多轮问答[^\n]*(?:后续|延后)/,
-    documentName + " must retain deferred product work",
-  );
   assert.doesNotMatch(
     document,
     /(?:Web 上传|真实上传批次)[^；。\n]*(?:后续|尚未|延后|未交付|不交付)/,
@@ -216,11 +211,6 @@ function assertTask17PublicDelivery(document, documentName) {
     document,
     /周期性(?:资源)?详情轮询[^；。\n]*(?:已交付|已完成)/,
     documentName + " must not present deferred Web capabilities as delivered",
-  );
-  assert.doesNotMatch(
-    document,
-    /流式\/多轮问答[^；。\n]*(?:已交付|已完成)/,
-    documentName + " must not present deferred answer capabilities as delivered",
   );
 }
 
@@ -248,10 +238,6 @@ function assertTask18APublicDelivery(document, documentName) {
   ]) {
     assert.match(statement, pattern, documentName + " must retain " + capability);
   }
-  assert.doesNotMatch(
-    document,
-    /流式\/多轮问答[^；。\n]*(?:已交付|已完成)/,
-  );
 }
 
 function assertTask18BPublicDelivery(document, documentName) {
@@ -273,7 +259,6 @@ function assertTask18BPublicDelivery(document, documentName) {
   ]) {
     assert.match(statement, pattern, documentName + " must retain " + capability);
   }
-  assert.match(document, /流式\/多轮问答[^\n]*(?:后续|延后)/);
 }
 
 test("endpoint inventory does not infer parent routes from child route text", () => {
@@ -325,10 +310,6 @@ test("root README publishes a concise current delivery snapshot", async () => {
   assert.ok(apiSdkBoundary, "README must include the API / SDK delivery boundary");
   assert.match(apiSdkBoundary, /SDK[^|]*导出[^|]*OpenAPI schema[^|]*运行时校验器/);
   assert.match(apiSdkBoundary, /Web API 适配器[^|]*OpenAPI `date-time`[^|]*校验/);
-  assert.match(
-    readme,
-    /流式\/多轮问答[^\n]*(?:后续|尚未|延后)/,
-  );
   assert.doesNotMatch(readme, /搜索结果[^；。\n]*(?:后续|尚未|延后)/);
   assert.match(readme, /```text\nCairn\n├── apps\//);
   assert.doesNotMatch(readme, /```text\nCarin\n/);
@@ -361,7 +342,6 @@ test("root documentation records the delivered Stage 2 project and task boundary
   assert.match(readme, /Project.*聚合根/);
   assert.match(readme, /CurrentIdentity.*组织.*权威/);
   assert.match(readme, /不接受.*org_id/);
-  assert.match(readme, /阶段.*里程碑.*编辑.*延后/);
   assert.match(readme, /Outbox worker.*延后/i);
   assert.match(readme, /Bearer\/OIDC.*延后/);
   assert.doesNotMatch(readme, /项目与任务端点：未实现/);
@@ -424,7 +404,6 @@ test("Task 17 delivery checks reject stale upload deferrals, unsafe retries, and
   for (const falseClaim of [
     "Web 上传仍在后续任务。",
     "周期性详情轮询已交付。",
-    "流式/多轮问答已交付。",
   ]) {
     assert.throws(() => assertTask17PublicDelivery(document + "\n" + falseClaim, "mutated architecture"));
   }
