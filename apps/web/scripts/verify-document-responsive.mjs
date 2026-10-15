@@ -15,7 +15,7 @@ export async function checkFormattedReaderResponsive({ page, expect, screenshotD
         return header ? getComputedStyle(header).backgroundColor : getComputedStyle(document.body).backgroundColor;
       });
 
-      if (width <= 900) await page.getByRole("button", { name: "岑宁", exact: true }).click();
+      if (width <= 900) await page.getByRole("button", { name: "对话", exact: true }).click();
       const composer = page.getByLabel("向项目知识提问", { exact: true });
       await composer.fill(draft);
       const composerGeometry = await composer.evaluate(input => {
@@ -26,7 +26,7 @@ export async function checkFormattedReaderResponsive({ page, expect, screenshotD
           bounds.top >= 0 && bounds.bottom <= bottom;
       });
       expect(composerGeometry, `真实格式化阅读 ${width}px ${theme} 的助手输入区应可用且不被导航遮挡`);
-      if (width <= 900) await page.getByRole("button", { name: "内容", exact: true }).click();
+      if (width <= 900) await page.getByRole("button", { name: "阅读", exact: true }).click();
 
       const reader = page.locator(".knowledge-document");
       await reader.locator(".knowledge-document-markdown").waitFor();
@@ -75,9 +75,9 @@ export async function checkFormattedReaderResponsive({ page, expect, screenshotD
       await page.screenshot({ path: join(screenshotDir, `full-reader-${theme}-${width}-eof.png`), fullPage: true,
         mask: [page.locator(".account-menu")], maskColor });
 
-      if (width <= 900) await page.getByRole("button", { name: "岑宁", exact: true }).click();
+      if (width <= 900) await page.getByRole("button", { name: "对话", exact: true }).click();
       expect(await composer.inputValue() === draft, `真实格式化阅读 ${width}px ${theme} 分区切换保留未发送草稿`);
-      if (width <= 900) await page.getByRole("button", { name: "内容", exact: true }).click();
+      if (width <= 900) await page.getByRole("button", { name: "阅读", exact: true }).click();
     }
   }
   await page.setViewportSize({ width: 1280, height: 900 });
