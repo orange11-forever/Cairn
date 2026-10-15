@@ -3,10 +3,12 @@ from types import MappingProxyType
 from typing import cast
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 
 from cairn_api.audit.repository import add_audit_log
+from cairn_api.auth.models import User
 from cairn_api.auth.schemas import IdentityContextResponse
 from cairn_api.auth.service import RequestAuditContext
 from cairn_api.authorization import repository as acl_repository
@@ -19,14 +21,26 @@ from cairn_api.authorization.types import (
     ResourceType,
 )
 from cairn_api.errors import ApiProblem
-from cairn_api.projects import repository
-from cairn_api.projects.models import OutboxEvent, Project
+from cairn_api.organizations.models import Organization
+from cairn_api.projects import repository, structure_repository, task_repository
+from cairn_api.projects.models import (
+    Milestone,
+    OutboxEvent,
+    Project,
+    ProjectStage,
+    Task,
+    TaskDependency,
+)
 from cairn_api.projects.schemas import (
+    AssigneePage,
+    AssigneeResponse,
+    DependencyPage,
     DependencyResponse,
     ProjectPage,
     ProjectResponse,
     TaskPage,
     TaskResponse,
+    TaskUpdateRequest,
 )
 
 ALLOWED_TASK_TRANSITIONS = MappingProxyType(
@@ -183,16 +197,17 @@ class ProjectService:
         priority: str,
         due_at: datetime | None,
         acceptance_criteria: str | None,
+        description: str | None = None,
+        assignee_user_id: UUID | None = None,
+        milestone_id: UUID | None = None,
+        expected_project_revision: int | None = None,
         audit: RequestAuditContext,
     ) -> TaskResponse:
         org_id = identity.organization.id
         with self._session.begin():
-            self._policy.require_project(
-                identity,
-                project_id,
-                ProjectPermission.WRITE,
-                for_update=True,
-            )
+            project = self._locked_project(identity, project_id)
+            self._check_project_revision(project, expected_project_revision)
+            self._validate_grouping(identity, project_id, stage_id, milestone_id)
             if stage_id is not None:
                 stage = repository.get_stage(
                     self._session,
@@ -211,6 +226,7 @@ class ProjectService:
                 )
                 if parent is None:
                     raise _not_found()
+            self._validate_assignee(identity, project_id, assignee_user_id)
             task = repository.create_task(
                 self._session,
                 org_id=org_id,
@@ -221,6 +237,9 @@ class ProjectService:
                 priority=priority,
                 due_at=due_at,
                 acceptance_criteria=acceptance_criteria,
+                description=description,
+                assignee_user_id=assignee_user_id,
+                milestone_id=milestone_id,
             )
             self._audit(
                 identity=identity,
@@ -237,6 +256,7 @@ class ProjectService:
                     "projectId": str(project_id),
                     "taskId": str(task.id),
                     "status": task.status,
+                    "revision": task.revision,
                 },
             )
         return TaskResponse.model_validate(task)
@@ -274,24 +294,13 @@ class ProjectService:
         identity: IdentityContextResponse,
         task_id: UUID,
         requested_status: str,
+        expected_revision: int | None = None,
         audit: RequestAuditContext,
     ) -> TaskResponse:
         org_id = identity.organization.id
         with self._session.begin():
-            task = repository.get_task(
-                self._session,
-                org_id=org_id,
-                task_id=task_id,
-                for_update=True,
-            )
-            if task is None:
-                raise _not_found()
-            self._policy.require_project(
-                identity,
-                task.project_id,
-                ProjectPermission.WRITE,
-                for_update=True,
-            )
+            task = self._locked_task(identity, task_id)
+            self._check_revision(task, expected_revision)
             if requested_status not in ALLOWED_TASK_TRANSITIONS.get(
                 task.status,
                 frozenset(),
@@ -321,6 +330,7 @@ class ProjectService:
                     "projectId": str(updated_task.project_id),
                     "taskId": str(updated_task.id),
                     "status": updated_task.status,
+                    "revision": updated_task.revision,
                 },
             )
         return TaskResponse.model_validate(updated_task)
@@ -331,24 +341,13 @@ class ProjectService:
         identity: IdentityContextResponse,
         predecessor_task_id: UUID,
         successor_task_id: UUID,
+        expected_revision: int | None = None,
         audit: RequestAuditContext,
     ) -> DependencyResponse:
         org_id = identity.organization.id
         with self._session.begin():
-            successor = repository.get_task(
-                self._session,
-                org_id=org_id,
-                task_id=successor_task_id,
-                for_update=True,
-            )
-            if successor is None:
-                raise _not_found()
-            self._policy.require_project(
-                identity,
-                successor.project_id,
-                ProjectPermission.WRITE,
-                for_update=True,
-            )
+            successor = self._locked_task(identity, successor_task_id)
+            self._check_revision(successor, expected_revision)
             if predecessor_task_id == successor_task_id:
                 raise _invalid_dependency()
             predecessor = repository.get_task(
@@ -382,6 +381,8 @@ class ProjectService:
                 predecessor_task_id=predecessor_task_id,
                 successor_task_id=successor_task_id,
             )
+            successor.revision += 1
+            self._session.flush()
             self._audit(
                 identity=identity,
                 audit=audit,
@@ -398,9 +399,283 @@ class ProjectService:
                     "dependencyId": str(dependency.id),
                     "predecessorTaskId": str(predecessor_task_id),
                     "successorTaskId": str(successor_task_id),
+                    "taskId": str(successor_task_id),
+                    "revision": successor.revision,
                 },
             )
         return DependencyResponse.model_validate(dependency)
+
+    def _lock_organization(self, identity: IdentityContextResponse) -> None:
+        # Membership role changes use this same organization lock first. This also
+        # prevents opposite assignment targets in separate projects inverting locks.
+        current = self._session.scalar(
+            select(Organization.id)
+            .where(Organization.id == identity.organization.id)
+            .with_for_update(key_share=True)
+        )
+        if current is None:
+            raise _not_found()
+
+    def _require_active_actor(self, identity: IdentityContextResponse) -> None:
+        current = self._session.scalar(
+            select(User.id)
+            .where(User.id == identity.user.id, User.is_active.is_(True))
+            .with_for_update(read=True, of=User)
+        )
+        if current is None:
+            raise _not_found()
+
+    def _locked_task(self, identity: IdentityContextResponse, task_id: UUID) -> Task:
+        # Discover project without locking Task, then consistently lock Project -> Task.
+        task = repository.get_task(self._session, org_id=identity.organization.id, task_id=task_id)
+        if task is None:
+            raise _not_found()
+        project_id = task.project_id
+        self._locked_project(identity, project_id)
+        task = repository.get_task(
+            self._session, org_id=identity.organization.id, task_id=task_id, for_update=True
+        )
+        if task is None or task.project_id != project_id:
+            raise _not_found()
+        return task
+
+    def _locked_project(self, identity: IdentityContextResponse, project_id: UUID) -> Project:
+        self._lock_organization(identity)
+        project = self._policy.require_project(
+            identity, project_id, ProjectPermission.WRITE, for_update=True
+        )
+        # A discovery read in this Session may have cached a pre-lock version.
+        self._session.refresh(project)
+        self._require_active_actor(identity)
+        return project
+
+    @staticmethod
+    def _check_project_revision(project: Project, expected_revision: int | None) -> None:
+        if expected_revision is not None and project.revision != expected_revision:
+            raise ApiProblem(
+                status_code=409,
+                code="revision_conflict",
+                message="项目已被更新，请重新读取最新版本",
+            )
+
+    def _validate_grouping(
+        self,
+        identity: IdentityContextResponse,
+        project_id: UUID,
+        stage_id: UUID | None,
+        milestone_id: UUID | None,
+    ) -> None:
+        org_id = identity.organization.id
+        if stage_id is not None:
+            stage = structure_repository.get_stage(self._session, org_id, project_id, stage_id)
+            if stage is None:
+                raise _not_found()
+            self._require_active_structure(stage)
+        if milestone_id is not None:
+            milestone = structure_repository.get_milestone(
+                self._session, org_id, project_id, milestone_id
+            )
+            if milestone is None:
+                raise _not_found()
+            self._require_active_structure(milestone)
+            if milestone.stage_id != stage_id:
+                raise ApiProblem(
+                    status_code=422,
+                    code="invalid_grouping",
+                    message="任务阶段必须与里程碑所属阶段一致",
+                )
+
+    @staticmethod
+    def _require_active_structure(row: ProjectStage | Milestone) -> None:
+        if row.archived:
+            raise ApiProblem(
+                status_code=409,
+                code="structure_archived",
+                message="阶段已归档，请先恢复阶段后再操作"
+                if isinstance(row, ProjectStage)
+                else "里程碑已归档，请先恢复里程碑后再操作",
+            )
+
+    @staticmethod
+    def _check_revision(
+        task: Task | ProjectStage | Milestone, expected_revision: int | None
+    ) -> None:
+        if expected_revision is not None and task.revision != expected_revision:
+            raise ApiProblem(
+                status_code=409,
+                code="revision_conflict",
+                message="任务已被更新，请重新读取最新版本",
+            )
+
+    def _validate_assignee(
+        self, identity: IdentityContextResponse, project_id: UUID, user_id: UUID | None
+    ) -> None:
+        if user_id is None:
+            return
+        from cairn_api.organizations.models import Membership
+
+        member = self._session.scalar(
+            task_repository.member_statement(identity.organization.id, project_id)
+            .where(Membership.user_id == user_id)
+            .with_for_update(of=Membership)
+        )
+        active = (
+            self._session.scalar(
+                select(User.id)
+                .where(User.id == user_id, User.is_active.is_(True))
+                .with_for_update(read=True, of=User)
+            )
+            if member is not None
+            else None
+        )
+        if member is None or active is None:
+            raise ApiProblem(
+                status_code=422,
+                code="invalid_assignee",
+                message="负责人必须是当前组织启用且可访问项目的成员",
+            )
+
+    def get_task(self, *, identity: IdentityContextResponse, task_id: UUID) -> TaskResponse:
+        task = repository.get_task(self._session, org_id=identity.organization.id, task_id=task_id)
+        if task is None:
+            raise _not_found()
+        self._policy.require_project(identity, task.project_id, ProjectPermission.READ)
+        return TaskResponse.model_validate(task)
+
+    def update_task(
+        self,
+        *,
+        identity: IdentityContextResponse,
+        task_id: UUID,
+        payload: TaskUpdateRequest,
+        audit: RequestAuditContext,
+    ) -> TaskResponse:
+        with self._session.begin():
+            task = self._locked_task(identity, task_id)
+            self._check_revision(task, payload.expected_revision)
+            project = self._session.get(Project, task.project_id)
+            assert project is not None
+            self._check_project_revision(project, payload.expected_project_revision)
+            changes = payload.model_dump(
+                exclude_unset=True, exclude={"expected_revision", "expected_project_revision"}
+            )
+            if changes.keys() & {"stage_id", "milestone_id"}:
+                self._validate_grouping(
+                    identity,
+                    task.project_id,
+                    changes.get("stage_id", task.stage_id),
+                    changes.get("milestone_id", task.milestone_id),
+                )
+            if "assignee_user_id" in changes:
+                self._validate_assignee(identity, task.project_id, payload.assignee_user_id)
+            for field, value in changes.items():
+                setattr(task, field, value)
+            task.revision += 1
+            self._session.flush()
+            self._audit(
+                identity=identity,
+                audit=audit,
+                action="task.updated",
+                resource_type="task",
+                resource_id=task.id,
+            )
+            self._outbox(
+                org_id=identity.organization.id,
+                event_type="task.updated",
+                project_id=task.project_id,
+                payload={
+                    "projectId": str(task.project_id),
+                    "taskId": str(task.id),
+                    "revision": task.revision,
+                },
+            )
+        return TaskResponse.model_validate(task)
+
+    def list_assignees(
+        self, *, identity: IdentityContextResponse, project_id: UUID, cursor: str | None, limit: int
+    ) -> AssigneePage:
+        _validate_limit(limit)
+        self._policy.require_project(identity, project_id, ProjectPermission.READ)
+        members, next_cursor = task_repository.list_assignees(
+            self._session,
+            org_id=identity.organization.id,
+            project_id=project_id,
+            requester_id=identity.user.id,
+            cursor=cursor,
+            limit=limit,
+        )
+        return AssigneePage(
+            items=[
+                AssigneeResponse(user_id=m.user_id, display_name=u.display_name, role=m.role)
+                for m, u in members
+            ],
+            next_cursor=next_cursor,
+        )
+
+    def list_dependencies(
+        self, *, identity: IdentityContextResponse, task_id: UUID, cursor: str | None, limit: int
+    ) -> DependencyPage:
+        _validate_limit(limit)
+        task = self.get_task(identity=identity, task_id=task_id)
+        self._policy.require_project(
+            identity, task.project_id, ProjectPermission.READ, for_update=True
+        )
+        rows, next_cursor = task_repository.list_dependencies(
+            self._session,
+            org_id=identity.organization.id,
+            task_id=task_id,
+            cursor=cursor,
+            limit=limit,
+        )
+        return DependencyPage(
+            items=[DependencyResponse.model_validate(row) for row in rows], next_cursor=next_cursor
+        )
+
+    def delete_dependency(
+        self,
+        *,
+        identity: IdentityContextResponse,
+        task_id: UUID,
+        dependency_id: UUID,
+        expected_revision: int,
+        audit: RequestAuditContext,
+    ) -> None:
+        with self._session.begin():
+            task = self._locked_task(identity, task_id)
+            self._check_revision(task, expected_revision)
+            edge = self._session.scalar(
+                select(TaskDependency).where(
+                    TaskDependency.id == dependency_id,
+                    TaskDependency.org_id == identity.organization.id,
+                    TaskDependency.project_id == task.project_id,
+                    TaskDependency.successor_task_id == task.id,
+                )
+            )
+            if edge is None:
+                raise _not_found()
+            self._session.delete(edge)
+            task.revision += 1
+            self._session.flush()
+            self._audit(
+                identity=identity,
+                audit=audit,
+                action="task.dependency_removed",
+                resource_type="task_dependency",
+                resource_id=edge.id,
+            )
+            self._outbox(
+                org_id=identity.organization.id,
+                event_type="task.dependency_removed",
+                project_id=task.project_id,
+                payload={
+                    "projectId": str(task.project_id),
+                    "taskId": str(task.id),
+                    "dependencyId": str(edge.id),
+                    "predecessorTaskId": str(edge.predecessor_task_id),
+                    "successorTaskId": str(task.id),
+                    "revision": task.revision,
+                },
+            )
 
     def _audit(
         self,
@@ -432,6 +707,8 @@ class ProjectService:
         project_id: UUID,
         payload: dict[str, object],
     ) -> None:
+        if event_type != "project.created":
+            self._bump_project(project_id)
         self._session.add(
             OutboxEvent(
                 org_id=org_id,
@@ -441,6 +718,13 @@ class ProjectService:
                 payload=payload,
             )
         )
+
+    def _bump_project(self, project_id: UUID) -> None:
+        # All mutation callers already hold the project's row lock. Keep this
+        # increment beside the single business event, in the same transaction.
+        project = self._session.get(Project, project_id)
+        assert project is not None
+        project.revision += 1
 
 
 __all__ = ["ALLOWED_TASK_TRANSITIONS", "ProjectService"]

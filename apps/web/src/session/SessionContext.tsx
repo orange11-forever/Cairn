@@ -34,6 +34,7 @@ export interface SessionContextValue {
   retryRestore(): void;
   logout(): Promise<void>;
   restartLogin(): Promise<void>;
+  reportSessionError(error: unknown, signal: AbortSignal): void;
 }
 
 const defaultSessionApi: SessionApi = { restore: restoreSession, logout: logoutSession, prepareLogin: prepareLoginContext };
@@ -131,6 +132,10 @@ export function SessionProvider({
         navigate("/login", { replace: true });
       });
   }, [navigate, prepareAnonymous, queryClient]);
+
+  const reportSessionError = useCallback((error: unknown, signal: AbortSignal): void => {
+    if (session !== null && session.signal === controllerRef.current?.signal && !signal.aborted && isSessionInvalid(error)) expireSession();
+  }, [expireSession, session?.signal]);
 
   const retryRestore = useCallback((): void => {
     restoreControllerRef.current?.abort();
@@ -231,7 +236,7 @@ export function SessionProvider({
 
   return (
     <SessionContext.Provider
-      value={{ status, session, restoreError, logoutError, establishSession, retryRestore, logout, restartLogin }}
+      value={{ status, session, restoreError, logoutError, establishSession, retryRestore, logout, restartLogin, reportSessionError }}
     >
       {children}
     </SessionContext.Provider>
@@ -242,4 +247,11 @@ export function useSession(): SessionContextValue {
   const context = useContext(SessionContext);
   if (context === undefined) throw new Error("useSession 必须在 SessionProvider 内使用");
   return context;
+}
+
+// Standalone action components can render without an authenticated provider.
+// Their errors remain local; protected consumers use the existing expiry path.
+const ignoreSessionError = (_error: unknown, _signal: AbortSignal): void => {};
+export function useSessionErrorReporter(): SessionContextValue["reportSessionError"] {
+  return useContext(SessionContext)?.reportSessionError ?? ignoreSessionError;
 }

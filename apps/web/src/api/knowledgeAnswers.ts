@@ -28,7 +28,7 @@ function parseJson(value: unknown): unknown {
   }
 }
 
-function hasValidAnswerInvariants(value: KnowledgeAnswerResponse): boolean {
+export function hasValidAnswerInvariants(value: KnowledgeAnswerResponse): boolean {
   if (value.status === "insufficient_evidence") {
     return value.paragraphs.length === 0 && value.citations.length === 0;
   }

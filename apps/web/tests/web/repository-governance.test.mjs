@@ -217,7 +217,9 @@ test("public review policy enforces boundary and negative-path review", async ()
   assert.notEqual(reviewDocument, null, "docs/review.md must exist");
   const policy = frontMatter(reviewDocument).review;
 
-  assert.deepEqual(policy.sequence, ["specification", "quality"]);
+  assert.equal(policy.defaultReview, "self-review");
+  assert.equal(policy.highRiskReview, "combined");
+  assert.equal(policy.sequence, undefined, "do not mandate a fixed review sequence");
   assert.deepEqual(policy.scope, ["diff", "affected-boundary"]);
   assert.deepEqual(policy.negativePaths, [
     "validation",

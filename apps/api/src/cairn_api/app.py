@@ -22,7 +22,10 @@ from cairn_api.authorization.router import router as authorization_router
 from cairn_api.db.errors import DATABASE_UNAVAILABLE_ERRORS
 from cairn_api.db.session import Database
 from cairn_api.errors import ApiProblem, ErrorBody, error_response
+from cairn_api.knowledge.answer_models import AnswerModelOption, ConfiguredAnswerModel
 from cairn_api.knowledge.answer_provider import AnswerProvider, OpenAIAnswerProvider
+from cairn_api.knowledge.assistant_router import router as knowledge_assistant_router
+from cairn_api.knowledge.conversation_router import router as knowledge_conversation_router
 from cairn_api.knowledge.object_store import (
     Boto3ObjectStore,
     ObjectStore,
@@ -32,7 +35,7 @@ from cairn_api.knowledge.router import router as knowledge_router
 from cairn_api.knowledge.search_service import OpenAIQueryEmbeddingClient, SearchEmbeddingClient
 from cairn_api.knowledge.source_router import router as knowledge_source_router
 from cairn_api.logging import configure_app_logging
-from cairn_api.middleware import RequestIdMiddleware, new_request_id
+from cairn_api.middleware import ProjectErrorBoundary, RequestIdMiddleware, new_request_id
 from cairn_api.organizations.router import router as organizations_router
 from cairn_api.projects.router import router as projects_router
 from cairn_api.settings import Settings
@@ -58,7 +61,7 @@ class CairnFastAPI(FastAPI):
 
     def build_middleware_stack(self) -> ASGIApp:
         # CORS must wrap server errors; request IDs must also wrap CORS preflights.
-        application = super().build_middleware_stack()
+        application = ProjectErrorBoundary(super().build_middleware_stack())
         if self.cairn_cors_origins:
             application = CORSMiddleware(
                 application,
@@ -106,7 +109,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(_application: FastAPI) -> AsyncGenerator[None]:
         owned_embedding: OpenAIQueryEmbeddingClient | None = None
-        owned_answer: OpenAIAnswerProvider | None = None
+        owned_answers: list[OpenAIAnswerProvider] = []
         try:
             if _application.state.embedding_client is None:
                 owned_embedding = OpenAIQueryEmbeddingClient(
@@ -131,7 +134,35 @@ def create_app(
                     timeout_seconds=current_settings.answer_timeout_seconds,
                     protocol=current_settings.answer_protocol,
                 )
+                owned_answers.append(owned_answer)
                 _application.state.answer_provider = owned_answer
+            if _application.state.answer_provider is not None:
+                _application.state.answer_models["default"] = ConfiguredAnswerModel(
+                    info=AnswerModelOption(
+                        id="default",
+                        name=current_settings.answer_model or "已配置模型",
+                        model=current_settings.answer_model,
+                        protocol=current_settings.answer_protocol if current_settings.answer_model else None,
+                    ),
+                    provider=_application.state.answer_provider,
+                )
+            for profile in current_settings.answer_models:
+                provider = OpenAIAnswerProvider(
+                    base_url=str(profile.base_url),
+                    api_key=profile.api_key.get_secret_value(),
+                    model=profile.model,
+                    protocol=profile.protocol,
+                    timeout_seconds=profile.timeout_seconds,
+                )
+                owned_answers.append(provider)
+                _application.state.answer_models[profile.id] = ConfiguredAnswerModel(
+                    info=AnswerModelOption(
+                        id=profile.id, name=profile.name, model=profile.model, protocol=profile.protocol
+                    ),
+                    provider=provider,
+                )
+            if _application.state.answer_provider is None and _application.state.answer_models:
+                _application.state.answer_provider = next(iter(_application.state.answer_models.values())).provider
             yield
         finally:
             try:
@@ -144,8 +175,8 @@ def create_app(
                         if owned_embedding is not None:
                             owned_embedding.close()
                     finally:
-                        if owned_answer is not None:
-                            owned_answer.close()
+                        for provider in reversed(owned_answers):
+                            provider.close()
 
     application = CairnFastAPI(title="Cairn API", version=__version__, lifespan=lifespan)
     application.cairn_cors_origins = tuple(current_settings.cors_origins)
@@ -156,6 +187,7 @@ def create_app(
     application.state.object_store = current_object_store
     application.state.embedding_client = embedding_client
     application.state.answer_provider = answer_provider
+    application.state.answer_models = {}
 
     @application.middleware("http")
     async def protect_oauth_responses(  # pyright: ignore[reportUnusedFunction]
@@ -248,7 +280,7 @@ def create_app(
         trace_id = get_request_id(request)
         logger.error(
             "Unhandled API exception",
-            exc_info=exc,
+            exc_info=None if request.url.path.startswith(("/api/v1/tasks/", "/api/v1/projects")) and not request.url.path.endswith("/events") else exc,
             extra={"request_id": trace_id},
         )
         response = error_response(
@@ -318,6 +350,8 @@ def create_app(
     application.include_router(authorization_router)
     application.include_router(projects_router)
     application.include_router(knowledge_router)
+    application.include_router(knowledge_conversation_router)
+    application.include_router(knowledge_assistant_router)
     application.include_router(knowledge_source_router)
 
     return application

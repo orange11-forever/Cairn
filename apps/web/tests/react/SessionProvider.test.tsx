@@ -8,6 +8,7 @@ import type { IdentityContext } from "../../src/api/auth.ts";
 import { ApiError } from "../../src/api/errors.ts";
 import { createAppQueryClient, shouldRetry } from "../../src/app/queryClient.ts";
 import { SessionProvider, useSession } from "../../src/session/SessionContext.tsx";
+import { useAbortableAction } from "../../src/hooks/useAbortableAction.ts";
 
 const IDENTITY = {
   user: { id: "00000000-0000-4000-8000-000000001001", email: "demo@cairn.dev", displayName: "演示用户" },
@@ -18,6 +19,33 @@ const IDENTITY = {
 const PRIVATE_PROJECT_KEY = ["projects", IDENTITY.organization.id, "page", null] as const;
 
 afterEach(() => vi.restoreAllMocks());
+
+test("a direct action started by the old subject cannot expire a newly established session", async () => {
+  const queryClient=createAppQueryClient();
+  const nextIdentity:IdentityContext={...IDENTITY,user:{...IDENTITY.user,id:"00000000-0000-4000-8000-000000001002",email:"next@cairn.dev"},membership:{...IDENTITY.membership,id:"00000000-0000-4000-8000-000000003002"}};
+  let reject!:(error:unknown)=>void;
+  const pending=new Promise<void>((_resolve,rejectPromise)=>{reject=rejectPromise;});
+  let actionSignal:AbortSignal|undefined;
+  const observed:AbortSignal[]=[];
+  function Harness(){
+    const {session,status,establishSession}=useSession();const location=useLocation();
+    if(session && observed.at(-1)!==session.signal)observed.push(session.signal);
+    const action=useAbortableAction(async(signal:AbortSignal)=>{actionSignal=signal;await pending;});
+    return <><button onClick={()=>void action.run()}>start direct action</button><button onClick={()=>{establishSession(nextIdentity);queryClient.setQueryData(["session-private"],"new-user-secret");}}>establish new subject</button><output data-testid="direct-status">{status}</output><output data-testid="direct-subject">{session?.user.id}</output><output data-testid="direct-path">{location.pathname}</output><output data-testid="direct-phase">{action.state.phase}</output></>;
+  }
+  render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={["/projects"]}><SessionProvider restoredIdentity={IDENTITY} sessionApi={{restore:async()=>IDENTITY,logout:async()=>undefined}}><Harness/></SessionProvider></MemoryRouter></QueryClientProvider>);
+  await userEvent.click(screen.getByRole("button",{name:"start direct action"}));
+  await userEvent.click(screen.getByRole("button",{name:"establish new subject"}));
+  expect(actionSignal?.aborted).toBe(false);
+  expect(observed[0]!.aborted).toBe(true);
+  reject(new ApiError("http","old session expired",{status:401,code:"session_invalid"}));
+  await waitFor(()=>expect(screen.getByTestId("direct-phase")).toHaveTextContent("error"));
+  expect(screen.getByTestId("direct-status")).toHaveTextContent("authenticated");
+  expect(screen.getByTestId("direct-subject")).toHaveTextContent(nextIdentity.user.id);
+  expect(screen.getByTestId("direct-path")).toHaveTextContent("/projects");
+  expect(observed.at(-1)!.aborted).toBe(false);
+  expect(queryClient.getQueryData(["session-private"])).toBe("new-user-secret");
+});
 
 test("query retry policy retries one transient ApiError and never retries contracts", () => {
   expect(shouldRetry(0, new ApiError("http", "暂时失败", { status: 503 }))).toBe(true);

@@ -61,6 +61,8 @@ def _task(
         stage_id=None,
         milestone_id=None,
         parent_task_id=None,
+        revision=1,
+        assignee_user_id=None,
         title="Task Alpha",
         description=None,
         acceptance_criteria="Observable result",
@@ -243,6 +245,7 @@ def test_create_task_uses_identity_tenant_and_preserves_acceptance_criteria(
         "projectId": str(project.id),
         "taskId": str(task.id),
         "status": "backlog",
+        "revision": 1,
     }
 
 
@@ -319,6 +322,7 @@ def test_transition_table_is_immutable_and_accepts_exactly_the_approved_edges(
                 assert task_id == expected_task.id
                 assert current_status == expected_task.status
                 expected_task.status = requested_status
+                expected_task.revision += 1
                 return expected_task
 
             update = MagicMock(side_effect=set_task_status)
@@ -338,6 +342,7 @@ def test_transition_table_is_immutable_and_accepts_exactly_the_approved_edges(
                     "projectId": str(project.id),
                     "taskId": str(task.id),
                     "status": requested_status,
+                    "revision": 2,
                 }
             else:
                 with pytest.raises(ApiProblem) as raised:
@@ -366,7 +371,6 @@ def test_transition_hides_task_from_another_organization(
         db: Session, *, org_id: UUID, task_id: UUID, for_update: bool = False
     ) -> Task | None:
         assert db is session
-        assert for_update is True
         seen_org_ids.append(org_id)
         return None
 
@@ -415,7 +419,6 @@ def test_add_dependency_accepts_same_project_acyclic_edge_and_records_side_effec
         for_update: bool = False,
     ) -> Task | None:
         assert db is session
-        assert for_update is True
         if project_id is not None:
             assert project_id == project.id
         seen.append(("task", org_id, task_id, None))
@@ -439,7 +442,6 @@ def test_add_dependency_accepts_same_project_acyclic_edge_and_records_side_effec
     ) -> Project:
         assert identity.organization.id == org_id
         assert required is ProjectPermission.WRITE
-        assert for_update is True
         seen.append(("project", org_id, project_id, None))
         return project
 
@@ -496,6 +498,8 @@ def test_add_dependency_accepts_same_project_acyclic_edge_and_records_side_effec
         "dependencyId": str(dependency.id),
         "predecessorTaskId": str(predecessor.id),
         "successorTaskId": str(successor.id),
+        "taskId": str(successor.id),
+        "revision": 2,
     }
 
 
@@ -532,7 +536,6 @@ def test_add_dependency_rejects_invalid_edges_before_writes(
     ) -> Task | None:
         assert db is session
         assert org_id == identity.organization.id
-        assert for_update is True
         if scenario == "cross_organization" and task_id == successor_id:
             return None
         if project_id is not None and predecessor.project_id != project_id:

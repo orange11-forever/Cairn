@@ -3,6 +3,29 @@ import test from "node:test";
 
 import { createCairnClient, matchesComponentSchema } from "../src/index.ts";
 
+test("project structure requests require revisions including grouping beside ordinary fields", () => {
+  assert.equal(matchesComponentSchema("StageCreateRequest", {name:"Design",position:0,expectedProjectRevision:1}),true);
+  assert.equal(matchesComponentSchema("StageCreateRequest", {name:"Design",position:0}),false);
+  assert.equal(matchesComponentSchema("StageUpdateRequest", {name:"Review",expectedRevision:1,expectedProjectRevision:2}),true);
+  assert.equal(matchesComponentSchema("StageUpdateRequest", {expectedRevision:1,expectedProjectRevision:2}),false);
+  assert.equal(matchesComponentSchema("MilestoneUpdateRequest", {description:null,acceptanceCriteria:null,dueAt:null,stageId:null,expectedRevision:1,expectedProjectRevision:2}),true);
+  assert.equal(matchesComponentSchema("TaskUpdateRequest", {title:"X",milestoneId:null,expectedRevision:1}),false);
+  assert.equal(matchesComponentSchema("TaskUpdateRequest", {title:"X",milestoneId:null,expectedRevision:1,expectedProjectRevision:2}),true);
+});
+
+test("grouping PATCH rejects a null project revision while ordinary legacy edits remain valid", () => {
+  for (const field of ["stageId", "milestoneId"]) {
+    for (const value of [null, "00000000-0000-4000-8000-000000006001"]) {
+      const grouping = {expectedRevision: 1, expectedProjectRevision: null, [field]: value};
+      assert.equal(matchesComponentSchema("TaskUpdateRequest", grouping), false, JSON.stringify(grouping));
+      assert.equal(matchesComponentSchema("TaskUpdateRequest", {...grouping, title: "Keep"}), false);
+      assert.equal(matchesComponentSchema("TaskUpdateRequest", {...grouping, expectedProjectRevision: 2}), true);
+    }
+  }
+  assert.equal(matchesComponentSchema("TaskUpdateRequest", {expectedRevision: 1, title: "Legacy"}), true);
+  assert.equal(matchesComponentSchema("TaskUpdateRequest", {expectedRevision: 1, title: "Legacy", expectedProjectRevision: null}), true);
+});
+
 test("generated full preview schema requires aliases, complete body and safe highlight shape", () => {
   const valid = { resourceId: "00000000-0000-4000-8000-000000005001", resourceVersionId: "00000000-0000-4000-8000-000000006001",
     title: "Manual", mediaType: "text/plain", format: "text", content: "first\nEOF", lineCount: 2, highlight: null };
@@ -437,4 +460,31 @@ test("registration SDK preserves exact credentialed requests and validates publi
     assert.equal(matchesComponentSchema("RegistrationVerifyRequest", { token, password: "original-password" }), false);
   }
   assert.equal(matchesComponentSchema("RegistrationVerifyRequest", { token: "safe-token_1", password: "original-password" }), true);
+});
+
+test("task edit request matcher requires revision plus an editable field and preserves nullable clearing", () => {
+  const accepted = [
+    { expectedRevision: 1, title: "Updated" }, { expectedRevision: 1, description: "Details" },
+    { expectedRevision: 1, description: null }, { expectedRevision: 1, assigneeUserId: "00000000-0000-4000-8000-000000001001" },
+    { expectedRevision: 1, assigneeUserId: null }, { expectedRevision: 1, priority: "critical" },
+    { expectedRevision: 1, dueAt: "2026-10-05T09:00:00+08:00" }, { expectedRevision: 1, dueAt: null },
+    { expectedRevision: 1, acceptanceCriteria: "Observable" }, { expectedRevision: 1, acceptanceCriteria: null },
+  ];
+  for (const body of accepted) assert.equal(matchesComponentSchema("TaskUpdateRequest", body), true, JSON.stringify(body));
+  for (const body of [{}, { expectedRevision: 1 }, { title: "Updated" }, { expectedRevision: 0, title: "Updated" },
+    { expectedRevision: 1, title: null }, { expectedRevision: 1, priority: null }, { expectedRevision: 1, status: "done" },
+    { expectedRevision: 1, description: null, extra: "forbidden" }]) {
+    assert.equal(matchesComponentSchema("TaskUpdateRequest", body), false, JSON.stringify(body));
+  }
+});
+
+test("structure lifecycle runtime schema rejects coercion and mixed updates", () => {
+  for (const name of ["StageUpdateRequest", "MilestoneUpdateRequest"]) {
+    const base = {expectedRevision: 1, expectedProjectRevision: 2};
+    for (const archived of [true, false]) assert.equal(matchesComponentSchema(name, {...base, archived}), true);
+    for (const archived of [null, "true", "false", 0, 1]) assert.equal(matchesComponentSchema(name, {...base, archived}), false);
+    for (const ordinary of [{name: "X"}, {position: 0}, {stageId: null}, {dueAt: null}, {description: null}]) {
+      assert.equal(matchesComponentSchema(name, {...base, archived: true, ...ordinary}), false);
+    }
+  }
 });

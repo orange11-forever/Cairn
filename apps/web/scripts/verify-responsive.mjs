@@ -13,6 +13,7 @@ const RESPONSIVE_PROJECT_B_ID = "00000000-0000-4000-8000-000000004002";
 const RESPONSIVE_PROJECTS = [
   {
     id: KNOWLEDGE_PROJECT_ID,
+    revision: 1,
     name: "跨区域知识交付",
     description: "验证项目轨道、任务工作区和长中文内容在各断点稳定呈现。",
     createdAt: "2026-08-01T08:00:00Z",
@@ -20,6 +21,7 @@ const RESPONSIVE_PROJECTS = [
   },
   {
     id: RESPONSIVE_PROJECT_B_ID,
+    revision: 1,
     name: "搜索体验升级",
     description: "验证选择状态与受控任务区域的可访问关联。",
     createdAt: "2026-08-03T08:00:00Z",
@@ -31,8 +33,11 @@ const RESPONSIVE_TASKS = {
   [KNOWLEDGE_PROJECT_ID]: [{
     id: "00000000-0000-4000-8000-000000005011",
     projectId: KNOWLEDGE_PROJECT_ID,
+    description: null,
+    assigneeUserId: null,
+    revision: 1,
     parentTaskId: null,
-    stageId: null,
+    stageId: null, milestoneId: null,
     title: "核对跨区域知识交付清单",
     status: "todo",
     priority: "high",
@@ -44,8 +49,11 @@ const RESPONSIVE_TASKS = {
   [RESPONSIVE_PROJECT_B_ID]: [{
     id: "00000000-0000-4000-8000-000000005012",
     projectId: RESPONSIVE_PROJECT_B_ID,
+    description: null,
+    assigneeUserId: null,
+    revision: 1,
     parentTaskId: null,
-    stageId: null,
+    stageId: null, milestoneId: null,
     title: "复核搜索选择反馈",
     status: "in_progress",
     priority: "medium",
@@ -711,6 +719,11 @@ async function checkKnowledgeResourceLayout(
   if (viewport.width <= 900) await page.getByRole("button", { name: "资料", exact: true }).click();
   await page.waitForSelector(".knowledge-resource-list");
 
+  expect(
+    await page.getByRole("heading", { level: 1, name: RESPONSIVE_PROJECTS[0].name }).count() === 1,
+    `${viewport.name} 知识工作台必须保留可访问的项目标题`,
+  );
+
   const layout = await readLayout(page);
   const knowledge = await page.evaluate(() => {
     const list = document.querySelector(".knowledge-resource-list");
@@ -855,7 +868,7 @@ async function checkKnowledgeResourceLayout(
   await checkKnowledgeUploadLayout(page, expect, screenshotDir, viewport, themeValue);
   await checkWorkbenchExplorerReachability(page);
 
-  if (viewport.width <= 900) await page.getByRole("button", { name: "内容", exact: true }).click();
+  if (viewport.width <= 900) await page.getByRole("button", { name: "阅读", exact: true }).click();
   await page.getByRole("tab", { name: "搜索", exact: true }).click();
   await page.getByLabel("搜索项目知识").fill("跨区域故障恢复");
   await page.getByRole("button", { name: "搜索项目知识" }).click();
@@ -1317,6 +1330,15 @@ async function checkProjectsLayout({
     `${viewport.name} 任务更新失败后项目或任务控件不可继续使用`,
   );
 
+  // Keep the incumbent traced503 recovery proof, then prove the same request
+  // succeeds with revision+1 and the refreshed list reflects the synthetic server.
+  await page.getByRole("button", { name: "开始任务" }).click();
+  await page.waitForSelector('.task-status[data-status="in_progress"]');
+  expect(await page.locator('.task-transition-error').count() === 0,
+    `${viewport.name} 状态重试成功后应清除旧错误`);
+  expect(await page.getByRole("button", { name: "完成任务", exact: true }).isEnabled(),
+    `${viewport.name} 最新状态应显示可用后续操作`);
+
   if (viewport.width < 768) {
     await page.selectOption("#project-switcher", RESPONSIVE_PROJECT_B_ID);
   } else {
@@ -1733,6 +1755,8 @@ export async function checkResponsiveFoundation({
   waitForAuthenticated,
 }) {
   let projectsScenario = "populated";
+  let responsiveTasks = structuredClone(RESPONSIVE_TASKS);
+  let failedStatusTasks = new Set();
   const knowledgeOperationState = {
     retryRequests: 0,
     deleteRequests: 0,
@@ -1751,10 +1775,17 @@ export async function checkResponsiveFoundation({
     const projectId = new URL(route.request().url()).pathname.split("/").at(-2);
     await route.fulfill({
       json: {
-        items: RESPONSIVE_TASKS[projectId] ?? [],
+        items: responsiveTasks[projectId] ?? [],
         nextCursor: null,
       },
     });
+  });
+  await page.route(/\/api\/v1\/projects\/[^/]+\/(?:stages|milestones)(?:\?.*)?$/, async (route) => {
+    const request = route.request();
+    expect(request.method() === "GET", "结构布局夹具只允许分页读取");
+    const projectId = new URL(request.url()).pathname.split("/").at(-2);
+    expect(RESPONSIVE_PROJECTS.some(project => project.id === projectId), "结构请求必须位于当前项目");
+    await route.fulfill({json:{items:[],nextCursor:null}});
   });
   await page.route(/\/api\/v1\/projects\/[^/]+$/, async (route) => {
     const projectId = new URL(route.request().url()).pathname.split("/").at(-1);
@@ -1766,10 +1797,20 @@ export async function checkResponsiveFoundation({
     const request = route.request();
     expect(request.method() === "PATCH", "任务状态转换必须使用 PATCH");
     expect(request.headers()["x-csrf-token"], "任务状态转换必须携带 CSRF token");
+    const taskId = new URL(request.url()).pathname.split("/").at(-2);
+    const task = Object.values(responsiveTasks).flat().find(item => item.id === taskId);
+    expect(task !== undefined, "状态操作必须指向当前合成项目任务");
     expect(
-      JSON.stringify(request.postDataJSON()) === JSON.stringify({ status: "in_progress" }),
+      JSON.stringify(request.postDataJSON()) === JSON.stringify({ status: "in_progress", expectedRevision: task?.revision }),
       `任务状态转换请求体错误：${request.postData()}`,
     );
+    if (failedStatusTasks.has(taskId)) {
+      task.status = "in_progress";
+      task.revision += 1;
+      await route.fulfill({ status: 200, json: task });
+      return;
+    }
+    failedStatusTasks.add(taskId);
     await route.fulfill({
       status: 503,
       headers: { "X-Request-ID": TASK_TRANSITION_TRACE_ID },
@@ -2045,6 +2086,8 @@ export async function checkResponsiveFoundation({
         themeValue,
         setScenario: (scenario) => {
           projectsScenario = scenario;
+          responsiveTasks = structuredClone(RESPONSIVE_TASKS);
+          failedStatusTasks = new Set();
         },
       });
 

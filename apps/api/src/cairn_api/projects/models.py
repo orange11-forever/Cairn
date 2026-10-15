@@ -2,6 +2,7 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -24,6 +25,7 @@ from cairn_api.db.base import Base
 class Project(Base):
     __tablename__ = "projects"
     __table_args__ = (
+        CheckConstraint("revision > 0", name="positive_revision"),
         UniqueConstraint("org_id", "id"),
         Index("ix_projects_org_id_created_at_id", "org_id", "created_at", "id"),
     )
@@ -37,6 +39,7 @@ class Project(Base):
         PostgreSQLUUID(as_uuid=True),
         ForeignKey("organizations.id", ondelete="CASCADE"),
     )
+    revision: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     name: Mapped[str] = mapped_column(String(160))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -53,6 +56,7 @@ class Project(Base):
 class ProjectStage(Base):
     __tablename__ = "project_stages"
     __table_args__ = (
+        CheckConstraint("revision > 0", name="positive_revision"),
         UniqueConstraint("org_id", "project_id", "id"),
         ForeignKeyConstraint(
             ["org_id", "project_id"],
@@ -75,6 +79,8 @@ class ProjectStage(Base):
     )
     org_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True))
     project_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True))
+    revision: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    archived: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     name: Mapped[str] = mapped_column(String(120))
     position: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(
@@ -91,11 +97,17 @@ class ProjectStage(Base):
 class Milestone(Base):
     __tablename__ = "milestones"
     __table_args__ = (
+        CheckConstraint("revision > 0", name="positive_revision"),
         UniqueConstraint("org_id", "project_id", "id"),
         ForeignKeyConstraint(
             ["org_id", "project_id"],
             ["projects.org_id", "projects.id"],
             ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["org_id", "project_id", "stage_id"],
+            ["project_stages.org_id", "project_stages.project_id", "project_stages.id"],
+            name="fk_milestones_project_stage",
         ),
         Index(
             "ix_milestones_org_id_project_id_due_at_id",
@@ -113,6 +125,10 @@ class Milestone(Base):
     )
     org_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True))
     project_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True))
+    revision: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    archived: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    stage_id: Mapped[UUID | None] = mapped_column(PostgreSQLUUID(as_uuid=True), nullable=True)
+    acceptance_criteria: Mapped[str | None] = mapped_column(Text, nullable=True)
     name: Mapped[str] = mapped_column(String(160))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -135,6 +151,10 @@ class Task(Base):
     __tablename__ = "tasks"
     __table_args__ = (
         UniqueConstraint("org_id", "project_id", "id"),
+        CheckConstraint("revision > 0", name="positive_revision"),
+        ForeignKeyConstraint(
+            ["org_id", "assignee_user_id"], ["memberships.org_id", "memberships.user_id"]
+        ),
         CheckConstraint(
             "status IN ('backlog', 'todo', 'in_progress', 'blocked', 'done', 'cancelled')",
             name="status_values",
@@ -197,6 +217,10 @@ class Task(Base):
     parent_task_id: Mapped[UUID | None] = mapped_column(
         PostgreSQLUUID(as_uuid=True),
         nullable=True,
+    )
+    revision: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    assignee_user_id: Mapped[UUID | None] = mapped_column(
+        PostgreSQLUUID(as_uuid=True), nullable=True
     )
     title: Mapped[str] = mapped_column(String(240))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)

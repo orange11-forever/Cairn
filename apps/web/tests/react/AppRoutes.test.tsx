@@ -297,6 +297,18 @@ function renderTestRoutes(path: string, options: {
   vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
     const request = input as Request;
     const pathname = new URL(request.url).pathname;
+    // Keep conversation bootstrap traffic distinct from each resource/search scenario.
+    if (request.method === "GET" && /\/knowledge\/(answer-model|assistant-settings|assistants|skills|conversations)$/.test(pathname)) {
+      if (pathname.endsWith("/answer-model")) return jsonResponse({
+        configured: true, model: "route-fixture", protocol: "openai-compatible",
+        defaultModelId: "default",
+        models: [{ id: "default", name: "route-fixture", model: "route-fixture", protocol: "openai-compatible" }],
+      });
+      if (pathname.endsWith("/assistant-settings")) return jsonResponse({
+        id: null, name: "岑宁", instructions: "", enabledSkillIds: [], modelId: null, revision: 0,
+      });
+      return jsonResponse(pathname.endsWith("/conversations") ? { items: [], nextCursor: null } : { items: [] });
+    }
     const projectMatch = /^\/api\/v1\/projects\/([^/]+)$/.exec(pathname);
     if (projectMatch !== null && request.method === "GET") {
       if (options.projectResponse !== undefined) {
@@ -698,7 +710,7 @@ test("the project knowledge route loads the selected project inside the shared k
   expect(screen.queryByText("上传入口将在后续任务接入")).toBeNull();
   expect(screen.getByText("可维护资料")).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Cairn" })).toHaveAttribute("href", "/projects");
-  expect(screen.getByRole("link", { name: "知识资料" })).toHaveAttribute(
+  expect(screen.getByRole("link", { name: "知识工作台" })).toHaveAttribute(
     "aria-current",
     "page",
   );
@@ -710,7 +722,7 @@ test("the project knowledge route loads the selected project inside the shared k
 
   expect(screen.queryByRole("button", { name: "打开岑宁助手" })).toBeNull();
   expect(await screen.findByRole("complementary", { name: "岑宁问答面板" }))
-    .toHaveTextContent("岑宁项目问答 · 单轮");
+    .toHaveTextContent("岑宁项目问答 · 私有对话");
 });
 
 test("a read-only project reader can search real project knowledge", async () => {
@@ -1480,7 +1492,9 @@ test("a concealed search 404 clears all previously authorized project knowledge"
   expect(screen.getByRole("alert")).toHaveTextContent("项目或知识资料不存在");
   expect(screen.queryByText("撤权后迟到资料.pdf")).toBeNull();
   expect(screen.queryByText("撤权前资料.pdf")).toBeNull();
-  expect(queryClient.getQueryCache().findAll({ queryKey: projectKey })).toHaveLength(0);
+  // Mounted conversation observers may recreate empty entries, but no private data may return.
+  expect(queryClient.getQueriesData({ queryKey: projectKey })
+    .filter(([, data]) => data !== undefined)).toHaveLength(0);
 });
 
 test("project navigation aborts the old search and starts the new scope without replay", async () => {
@@ -3631,7 +3645,7 @@ test("the project knowledge assistant keeps its context with a trailing slash", 
 
   expect(await screen.findByRole("heading", { level: 1, name: "测试项目" })).toBeInTheDocument();
   expect(await screen.findByRole("complementary", { name: "岑宁问答面板" }))
-    .toHaveTextContent("岑宁项目问答 · 单轮");
+    .toHaveTextContent("岑宁项目问答 · 私有对话");
 });
 
 test("account menu exposes identity and logout without duplicating session state", async () => {
@@ -3867,17 +3881,28 @@ test("mobile pane switches preserve the unsent assistant draft and hide inactive
   })));
   const user = userEvent.setup();
   renderTestRoutes(`/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, { restoredIdentity: IDENTITY });
-  await screen.findByRole("button", { name: "岑宁" });
-  expect(screen.queryByRole("textbox", { name: "向项目知识提问" })).toBeNull();
-  await user.click(screen.getByRole("button", { name: "岑宁" }));
+  await screen.findByRole("textbox", { name: "向项目知识提问" });
   await user.type(screen.getByLabelText("向项目知识提问"), "我的未发送问题");
-  await user.click(screen.getByRole("button", { name: "内容" }));
+  await user.click(screen.getByRole("button", { name: "阅读" }));
   expect(screen.queryByRole("textbox", { name: "向项目知识提问" })).toBeNull();
-  await user.click(screen.getByRole("button", { name: "岑宁" }));
+  await user.click(screen.getByRole("button", { name: "对话" }));
   expect(screen.getByLabelText("向项目知识提问")).toHaveValue("我的未发送问题");
 });
 
-test("the docked assistant shows the submitted question and opens answer citations in the center", async () => {
+test("the assistant toggle restores a collapsed assistant without losing its draft", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({
+    capabilities: { canWrite: false }, items: [], nextCursor: null,
+  })));
+  const user = userEvent.setup();
+  renderTestRoutes(`/projects/${KNOWLEDGE_PROJECT_ID}/knowledge`, { restoredIdentity: IDENTITY });
+  await user.type(await screen.findByRole("textbox", { name: "向项目知识提问" }), "保留这个项目的问题");
+  await user.click(screen.getByRole("button", { name: "收起助手" }));
+  expect(screen.queryByRole("textbox", { name: "向项目知识提问" })).toBeNull();
+  await user.click(screen.getByRole("button", { name: "展开助手" }));
+  expect(screen.getByRole("textbox", { name: "向项目知识提问" })).toHaveValue("保留这个项目的问题");
+});
+
+test("the docked assistant shows the submitted question and opens answer citations in the reader", async () => {
   const resourceId = "00000000-0000-4000-8000-000000005092";
   const versionId = "00000000-0000-4000-8000-000000006092";
   const chunkId = "00000000-0000-4000-8000-000000007092";
@@ -3885,6 +3910,8 @@ test("the docked assistant shows the submitted question and opens answer citatio
     title: "架构说明.md", mediaType: "text/markdown", excerpt: "架构来源摘录",
     locator: { type: "text", lineStart: 3, lineEnd: 4 }, score: 0.9 };
   const requests: Request[] = [];
+  let conversation: unknown = null;
+  const stamp = "2026-10-14T12:00:00Z";
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
     const request = input as Request;
     requests.push(request);
@@ -3892,10 +3919,28 @@ test("the docked assistant shows the submitted question and opens answer citatio
     if (pathname.endsWith("/knowledge/resources")) return jsonResponse({
       capabilities: { canWrite: false }, items: [], nextCursor: null,
     });
-    if (pathname.endsWith("/knowledge/answers")) return jsonResponse({
-      status: "answered", retrievalMode: "hybrid",
-      paragraphs: [{ text: "真实生成回答", citationIds: ["S1"] }], citations: [citation],
-    });
+    if (pathname.endsWith("/knowledge/conversations") && request.method === "POST") {
+      const body = await request.clone().json();
+      conversation = { id: body.id, title: "新对话", revision: 1, createdAt: stamp, updatedAt: stamp, turns: [] };
+      return jsonResponse(conversation, 201);
+    }
+    if (pathname.endsWith("/turns") && request.method === "POST") {
+      const body = await request.clone().json();
+      conversation = {
+        id: pathname.split("/").at(-2), title: body.question, revision: 2, createdAt: stamp, updatedAt: stamp,
+        turns: [{
+          id: body.id, sequence: 1, question: body.question, assistantName: "岑宁",
+          assistantRevision: body.assistantRevision, skillId: null,
+          answerUnavailable: false, contextTruncated: false, createdAt: stamp,
+          answer: {
+            status: "answered", retrievalMode: "hybrid",
+            paragraphs: [{ text: "真实生成回答", citationIds: ["S1"] }], citations: [citation],
+          },
+        }],
+      };
+      return jsonResponse(conversation);
+    }
+    if (pathname.includes("/knowledge/conversations/") && request.method === "GET") return jsonResponse(conversation);
     if (pathname.endsWith(`/knowledge/resources/${resourceId}/content`)) {
       return jsonResponse({ resourceId, resourceVersionId: versionId, title: citation.title,
         mediaType: "text/markdown", format: "markdown", content: "# 架构\n\n答案引用原文\n\nEOF",
@@ -3911,7 +3956,7 @@ test("the docked assistant shows the submitted question and opens answer citatio
   expect(screen.getByLabelText("向项目知识提问")).toHaveValue("");
   expect(screen.getByText("这个项目怎么部署?", { selector: ".knowledge-answer-question span" }))
     .toBeInTheDocument();
-  await user.click(within(screen.getByRole("region", { name: "生成式回答" }))
+  await user.click(within(screen.getByRole("region", { name: "第1轮问答" }))
     .getByRole("button", { name: "查看引用上下文" }));
   expect(await screen.findByText("答案引用原文")).toBeInTheDocument();
   expect(screen.getByRole("region", { name: "知识内容" }))
@@ -3919,5 +3964,5 @@ test("the docked assistant shows the submitted question and opens answer citatio
   expect(screen.getByText("EOF")).toBeInTheDocument();
   expect(screen.getByText("答案引用原文")).toHaveAttribute("data-citation-hit", "true");
   expect(requests.filter((request) => request.method === "POST" &&
-    new URL(request.url).pathname.endsWith("/knowledge/answers"))).toHaveLength(1);
+    new URL(request.url).pathname.endsWith("/turns"))).toHaveLength(1);
 });

@@ -131,6 +131,7 @@ def test_project_event_stream_reads_transactional_outbox_with_strict_bounded_res
             "projectId": first_project["id"],
             "taskId": task["id"],
             "status": "todo",
+            "revision": 2,
         }
         assert status_event.published_at is None
         successor_id = UUID(int=status_event.id.int + 1)
@@ -224,6 +225,7 @@ def test_project_event_stream_reads_transactional_outbox_with_strict_bounded_res
             "projectId": first_project["id"],
             "taskId": task["id"],
             "status": "todo",
+            "revision": 2,
         }
     )
     assert all(set(frame) == {"id", "event", "data"} for frame in frames)

@@ -422,3 +422,12 @@ def test_production_accepts_https_values_and_normalizes_origins() -> None:
         "10.0.0.0/8",
         "2001:db8::/32",
     ]
+
+
+@pytest.mark.parametrize("base_url", ["http://models.example/v1", "http://10.0.0.5/v1"])
+def test_production_model_catalog_rejects_insecure_remote_urls(base_url: str) -> None:
+    with pytest.raises(ValidationError, match="HTTPS.*loopback"):
+        production_settings(answer_models=[{
+            "id": "extra", "name": "Extra", "model": "synthetic-model", "protocol": "openai-responses",
+            "base_url": base_url, "api_key": "synthetic-key",
+        }])

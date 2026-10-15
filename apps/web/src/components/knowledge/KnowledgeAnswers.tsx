@@ -169,20 +169,7 @@ export function KnowledgeAnswers({
   }
   const error = mutation.error === null ? null : presentError(mutation.error);
 
-  return (
-    <section className={`knowledge-answers${docked ? " knowledge-answers-docked" : ""}`} aria-label="项目知识问答">
-      <div className="knowledge-search-heading">
-        {docked ? <MascotFigure variant="avatar" label="岑宁" /> : null}
-        <div>
-          {docked ? null : <span className="knowledge-search-kicker">基于项目资料</span>}
-          <h2>{docked ? "岑宁" : "向项目知识提问"}</h2>
-          <p id={helpId}>{docked ? "项目问答 · 单轮" : "生成的回答来自当前项目资料，请核对引用。"}</p>
-        </div>
-        {docked ? <button type="button" className="knowledge-clear-round" aria-label="清空本轮问答" disabled={submittedQuestion === null && answer === null && !mutation.isPending} onClick={clearRound}><RotateCcw size={17} aria-hidden="true" /></button> : null}
-      </div>
-      {docked && submittedQuestion !== null ? (
-        <div className="knowledge-answer-question"><span className="knowledge-user-avatar"><UserRound size={19} aria-hidden="true" /></span><div><strong>你</strong><span className="knowledge-question-text">{submittedQuestion}</span></div></div>
-      ) : null}
+  const composer = (
       <form className="knowledge-search-form" onSubmit={submit}>
         <label htmlFor={inputId}>{docked ? "回答基于项目资料，请核对引用" : "向项目知识提问"}</label>
         <div className="knowledge-search-controls">
@@ -213,9 +200,32 @@ export function KnowledgeAnswers({
           <p id="knowledge-answer-error" className="form-error" role="alert">{validationError}</p>
         )}
       </form>
+  );
+
+  return (
+    <section className={`knowledge-answers${docked ? " knowledge-answers-docked" : ""}`} aria-label="项目知识问答">
+      <div className="knowledge-search-heading">
+        {docked ? <MascotFigure variant="avatar" label="岑宁" /> : null}
+        <div>
+          {docked ? null : <span className="knowledge-search-kicker">基于项目资料</span>}
+          <h2>{docked ? "岑宁" : "向项目知识提问"}</h2>
+          <p id={helpId}>{docked ? "项目问答 · 单轮" : "生成的回答来自当前项目资料，请核对引用。"}</p>
+        </div>
+        {docked ? <button type="button" className="knowledge-clear-round" aria-label="清空本轮问答" disabled={submittedQuestion === null && answer === null && !mutation.isPending} onClick={clearRound}><RotateCcw size={17} aria-hidden="true" /></button> : null}
+      </div>
+
+      {docked ? null : composer}
       <div className="knowledge-answer-output" aria-busy={mutation.isPending ? "true" : undefined}>
+      {docked && submittedQuestion !== null ? (
+        <div className="knowledge-answer-question"><span className="knowledge-user-avatar"><UserRound size={19} aria-hidden="true" /></span><div><strong>你</strong><span className="knowledge-question-text">{submittedQuestion}</span></div></div>
+      ) : null}
         {docked && submittedQuestion === null && answer === null && notice === null && error === null ? (
-          <p className="knowledge-answer-intro">输入问题后，岑宁会根据当前项目的资料回答，并列出可核对的来源。</p>
+          <div className="knowledge-answer-welcome">
+            <MascotFigure variant="avatar" label="岑宁助手" />
+            <h3>从一个问题开始</h3>
+            <p className="knowledge-answer-intro">围绕当前项目提问，岑宁会根据资料回答，并列出可核对的来源。</p>
+            <p className="knowledge-answer-welcome-hint">可以从项目目标、关键决策或待办事项问起。</p>
+          </div>
         ) : null}
         {mutation.isPending ? <p role="status" aria-live="polite">正在查找资料并生成回答…</p> : null}
         {notice === null ? null : <p role="status" aria-live="polite">{notice}</p>}
@@ -233,11 +243,12 @@ export function KnowledgeAnswers({
           />
         )}
       </div>
+      {docked ? composer : null}
     </section>
   );
 }
 
-function KnowledgeAnswerResult({ answer, organizationId, projectId, sessionSignal, onOpenCitation }: {
+export function KnowledgeAnswerResult({ answer, organizationId, projectId, sessionSignal, onOpenCitation }: {
   answer: KnowledgeAnswerResponse;
   organizationId: string;
   projectId: string;

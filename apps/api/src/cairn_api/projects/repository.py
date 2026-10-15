@@ -80,12 +80,18 @@ def create_task(
     priority: str,
     due_at: datetime | None,
     acceptance_criteria: str | None,
+    description: str | None = None,
+    assignee_user_id: UUID | None = None,
+    milestone_id: UUID | None = None,
 ) -> Task:
     task = Task(
         org_id=org_id,
         project_id=project_id,
         title=title,
+        description=description,
+        assignee_user_id=assignee_user_id,
         stage_id=stage_id,
+        milestone_id=milestone_id,
         parent_task_id=parent_task_id,
         priority=priority,
         due_at=due_at,
@@ -108,7 +114,7 @@ def get_task(
     if project_id is not None:
         statement = statement.where(Task.project_id == project_id)
     if for_update:
-        statement = statement.with_for_update()
+        statement = statement.with_for_update().execution_options(populate_existing=True)
     return session.scalar(statement)
 
 
@@ -145,7 +151,7 @@ def set_task_status(
             Task.id == task_id,
             Task.status == current_status,
         )
-        .values(status=requested_status)
+        .values(status=requested_status, revision=Task.revision + 1)
         .returning(Task)
     )
     return session.scalars(statement).one_or_none()
@@ -187,9 +193,7 @@ def dependency_path_exists(
         .join(reachable, TaskDependency.predecessor_task_id == reachable.c.task_id)
         .where(TaskDependency.org_id == org_id)
     )
-    return bool(
-        session.scalar(select(exists().where(reachable.c.task_id == target_task_id)))
-    )
+    return bool(session.scalar(select(exists().where(reachable.c.task_id == target_task_id))))
 
 
 def create_dependency(

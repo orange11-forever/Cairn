@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+from collections.abc import Callable
 from typing import cast
 from uuid import UUID
 
@@ -16,9 +17,15 @@ from cairn_api.errors import ApiProblem
 from cairn_api.knowledge import search_repository
 from cairn_api.knowledge.answer_provider import (
     AnswerEvidence,
+    AnswerGuidance,
+    AnswerHistoryTurn,
     AnswerProvider,
     AnswerProviderInvalidResponse,
     AnswerProviderUnavailable,
+    ContextualAnswerProvider,
+    GuidedAnswerProvider,
+    ProviderParagraph,
+    StreamingAnswerProvider,
 )
 from cairn_api.knowledge.answer_schemas import (
     KnowledgeAnswerCitation,
@@ -30,7 +37,7 @@ from cairn_api.knowledge.schemas import KnowledgeCitation, normalize_search_quer
 from cairn_api.knowledge.search_service import KnowledgeSearchService
 
 
-def _knowledge_changed() -> ApiProblem:
+def knowledge_changed() -> ApiProblem:
     return ApiProblem(
         status_code=409,
         code="knowledge_changed",
@@ -63,10 +70,31 @@ class KnowledgeAnswerService:
         project_id: UUID,
         question: str,
         audit: RequestAuditContext,
+        provider: AnswerProvider | None = None,
+        history: list[AnswerHistoryTurn] | None = None,
+        guidance: AnswerGuidance | None = None,
+        retrieval_query: str | None = None,
+        before_generate: Callable[[], None] | None = None,
+        audit_result: bool = True,
+        retrieved_evidence: Callable[[list[KnowledgeCitation]], None] | None = None,
+        on_paragraph: Callable[[KnowledgeAnswerParagraph], None] | None = None,
+        check_cancelled: Callable[[], None] = lambda: None,
     ) -> KnowledgeAnswerResponse:
         try:
             return self._answer(
-                identity=identity, project_id=project_id, question=question, audit=audit
+                provider=provider if provider is not None else self._provider,
+                identity=identity,
+                project_id=project_id,
+                question=question,
+                audit=audit,
+                history=history,
+                guidance=guidance,
+                retrieval_query=retrieval_query,
+                before_generate=before_generate,
+                audit_result=audit_result,
+                retrieved_evidence=retrieved_evidence,
+                on_paragraph=on_paragraph,
+                check_cancelled=check_cancelled,
             )
         except ApiProblem:
             raise
@@ -91,6 +119,15 @@ class KnowledgeAnswerService:
         project_id: UUID,
         question: str,
         audit: RequestAuditContext,
+        provider: AnswerProvider | None,
+        history: list[AnswerHistoryTurn] | None = None,
+        guidance: AnswerGuidance | None = None,
+        retrieval_query: str | None = None,
+        before_generate: Callable[[], None] | None = None,
+        audit_result: bool = True,
+        retrieved_evidence: Callable[[list[KnowledgeCitation]], None] | None = None,
+        on_paragraph: Callable[[KnowledgeAnswerParagraph], None] | None = None,
+        check_cancelled: Callable[[], None] = lambda: None,
     ) -> KnowledgeAnswerResponse:
         question = normalize_search_query(question)
         if not 3 <= len(question) <= 500:
@@ -98,13 +135,15 @@ class KnowledgeAnswerService:
         search = self._search_service.search(
             identity=identity,
             project_id=project_id,
-            query=question,
+            query=retrieval_query or question,
             limit=6,
             audit=audit,
         )
-        if self._provider is None:
+        if provider is None:
             raise AnswerProviderUnavailable()
         citations = search.results[:6]
+        if retrieved_evidence is not None:
+            retrieved_evidence(citations)
         if not citations:
             response = KnowledgeAnswerResponse(
                 status="insufficient_evidence",
@@ -112,7 +151,10 @@ class KnowledgeAnswerService:
                 paragraphs=[],
                 citations=[],
             )
-            self._audit(identity, project_id, question, response, audit)
+            if before_generate is not None:
+                before_generate()
+            if audit_result:
+                self._audit(identity, project_id, question, response, audit)
             return response
 
         self._revalidate(identity, project_id, citations)
@@ -126,7 +168,54 @@ class KnowledgeAnswerService:
             )
             for index, citation in enumerate(citations, 1)
         ]
-        generated = self._provider.generate(question=question, evidence=evidence)
+        if before_generate is not None:
+            before_generate()
+        streamed: list[ProviderParagraph] = []
+        contextual_generate = getattr(provider, "generate_with_history", None)
+        if on_paragraph is not None:
+            if not callable(getattr(provider, "generate_stream", None)):
+                raise AnswerProviderUnavailable()
+
+            def receive(paragraph: ProviderParagraph) -> None:
+                paragraph = ProviderParagraph.model_validate(paragraph)
+                if (
+                    not set(paragraph.citation_ids) <= {item.id for item in evidence}
+                    or len(streamed) >= 8
+                    or sum(len(p.text) for p in streamed) + len(paragraph.text) > 6000
+                ):
+                    raise AnswerProviderInvalidResponse()
+                streamed.append(paragraph)
+                check_cancelled()
+                on_paragraph(
+                    KnowledgeAnswerParagraph(
+                        text=paragraph.text.strip(), citationIds=paragraph.citation_ids
+                    )
+                )
+
+            generated = cast(StreamingAnswerProvider, provider).generate_stream(
+                question=question,
+                evidence=evidence,
+                history=history or [],
+                guidance=guidance,
+                on_paragraph=receive,
+                check_cancelled=check_cancelled,
+            )
+        elif guidance is not None:
+            if not callable(getattr(provider, "generate_with_guidance", None)):
+                raise AnswerProviderUnavailable()
+            generated = cast(GuidedAnswerProvider, provider).generate_with_guidance(
+                question=question, evidence=evidence, history=history or [], guidance=guidance
+            )
+        elif history is not None and callable(contextual_generate):
+            generated = cast(ContextualAnswerProvider, provider).generate_with_history(
+                question=question, evidence=evidence, history=history
+            )
+        elif history:
+            raise AnswerProviderUnavailable()
+        else:
+            generated = provider.generate(question=question, evidence=evidence)
+        if on_paragraph is not None and streamed and generated.paragraphs != streamed:
+            raise AnswerProviderInvalidResponse()
         self._revalidate(identity, project_id, citations)
 
         if generated.status == "insufficient_evidence":
@@ -170,7 +259,8 @@ class KnowledgeAnswerService:
                 ],
                 citations=answer_citations,
             )
-        self._audit(identity, project_id, question, response, audit)
+        if audit_result:
+            self._audit(identity, project_id, question, response, audit)
         return response
 
     def _revalidate(
@@ -190,7 +280,7 @@ class KnowledgeAnswerService:
                 )
             except ApiProblem as exc:
                 if exc.status_code == 404:
-                    raise _knowledge_changed() from None
+                    raise knowledge_changed() from None
                 raise
             access_filter = self._policy.project_filter(
                 identity,
@@ -209,7 +299,7 @@ class KnowledgeAnswerService:
                 for record in records
             ]
             if current != expected:
-                raise _knowledge_changed()
+                raise knowledge_changed()
 
     def _audit(
         self,
@@ -244,4 +334,4 @@ class KnowledgeAnswerService:
             )
 
 
-__all__ = ["KnowledgeAnswerService"]
+__all__ = ["KnowledgeAnswerService", "knowledge_changed"]
