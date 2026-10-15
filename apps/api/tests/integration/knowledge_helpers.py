@@ -100,6 +100,14 @@ class MemoryObjectStore:
 
 
 def knowledge_settings(test_database_url: str, **overrides: object) -> Settings:
+    # Test providers and catalogs must not inherit the verification runtime's model.
+    overrides = {
+        "answer_base_url": None,
+        "answer_api_key": None,
+        "answer_model": None,
+        "answer_models": [],
+        **overrides,
+    }
     return Settings(
         environment="test",
         database_url=test_database_url,

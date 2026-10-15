@@ -3,6 +3,7 @@ from uuid import uuid4
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from cairn_api.authorization.types import MembershipRole
 from cairn_api.db.session import Database
 from cairn_api.knowledge.conversation_models import KnowledgeConversation, KnowledgeConversationTurn
@@ -38,7 +39,7 @@ def test_migration_empty_downgrade_and_populated_retention(
         with migrated_engine.connect() as connection:
             assert (
                 connection.scalar(text("SELECT version_num FROM alembic_version"))
-                == "0016_project_conversations"
+                == ScriptDirectory.from_config(config).get_current_head()
             )
             assert (
                 connection.scalar(

@@ -3,6 +3,7 @@
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
 
@@ -42,7 +43,7 @@ def test_archive_migration_backfills_and_retains_archived_history(
         with migrated_engine.connect() as connection:
             assert (
                 connection.scalar(text("SELECT version_num FROM alembic_version"))
-                == "0015_structure_lifecycle"
+                == ScriptDirectory.from_config(config).get_current_head()
             )
             for table, row in (("project_stages", stage), ("milestones", milestone)):
                 stored = connection.execute(

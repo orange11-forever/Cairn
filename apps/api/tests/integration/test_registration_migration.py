@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from cairn_api.db.session import Database
 from cairn_api.seed import seed_demo_identity
 from cairn_api.settings import Settings
@@ -41,7 +42,7 @@ def test_native_migration_preserves_legacy_accounts_and_refuses_live_proof_loss(
         with database.session_factory() as session:
             assert (
                 session.scalar(text("SELECT version_num FROM alembic_version"))
-                == "0013_task_editing"
+                == ScriptDirectory.from_config(config).get_current_head()
             )
             assert session.scalar(text("SELECT count(*) FROM pending_registrations")) == 1
         with database.session_factory.begin() as session:

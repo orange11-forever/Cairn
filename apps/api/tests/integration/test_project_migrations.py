@@ -6,7 +6,7 @@ from alembic import command
 from alembic.config import Config
 from cairn_api.organizations.models import Organization
 from cairn_api.projects.events import ProjectEventCursor
-from cairn_api.projects.models import OutboxEvent, Project
+from cairn_api.projects.models import OutboxEvent
 from sqlalchemy import (
     Connection,
     Engine,
@@ -409,8 +409,11 @@ def test_project_event_order_migration_preserves_old_events_and_restores_hook(
         command.downgrade(config, "0007_knowledge_source_syncs")
         with Session(migrated_engine) as session, session.begin():
             session.add(Organization(id=org_id, slug=f"legacy-{org_id.hex}", name="Legacy"))
-            session.add(Project(id=project_id, org_id=org_id, name="Legacy stream"))
             session.flush()
+            session.execute(
+                text("INSERT INTO projects (id, org_id, name) VALUES (:id, :org_id, :name)"),
+                {"id": project_id, "org_id": org_id, "name": "Legacy stream"},
+            )
             session.add(
                 OutboxEvent(
                     id=legacy_id,

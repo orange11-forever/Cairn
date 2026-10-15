@@ -5,6 +5,7 @@ from uuid import uuid4
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
 from sqlalchemy.exc import IntegrityError
@@ -98,7 +99,7 @@ def test_structure_upgrade_existing_data_composite_fk_and_safe_downgrade(
         with migrated_engine.connect() as connection:
             assert (
                 connection.scalar(text("SELECT version_num FROM alembic_version"))
-                == "0015_structure_lifecycle"
+                == ScriptDirectory.from_config(config).get_current_head()
             )
     finally:
         command.upgrade(config, "head")
