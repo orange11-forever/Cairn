@@ -125,6 +125,17 @@ def test_openapi_contains_only_approved_paths(client: TestClient) -> None:
         "/api/v1/projects/{project_id}/events",
         "/api/v1/projects/{project_id}/knowledge/search",
         "/api/v1/projects/{project_id}/knowledge/answers",
+        "/api/v1/projects/{project_id}/knowledge/answer-model",
+        "/api/v1/projects/{project_id}/knowledge/assistant-settings",
+        "/api/v1/projects/{project_id}/knowledge/assistants",
+        "/api/v1/projects/{project_id}/knowledge/assistants/{assistant_id}/select",
+        "/api/v1/projects/{project_id}/knowledge/conversations",
+        "/api/v1/projects/{project_id}/knowledge/conversations/{conversation_id}",
+        "/api/v1/projects/{project_id}/knowledge/conversations/{conversation_id}/turns",
+        "/api/v1/projects/{project_id}/knowledge/conversations/{conversation_id}/turns/stream",
+        "/api/v1/projects/{project_id}/knowledge/skills",
+        "/api/v1/projects/{project_id}/knowledge/skills/preview",
+        "/api/v1/projects/{project_id}/knowledge/skills/import",
         "/api/v1/projects/{project_id}/knowledge/uploads",
         "/api/v1/projects/{project_id}/knowledge/uploads/{upload_id}/complete",
         "/api/v1/projects/{project_id}/knowledge/batches/{batch_id}",
@@ -149,7 +160,7 @@ def test_openapi_contains_only_approved_paths(client: TestClient) -> None:
         "/api/v1/tasks/{task_id}/status",
         "/api/v1/tasks/{task_id}/dependencies",
         "/api/v1/tasks/{task_id}/dependencies/{dependency_id}",
-}
+    }
 
 
 def test_openapi_search_declares_bounded_csrf_rate_limit_and_embedding_contract() -> None:
