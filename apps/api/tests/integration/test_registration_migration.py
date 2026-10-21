@@ -10,8 +10,8 @@ from cairn_api.settings import Settings
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
 
-from .test_registration_api import register
 from .test_registration_api import registration_client as client_fixture
+from .test_registration_api import seed_legacy_pending
 
 registration_client = client_fixture
 
@@ -26,7 +26,7 @@ def test_native_migration_preserves_legacy_accounts_and_refuses_live_proof_loss(
     del migrated_engine
     config = Config("apps/api/alembic.ini")
     config.set_main_option("sqlalchemy.url", test_database_url)
-    register(registration_client)
+    seed_legacy_pending(database)
     with database.session_factory() as session:
         before = tuple(
             session.execute(

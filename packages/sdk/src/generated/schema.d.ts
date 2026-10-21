@@ -143,6 +143,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/password/reset/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Email Flow Disabled
+         * @deprecated
+         */
+        post: operations["email_flow_disabled_api_v1_auth_password_reset_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/password/reset/request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Email Flow Disabled
+         * @deprecated
+         */
+        post: operations["email_flow_disabled_api_v1_auth_password_reset_request_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/register": {
         parameters: {
             query?: never;
@@ -169,8 +209,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Resend */
-        post: operations["resend_api_v1_auth_register_resend_post"];
+        /**
+         * Email Flow Disabled
+         * @deprecated
+         */
+        post: operations["email_flow_disabled_api_v1_auth_register_resend_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -186,8 +229,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Verify */
-        post: operations["verify_api_v1_auth_register_verify_post"];
+        /**
+         * Email Flow Disabled
+         * @deprecated
+         */
+        post: operations["email_flow_disabled_api_v1_auth_register_verify_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -361,6 +407,23 @@ export interface paths {
         post?: never;
         /** Revoke Project Acl */
         delete: operations["revoke_project_acl_api_v1_projects__project_id__acl__principal_type___principal_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/analysis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Analyze Project */
+        post: operations["analyze_project_api_v1_projects__project_id__analysis_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -905,6 +968,23 @@ export interface paths {
         head?: never;
         /** Update Milestone */
         patch: operations["update_milestone_api_v1_projects__project_id__milestones__milestone_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/plan-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Project Plan */
+        post: operations["preview_project_plan_api_v1_projects__project_id__plan_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/projects/{project_id}/stages": {
@@ -2481,6 +2561,49 @@ export interface components {
          * @enum {string}
          */
         PrincipalType: "org" | "role" | "user" | "group";
+        /** ProjectAnalysisResponse */
+        ProjectAnalysisResponse: {
+            /** Assistantname */
+            assistantName: string;
+            /** Citations */
+            citations: components["schemas"]["KnowledgeAnswerCitation"][];
+            /**
+             * Generatedat
+             * Format: date-time
+             */
+            generatedAt: string;
+            model: components["schemas"]["AnswerModelOption"];
+            /** Paragraphs */
+            paragraphs: components["schemas"]["KnowledgeAnswerParagraph"][];
+            /**
+             * Projectid
+             * Format: uuid
+             */
+            projectId: string;
+            /**
+             * Retrievalmode
+             * @enum {string}
+             */
+            retrievalMode: "hybrid" | "keyword_fallback";
+            snapshot: components["schemas"]["ProjectAnalysisSnapshot"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "answered" | "insufficient_evidence";
+        };
+        /** ProjectAnalysisSnapshot */
+        ProjectAnalysisSnapshot: {
+            /** Dependencies */
+            dependencies: components["schemas"]["DependencyResponse"][];
+            /** Milestones */
+            milestones: components["schemas"]["MilestoneResponse"][];
+            project: components["schemas"]["ProjectResponse"];
+            /** Stages */
+            stages: components["schemas"]["StageResponse"][];
+            /** Tasks */
+            tasks: components["schemas"]["TaskResponse"][];
+        };
         /** ProjectCreateRequest */
         ProjectCreateRequest: {
             /** Description */
@@ -2500,6 +2623,51 @@ export interface components {
          * @enum {string}
          */
         ProjectPermission: "read" | "write" | "manage";
+        /** ProjectPlanDraft */
+        ProjectPlanDraft: {
+            /** Assumptions */
+            assumptions: string[];
+            /** Citationids */
+            citationIds: string[];
+            /** Milestones */
+            milestones: components["schemas"]["ProposedMilestone"][];
+            /** Stages */
+            stages: components["schemas"]["ProposedStage"][];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "planned" | "insufficient_evidence";
+            /** Summary */
+            summary: string;
+            /** Tasks */
+            tasks: components["schemas"]["ProposedTask"][];
+        };
+        /** ProjectPlanPreviewResponse */
+        ProjectPlanPreviewResponse: {
+            /** Assistantname */
+            assistantName: string;
+            /** Citations */
+            citations: components["schemas"]["KnowledgeAnswerCitation"][];
+            /**
+             * Generatedat
+             * Format: date-time
+             */
+            generatedAt: string;
+            model: components["schemas"]["AnswerModelOption"];
+            plan: components["schemas"]["ProjectPlanDraft"];
+            /**
+             * Projectid
+             * Format: uuid
+             */
+            projectId: string;
+            /**
+             * Retrievalmode
+             * @enum {string}
+             */
+            retrievalMode: "hybrid" | "keyword_fallback";
+            snapshot: components["schemas"]["ProjectAnalysisSnapshot"];
+        };
         /** ProjectResponse */
         ProjectResponse: {
             /**
@@ -2524,6 +2692,54 @@ export interface components {
              */
             updatedAt: string;
         };
+        /** ProposedMilestone */
+        ProposedMilestone: {
+            /** Acceptancecriteria */
+            acceptanceCriteria: string;
+            /** Citationids */
+            citationIds: string[];
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Stageid */
+            stageId: string;
+        };
+        /** ProposedStage */
+        ProposedStage: {
+            /** Citationids */
+            citationIds: string[];
+            /** Goal */
+            goal: string;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** ProposedTask */
+        ProposedTask: {
+            /** Acceptancecriteria */
+            acceptanceCriteria: string;
+            /** Citationids */
+            citationIds: string[];
+            /** Dependson */
+            dependsOn: string[];
+            /** Description */
+            description: string;
+            /** Id */
+            id: string;
+            /** Milestoneid */
+            milestoneId: string | null;
+            /**
+             * Priority
+             * @enum {string}
+             */
+            priority: "low" | "medium" | "high" | "critical";
+            /** Stageid */
+            stageId: string;
+            /** Title */
+            title: string;
+        };
         /** ReadyResponse */
         ReadyResponse: {
             /**
@@ -2533,25 +2749,18 @@ export interface components {
              */
             status: "ready";
         };
-        /** RegistrationAccepted */
-        RegistrationAccepted: {
-            /**
-             * Message
-             * @default 如可为此邮箱创建账号，请查收验证邮件；已有账号请直接登录。
-             */
-            message: string;
-            /** Registrationreceipt */
-            registrationReceipt: string;
-            /**
-             * Resendafterseconds
-             * @default 60
-             */
-            resendAfterSeconds: number;
-        };
         /** RegistrationAvailability */
         RegistrationAvailability: {
             /** Enabled */
             enabled: boolean;
+        };
+        /** RegistrationCreated */
+        RegistrationCreated: {
+            /**
+             * Message
+             * @default 账号已创建，请使用邮箱和密码登录。邮箱仅作为登录标识。
+             */
+            message: string;
         };
         /** RegistrationRequest */
         RegistrationRequest: {
@@ -2564,33 +2773,6 @@ export interface components {
             email: string;
             /** Password */
             password: string;
-        };
-        /** RegistrationResendRequest */
-        RegistrationResendRequest: {
-            /**
-             * Email
-             * Format: email
-             */
-            email: string;
-            /** Password */
-            password: string;
-            /** Registrationreceipt */
-            registrationReceipt: string;
-        };
-        /** RegistrationVerified */
-        RegistrationVerified: {
-            /**
-             * Message
-             * @default 邮箱验证成功，请使用邮箱和密码登录。
-             */
-            message: string;
-        };
-        /** RegistrationVerifyRequest */
-        RegistrationVerifyRequest: {
-            /** Password */
-            password: string;
-            /** Token */
-            token: string;
         };
         /**
          * ResourceType
@@ -3739,6 +3921,46 @@ export interface operations {
             };
         };
     };
+    email_flow_disabled_api_v1_auth_password_reset_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    email_flow_disabled_api_v1_auth_password_reset_request_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     register_api_v1_auth_register_post: {
         parameters: {
             query?: never;
@@ -3753,16 +3975,16 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            202: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RegistrationAccepted"];
+                    "application/json": components["schemas"]["RegistrationCreated"];
                 };
             };
-            /** @description 验证链接或密码无效 */
-            400: {
+            /** @description 请求来源无效 */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3770,8 +3992,8 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
-            /** @description 请求来源无效 */
-            403: {
+            /** @description 邮箱无法用于创建新账号 */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3807,7 +4029,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
-            /** @description 注册、邮件或数据库暂时不可用 */
+            /** @description 注册或数据库暂时不可用 */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -3818,76 +4040,17 @@ export interface operations {
             };
         };
     };
-    resend_api_v1_auth_register_resend_post: {
+    email_flow_disabled_api_v1_auth_register_resend_post: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RegistrationResendRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RegistrationAccepted"];
-                };
-            };
-            /** @description 验证链接或密码无效 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description 请求来源无效 */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description 请求参数无效 */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description 操作过于频繁 */
-            429: {
-                headers: {
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description 服务器内部错误 */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description 注册、邮件或数据库暂时不可用 */
-            503: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3897,76 +4060,17 @@ export interface operations {
             };
         };
     };
-    verify_api_v1_auth_register_verify_post: {
+    email_flow_disabled_api_v1_auth_register_verify_post: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RegistrationVerifyRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RegistrationVerified"];
-                };
-            };
-            /** @description 验证链接或密码无效 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description 请求来源无效 */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description 请求参数无效 */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description 操作过于频繁 */
-            429: {
-                headers: {
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description 服务器内部错误 */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description 注册、邮件或数据库暂时不可用 */
-            503: {
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4843,6 +4947,141 @@ export interface operations {
             /** @description 数据库暂时不可用 */
             503: {
                 headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    analyze_project_api_v1_projects__project_id__analysis_post: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Session-bound CSRF token returned by login or session restore. */
+                "X-CSRF-Token": string;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectAnalysisResponse"];
+                };
+            };
+            /** @description 会话无效 */
+            401: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求来源或 CSRF 令牌无效 */
+            403: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目不存在或不可访问 */
+            404: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目知识在生成期间发生变化 */
+            409: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 搜索请求无效 */
+            422: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 搜索请求过于频繁 */
+            429: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 当前搜索限流窗口剩余秒数 */
+                    "Retry-After"?: number;
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 数据库、Embedding 或生成式回答服务暂时不可用 */
+            503: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -9599,6 +9838,141 @@ export interface operations {
                 headers: {
                     "Cache-Control"?: "private, no-store";
                     "X-Content-Type-Options"?: "nosniff";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    preview_project_plan_api_v1_projects__project_id__plan_preview_post: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Session-bound CSRF token returned by login or session restore. */
+                "X-CSRF-Token": string;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectPlanPreviewResponse"];
+                };
+            };
+            /** @description 会话无效 */
+            401: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求来源或 CSRF 令牌无效 */
+            403: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目不存在或不可访问 */
+            404: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目知识在生成期间发生变化 */
+            409: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 搜索请求无效 */
+            422: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 搜索请求过于频繁 */
+            429: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 当前搜索限流窗口剩余秒数 */
+                    "Retry-After"?: number;
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 数据库、Embedding 或生成式回答服务暂时不可用 */
+            503: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
                     [name: string]: unknown;

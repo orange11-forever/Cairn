@@ -4046,6 +4046,125 @@
         "title": "PrincipalType",
         "type": "string"
       },
+      "ProjectAnalysisResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "assistantName": {
+            "title": "Assistantname",
+            "type": "string"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeAnswerCitation"
+            },
+            "maxItems": 5,
+            "title": "Citations",
+            "type": "array"
+          },
+          "generatedAt": {
+            "format": "date-time",
+            "title": "Generatedat",
+            "type": "string"
+          },
+          "model": {
+            "$ref": "#/components/schemas/AnswerModelOption"
+          },
+          "paragraphs": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeAnswerParagraph"
+            },
+            "maxItems": 8,
+            "title": "Paragraphs",
+            "type": "array"
+          },
+          "projectId": {
+            "format": "uuid",
+            "title": "Projectid",
+            "type": "string"
+          },
+          "retrievalMode": {
+            "enum": [
+              "hybrid",
+              "keyword_fallback"
+            ],
+            "title": "Retrievalmode",
+            "type": "string"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/ProjectAnalysisSnapshot"
+          },
+          "status": {
+            "enum": [
+              "answered",
+              "insufficient_evidence"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId",
+          "generatedAt",
+          "assistantName",
+          "model",
+          "snapshot",
+          "status",
+          "retrievalMode",
+          "paragraphs",
+          "citations"
+        ],
+        "title": "ProjectAnalysisResponse",
+        "type": "object"
+      },
+      "ProjectAnalysisSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "dependencies": {
+            "items": {
+              "$ref": "#/components/schemas/DependencyResponse"
+            },
+            "maxItems": 300,
+            "title": "Dependencies",
+            "type": "array"
+          },
+          "milestones": {
+            "items": {
+              "$ref": "#/components/schemas/MilestoneResponse"
+            },
+            "maxItems": 50,
+            "title": "Milestones",
+            "type": "array"
+          },
+          "project": {
+            "$ref": "#/components/schemas/ProjectResponse"
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/StageResponse"
+            },
+            "maxItems": 50,
+            "title": "Stages",
+            "type": "array"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/TaskResponse"
+            },
+            "maxItems": 100,
+            "title": "Tasks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "project",
+          "stages",
+          "milestones",
+          "tasks",
+          "dependencies"
+        ],
+        "title": "ProjectAnalysisSnapshot",
+        "type": "object"
+      },
       "ProjectCreateRequest": {
         "additionalProperties": false,
         "properties": {
@@ -4111,6 +4230,135 @@
         "title": "ProjectPermission",
         "type": "string"
       },
+      "ProjectPlanDraft": {
+        "additionalProperties": false,
+        "properties": {
+          "assumptions": {
+            "items": {
+              "maxLength": 400,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 6,
+            "title": "Assumptions",
+            "type": "array"
+          },
+          "citationIds": {
+            "items": {
+              "pattern": "^S[1-6]$",
+              "type": "string"
+            },
+            "maxItems": 6,
+            "title": "Citationids",
+            "type": "array"
+          },
+          "milestones": {
+            "items": {
+              "$ref": "#/components/schemas/ProposedMilestone"
+            },
+            "maxItems": 8,
+            "title": "Milestones",
+            "type": "array"
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/ProposedStage"
+            },
+            "maxItems": 5,
+            "title": "Stages",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "planned",
+              "insufficient_evidence"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Summary",
+            "type": "string"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/ProposedTask"
+            },
+            "maxItems": 20,
+            "title": "Tasks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "status",
+          "summary",
+          "assumptions",
+          "citationIds",
+          "stages",
+          "milestones",
+          "tasks"
+        ],
+        "title": "ProjectPlanDraft",
+        "type": "object"
+      },
+      "ProjectPlanPreviewResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "assistantName": {
+            "title": "Assistantname",
+            "type": "string"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeAnswerCitation"
+            },
+            "maxItems": 5,
+            "title": "Citations",
+            "type": "array"
+          },
+          "generatedAt": {
+            "format": "date-time",
+            "title": "Generatedat",
+            "type": "string"
+          },
+          "model": {
+            "$ref": "#/components/schemas/AnswerModelOption"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/ProjectPlanDraft"
+          },
+          "projectId": {
+            "format": "uuid",
+            "title": "Projectid",
+            "type": "string"
+          },
+          "retrievalMode": {
+            "enum": [
+              "hybrid",
+              "keyword_fallback"
+            ],
+            "title": "Retrievalmode",
+            "type": "string"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/ProjectAnalysisSnapshot"
+          }
+        },
+        "required": [
+          "projectId",
+          "generatedAt",
+          "assistantName",
+          "model",
+          "snapshot",
+          "retrievalMode",
+          "citations",
+          "plan"
+        ],
+        "title": "ProjectPlanPreviewResponse",
+        "type": "object"
+      },
       "ProjectResponse": {
         "properties": {
           "createdAt": {
@@ -4169,6 +4417,179 @@
         "title": "ProjectResponse",
         "type": "object"
       },
+      "ProposedMilestone": {
+        "additionalProperties": false,
+        "properties": {
+          "acceptanceCriteria": {
+            "maxLength": 600,
+            "minLength": 1,
+            "title": "Acceptancecriteria",
+            "type": "string"
+          },
+          "citationIds": {
+            "items": {
+              "pattern": "^S[1-6]$",
+              "type": "string"
+            },
+            "maxItems": 6,
+            "minItems": 1,
+            "title": "Citationids",
+            "type": "array"
+          },
+          "id": {
+            "pattern": "^M[1-8]$",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "stageId": {
+            "pattern": "^P[1-5]$",
+            "title": "Stageid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "citationIds",
+          "id",
+          "stageId",
+          "name",
+          "acceptanceCriteria"
+        ],
+        "title": "ProposedMilestone",
+        "type": "object"
+      },
+      "ProposedStage": {
+        "additionalProperties": false,
+        "properties": {
+          "citationIds": {
+            "items": {
+              "pattern": "^S[1-6]$",
+              "type": "string"
+            },
+            "maxItems": 6,
+            "minItems": 1,
+            "title": "Citationids",
+            "type": "array"
+          },
+          "goal": {
+            "maxLength": 600,
+            "minLength": 1,
+            "title": "Goal",
+            "type": "string"
+          },
+          "id": {
+            "pattern": "^P[1-5]$",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "citationIds",
+          "id",
+          "name",
+          "goal"
+        ],
+        "title": "ProposedStage",
+        "type": "object"
+      },
+      "ProposedTask": {
+        "additionalProperties": false,
+        "properties": {
+          "acceptanceCriteria": {
+            "maxLength": 600,
+            "minLength": 1,
+            "title": "Acceptancecriteria",
+            "type": "string"
+          },
+          "citationIds": {
+            "items": {
+              "pattern": "^S[1-6]$",
+              "type": "string"
+            },
+            "maxItems": 6,
+            "minItems": 1,
+            "title": "Citationids",
+            "type": "array"
+          },
+          "dependsOn": {
+            "items": {
+              "pattern": "^T([1-9]|1[0-9]|20)$",
+              "type": "string"
+            },
+            "maxItems": 19,
+            "title": "Dependson",
+            "type": "array"
+          },
+          "description": {
+            "maxLength": 600,
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "pattern": "^T([1-9]|1[0-9]|20)$",
+            "title": "Id",
+            "type": "string"
+          },
+          "milestoneId": {
+            "anyOf": [
+              {
+                "pattern": "^M[1-8]$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Milestoneid"
+          },
+          "priority": {
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
+            "title": "Priority",
+            "type": "string"
+          },
+          "stageId": {
+            "pattern": "^P[1-5]$",
+            "title": "Stageid",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "citationIds",
+          "id",
+          "stageId",
+          "milestoneId",
+          "title",
+          "description",
+          "acceptanceCriteria",
+          "priority",
+          "dependsOn"
+        ],
+        "title": "ProposedTask",
+        "type": "object"
+      },
       "ReadyResponse": {
         "properties": {
           "status": {
@@ -4179,31 +4600,6 @@
           }
         },
         "title": "ReadyResponse",
-        "type": "object"
-      },
-      "RegistrationAccepted": {
-        "properties": {
-          "message": {
-            "default": "如可为此邮箱创建账号，请查收验证邮件；已有账号请直接登录。",
-            "title": "Message",
-            "type": "string"
-          },
-          "registrationReceipt": {
-            "title": "Registrationreceipt",
-            "type": "string"
-          },
-          "resendAfterSeconds": {
-            "default": 60,
-            "title": "Resendafterseconds",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "message",
-          "registrationReceipt",
-          "resendAfterSeconds"
-        ],
-        "title": "RegistrationAccepted",
         "type": "object"
       },
       "RegistrationAvailability": {
@@ -4217,6 +4613,20 @@
           "enabled"
         ],
         "title": "RegistrationAvailability",
+        "type": "object"
+      },
+      "RegistrationCreated": {
+        "properties": {
+          "message": {
+            "default": "账号已创建，请使用邮箱和密码登录。邮箱仅作为登录标识。",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "RegistrationCreated",
         "type": "object"
       },
       "RegistrationRequest": {
@@ -4251,73 +4661,6 @@
           "password"
         ],
         "title": "RegistrationRequest",
-        "type": "object"
-      },
-      "RegistrationResendRequest": {
-        "properties": {
-          "email": {
-            "format": "email",
-            "maxLength": 320,
-            "title": "Email",
-            "type": "string"
-          },
-          "password": {
-            "maxLength": 128,
-            "minLength": 12,
-            "title": "Password",
-            "type": "string"
-          },
-          "registrationReceipt": {
-            "maxLength": 128,
-            "minLength": 1,
-            "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
-            "title": "Registrationreceipt",
-            "type": "string"
-          }
-        },
-        "required": [
-          "email",
-          "password",
-          "registrationReceipt"
-        ],
-        "title": "RegistrationResendRequest",
-        "type": "object"
-      },
-      "RegistrationVerified": {
-        "properties": {
-          "message": {
-            "default": "邮箱验证成功，请使用邮箱和密码登录。",
-            "title": "Message",
-            "type": "string"
-          }
-        },
-        "required": [
-          "message"
-        ],
-        "title": "RegistrationVerified",
-        "type": "object"
-      },
-      "RegistrationVerifyRequest": {
-        "properties": {
-          "password": {
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Password",
-            "type": "string"
-          },
-          "token": {
-            "maxLength": 128,
-            "minLength": 1,
-            "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
-            "title": "Token",
-            "type": "string"
-          }
-        },
-        "required": [
-          "token",
-          "password"
-        ],
-        "title": "RegistrationVerifyRequest",
         "type": "object"
       },
       "ResourceType": {
@@ -6783,6 +7126,50 @@
         ]
       }
     },
+    "/api/v1/auth/password/reset/confirm": {
+      "post": {
+        "deprecated": true,
+        "operationId": "email_flow_disabled_api_v1_auth_password_reset_confirm_post",
+        "responses": {
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Email Flow Disabled",
+        "tags": [
+          "registration"
+        ]
+      }
+    },
+    "/api/v1/auth/password/reset/request": {
+      "post": {
+        "deprecated": true,
+        "operationId": "email_flow_disabled_api_v1_auth_password_reset_request_post",
+        "responses": {
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Email Flow Disabled",
+        "tags": [
+          "registration"
+        ]
+      }
+    },
     "/api/v1/auth/register": {
       "post": {
         "operationId": "register_api_v1_auth_register_post",
@@ -6797,25 +7184,15 @@
           "required": true
         },
         "responses": {
-          "202": {
+          "201": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RegistrationAccepted"
+                  "$ref": "#/components/schemas/RegistrationCreated"
                 }
               }
             },
             "description": "Successful Response"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "验证链接或密码无效"
           },
           "403": {
             "content": {
@@ -6826,6 +7203,16 @@
               }
             },
             "description": "请求来源无效"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "邮箱无法用于创建新账号"
           },
           "422": {
             "content": {
@@ -6872,7 +7259,7 @@
                 }
               }
             },
-            "description": "注册、邮件或数据库暂时不可用"
+            "description": "注册或数据库暂时不可用"
           }
         },
         "summary": "Register",
@@ -6883,97 +7270,21 @@
     },
     "/api/v1/auth/register/resend": {
       "post": {
-        "operationId": "resend_api_v1_auth_register_resend_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RegistrationResendRequest"
-              }
-            }
-          },
-          "required": true
-        },
+        "deprecated": true,
+        "operationId": "email_flow_disabled_api_v1_auth_register_resend_post",
         "responses": {
-          "202": {
+          "410": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RegistrationAccepted"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
             "description": "Successful Response"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "验证链接或密码无效"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "请求来源无效"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "请求参数无效"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "操作过于频繁",
-            "headers": {
-              "Retry-After": {
-                "schema": {
-                  "type": "integer"
-                }
-              }
-            }
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "服务器内部错误"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "注册、邮件或数据库暂时不可用"
           }
         },
-        "summary": "Resend",
+        "summary": "Email Flow Disabled",
         "tags": [
           "registration"
         ]
@@ -6981,97 +7292,21 @@
     },
     "/api/v1/auth/register/verify": {
       "post": {
-        "operationId": "verify_api_v1_auth_register_verify_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RegistrationVerifyRequest"
-              }
-            }
-          },
-          "required": true
-        },
+        "deprecated": true,
+        "operationId": "email_flow_disabled_api_v1_auth_register_verify_post",
         "responses": {
-          "200": {
+          "410": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RegistrationVerified"
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             },
             "description": "Successful Response"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "验证链接或密码无效"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "请求来源无效"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "请求参数无效"
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "操作过于频繁",
-            "headers": {
-              "Retry-After": {
-                "schema": {
-                  "type": "integer"
-                }
-              }
-            }
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "服务器内部错误"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "注册、邮件或数据库暂时不可用"
           }
         },
-        "summary": "Verify",
+        "summary": "Email Flow Disabled",
         "tags": [
           "registration"
         ]
@@ -8545,6 +8780,271 @@
         "summary": "Set Project Acl",
         "tags": [
           "authorization"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/analysis": {
+      "post": {
+        "operationId": "analyze_project_api_v1_projects__project_id__analysis_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Session-bound CSRF token returned by login or session restore.",
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectAnalysisResponse"
+                }
+              }
+            },
+            "description": "Successful Response",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "会话无效",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "请求来源或 CSRF 令牌无效",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "项目不存在或不可访问",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "项目知识在生成期间发生变化",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "搜索请求无效",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "搜索请求过于频繁",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "当前搜索限流窗口剩余秒数",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "服务器内部错误",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "数据库、Embedding 或生成式回答服务暂时不可用",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Analyze Project",
+        "tags": [
+          "project-analysis"
         ]
       }
     },
@@ -18244,6 +18744,271 @@
         "summary": "Update Milestone",
         "tags": [
           "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/plan-preview": {
+      "post": {
+        "operationId": "preview_project_plan_api_v1_projects__project_id__plan_preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Session-bound CSRF token returned by login or session restore.",
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectPlanPreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "会话无效",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "请求来源或 CSRF 令牌无效",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "项目不存在或不可访问",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "项目知识在生成期间发生变化",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "搜索请求无效",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "搜索请求过于频繁",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "当前搜索限流窗口剩余秒数",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "服务器内部错误",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "数据库、Embedding 或生成式回答服务暂时不可用",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Preview Project Plan",
+        "tags": [
+          "project-analysis"
         ]
       }
     },

@@ -17,7 +17,6 @@ from cairn_api.auth.repository import (
     SessionRecord,
     get_memberships_for_user,
     get_session_record,
-    get_user_by_normalized_email,
 )
 from cairn_api.auth.schemas import IdentityContextResponse, UserResponse
 from cairn_api.auth.security import (
@@ -222,7 +221,13 @@ class AuthService:
                     )
                     outcome = _login_rate_limited(retry_after)
                 else:
-                    user = get_user_by_normalized_email(self._session, normalized_email)
+                    # Serialize login with password reset so a pre-reset password
+                    # cannot create a live session after reset revokes sessions.
+                    user = self._session.scalar(
+                        select(User)
+                        .where(User.normalized_email == normalized_email)
+                        .with_for_update()
+                    )
                     password_digest = (
                         (user.password_hash or DUMMY_PASSWORD_HASH)
                         if user is not None

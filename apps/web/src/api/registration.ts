@@ -4,13 +4,10 @@ import { ApiError } from "./errors.ts";
 import { parseApiErrorResponse } from "./parseApiErrorResponse.ts";
 
 export type RegistrationInput = components["schemas"]["RegistrationRequest"];
-export type ResendInput = components["schemas"]["RegistrationResendRequest"];
-export type VerificationInput = components["schemas"]["RegistrationVerifyRequest"];
-type Accepted = components["schemas"]["RegistrationAccepted"];
-type Verified = components["schemas"]["RegistrationVerified"];
+type Created = components["schemas"]["RegistrationCreated"];
 type Availability = components["schemas"]["RegistrationAvailability"];
 
-async function request<T>(parent: AbortSignal, expectedStatus: 200 | 202, run: (signal: AbortSignal) => Promise<{ data?: unknown; error?: unknown; response: Response }>, validate: (data: unknown) => data is T): Promise<T> {
+async function request<T>(parent: AbortSignal, expectedStatus: 200 | 201 | 202, run: (signal: AbortSignal) => Promise<{ data?: unknown; error?: unknown; response: Response }>, validate: (data: unknown) => data is T): Promise<T> {
   const deadline = new AbortController();
   const timer = setTimeout(() => deadline.abort(), 15_000);
   const signal = AbortSignal.any([parent, deadline.signal]);
@@ -34,12 +31,6 @@ const client = () => createCairnClient({ baseUrl: apiOrigins.identity });
 export function registrationAvailability(signal: AbortSignal): Promise<Availability> {
   return request(signal, 200, signal => client().GET("/api/v1/auth/registration", { signal }), (data): data is Availability => matchesComponentSchema("RegistrationAvailability", data));
 }
-export function register(input: RegistrationInput, signal: AbortSignal): Promise<Accepted> {
-  return request(signal, 202, signal => client().POST("/api/v1/auth/register", { body: { ...input, email: input.email.trim() }, signal }), (data): data is Accepted => matchesComponentSchema("RegistrationAccepted", data));
-}
-export function resendRegistration(input: ResendInput, signal: AbortSignal): Promise<Accepted> {
-  return request(signal, 202, signal => client().POST("/api/v1/auth/register/resend", { body: input, signal }), (data): data is Accepted => matchesComponentSchema("RegistrationAccepted", data));
-}
-export function verifyRegistration(input: VerificationInput, signal: AbortSignal): Promise<Verified> {
-  return request(signal, 200, signal => client().POST("/api/v1/auth/register/verify", { body: input, signal }), (data): data is Verified => matchesComponentSchema("RegistrationVerified", data));
+export function register(input: RegistrationInput, signal: AbortSignal): Promise<Created> {
+  return request(signal, 201, signal => client().POST("/api/v1/auth/register", { body: { ...input, email: input.email.trim() }, signal }), (data): data is Created => matchesComponentSchema("RegistrationCreated", data));
 }

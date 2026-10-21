@@ -4045,6 +4045,125 @@ export const componentSchemas = {
     "title": "PrincipalType",
     "type": "string"
   },
+  "ProjectAnalysisResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "assistantName": {
+        "title": "Assistantname",
+        "type": "string"
+      },
+      "citations": {
+        "items": {
+          "$ref": "#/components/schemas/KnowledgeAnswerCitation"
+        },
+        "maxItems": 5,
+        "title": "Citations",
+        "type": "array"
+      },
+      "generatedAt": {
+        "format": "date-time",
+        "title": "Generatedat",
+        "type": "string"
+      },
+      "model": {
+        "$ref": "#/components/schemas/AnswerModelOption"
+      },
+      "paragraphs": {
+        "items": {
+          "$ref": "#/components/schemas/KnowledgeAnswerParagraph"
+        },
+        "maxItems": 8,
+        "title": "Paragraphs",
+        "type": "array"
+      },
+      "projectId": {
+        "format": "uuid",
+        "title": "Projectid",
+        "type": "string"
+      },
+      "retrievalMode": {
+        "enum": [
+          "hybrid",
+          "keyword_fallback"
+        ],
+        "title": "Retrievalmode",
+        "type": "string"
+      },
+      "snapshot": {
+        "$ref": "#/components/schemas/ProjectAnalysisSnapshot"
+      },
+      "status": {
+        "enum": [
+          "answered",
+          "insufficient_evidence"
+        ],
+        "title": "Status",
+        "type": "string"
+      }
+    },
+    "required": [
+      "projectId",
+      "generatedAt",
+      "assistantName",
+      "model",
+      "snapshot",
+      "status",
+      "retrievalMode",
+      "paragraphs",
+      "citations"
+    ],
+    "title": "ProjectAnalysisResponse",
+    "type": "object"
+  },
+  "ProjectAnalysisSnapshot": {
+    "additionalProperties": false,
+    "properties": {
+      "dependencies": {
+        "items": {
+          "$ref": "#/components/schemas/DependencyResponse"
+        },
+        "maxItems": 300,
+        "title": "Dependencies",
+        "type": "array"
+      },
+      "milestones": {
+        "items": {
+          "$ref": "#/components/schemas/MilestoneResponse"
+        },
+        "maxItems": 50,
+        "title": "Milestones",
+        "type": "array"
+      },
+      "project": {
+        "$ref": "#/components/schemas/ProjectResponse"
+      },
+      "stages": {
+        "items": {
+          "$ref": "#/components/schemas/StageResponse"
+        },
+        "maxItems": 50,
+        "title": "Stages",
+        "type": "array"
+      },
+      "tasks": {
+        "items": {
+          "$ref": "#/components/schemas/TaskResponse"
+        },
+        "maxItems": 100,
+        "title": "Tasks",
+        "type": "array"
+      }
+    },
+    "required": [
+      "project",
+      "stages",
+      "milestones",
+      "tasks",
+      "dependencies"
+    ],
+    "title": "ProjectAnalysisSnapshot",
+    "type": "object"
+  },
   "ProjectCreateRequest": {
     "additionalProperties": false,
     "properties": {
@@ -4110,6 +4229,135 @@ export const componentSchemas = {
     "title": "ProjectPermission",
     "type": "string"
   },
+  "ProjectPlanDraft": {
+    "additionalProperties": false,
+    "properties": {
+      "assumptions": {
+        "items": {
+          "maxLength": 400,
+          "minLength": 1,
+          "type": "string"
+        },
+        "maxItems": 6,
+        "title": "Assumptions",
+        "type": "array"
+      },
+      "citationIds": {
+        "items": {
+          "pattern": "^S[1-6]$",
+          "type": "string"
+        },
+        "maxItems": 6,
+        "title": "Citationids",
+        "type": "array"
+      },
+      "milestones": {
+        "items": {
+          "$ref": "#/components/schemas/ProposedMilestone"
+        },
+        "maxItems": 8,
+        "title": "Milestones",
+        "type": "array"
+      },
+      "stages": {
+        "items": {
+          "$ref": "#/components/schemas/ProposedStage"
+        },
+        "maxItems": 5,
+        "title": "Stages",
+        "type": "array"
+      },
+      "status": {
+        "enum": [
+          "planned",
+          "insufficient_evidence"
+        ],
+        "title": "Status",
+        "type": "string"
+      },
+      "summary": {
+        "maxLength": 1000,
+        "minLength": 1,
+        "title": "Summary",
+        "type": "string"
+      },
+      "tasks": {
+        "items": {
+          "$ref": "#/components/schemas/ProposedTask"
+        },
+        "maxItems": 20,
+        "title": "Tasks",
+        "type": "array"
+      }
+    },
+    "required": [
+      "status",
+      "summary",
+      "assumptions",
+      "citationIds",
+      "stages",
+      "milestones",
+      "tasks"
+    ],
+    "title": "ProjectPlanDraft",
+    "type": "object"
+  },
+  "ProjectPlanPreviewResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "assistantName": {
+        "title": "Assistantname",
+        "type": "string"
+      },
+      "citations": {
+        "items": {
+          "$ref": "#/components/schemas/KnowledgeAnswerCitation"
+        },
+        "maxItems": 5,
+        "title": "Citations",
+        "type": "array"
+      },
+      "generatedAt": {
+        "format": "date-time",
+        "title": "Generatedat",
+        "type": "string"
+      },
+      "model": {
+        "$ref": "#/components/schemas/AnswerModelOption"
+      },
+      "plan": {
+        "$ref": "#/components/schemas/ProjectPlanDraft"
+      },
+      "projectId": {
+        "format": "uuid",
+        "title": "Projectid",
+        "type": "string"
+      },
+      "retrievalMode": {
+        "enum": [
+          "hybrid",
+          "keyword_fallback"
+        ],
+        "title": "Retrievalmode",
+        "type": "string"
+      },
+      "snapshot": {
+        "$ref": "#/components/schemas/ProjectAnalysisSnapshot"
+      }
+    },
+    "required": [
+      "projectId",
+      "generatedAt",
+      "assistantName",
+      "model",
+      "snapshot",
+      "retrievalMode",
+      "citations",
+      "plan"
+    ],
+    "title": "ProjectPlanPreviewResponse",
+    "type": "object"
+  },
   "ProjectResponse": {
     "properties": {
       "createdAt": {
@@ -4168,6 +4416,179 @@ export const componentSchemas = {
     "title": "ProjectResponse",
     "type": "object"
   },
+  "ProposedMilestone": {
+    "additionalProperties": false,
+    "properties": {
+      "acceptanceCriteria": {
+        "maxLength": 600,
+        "minLength": 1,
+        "title": "Acceptancecriteria",
+        "type": "string"
+      },
+      "citationIds": {
+        "items": {
+          "pattern": "^S[1-6]$",
+          "type": "string"
+        },
+        "maxItems": 6,
+        "minItems": 1,
+        "title": "Citationids",
+        "type": "array"
+      },
+      "id": {
+        "pattern": "^M[1-8]$",
+        "title": "Id",
+        "type": "string"
+      },
+      "name": {
+        "maxLength": 160,
+        "minLength": 1,
+        "title": "Name",
+        "type": "string"
+      },
+      "stageId": {
+        "pattern": "^P[1-5]$",
+        "title": "Stageid",
+        "type": "string"
+      }
+    },
+    "required": [
+      "citationIds",
+      "id",
+      "stageId",
+      "name",
+      "acceptanceCriteria"
+    ],
+    "title": "ProposedMilestone",
+    "type": "object"
+  },
+  "ProposedStage": {
+    "additionalProperties": false,
+    "properties": {
+      "citationIds": {
+        "items": {
+          "pattern": "^S[1-6]$",
+          "type": "string"
+        },
+        "maxItems": 6,
+        "minItems": 1,
+        "title": "Citationids",
+        "type": "array"
+      },
+      "goal": {
+        "maxLength": 600,
+        "minLength": 1,
+        "title": "Goal",
+        "type": "string"
+      },
+      "id": {
+        "pattern": "^P[1-5]$",
+        "title": "Id",
+        "type": "string"
+      },
+      "name": {
+        "maxLength": 120,
+        "minLength": 1,
+        "title": "Name",
+        "type": "string"
+      }
+    },
+    "required": [
+      "citationIds",
+      "id",
+      "name",
+      "goal"
+    ],
+    "title": "ProposedStage",
+    "type": "object"
+  },
+  "ProposedTask": {
+    "additionalProperties": false,
+    "properties": {
+      "acceptanceCriteria": {
+        "maxLength": 600,
+        "minLength": 1,
+        "title": "Acceptancecriteria",
+        "type": "string"
+      },
+      "citationIds": {
+        "items": {
+          "pattern": "^S[1-6]$",
+          "type": "string"
+        },
+        "maxItems": 6,
+        "minItems": 1,
+        "title": "Citationids",
+        "type": "array"
+      },
+      "dependsOn": {
+        "items": {
+          "pattern": "^T([1-9]|1[0-9]|20)$",
+          "type": "string"
+        },
+        "maxItems": 19,
+        "title": "Dependson",
+        "type": "array"
+      },
+      "description": {
+        "maxLength": 600,
+        "minLength": 1,
+        "title": "Description",
+        "type": "string"
+      },
+      "id": {
+        "pattern": "^T([1-9]|1[0-9]|20)$",
+        "title": "Id",
+        "type": "string"
+      },
+      "milestoneId": {
+        "anyOf": [
+          {
+            "pattern": "^M[1-8]$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Milestoneid"
+      },
+      "priority": {
+        "enum": [
+          "low",
+          "medium",
+          "high",
+          "critical"
+        ],
+        "title": "Priority",
+        "type": "string"
+      },
+      "stageId": {
+        "pattern": "^P[1-5]$",
+        "title": "Stageid",
+        "type": "string"
+      },
+      "title": {
+        "maxLength": 160,
+        "minLength": 1,
+        "title": "Title",
+        "type": "string"
+      }
+    },
+    "required": [
+      "citationIds",
+      "id",
+      "stageId",
+      "milestoneId",
+      "title",
+      "description",
+      "acceptanceCriteria",
+      "priority",
+      "dependsOn"
+    ],
+    "title": "ProposedTask",
+    "type": "object"
+  },
   "ReadyResponse": {
     "properties": {
       "status": {
@@ -4178,31 +4599,6 @@ export const componentSchemas = {
       }
     },
     "title": "ReadyResponse",
-    "type": "object"
-  },
-  "RegistrationAccepted": {
-    "properties": {
-      "message": {
-        "default": "如可为此邮箱创建账号，请查收验证邮件；已有账号请直接登录。",
-        "title": "Message",
-        "type": "string"
-      },
-      "registrationReceipt": {
-        "title": "Registrationreceipt",
-        "type": "string"
-      },
-      "resendAfterSeconds": {
-        "default": 60,
-        "title": "Resendafterseconds",
-        "type": "integer"
-      }
-    },
-    "required": [
-      "message",
-      "registrationReceipt",
-      "resendAfterSeconds"
-    ],
-    "title": "RegistrationAccepted",
     "type": "object"
   },
   "RegistrationAvailability": {
@@ -4216,6 +4612,20 @@ export const componentSchemas = {
       "enabled"
     ],
     "title": "RegistrationAvailability",
+    "type": "object"
+  },
+  "RegistrationCreated": {
+    "properties": {
+      "message": {
+        "default": "账号已创建，请使用邮箱和密码登录。邮箱仅作为登录标识。",
+        "title": "Message",
+        "type": "string"
+      }
+    },
+    "required": [
+      "message"
+    ],
+    "title": "RegistrationCreated",
     "type": "object"
   },
   "RegistrationRequest": {
@@ -4250,73 +4660,6 @@ export const componentSchemas = {
       "password"
     ],
     "title": "RegistrationRequest",
-    "type": "object"
-  },
-  "RegistrationResendRequest": {
-    "properties": {
-      "email": {
-        "format": "email",
-        "maxLength": 320,
-        "title": "Email",
-        "type": "string"
-      },
-      "password": {
-        "maxLength": 128,
-        "minLength": 12,
-        "title": "Password",
-        "type": "string"
-      },
-      "registrationReceipt": {
-        "maxLength": 128,
-        "minLength": 1,
-        "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
-        "title": "Registrationreceipt",
-        "type": "string"
-      }
-    },
-    "required": [
-      "email",
-      "password",
-      "registrationReceipt"
-    ],
-    "title": "RegistrationResendRequest",
-    "type": "object"
-  },
-  "RegistrationVerified": {
-    "properties": {
-      "message": {
-        "default": "邮箱验证成功，请使用邮箱和密码登录。",
-        "title": "Message",
-        "type": "string"
-      }
-    },
-    "required": [
-      "message"
-    ],
-    "title": "RegistrationVerified",
-    "type": "object"
-  },
-  "RegistrationVerifyRequest": {
-    "properties": {
-      "password": {
-        "maxLength": 128,
-        "minLength": 1,
-        "title": "Password",
-        "type": "string"
-      },
-      "token": {
-        "maxLength": 128,
-        "minLength": 1,
-        "pattern": "^[A-Za-z0-9_-]+$(?![\\s\\S])",
-        "title": "Token",
-        "type": "string"
-      }
-    },
-    "required": [
-      "token",
-      "password"
-    ],
-    "title": "RegistrationVerifyRequest",
     "type": "object"
   },
   "ResourceType": {

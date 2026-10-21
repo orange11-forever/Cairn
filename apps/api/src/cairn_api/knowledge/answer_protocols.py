@@ -25,6 +25,7 @@ def build_answer_request(
     system_prompt: str,
     user_content: str,
     answer_schema: dict[str, object],
+    max_output_tokens: int = 2048,
 ) -> AnswerProtocolRequest:
     if protocol not in {"openai-compatible", "openai-responses", "anthropic", "gemini"}:
         raise ValueError("unsupported answer protocol")
@@ -49,7 +50,7 @@ def build_answer_request(
                 "model": model,
                 "stream": False,
                 "response_format": {"type": "json_object"},
-                "max_tokens": 2048,
+                "max_tokens": max_output_tokens,
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_content},
@@ -66,7 +67,7 @@ def build_answer_request(
                 "input": user_content,
                 "stream": False,
                 "store": False,
-                "max_output_tokens": 2048,
+                "max_output_tokens": max_output_tokens,
                 "text": {
                     "format": {
                         "type": "json_schema",
@@ -85,7 +86,7 @@ def build_answer_request(
                 "model": model,
                 "system": system_prompt,
                 "messages": [{"role": "user", "content": user_content}],
-                "max_tokens": 2048,
+                "max_tokens": max_output_tokens,
                 "stream": False,
                 "output_config": {"format": {"type": "json_schema", "schema": answer_schema}},
             },
@@ -98,7 +99,7 @@ def build_answer_request(
             "systemInstruction": {"parts": [{"text": system_prompt}]},
             "contents": [{"role": "user", "parts": [{"text": user_content}]}],
             "generationConfig": {
-                "maxOutputTokens": 2048,
+                "maxOutputTokens": max_output_tokens,
                 "responseFormat": {
                     "text": {"mimeType": "application/json", "schema": answer_schema}
                 },

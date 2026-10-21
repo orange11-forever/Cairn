@@ -7,21 +7,31 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import select, text, update
+from sqlalchemy import delete, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from cairn_api.audit.repository import add_audit_log
-from cairn_api.auth.models import User
+from cairn_api.auth.models import AuthSession, User
 from cairn_api.auth.registration_mail import (
     RegistrationMailSender,
     RegistrationMailUnavailable,
+    account_mail_available,
     registration_available,
 )
-from cairn_api.auth.registration_models import PendingRegistration, RegistrationRateLimit
+from cairn_api.auth.registration_models import (
+    PasswordReset,
+    PendingRegistration,
+    RegistrationRateLimit,
+)
 from cairn_api.auth.registration_schemas import (
+    PasswordResetAccepted,
+    PasswordResetCompleted,
+    PasswordResetConfirmRequest,
+    PasswordResetRequest,
     RegistrationAccepted,
+    RegistrationCreated,
     RegistrationRequest,
     RegistrationResendRequest,
     RegistrationVerified,
@@ -128,6 +138,128 @@ class RegistrationService:
     def _send_limits(self, email: str, ip: str) -> None:
         self._reserve([("send_email", email, 5, 3600), ("send_ip", ip, 20, 3600)])
 
+    def request_password_reset(
+        self, payload: PasswordResetRequest, ip: str
+    ) -> PasswordResetAccepted:
+        if not account_mail_available(self.settings):
+            raise ApiProblem(
+                status_code=503,
+                code="password_reset_unavailable",
+                message="暂时无法重置密码，请稍后再试。",
+            )
+        email = normalize_email(str(payload.email))
+        self._reserve([("reset_email", email, 5, 3600), ("reset_ip", ip, 20, 3600)])
+        now = self.now()
+        token = secrets.token_urlsafe(32)
+        digest = digest_token(token)
+        recipient: str | None = None
+        with self.session.begin():
+            user = self.session.scalar(
+                select(User).where(User.normalized_email == email).with_for_update()
+            )
+            if user is not None and user.is_active and user.password_hash and user.email:
+                reset = self.session.get(PasswordReset, user.id)
+                if reset is None:
+                    self.session.add(
+                        PasswordReset(
+                            user_id=user.id,
+                            token_digest=digest,
+                            expires_at=now + timedelta(minutes=30),
+                        )
+                    )
+                else:
+                    reset.token_digest = digest
+                    reset.expires_at = now + timedelta(minutes=30)
+                recipient = user.email
+        if recipient is not None:
+            url = str(self.settings.app_url).rstrip("/") + "/password/reset#token=" + token
+            try:
+                self.sender.send_password_reset(recipient, url, now + timedelta(minutes=30))
+            except RegistrationMailUnavailable:
+                with self.session.begin():
+                    self.session.execute(
+                        delete(PasswordReset).where(PasswordReset.token_digest == digest)
+                    )
+                raise ApiProblem(
+                    status_code=503,
+                    code="password_reset_mail_unavailable",
+                    message="暂时无法发送找回邮件，请稍后重试。",
+                ) from None
+        else:
+            try:
+                self.sender.send_password_reset_notice(str(payload.email))
+            except RegistrationMailUnavailable:
+                raise ApiProblem(
+                    status_code=503,
+                    code="password_reset_mail_unavailable",
+                    message="暂时无法发送找回邮件，请稍后重试。",
+                ) from None
+        return PasswordResetAccepted()
+
+    def confirm_password_reset(
+        self, payload: PasswordResetConfirmRequest, ip: str, audit: RequestAuditContext
+    ) -> PasswordResetCompleted:
+        if not account_mail_available(self.settings):
+            raise ApiProblem(
+                status_code=503,
+                code="password_reset_unavailable",
+                message="暂时无法重置密码，请稍后再试。",
+            )
+        self._reserve([("reset_confirm_ip", ip, 20, 900)])
+        now = self.now()
+        new_hash = hash_password(payload.password)
+        token_digest = digest_token(payload.token)
+        with self.session.begin():
+            reset_user_id = self.session.scalar(
+                select(PasswordReset.user_id).where(PasswordReset.token_digest == token_digest)
+            )
+            if reset_user_id is None:
+                raise ApiProblem(
+                    status_code=400,
+                    code="password_reset_invalid",
+                    message="重置链接无效或已过期，请重新申请。",
+                )
+            user = self.session.scalar(
+                select(User).where(User.id == reset_user_id).with_for_update()
+            )
+            reset = self.session.scalar(
+                select(PasswordReset)
+                .where(PasswordReset.token_digest == token_digest)
+                .with_for_update()
+            )
+            if (
+                user is None
+                or not user.is_active
+                or not user.password_hash
+                or reset is None
+                or reset.expires_at <= now
+            ):
+                raise ApiProblem(
+                    status_code=400,
+                    code="password_reset_invalid",
+                    message="重置链接无效或已过期，请重新申请。",
+                )
+            user.password_hash = new_hash
+            self.session.execute(
+                update(AuthSession)
+                .where(AuthSession.user_id == user.id, AuthSession.revoked_at.is_(None))
+                .values(revoked_at=now)
+            )
+            self.session.delete(reset)
+            add_audit_log(
+                self.session,
+                org_id=None,
+                actor_type="user",
+                actor_id=user.id,
+                action="auth.password_reset",
+                resource_type="user",
+                resource_id=user.id,
+                trace_id=audit.trace_id,
+                ip=audit.ip,
+                user_agent=audit.user_agent,
+            )
+        return PasswordResetCompleted()
+
     def _deliver(
         self, pending_id: UUID, generation: int, recipient: str, token: str, expires_at: datetime
     ) -> None:
@@ -151,6 +283,25 @@ class RegistrationService:
                 code="registration_mail_unavailable",
                 message="暂时无法发送验证邮件，请稍后重试。",
             ) from None
+
+    def request_direct(self, payload: RegistrationRequest, ip: str, audit: RequestAuditContext) -> RegistrationCreated:
+        if not self.settings.registration_enabled:
+            raise ApiProblem(status_code=503, code="registration_unavailable", message="暂时无法注册")
+        email = normalize_email(str(payload.email))
+        self._send_limits(email, ip)
+        password_hash = hash_password(payload.password)
+        with self.session.begin():
+            self.session.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:email_key, 0))"), {"email_key": "native-registration:" + email})
+            if self.session.scalar(select(User.id).where(User.normalized_email == email)) is not None:
+                raise ApiProblem(status_code=409, code="registration_conflict", message="无法使用此邮箱创建新账号，请尝试登录或使用其他邮箱。")
+            user = User(email=str(payload.email), normalized_email=email, display_name=payload.display_name, password_hash=password_hash, email_verified_at=None)
+            organization = Organization(slug="personal-" + secrets.token_hex(12), name="个人空间")
+            self.session.add_all((user, organization))
+            self.session.flush()
+            self.session.add(Membership(org_id=organization.id, user_id=user.id, role="owner"))
+            self.session.flush()
+            add_audit_log(self.session, org_id=organization.id, actor_type="user", actor_id=user.id, action="auth.registered", resource_type="user", resource_id=user.id, trace_id=audit.trace_id, ip=audit.ip, user_agent=audit.user_agent)
+        return RegistrationCreated()
 
     def request(self, payload: RegistrationRequest, ip: str) -> RegistrationAccepted:
         self._enabled()
@@ -179,6 +330,15 @@ class RegistrationService:
                 self.session.flush()
         if pending is not None:
             self._deliver(pending.id, pending.generation, pending.email, token, pending.expires_at)
+        else:
+            try:
+                self.sender.send_registration_notice(str(payload.email))
+            except RegistrationMailUnavailable:
+                raise ApiProblem(
+                    status_code=503,
+                    code="registration_mail_unavailable",
+                    message="暂时无法发送验证邮件，请稍后重试。",
+                ) from None
         return RegistrationAccepted(registration_receipt=receipt)
 
     def resend(self, payload: RegistrationResendRequest, ip: str) -> RegistrationAccepted:

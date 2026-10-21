@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, DateTime, Index, Integer, LargeBinary, String
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, LargeBinary, String
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -43,7 +43,10 @@ class PendingRegistration(Base):
 class RegistrationRateLimit(Base):
     __tablename__ = "registration_rate_limits"
     __table_args__ = (
-        CheckConstraint("purpose IN ('send_email', 'send_ip', 'verify_ip')", name="purpose"),
+        CheckConstraint(
+            "purpose IN ('send_email', 'send_ip', 'verify_ip', 'reset_email', 'reset_ip', 'reset_confirm_ip')",
+            name="purpose",
+        ),
         CheckConstraint(
             "octet_length(key_digest) = 32 AND attempt_count >= 0", name="valid_bucket"
         ),
@@ -52,4 +55,17 @@ class RegistrationRateLimit(Base):
     purpose: Mapped[str] = mapped_column(String(16), primary_key=True)
     key_digest: Mapped[bytes] = mapped_column(LargeBinary(32), primary_key=True)
     attempt_count: Mapped[int] = mapped_column(Integer)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class PasswordReset(Base):
+    __tablename__ = "password_resets"
+    __table_args__ = (
+        CheckConstraint("octet_length(token_digest) = 32", name="token_length"),
+        Index("ix_password_resets_expires_at", "expires_at"),
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        PostgreSQLUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    token_digest: Mapped[bytes] = mapped_column(LargeBinary(32), unique=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

@@ -20,7 +20,7 @@ export function registrationPagePrivacy() {
   function install(server) {
     server.middlewares.use((request, response, next) => {
       const path = (request.url ?? "").split("?")[0];
-      if (path === "/register" || path === "/register/verify") {
+      if (path === "/register" || path === "/register/verify" || path === "/password/forgot" || path === "/password/reset") {
         response.setHeader("Cache-Control", "no-store");
         response.setHeader("Referrer-Policy", "no-referrer");
       }

@@ -10,6 +10,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { TaskEditor } from "../components/projects/TaskEditor.tsx";
 import { TaskDetails } from "../components/projects/TaskDetails.tsx";
 import { ProjectStructure } from "../components/projects/ProjectStructure.tsx";
+import { ProjectAnalysis } from "../components/projects/ProjectAnalysis.tsx";
+import { ProjectPlanPreview } from "../components/projects/ProjectPlanPreview.tsx";
 import { Link } from "react-router-dom";
 
 import type { Project, Task, TaskStatus } from "../api/projects.ts";
@@ -391,6 +393,8 @@ function TaskWorkspace({
         </div>
       </header>
 
+      <ProjectAnalysis projectId={project.id} csrfToken={csrfToken} signal={scopeSignal} />
+      <ProjectPlanPreview projectId={project.id} csrfToken={csrfToken} signal={scopeSignal} />
       <ProjectStructure organizationId={organizationId} projectId={project.id} csrfToken={csrfToken} signal={scopeSignal} canWrite={canTransition} lifecycleDisabled={creating || selectedTaskId !== null} disabled={editorBusy || statusBlocked || createBlocked} onBusy={setStructureBusy}/>
 
       {creating && (

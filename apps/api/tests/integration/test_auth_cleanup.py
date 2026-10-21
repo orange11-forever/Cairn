@@ -4,6 +4,7 @@ from uuid import uuid4
 import pytest
 from cairn_api.audit.models import AuditLog
 from cairn_api.auth.models import AuthRateLimit, AuthSession, User
+from cairn_api.auth.registration_models import PasswordReset
 from cairn_api.db.session import Database
 from cairn_api.maintenance.auth_cleanup import CleanupCounts, cleanup_auth_state
 from cairn_api.organizations.models import Membership, Organization
@@ -54,6 +55,11 @@ def test_auth_cleanup_removes_only_expired_state_and_is_idempotent(
             expires_at=now + timedelta(days=1),
         )
         session.add_all([expired_session, revoked_session, active_session])
+        session.add(
+            PasswordReset(
+                user_id=user.id, token_digest=b"p" * 32, expires_at=now - timedelta(seconds=1)
+            )
+        )
         session.flush()
         session.add_all(
             [
@@ -100,15 +106,32 @@ def test_auth_cleanup_removes_only_expired_state_and_is_idempotent(
 
     result = cleanup_auth_state(database.session_factory, now=lambda: now)
 
-    assert result == CleanupCounts(sessions_deleted=2, rate_limits_deleted=2)
+    assert result == CleanupCounts(
+        sessions_deleted=2, rate_limits_deleted=2, password_resets_deleted=1
+    )
     with database.session_factory() as session:
-        assert session.scalar(select(AuthSession.id).where(AuthSession.id == expired_session.id)) is None
-        assert session.scalar(select(AuthSession.id).where(AuthSession.id == revoked_session.id)) is None
-        assert session.scalar(select(AuthSession.id).where(AuthSession.id == active_session.id)) == active_session.id
-        assert session.scalars(select(AuthRateLimit.key_digest).order_by(AuthRateLimit.key_digest)).all() == [
+        assert (
+            session.scalar(select(AuthSession.id).where(AuthSession.id == expired_session.id))
+            is None
+        )
+        assert (
+            session.scalar(select(AuthSession.id).where(AuthSession.id == revoked_session.id))
+            is None
+        )
+        assert (
+            session.scalar(select(AuthSession.id).where(AuthSession.id == active_session.id))
+            == active_session.id
+        )
+        assert session.scalars(
+            select(AuthRateLimit.key_digest).order_by(AuthRateLimit.key_digest)
+        ).all() == [
             b"a" * 32,
             b"b" * 32,
         ]
-        assert session.scalar(select(AuditLog.id).where(AuditLog.trace_id == "cleanup-audit")) is not None
+        assert (
+            session.scalar(select(AuditLog.id).where(AuditLog.trace_id == "cleanup-audit"))
+            is not None
+        )
+        assert session.scalar(select(PasswordReset.user_id)) is None
 
     assert cleanup_auth_state(database.session_factory, now=lambda: now) == CleanupCounts()

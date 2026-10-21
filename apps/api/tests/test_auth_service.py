@@ -47,9 +47,8 @@ def test_blocked_login_skips_user_and_password_lookup(
         "lock_buckets",
         MagicMock(return_value={BucketKey("email", b"e" * 32): blocked}),
     )
-    user_lookup = MagicMock()
+    user_lookup = session.scalar
     password_check = MagicMock()
-    monkeypatch.setattr(service, "get_user_by_normalized_email", user_lookup)
     monkeypatch.setattr(service, "verify_password", password_check)
     monkeypatch.setattr(service, "add_audit_log", MagicMock())
 
@@ -75,7 +74,7 @@ def test_unknown_user_uses_dummy_hash_and_records_both_failure_buckets(
 
     session = MagicMock(spec=Session)
     monkeypatch.setattr(rate_limit_repository.RateLimitRepository, "lock_buckets", MagicMock(return_value={}))
-    monkeypatch.setattr(service, "get_user_by_normalized_email", MagicMock(return_value=None))
+    session.scalar.return_value = None
     password_check = MagicMock(return_value=False)
     monkeypatch.setattr(service, "verify_password", password_check)
     recorded: list[BucketKey] = []
@@ -115,7 +114,7 @@ def test_successful_login_clears_email_bucket_only(monkeypatch: pytest.MonkeyPat
     organization = Organization(id=uuid4(), slug="test-org", name="Test Org")
     membership = Membership(id=uuid4(), org_id=organization.id, user_id=user.id, role="owner")
     monkeypatch.setattr(rate_limit_repository.RateLimitRepository, "lock_buckets", MagicMock(return_value={}))
-    monkeypatch.setattr(service, "get_user_by_normalized_email", MagicMock(return_value=user))
+    session.scalar.return_value = user
     monkeypatch.setattr(service, "verify_password", MagicMock(return_value=True))
     monkeypatch.setattr(
         service,

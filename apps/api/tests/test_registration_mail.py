@@ -89,6 +89,39 @@ def test_real_loopback_smtp_message_preserves_fragment_and_never_includes_passwo
     assert "注册时设置的密码" in content and "请忽略此邮件" in content
 
 
+def test_password_reset_mail_preserves_fragment_and_never_contains_a_password(
+    capture: MailCapture,
+) -> None:
+    sender = SMTPRegistrationMailSender(settings(smtp_port=capture.server_address[1]))
+    url = "http://localhost:5500/password/reset#token=synthetic-reset-proof"
+    sender.send_password_reset("person@example.com", url, datetime(2026, 10, 19, 8, 0, tzinfo=UTC))
+    assert len(capture.messages) == 1
+    message = BytesParser(policy=policy.default).parsebytes(capture.messages[0])
+    assert message["To"] == "person@example.com"
+    content = cast(bytes, message.get_payload(decode=True)).decode("utf-8")
+    assert url in content
+    assert "打开链接本身不会修改账号" in content
+    assert "synthetic-password" not in content
+
+
+def test_existing_account_notices_are_delivered_without_proof_links(
+    capture: MailCapture,
+) -> None:
+    sender = SMTPRegistrationMailSender(settings(smtp_port=capture.server_address[1]))
+    sender.send_registration_notice("person@example.com")
+    sender.send_password_reset_notice("person@example.com")
+    assert len(capture.messages) == 2
+    contents = [
+        cast(
+            bytes, BytesParser(policy=policy.default).parsebytes(raw).get_payload(decode=True)
+        ).decode("utf-8")
+        for raw in capture.messages
+    ]
+    assert "已有账号" in contents[0]
+    assert "没有可通过密码找回的账号" in contents[1]
+    assert all("#token=" not in content for content in contents)
+
+
 @pytest.mark.parametrize("mode", ["starttls", "tls"])
 def test_transport_requires_verified_tls_authentication_and_ten_second_timeout(
     monkeypatch: pytest.MonkeyPatch, mode: str

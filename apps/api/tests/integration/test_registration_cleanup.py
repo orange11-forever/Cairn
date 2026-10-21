@@ -6,7 +6,7 @@ from cairn_api.maintenance.auth_cleanup import cleanup_auth_state
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
 
-from .test_registration_api import register
+from .test_registration_api import register, seed_legacy_pending
 from .test_registration_api import registration_client as client_fixture
 
 registration_client = client_fixture
@@ -20,6 +20,8 @@ def test_cleanup_removes_sensitive_expired_consumed_state_and_old_scoped_limits(
     register(registration_client)
     register(registration_client, "consumed@example.com")
     register(registration_client, "live@example.com")
+    for email in ("new@example.com", "consumed@example.com", "live@example.com"):
+        seed_legacy_pending(database, email)
     with database.session_factory.begin() as session:
         session.execute(
             text(
