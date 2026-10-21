@@ -12,6 +12,12 @@ Web 壳与项目工作台的响应式/可访问性抛光，以及知识向导“
 
 当前核心开发由 FastAPI、PostgreSQL 16/pgvector、S3 兼容 MinIO、独立知识 Worker 与 React/Vite Web 组成；Redis 仍是规划中基础设施。API 默认绑定 `127.0.0.1:8080`，身份与知识数据不使用 SQLite 或内存仓储分叉。未来 Local Web、Compose 与 Helm 必须继续使用同一 `/api/v1` 契约、数据库迁移和权限规则。
 
+## 邮箱密码直接注册
+
+`GET /api/v1/auth/registration` 返回注册开关，默认开启且不需要 SMTP。`POST /api/v1/auth/register` 接受邮箱、12–128 位密码和可选显示名，成功返回 `201 {message}`；事务内创建邮箱未验证的账号、个人组织和 owner 成员关系，不创建登录会话。重复邮箱返回 `409 registration_conflict`，保留已有账号的密码、状态和组织关系。注册要求精确 Origin，并保留邮箱/IP 限流。
+
+旧的注册重发、邮件验证、密码重置申请和确认接口均已弃用，固定返回 `410 email_flow_disabled`；OpenAPI 与 SDK 不再声明其成功响应。历史表及迁移保留，过期数据仍由 `pnpm auth:cleanup` 清理。当前不提供邮件找回，完整契约见[邮箱注册](../../docs/native-registration.md)。
+
 ## 当前工程命令
 
 在仓库根目录运行：
@@ -43,7 +49,7 @@ Docker Desktop 必须保持运行。生产环境必须使用 HTTPS `APP_URL`/`CO
 
 ## 当前能力边界
 
-截至2026-10-14，Stage 3A Task 1–20、项目结构与任务编辑、私有多轮会话、Responses逐段流式回答、模型选择、Skills及多助手管理已接通；完整Agent执行与Provider治理仍在后续阶段。
+截至2026-10-19，Stage 3A Task 1–20、项目结构与任务编辑、私有多轮会话、Responses逐段流式回答、模型选择、Skills、多助手管理及只读项目分析已接通；完整Agent执行与Provider治理仍在后续阶段。
 
 - 已实现：组织、用户、成员关系、Argon2id 密码、Cookie 会话、CSRF、PostgreSQL 登录限流、当前组织查询、项目、任务、任务依赖、状态机、追加式审计、事务性 Outbox 和有界 SSE 查询。
 - 阶段 2.5A 已交付项目范围的组织 RBAC、规范化 ACL、成员角色列表与更新 API。
@@ -421,3 +427,21 @@ ANSWER_MODELS='[{"id":"reasoning","name":"推理模型","model":"your-json-capab
 现有 `/assistant-settings` 继续读取或编辑当前助手，响应增加可空 `id`。创建、配置保存和选择在同一用户的数据库锁下读取活动修订号；切换将新活动配置的 revision 设为原活动 revision+1，避免不同助手的局部修订号相同而让旧请求通过。重复选择当前助手不递增修订号，前提是 expectedRevision 仍匹配。旧修订号返回 `409 assistant_changed`，达到20项上限返回 `409 assistant_limit`。创建没有自动重试；结果未知时通过 GET 重新确认当前助手与列表。
 
 迁移 `0019_multiple_assistants` 保留现有配置的UUID、字段和revision，将其设为活动助手；部分唯一索引保证同一用户/项目最多一个活动助手。新轮次增加 `assistantId` 快照，既有历史仍保留原名称与内容，旧轮次不推断补填ID。存在多个/非活动助手或已保存的助手ID快照时，降级明确拒绝丢弃数据。生成过程中切换或编辑助手会使旧 revision 失效，未提交回答不会按新助手身份保存。
+
+
+## 只读项目分析
+
+`POST /api/v1/projects/{project_id}/analysis` 无请求体，要求有效会话、CSRF 和项目读取权限。使用当前用户在该项目的活动助手模型与行为说明，读取项目描述、阶段、里程碑、任务、依赖，并检索最多5条授权资料片段。返回分析段落、助手/模型元信息、生成时间、检索模式与依据：`S1` 对应完整项目结构快照，`S2`–`S6` 对应知识引用。没有知识命中时仍可基于项目结构分析；检索不代表全量资料审阅。
+
+模型调用前后重新检查会话、项目权限、结构快照及引用资源/来源；变化时返回 `409 project_analysis_changed`，会话失效返回 `401 session_invalid`。未配置/失效模型或模型输出不合约返回 `503`。沿用搜索的用户/组织限流和 `Retry-After`。容量限制为100个任务、50个阶段、50个里程碑、300条依赖及60000字符的结构快照；超限返回 `422 project_analysis_too_large`，不截断任务。
+
+本接口只读取项目并记录不含正文的审计，不创建任务、不应用规划、不保存分析历史，也不执行技能或工具。结果使用 `private, no-store`；Web在切换项目/会话时丢弃结果。当前验收使用受控模型，真实厂商模型仍需外部环境验收。
+
+
+## 只读规划预览
+
+`POST /api/v1/projects/{project_id}/plan-preview` 无请求体，使用与只读项目分析相同的会话、CSRF、读取权限、项目容量、检索限流及生成前后复核。响应 `ProjectPlanPreviewResponse` 包含本次依据快照、助手与模型、检索片段及 `plan`；不保存规划历史，也不创建或修改项目对象。
+
+规划最多5个阶段（`P1`–`P5`）、8个里程碑（`M1`–`M8`）、20个任务（`T1`–`T20`）。节点为本次建议的临时ID，包含引用、目标或验收标准、任务优先级及前置依赖。拒绝重复ID、未知引用、跨阶段里程碑归属、自依赖与循环；模型输出无效返回 `503 answer_unavailable`。资料不足返回 `plan.status=insufficient_evidence` 与原因，节点数组为空。
+
+支持现有四种模型协议，规划请求的输出上限为8192 tokens，仍受256 KiB响应体与既有超时限制。前端依赖图根据验证后的任务依赖自动布局，支持鼠标/键盘定位建议详情；层级不是日期或工期。真实模型质量与外网连通性仍需单独验收。

@@ -93,6 +93,42 @@ async function waitForAuthenticated() {
   await page.waitForSelector(".projects-page");
 }
 
+async function checkDirectRegistration() {
+  const email = `browser-signup-${Date.now()}@example.com`;
+  const password = "  browser-signup-password-2026  ";
+  await page.goto(`${WEB}/register`, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "创建账号", exact: true }).waitFor();
+  await page.setViewportSize({ width: 360, height: 800 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "注册页在窄屏不应横向溢出");
+  expect(await page.getByText(/不会发送邮件/).isVisible(), "注册页应说明不验证邮箱归属且不发邮件");
+  await page.getByLabel("邮箱", { exact: true }).fill(email);
+  await page.getByLabel("密码", { exact: true }).fill(password);
+  const created = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/auth/register");
+  await page.getByRole("button", { name: "创建账号", exact: true }).click();
+  expect((await created).status() === 201, "注册应返回 201");
+  await page.getByRole("heading", { name: "注册成功" }).waitFor();
+  expect(!(await page.context().cookies()).some(cookie => cookie.name === "cairn_session"), "注册不应自动创建登录会话");
+  await page.getByRole("link", { name: "前往登录" }).click();
+  await page.locator("#login-email").fill(email);
+  await page.locator("#login-password").fill(password);
+  await page.locator(".login-submit").click();
+  await waitForAuthenticated();
+  await page.locator(".account-menu summary").click();
+  expect(await page.getByText("个人空间", { exact: true }).isVisible(), "新账号应拥有独立个人空间");
+  await page.locator(".account-menu summary").click();
+  await logout();
+  await page.goto(`${WEB}/register`, { waitUntil: "networkidle" });
+  await page.getByLabel("邮箱", { exact: true }).fill(email);
+  await page.getByLabel("密码", { exact: true }).fill(password);
+  const duplicate = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/auth/register");
+  await page.getByRole("button", { name: "创建账号", exact: true }).click();
+  expect((await duplicate).status() === 409, "重复邮箱应返回 409");
+  await page.getByRole("alert").waitFor();
+  expect(await page.getByRole("heading", { name: "注册成功" }).count() === 0, "重复邮箱不得显示注册成功");
+  expect(!requests.some(url => /\/api\/v1\/auth\/(?:register\/(?:verify|resend)|password\/reset)/.test(url)), "浏览器不得调用已停用的邮件接口");
+  await page.setViewportSize({ width: 1280, height: 900 });
+}
+
 async function checkLoginBoundary() {
   expect(await page.isVisible(".login-card"), "匿名访问应显示登录页");
   await page.click(".login-submit");
@@ -453,6 +489,7 @@ try {
   });
   page.on("pageerror", (error) => jsErrors.push(`pageerror: ${error.message}`));
 
+  await checkDirectRegistration();
   await page.goto(`${WEB}/unknown`, { waitUntil: "networkidle" });
   await page.waitForURL((url) => url.pathname === "/login");
   await checkLoginBoundary();

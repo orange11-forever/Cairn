@@ -12,7 +12,7 @@ test("registration documents get no-store/no-referrer in dev and preview respons
     await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
     const base = `http://127.0.0.1:${server.address().port}`;
     try {
-      for (const path of ["/register", "/register/verify", "/register/verify?harmless=1"]) {
+      for (const path of ["/register", "/register/verify", "/register/verify?harmless=1", "/password/forgot", "/password/reset", "/password/reset?harmless=1"]) {
         const response = await fetch(base + path);
         assert.equal(response.status, 200);
         assert.equal(response.headers.get("cache-control"), "no-store");

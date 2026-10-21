@@ -3,7 +3,6 @@ import type { IdentityContext } from "../api/auth.ts";
 
 import { AuthenticatedLayout } from "../components/AuthenticatedLayout.tsx";
 import { RegistrationForm } from "../components/RegistrationForm.tsx";
-import { EmailVerification } from "../components/EmailVerification.tsx";
 import { LoginForm } from "../components/LoginForm.tsx";
 import { OAuthFinalize } from "../components/OAuthFinalize.tsx";
 import { KnowledgePage } from "../pages/KnowledgePage.tsx";
@@ -79,11 +78,10 @@ function SessionRoutes() {
   );
 }
 
-// Public email proof does not depend on restoring or preparing browser login state.
+// Registration remains available while the existing browser session is restored.
 export function AppRoutes() {
   return <Routes>
     <Route path="/register" element={<RegistrationForm />} />
-    <Route path="/register/verify" element={<EmailVerification />} />
     <Route path="*" element={<SessionRoutes />} />
   </Routes>;
 }

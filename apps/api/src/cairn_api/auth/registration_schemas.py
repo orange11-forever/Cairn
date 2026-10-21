@@ -58,3 +58,27 @@ class RegistrationAccepted(BaseModel):
 class RegistrationVerified(BaseModel):
     model_config = ConfigDict(json_schema_serialization_defaults_required=True)
     message: str = "邮箱验证成功，请使用邮箱和密码登录。"
+
+
+class PasswordResetRequest(BaseModel):
+    email: EmailStr = Field(max_length=320)
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    token: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
+    password: str = Field(min_length=12, max_length=128)
+
+
+class PasswordResetAccepted(BaseModel):
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+    message: str = "如该邮箱有可重置的账号，请查收密码重置邮件。"
+
+
+class PasswordResetCompleted(BaseModel):
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+    message: str = "密码已重置，请重新登录。"
+
+
+class RegistrationCreated(BaseModel):
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+    message: str = "账号已创建，请使用邮箱和密码登录。邮箱仅作为登录标识。"

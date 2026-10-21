@@ -221,7 +221,7 @@ class Settings(BaseSettings):
                     raise ValueError("OAuth requires APP_URL and same-origin API proxy")
         return self
 
-    registration_enabled: bool = Field(default=False, validation_alias="CAIRN_REGISTRATION_ENABLED")
+    registration_enabled: bool = Field(default=True, validation_alias="CAIRN_REGISTRATION_ENABLED")
     smtp_host: str | None = Field(default=None, min_length=1, max_length=253, validation_alias="CAIRN_SMTP_HOST")
     smtp_port: int = Field(default=587, ge=1, le=65535, validation_alias="CAIRN_SMTP_PORT")
     smtp_security: Literal["starttls", "tls", "plain"] = Field(default="starttls", validation_alias="CAIRN_SMTP_SECURITY")
@@ -246,9 +246,9 @@ class Settings(BaseSettings):
                 loopback = host.lower() == "localhost"
             if self.environment != "test" or not loopback:
                 raise ValueError("plaintext SMTP is limited to explicit test loopback capture")
-        if self.registration_enabled and self.smtp_host and self.smtp_from:
+        if self.smtp_host and self.smtp_from:
             if self.app_url is None:
-                raise ValueError("registration requires APP_URL")
+                raise ValueError("email links require APP_URL")
             if self.smtp_security != "plain" and not self.smtp_username:
                 raise ValueError("SMTP requires authentication")
         return self

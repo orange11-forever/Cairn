@@ -434,32 +434,30 @@ test("SDK queues and polls sync with exact routes, credentials, CSRF and empty J
   assert.ok(calls.every((request) => request.credentials === "include"));
 });
 
-test("registration SDK preserves exact credentialed requests and validates public proof contracts", async () => {
+test("registration SDK preserves passwords and validates direct signup responses", async () => {
   const calls = [];
   const client = createCairnClient({ baseUrl: "https://api.cairn.test", fetch: async request => {
     calls.push(request);
-    return Response.json(request.method === "GET" ? { enabled: true } : { message: "accepted", registrationReceipt: "receipt", resendAfterSeconds: 60 }, { status: request.method === "GET" ? 200 : 202 });
+    if (request.method === "GET") return Response.json({ enabled: true });
+    if (new URL(request.url).pathname === "/api/v1/auth/register") return Response.json({ message: "created" }, { status: 201 });
+    return Response.json({ code: "email_flow_disabled", message: "disabled", traceId: "trace" }, { status: 410 });
   } });
   await client.GET("/api/v1/auth/registration");
-  await client.POST("/api/v1/auth/register", { body: { email: "new@example.com", password: "  original-password-2026  " } });
-  await client.POST("/api/v1/auth/register/resend", { body: { email: "new@example.com", password: "  original-password-2026  ", registrationReceipt: "receipt" } });
-  await client.POST("/api/v1/auth/register/verify", { body: { token: "token", password: "  original-password-2026  " } });
-  assert.deepEqual(calls.map(request => new URL(request.url).pathname), ["/api/v1/auth/registration", "/api/v1/auth/register", "/api/v1/auth/register/resend", "/api/v1/auth/register/verify"]);
+  const created = await client.POST("/api/v1/auth/register", { body: { email: "new@example.com", password: "  original-password-2026  " } });
+  assert.equal(created.response.status, 201);
+  assert.deepEqual(created.data, { message: "created" });
   assert.ok(calls.every(request => request.credentials === "include"));
   assert.equal((await calls[1].json()).password, "  original-password-2026  ");
   assert.equal(matchesComponentSchema("RegistrationAvailability", { enabled: true }), true);
   assert.equal(matchesComponentSchema("RegistrationAvailability", {}), false);
-  const accepted = { message: "accepted", registrationReceipt: "receipt", resendAfterSeconds: 60 };
-  assert.equal(matchesComponentSchema("RegistrationAccepted", accepted), true);
-  for (const key of Object.keys(accepted)) {
-    const missing = { ...accepted }; delete missing[key];
-    assert.equal(matchesComponentSchema("RegistrationAccepted", missing), false, key);
+  assert.equal(matchesComponentSchema("RegistrationCreated", { message: "created" }), true);
+  assert.equal(matchesComponentSchema("RegistrationCreated", {}), false);
+  for (const path of ["register/resend", "register/verify", "password/reset/request", "password/reset/confirm"]) {
+    const retired = await client.POST(`/api/v1/auth/${path}`);
+    assert.equal(retired.data, undefined);
+    assert.equal(retired.error.code, "email_flow_disabled");
+    assert.equal(retired.response.status, 410);
   }
-  assert.equal(matchesComponentSchema("RegistrationVerified", { message: "verified" }), true);
-  for (const token of ["☃", "token\n", "x".repeat(129)]) {
-    assert.equal(matchesComponentSchema("RegistrationVerifyRequest", { token, password: "original-password" }), false);
-  }
-  assert.equal(matchesComponentSchema("RegistrationVerifyRequest", { token: "safe-token_1", password: "original-password" }), true);
 });
 
 test("task edit request matcher requires revision plus an editable field and preserves nullable clearing", () => {
