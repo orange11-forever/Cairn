@@ -4,6 +4,9 @@ import { knowledgeContractError, knowledgeRequestError, knowledgeResponseError }
 
 export type ProjectPlanPreviewResponse = components["schemas"]["ProjectPlanPreviewResponse"];
 export type ProposedTask = components["schemas"]["ProposedTask"];
+export type ProjectPlanApplication = components["schemas"]["ProjectPlanApplicationResponse"];
+export type ProjectPlanApplicationPage = components["schemas"]["ProjectPlanApplicationPage"];
+export type ProjectPlanApplyRequest = components["schemas"]["ProjectPlanApplyRequest"];
 
 function parseJson(value: unknown): unknown {
   if (typeof value !== "string") return value;
@@ -32,6 +35,58 @@ function validPlan(response: ProjectPlanPreviewResponse, projectId: string): boo
     ready.forEach(task => resolved.add(task.id));
   }
   return true;
+}
+
+function validApplication(value: ProjectPlanApplication, projectId: string): boolean {
+  if (value.projectId !== projectId || value.plan.status !== "planned") return false;
+  const groups = [[value.plan.stages, value.stageIds], [value.plan.milestones, value.milestoneIds], [value.plan.tasks, value.taskIds]] as const;
+  const ids: string[] = [];
+  for (const [items, mapping] of groups) {
+    if (Object.keys(mapping).length !== items.length || items.some(item => !mapping[item.id])) return false;
+    ids.push(...Object.values(mapping));
+  }
+  return new Set(ids).size === ids.length;
+}
+
+export async function applyProjectPlan({projectId, csrfToken, payload, signal}: {
+  projectId: string; csrfToken: string; payload: ProjectPlanApplyRequest; signal: AbortSignal;
+}): Promise<ProjectPlanApplication> {
+  const context="POST /api/v1/projects/{project_id}/plans";
+  try {
+    const {data,error,response}=await createCairnClient({baseUrl:apiOrigins.identity}).POST("/api/v1/projects/{project_id}/plans",{
+      params:{path:{project_id:projectId},header:{"X-CSRF-Token":csrfToken}},body:payload,parseAs:"text",signal,
+    });
+    if(response.status!==200 && response.status!==201) throw knowledgeResponseError(parseJson(error),response,context);
+    const parsed=parseJson(data);
+    if(!matchesComponentSchema("ProjectPlanApplicationResponse",parsed) || !validApplication(parsed,projectId) || parsed.operationId!==payload.operationId) throw knowledgeContractError(context);
+    return parsed;
+  } catch(error) {throw knowledgeRequestError(error,context,signal);}
+}
+
+export async function fetchAppliedProjectPlan({projectId,operationId,signal}:{projectId:string;operationId:string;signal:AbortSignal}):Promise<ProjectPlanApplication> {
+  const context="GET /api/v1/projects/{project_id}/plans/{operation_id}";
+  try {
+    const {data,error,response}=await createCairnClient({baseUrl:apiOrigins.identity}).GET("/api/v1/projects/{project_id}/plans/{operation_id}",{
+      params:{path:{project_id:projectId,operation_id:operationId}},parseAs:"text",signal,
+    });
+    if(response.status!==200) throw knowledgeResponseError(parseJson(error),response,context);
+    const parsed=parseJson(data);
+    if(!matchesComponentSchema("ProjectPlanApplicationResponse",parsed) || !validApplication(parsed,projectId) || parsed.operationId!==operationId) throw knowledgeContractError(context);
+    return parsed;
+  } catch(error) {throw knowledgeRequestError(error,context,signal);}
+}
+
+export async function fetchAppliedProjectPlans({projectId,cursor,signal}:{projectId:string;cursor?:string|null;signal:AbortSignal}):Promise<ProjectPlanApplicationPage> {
+  const context="GET /api/v1/projects/{project_id}/plans";
+  try {
+    const {data,error,response}=await createCairnClient({baseUrl:apiOrigins.identity}).GET("/api/v1/projects/{project_id}/plans",{
+      params:{path:{project_id:projectId},query:{cursor:cursor??undefined,limit:10}},parseAs:"text",signal,
+    });
+    if(response.status!==200) throw knowledgeResponseError(parseJson(error),response,context);
+    const parsed=parseJson(data);
+    if(!matchesComponentSchema("ProjectPlanApplicationPage",parsed) || parsed.items.some(item=>!validApplication(item,projectId))) throw knowledgeContractError(context);
+    return parsed;
+  } catch(error) {throw knowledgeRequestError(error,context,signal);}
 }
 
 export async function previewProjectPlan({projectId, csrfToken, signal}: {

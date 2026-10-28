@@ -19,6 +19,9 @@ apps/web/screenshots/
 .codex/
 AGENTS.md
 .superpowers/
+.impeccable/
+.playwright-cli/
+output/
 docs/specs/
 docs/archive/
 docs/superpowers/
@@ -29,6 +32,10 @@ docs/superpowers/
 .remember/
 docs/*-handoff.md
 docs/*-dev-plan.md
+docs/stage-3b-feishu-credentials-plan.md
+docs/stage-3b-feishu-sources-plan.md
+docs/stage-3b-resume-plan.md
+docs/stage-3b-source-revocation-plan.md
 
 # 环境变量：含密钥，绝不进仓库。
 # .env.example 是进仓库的——它告诉部署者有哪些东西可配。

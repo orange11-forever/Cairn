@@ -34,6 +34,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   useLayoutEffect(() => {
     document.documentElement.dataset.theme = resolvedTheme;
+    const desktop = (window as Window & { chrome?: { webview?: { postMessage(message: string): void } } }).chrome?.webview;
+    desktop?.postMessage(`cairn:theme:${resolvedTheme}`);
   }, [resolvedTheme]);
 
   function setPreference(next: ThemePreference): void {

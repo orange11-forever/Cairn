@@ -9,6 +9,7 @@ import {
 import { matchesComponentSchema } from "@cairn/sdk";
 import { useAbortableAction } from "../../hooks/useAbortableAction.ts";
 import { ApiError } from "../../api/errors.ts";
+import { hoursToMinutes, minutesToHours } from "../../lib/effort.ts";
 import { useAssigneesQuery, useProjectQuery, useStagesQuery, useMilestonesQuery } from "../../queries/projects.ts";
 
 function localDate(value: string | null) {
@@ -63,6 +64,8 @@ export function TaskEditor({
   const groupingBlocked = project.isError || !project.data?.revision || Boolean(incompatible) || archivedGrouping;
   const [title, setTitle] = useState(task?.title ?? "");
   const [description, setDescription] = useState(task?.description ?? "");
+  const [estimatedEffort, setEstimatedEffort] = useState(minutesToHours(task?.estimatedEffortMinutes));
+  const [remainingEffort, setRemainingEffort] = useState(minutesToHours(task?.remainingEffortMinutes));
   const [acceptance, setAcceptance] = useState(task?.acceptanceCriteria ?? "");
   const [priority, setPriority] = useState<Task["priority"]>(
     task?.priority ?? "medium",
@@ -143,11 +146,16 @@ export function TaskEditor({
         event.preventDefault();
         if (save.pending || disabled || conflict || committed || groupingBlocked) return;
         setNotice("");
+        let estimatedMinutes: number | null, remainingMinutes: number | null;
+        try {estimatedMinutes=hoursToMinutes(estimatedEffort);remainingMinutes=hoursToMinutes(remainingEffort);}
+        catch(error) {setNotice(error instanceof Error?error.message:"请检查工时输入。");return;}
         let body: TaskCreate | TaskUpdate;
         if (!baseline) {
           body = {
             title: title.trim(),
             description: description || null,
+            estimatedEffortMinutes: estimatedMinutes,
+            remainingEffortMinutes: remainingMinutes,
             acceptanceCriteria: acceptance || null,
             priority,
             dueAt: due ? new Date(due).toISOString() : null,
@@ -158,6 +166,8 @@ export function TaskEditor({
           };
         } else {
           const edits: Record<string, unknown> = {};
+          if(estimatedMinutes !== (baseline.estimatedEffortMinutes??null))edits.estimatedEffortMinutes=estimatedMinutes;
+          if(remainingMinutes !== (baseline.remainingEffortMinutes??null))edits.remainingEffortMinutes=remainingMinutes;
           if (title.trim() !== baseline.title) edits.title = title.trim();
           if (description !== (baseline.description ?? ""))
             edits.description = description || null;
@@ -189,6 +199,8 @@ export function TaskEditor({
           setBaseline(result);
           setTitle(result.title);
           setDescription(result.description ?? "");
+          setEstimatedEffort(minutesToHours(result.estimatedEffortMinutes));
+          setRemainingEffort(minutesToHours(result.remainingEffortMinutes));
           setAcceptance(result.acceptanceCriteria ?? "");
           setPriority(result.priority);
           setAssignee(result.assigneeUserId ?? "");
@@ -293,6 +305,11 @@ export function TaskEditor({
             </button>
           </div>
         </div>
+        <div className="task-editor-fields">
+          <div><label htmlFor={`${id}-estimated-effort`}>初始估算（人时）</label><input id={`${id}-estimated-effort`} type="number" min="0" step="any" value={estimatedEffort} onChange={event=>setEstimatedEffort(event.target.value)}/></div>
+          <div><label htmlFor={`${id}-remaining-effort`}>剩余工作量（人时）</label><input id={`${id}-remaining-effort`} type="number" min="0" step="any" value={remainingEffort} onChange={event=>setRemainingEffort(event.target.value)}/></div>
+        </div>
+        <p className="project-analysis-scope">留空表示未知，0表示没有剩余工作量；剩余量可以超过初始估算。保存时按最近整分钟记录，不会自动更改任务状态。</p>
         <label htmlFor={`${id}-acceptance`}>验收标准</label>
         <textarea
           id={`${id}-acceptance`}

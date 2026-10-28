@@ -1540,10 +1540,10 @@ async function readProductBrandAppearance(page, screenshot) {
   );
 }
 
-async function waitForLoginBrandScenePaint(page) {
+export async function waitForLoginBrandScenePaint(page) {
   await page.waitForFunction(
     () => {
-      const mark = document.querySelector(".login-wordmark .cairn-brand-mark svg");
+      const mark = document.querySelector(".auth-header .cairn-brand-mark svg");
       const image = document.querySelector(
         ".login-brand-scene .mascot-figure[data-variant='full'] .mascot-art > img",
       );
@@ -1566,12 +1566,12 @@ async function waitForLoginBrandScenePaint(page) {
   });
 }
 
-async function readLoginBrandScene(page) {
+export async function readLoginBrandScene(page) {
   return page.evaluate(() => {
     const scene = document.querySelector(".login-brand-scene");
     const state = document.querySelector(".login-brand-scene .mascot-state");
     if (scene === null) return null;
-    const chip = document.querySelector(".login-wordmark-chip");
+    const chip = document.querySelector(".auth-header .cairn-brand-mark");
     const mascot = document.querySelector(
       ".login-brand-scene .mascot-figure[data-variant='full'] .mascot-art > img, " +
         ".login-brand-scene .mascot-figure[data-variant='full'] .mascot-image-fallback",
@@ -1579,22 +1579,30 @@ async function readLoginBrandScene(page) {
     const card = document.querySelector(".login-card");
     const mascotFigure = mascot?.closest(".mascot-figure");
     const sceneStyle = getComputedStyle(scene);
-    const mark = chip?.querySelector(".cairn-brand-mark svg");
+    const mark = chip?.querySelector("svg");
     const chipRect = chip?.getBoundingClientRect();
     const mascotRect = mascot?.getBoundingClientRect();
     const stateRect = state?.getBoundingClientRect();
+    const canvasColor = getComputedStyle(document.querySelector(".login-page")).backgroundColor;
+    const luminance = color => color.match(/[\d.]+/g).slice(0, 3).map(Number).map(channel => {
+      const value = channel / 255;
+      return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    }).reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0);
+    const foreground = state === null ? 0 : luminance(getComputedStyle(state).color);
+    const background = luminance(canvasColor);
+
     return {
+      stateContrast: (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05),
+      brandWithinViewport: chipRect !== undefined && chipRect.left >= 0 && chipRect.right <= innerWidth,
+      mascotWithinViewport: mascotRect !== undefined && mascotRect.left >= 0 && mascotRect.right <= innerWidth,
+      settingsPresent: document.querySelector(".desktop-settings") !== null,
+      cardDecoration: card === null ? null : getComputedStyle(card, "::before").content,
       backgroundImage: sceneStyle.backgroundImage,
       backgroundColor: sceneStyle.backgroundColor,
       wordmarkPathCount: mark?.querySelectorAll("path").length ?? 0,
       wordmarkText: chip?.textContent?.trim() ?? null,
       overflow: sceneStyle.overflow,
       position: sceneStyle.position,
-      // 状态文字压在深色渐变上，必须是纯白。
-      // 设计阶段实测：#ffffff 在渐变最亮处 #3a6fb0 上是 5.15:1（AA 要求 4.5:1）；
-      // 原来的 --color-muted #596675 只有 1.14:1，等于看不见。
-      // 这里断言颜色值而不是算对比度：渐变背景取不到"文字底下那一点的实际颜色"，
-      // 断言一个已经算过的确定值比在运行时近似计算更可靠。
       stateColor: state === null ? null : getComputedStyle(state).color,
       // 三角装饰用 ::before / ::after 的 border 画法。
       // borderBottomWidth 非 0 说明三角形真的画出来了。
@@ -1706,7 +1714,7 @@ export async function checkLoginMascotFallback({ page, expect, screenshotDir, vi
     const appearance = await fallback.evaluate(async (image) => {
       await image.decode();
       const scene = image.closest(".login-brand-scene");
-      const background = getComputedStyle(scene).backgroundColor.match(/[\d.]+/g).slice(0, 3).map(Number);
+      const background = getComputedStyle(scene.closest(".login-page")).backgroundColor.match(/[\d.]+/g).slice(0, 3).map(Number);
       const luminance = (rgb) => rgb.map((channel) => {
         const value = channel / 255;
         return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
@@ -2131,13 +2139,13 @@ export async function checkResponsiveFoundation({
       }
       expect(
         brandScene.backgroundImage === "none" &&
-          brandScene.backgroundColor === "rgb(24, 35, 50)",
-        `${viewport.name} 登录品牌区应使用克制的深色实底，实际为 ${brandScene.backgroundColor} / ${brandScene.backgroundImage}`,
+          brandScene.backgroundColor === "rgba(0, 0, 0, 0)",
+        `${viewport.name} 登录品牌区应融入页面背景，实际为 ${brandScene.backgroundColor} / ${brandScene.backgroundImage}`,
       );
       expect(brandScene.position === "relative", `${viewport.name} 品牌区应保持稳定定位`);
       expect(
-        brandScene.stateColor === "rgb(255, 255, 255)",
-        `${viewport.name} 岑宁状态文字应保持可读白色，实际为 ${brandScene.stateColor}`,
+        brandScene.stateContrast >= 4.5,
+        `${viewport.name} 岑宁状态文字对比度应至少为4.5:1，实际为 ${brandScene.stateContrast}`,
       );
       expect(
         brandScene.wordmarkChipPresent && brandScene.wordmarkChipVisible &&
@@ -2169,15 +2177,12 @@ export async function checkResponsiveFoundation({
         `${viewport.name} 看板娘状态文字必须可见且占据实际布局空间`,
       );
       expect(
-        brandScene.cardHairlineHeight === "4px" &&
-          brandScene.cardHairlineBackground === "none",
-        `${viewport.name} 登录卡片应保留简洁状态细线，实际为 ${brandScene.cardHairlineHeight} / ${brandScene.cardHairlineBackground}`,
+        brandScene.cardDecoration === "none",
+        `${viewport.name} 登录表单不应保留旧装饰细线`,
       );
       expect(
-        brandScene.overflow === "hidden" &&
-          brandScene.wordmarkChipZIndex === "1" &&
-          brandScene.mascotZIndex === "1",
-        `${viewport.name} 矢量品牌与岑宁应保持在裁切容器内可见`,
+        brandScene.brandWithinViewport && brandScene.mascotWithinViewport && !brandScene.settingsPresent,
+        `${viewport.name} 品牌与岑宁应在视口内可见，未登录不应展示桌面设置`,
       );
       if (viewport.width < 600) {
         expect(

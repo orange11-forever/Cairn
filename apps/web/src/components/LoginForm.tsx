@@ -127,9 +127,9 @@ export function LoginForm({ onSuccess, oauthOutcome }: LoginFormProps) {
 
   return (
     <main className="login-page">
+      <header className="auth-header"><BrandMark /></header>
       <div className="login-layout">
         <section className="login-brand-scene" aria-label="Cairn 品牌场景">
-          <span className="login-wordmark-chip login-wordmark"><BrandMark /></span>
           <MascotFigure variant="full" state="idle" label="岑宁，Cairn 知识向导"
             idleCaption="岑宁，知识向导" />
         </section>
@@ -137,7 +137,7 @@ export function LoginForm({ onSuccess, oauthOutcome }: LoginFormProps) {
         <section className="login-card" aria-labelledby="login-title">
           <h1 id="login-title">登录 Cairn</h1>
           <OAuthNotice outcome={oauthOutcome} />
-          <p>使用邮箱密码或第三方账号，进入你的知识空间。</p>
+          <p>进入你的知识空间，继续未完成的探索。</p>
 
           {/*
             noValidate 关掉浏览器自带的表单校验。

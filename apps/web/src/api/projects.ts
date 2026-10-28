@@ -210,6 +210,27 @@ export type TaskUpdate = components["schemas"]["TaskUpdateRequest"];
 export type AssigneePage = components["schemas"]["AssigneePage"];
 export type DependencyPage = components["schemas"]["DependencyPage"];
 export type Dependency = components["schemas"]["DependencyResponse"];
+export function createProject({body, csrfToken, signal}: {body:components["schemas"]["ProjectCreateRequest"]; csrfToken:string; signal:AbortSignal}): Promise<Project> {
+  return taskRequest("POST project", signal, () => projectsClient().POST("/api/v1/projects", {
+    body, params:{header:{"X-CSRF-Token":csrfToken}}, signal,
+  }), (data): data is Project => matchesComponentSchema("ProjectResponse",data), 201);
+}
+
+export type ProjectTaskGraph = components["schemas"]["ProjectTaskGraphResponse"];
+
+export function fetchProjectTaskGraph({projectId, signal}: {projectId: string; signal: AbortSignal}): Promise<ProjectTaskGraph> {
+  return taskRequest("GET task graph", signal, () => projectsClient().GET("/api/v1/projects/{project_id}/task-graph", {
+    params: {path: {project_id: projectId}}, signal,
+  }), (data): data is ProjectTaskGraph => {
+    if (!matchesComponentSchema("ProjectTaskGraphResponse", data) || data.project.id !== projectId) return false;
+    const tasks = new Set(data.tasks.map(task => task.id));
+    const stages = new Set(data.stages.map(stage => stage.id));
+    const milestones = new Set(data.milestones.map(milestone => milestone.id));
+    return tasks.size === data.tasks.length && stages.size === data.stages.length && milestones.size === data.milestones.length
+      && data.tasks.every(task => task.projectId === projectId && (task.stageId === null || stages.has(task.stageId)) && (task.milestoneId === null || milestones.has(task.milestoneId)))
+      && data.dependencies.every(edge => tasks.has(edge.predecessorTaskId) && tasks.has(edge.successorTaskId));
+  });
+}
 
 async function taskRequest<T>(
   context: string,

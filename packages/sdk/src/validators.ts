@@ -62,6 +62,7 @@ function matchesStringFormat(format: unknown, value: string): boolean {
   }
   if (format === "email") return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
   if (format === "date-time") return matchesDateTime(value);
+  if (format === "date") return /^(?!0000)\d{4}-\d{2}-\d{2}$/.test(value) && matchesDateTime(`${value}T00:00:00Z`);
   return true;
 }
 

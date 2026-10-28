@@ -188,11 +188,14 @@ def run_once(
     handlers: Mapping[JobKind, JobHandler],
     now: Now | None = None,
     heartbeat_factory: HeartbeatFactory = HeartbeatController,
+    indexing_enabled: bool = True,
 ) -> bool:
     ensure_complete_handlers(handlers)
     owner = validate_worker_id(worker_id)
     current_time = now or (lambda: datetime.now(UTC))
-    claimable_job_kinds = frozenset(handlers)
+    claimable_job_kinds = frozenset(
+        kind for kind in handlers if indexing_enabled or kind != JobKind.INDEX_RESOURCE_VERSION
+    )
     with _transaction(session_factory) as session:
         claim = claim_next_job(
             session,
@@ -313,6 +316,7 @@ class WorkerRuntime(Runtime):
         handlers: Mapping[JobKind, JobHandler],
         worker_id: str,
         embedding_readiness: Callable[[Settings], None] = check_embedding_ready,
+        indexing_enabled: bool = True,
     ) -> None:
         self._settings = settings
         self._database = database
@@ -320,12 +324,15 @@ class WorkerRuntime(Runtime):
         self._handlers = dict(handlers)
         self._worker_id = validate_worker_id(worker_id)
         self._embedding_readiness = embedding_readiness
+        self._indexing_enabled = indexing_enabled
         self._stop = Event()
 
     def preflight(self) -> None:
         ensure_complete_handlers(self._handlers)
         self._database.check_ready()
         self._object_store.check_ready()
+        if not self._indexing_enabled:
+            return
         with self._database.session_factory() as session:
             profiles = list(
                 session.scalars(
@@ -346,6 +353,7 @@ class WorkerRuntime(Runtime):
             session_factory=self._database.session_factory,
             worker_id=self._worker_id,
             handlers=self._handlers,
+            indexing_enabled=self._indexing_enabled,
         )
 
     def _request_stop(self, _signum: int, _frame: FrameType | None) -> None:

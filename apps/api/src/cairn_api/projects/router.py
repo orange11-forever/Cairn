@@ -18,6 +18,8 @@ from cairn_api.db.session import get_db
 from cairn_api.errors import ErrorBody
 from cairn_api.pagination import load_cursor_page
 from cairn_api.projects.events import materialize_project_event_frames
+from cairn_api.projects.graph_schemas import ProjectTaskGraphResponse
+from cairn_api.projects.graph_service import ProjectGraphService
 from cairn_api.projects.schemas import (
     AssigneePage,
     DependencyPage,
@@ -209,6 +211,8 @@ def create_task(
         assignee_user_id=payload.assignee_user_id,
         milestone_id=payload.milestone_id,
         expected_project_revision=payload.expected_project_revision,
+        estimated_effort_minutes=payload.estimated_effort_minutes,
+        remaining_effort_minutes=payload.remaining_effort_minutes,
         audit=audit,
     )
 
@@ -236,6 +240,16 @@ def list_project_tasks(
             limit=limit,
         ),
     )
+
+
+@router.get(
+    "/projects/{project_id}/task-graph",
+    response_model=ProjectTaskGraphResponse,
+    responses={**AUTHENTICATED_ERRORS, 404: {"description": "项目不存在或无读取权限", "model": ErrorBody},
+               422: {"description": "项目超出完整节点图显示上限", "model": ErrorBody}},
+)
+def project_task_graph(project_id: UUID, identity: CurrentIdentity, session: SessionDependency) -> ProjectTaskGraphResponse:
+    return ProjectGraphService(session).read(identity=identity, project_id=project_id)
 
 
 @router.patch(

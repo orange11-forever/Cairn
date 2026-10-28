@@ -201,35 +201,13 @@ class ProjectService:
         assignee_user_id: UUID | None = None,
         milestone_id: UUID | None = None,
         expected_project_revision: int | None = None,
+        estimated_effort_minutes: int | None = None,
+        remaining_effort_minutes: int | None = None,
         audit: RequestAuditContext,
     ) -> TaskResponse:
-        org_id = identity.organization.id
         with self._session.begin():
-            project = self._locked_project(identity, project_id)
-            self._check_project_revision(project, expected_project_revision)
-            self._validate_grouping(identity, project_id, stage_id, milestone_id)
-            if stage_id is not None:
-                stage = repository.get_stage(
-                    self._session,
-                    org_id=org_id,
-                    project_id=project_id,
-                    stage_id=stage_id,
-                )
-                if stage is None:
-                    raise _not_found()
-            if parent_task_id is not None:
-                parent = repository.get_task(
-                    self._session,
-                    org_id=org_id,
-                    task_id=parent_task_id,
-                    project_id=project_id,
-                )
-                if parent is None:
-                    raise _not_found()
-            self._validate_assignee(identity, project_id, assignee_user_id)
-            task = repository.create_task(
-                self._session,
-                org_id=org_id,
+            return self._create_task_in_transaction(
+                identity=identity,
                 project_id=project_id,
                 title=title,
                 stage_id=stage_id,
@@ -240,25 +218,88 @@ class ProjectService:
                 description=description,
                 assignee_user_id=assignee_user_id,
                 milestone_id=milestone_id,
-            )
-            self._audit(
-                identity=identity,
+                expected_project_revision=expected_project_revision,
+                estimated_effort_minutes=estimated_effort_minutes,
+                remaining_effort_minutes=remaining_effort_minutes,
                 audit=audit,
-                action="task.created",
-                resource_type="task",
-                resource_id=task.id,
             )
-            self._outbox(
+
+    def _create_task_in_transaction(
+        self,
+        *,
+        identity: IdentityContextResponse,
+        project_id: UUID,
+        title: str,
+        stage_id: UUID | None,
+        parent_task_id: UUID | None,
+        priority: str,
+        due_at: datetime | None,
+        acceptance_criteria: str | None,
+        description: str | None = None,
+        assignee_user_id: UUID | None = None,
+        milestone_id: UUID | None = None,
+        expected_project_revision: int | None = None,
+        estimated_effort_minutes: int | None = None,
+        remaining_effort_minutes: int | None = None,
+        audit: RequestAuditContext,
+    ) -> TaskResponse:
+        org_id = identity.organization.id
+        project = self._locked_project(identity, project_id)
+        self._check_project_revision(project, expected_project_revision)
+        self._validate_grouping(identity, project_id, stage_id, milestone_id)
+        if stage_id is not None:
+            stage = repository.get_stage(
+                self._session,
                 org_id=org_id,
-                event_type="task.created",
                 project_id=project_id,
-                payload={
-                    "projectId": str(project_id),
-                    "taskId": str(task.id),
-                    "status": task.status,
-                    "revision": task.revision,
-                },
+                stage_id=stage_id,
             )
+            if stage is None:
+                raise _not_found()
+        if parent_task_id is not None:
+            parent = repository.get_task(
+                self._session,
+                org_id=org_id,
+                task_id=parent_task_id,
+                project_id=project_id,
+            )
+            if parent is None:
+                raise _not_found()
+        self._validate_assignee(identity, project_id, assignee_user_id)
+        task = repository.create_task(
+            self._session,
+            org_id=org_id,
+            project_id=project_id,
+            title=title,
+            stage_id=stage_id,
+            parent_task_id=parent_task_id,
+            priority=priority,
+            due_at=due_at,
+            acceptance_criteria=acceptance_criteria,
+            description=description,
+            assignee_user_id=assignee_user_id,
+            milestone_id=milestone_id,
+            estimated_effort_minutes=estimated_effort_minutes,
+            remaining_effort_minutes=remaining_effort_minutes,
+        )
+        self._audit(
+            identity=identity,
+            audit=audit,
+            action="task.created",
+            resource_type="task",
+            resource_id=task.id,
+        )
+        self._outbox(
+            org_id=org_id,
+            event_type="task.created",
+            project_id=project_id,
+            payload={
+                "projectId": str(project_id),
+                "taskId": str(task.id),
+                "status": task.status,
+                "revision": task.revision,
+            },
+        )
         return TaskResponse.model_validate(task)
 
     def list_project_tasks(
@@ -297,42 +338,59 @@ class ProjectService:
         expected_revision: int | None = None,
         audit: RequestAuditContext,
     ) -> TaskResponse:
-        org_id = identity.organization.id
         with self._session.begin():
-            task = self._locked_task(identity, task_id)
-            self._check_revision(task, expected_revision)
-            if requested_status not in ALLOWED_TASK_TRANSITIONS.get(
-                task.status,
-                frozenset(),
-            ):
-                raise _invalid_state_transition()
-            updated_task = repository.set_task_status(
-                self._session,
-                org_id=org_id,
-                task_id=task_id,
-                current_status=task.status,
-                requested_status=requested_status,
-            )
-            if updated_task is None:
-                raise _invalid_state_transition()
-            self._audit(
+            return self._transition_task_in_transaction(
                 identity=identity,
+                task_id=task_id,
+                requested_status=requested_status,
+                expected_revision=expected_revision,
                 audit=audit,
-                action="task.status_changed",
-                resource_type="task",
-                resource_id=updated_task.id,
             )
-            self._outbox(
-                org_id=org_id,
-                event_type="task.status_changed",
-                project_id=updated_task.project_id,
-                payload={
-                    "projectId": str(updated_task.project_id),
-                    "taskId": str(updated_task.id),
-                    "status": updated_task.status,
-                    "revision": updated_task.revision,
-                },
-            )
+
+    def _transition_task_in_transaction(
+        self,
+        *,
+        identity: IdentityContextResponse,
+        task_id: UUID,
+        requested_status: str,
+        expected_revision: int | None = None,
+        audit: RequestAuditContext,
+    ) -> TaskResponse:
+        org_id = identity.organization.id
+        task = self._locked_task(identity, task_id)
+        self._check_revision(task, expected_revision)
+        if requested_status not in ALLOWED_TASK_TRANSITIONS.get(
+            task.status,
+            frozenset(),
+        ):
+            raise _invalid_state_transition()
+        updated_task = repository.set_task_status(
+            self._session,
+            org_id=org_id,
+            task_id=task_id,
+            current_status=task.status,
+            requested_status=requested_status,
+        )
+        if updated_task is None:
+            raise _invalid_state_transition()
+        self._audit(
+            identity=identity,
+            audit=audit,
+            action="task.status_changed",
+            resource_type="task",
+            resource_id=updated_task.id,
+        )
+        self._outbox(
+            org_id=org_id,
+            event_type="task.status_changed",
+            project_id=updated_task.project_id,
+            payload={
+                "projectId": str(updated_task.project_id),
+                "taskId": str(updated_task.id),
+                "status": updated_task.status,
+                "revision": updated_task.revision,
+            },
+        )
         return TaskResponse.model_validate(updated_task)
 
     def add_dependency(
@@ -344,65 +402,82 @@ class ProjectService:
         expected_revision: int | None = None,
         audit: RequestAuditContext,
     ) -> DependencyResponse:
-        org_id = identity.organization.id
         with self._session.begin():
-            successor = self._locked_task(identity, successor_task_id)
-            self._check_revision(successor, expected_revision)
-            if predecessor_task_id == successor_task_id:
-                raise _invalid_dependency()
-            predecessor = repository.get_task(
-                self._session,
-                org_id=org_id,
-                task_id=predecessor_task_id,
-                project_id=successor.project_id,
-                for_update=True,
-            )
-            if predecessor is None:
-                raise _invalid_dependency()
-            existing = repository.get_dependency(
-                self._session,
-                org_id=org_id,
-                predecessor_task_id=predecessor_task_id,
-                successor_task_id=successor_task_id,
-            )
-            if existing is not None:
-                raise _dependency_exists()
-            if repository.dependency_path_exists(
-                self._session,
-                org_id=org_id,
-                start_task_id=successor_task_id,
-                target_task_id=predecessor_task_id,
-            ):
-                raise _dependency_cycle()
-            dependency = repository.create_dependency(
-                self._session,
-                org_id=org_id,
-                project_id=successor.project_id,
-                predecessor_task_id=predecessor_task_id,
-                successor_task_id=successor_task_id,
-            )
-            successor.revision += 1
-            self._session.flush()
-            self._audit(
+            return self._add_dependency_in_transaction(
                 identity=identity,
+                predecessor_task_id=predecessor_task_id,
+                successor_task_id=successor_task_id,
+                expected_revision=expected_revision,
                 audit=audit,
-                action="task.dependency_added",
-                resource_type="task_dependency",
-                resource_id=dependency.id,
             )
-            self._outbox(
-                org_id=org_id,
-                event_type="task.dependency_added",
-                project_id=successor.project_id,
-                payload={
-                    "projectId": str(predecessor.project_id),
-                    "dependencyId": str(dependency.id),
-                    "predecessorTaskId": str(predecessor_task_id),
-                    "successorTaskId": str(successor_task_id),
-                    "taskId": str(successor_task_id),
-                    "revision": successor.revision,
-                },
-            )
+
+    def _add_dependency_in_transaction(
+        self,
+        *,
+        identity: IdentityContextResponse,
+        predecessor_task_id: UUID,
+        successor_task_id: UUID,
+        expected_revision: int | None = None,
+        audit: RequestAuditContext,
+    ) -> DependencyResponse:
+        org_id = identity.organization.id
+        successor = self._locked_task(identity, successor_task_id)
+        self._check_revision(successor, expected_revision)
+        if predecessor_task_id == successor_task_id:
+            raise _invalid_dependency()
+        predecessor = repository.get_task(
+            self._session,
+            org_id=org_id,
+            task_id=predecessor_task_id,
+            project_id=successor.project_id,
+            for_update=True,
+        )
+        if predecessor is None:
+            raise _invalid_dependency()
+        existing = repository.get_dependency(
+            self._session,
+            org_id=org_id,
+            predecessor_task_id=predecessor_task_id,
+            successor_task_id=successor_task_id,
+        )
+        if existing is not None:
+            raise _dependency_exists()
+        if repository.dependency_path_exists(
+            self._session,
+            org_id=org_id,
+            start_task_id=successor_task_id,
+            target_task_id=predecessor_task_id,
+        ):
+            raise _dependency_cycle()
+        dependency = repository.create_dependency(
+            self._session,
+            org_id=org_id,
+            project_id=successor.project_id,
+            predecessor_task_id=predecessor_task_id,
+            successor_task_id=successor_task_id,
+        )
+        successor.revision += 1
+        self._session.flush()
+        self._audit(
+            identity=identity,
+            audit=audit,
+            action="task.dependency_added",
+            resource_type="task_dependency",
+            resource_id=dependency.id,
+        )
+        self._outbox(
+            org_id=org_id,
+            event_type="task.dependency_added",
+            project_id=successor.project_id,
+            payload={
+                "projectId": str(predecessor.project_id),
+                "dependencyId": str(dependency.id),
+                "predecessorTaskId": str(predecessor_task_id),
+                "successorTaskId": str(successor_task_id),
+                "taskId": str(successor_task_id),
+                "revision": successor.revision,
+            },
+        )
         return DependencyResponse.model_validate(dependency)
 
     def _lock_organization(self, identity: IdentityContextResponse) -> None:
@@ -551,44 +626,56 @@ class ProjectService:
         audit: RequestAuditContext,
     ) -> TaskResponse:
         with self._session.begin():
-            task = self._locked_task(identity, task_id)
-            self._check_revision(task, payload.expected_revision)
-            project = self._session.get(Project, task.project_id)
-            assert project is not None
-            self._check_project_revision(project, payload.expected_project_revision)
-            changes = payload.model_dump(
-                exclude_unset=True, exclude={"expected_revision", "expected_project_revision"}
+            return self._update_task_in_transaction(
+                identity=identity, task_id=task_id, payload=payload, audit=audit
             )
-            if changes.keys() & {"stage_id", "milestone_id"}:
-                self._validate_grouping(
-                    identity,
-                    task.project_id,
-                    changes.get("stage_id", task.stage_id),
-                    changes.get("milestone_id", task.milestone_id),
-                )
-            if "assignee_user_id" in changes:
-                self._validate_assignee(identity, task.project_id, payload.assignee_user_id)
-            for field, value in changes.items():
-                setattr(task, field, value)
-            task.revision += 1
-            self._session.flush()
-            self._audit(
-                identity=identity,
-                audit=audit,
-                action="task.updated",
-                resource_type="task",
-                resource_id=task.id,
+
+    def _update_task_in_transaction(
+        self,
+        *,
+        identity: IdentityContextResponse,
+        task_id: UUID,
+        payload: TaskUpdateRequest,
+        audit: RequestAuditContext,
+    ) -> TaskResponse:
+        task = self._locked_task(identity, task_id)
+        self._check_revision(task, payload.expected_revision)
+        project = self._session.get(Project, task.project_id)
+        assert project is not None
+        self._check_project_revision(project, payload.expected_project_revision)
+        changes = payload.model_dump(
+            exclude_unset=True, exclude={"expected_revision", "expected_project_revision"}
+        )
+        if changes.keys() & {"stage_id", "milestone_id"}:
+            self._validate_grouping(
+                identity,
+                task.project_id,
+                changes.get("stage_id", task.stage_id),
+                changes.get("milestone_id", task.milestone_id),
             )
-            self._outbox(
-                org_id=identity.organization.id,
-                event_type="task.updated",
-                project_id=task.project_id,
-                payload={
-                    "projectId": str(task.project_id),
-                    "taskId": str(task.id),
-                    "revision": task.revision,
-                },
-            )
+        if "assignee_user_id" in changes:
+            self._validate_assignee(identity, task.project_id, payload.assignee_user_id)
+        for field, value in changes.items():
+            setattr(task, field, value)
+        task.revision += 1
+        self._session.flush()
+        self._audit(
+            identity=identity,
+            audit=audit,
+            action="task.updated",
+            resource_type="task",
+            resource_id=task.id,
+        )
+        self._outbox(
+            org_id=identity.organization.id,
+            event_type="task.updated",
+            project_id=task.project_id,
+            payload={
+                "projectId": str(task.project_id),
+                "taskId": str(task.id),
+                "revision": task.revision,
+            },
+        )
         return TaskResponse.model_validate(task)
 
     def list_assignees(
@@ -641,41 +728,58 @@ class ProjectService:
         audit: RequestAuditContext,
     ) -> None:
         with self._session.begin():
-            task = self._locked_task(identity, task_id)
-            self._check_revision(task, expected_revision)
-            edge = self._session.scalar(
-                select(TaskDependency).where(
-                    TaskDependency.id == dependency_id,
-                    TaskDependency.org_id == identity.organization.id,
-                    TaskDependency.project_id == task.project_id,
-                    TaskDependency.successor_task_id == task.id,
-                )
-            )
-            if edge is None:
-                raise _not_found()
-            self._session.delete(edge)
-            task.revision += 1
-            self._session.flush()
-            self._audit(
+            return self._delete_dependency_in_transaction(
                 identity=identity,
+                task_id=task_id,
+                dependency_id=dependency_id,
+                expected_revision=expected_revision,
                 audit=audit,
-                action="task.dependency_removed",
-                resource_type="task_dependency",
-                resource_id=edge.id,
             )
-            self._outbox(
-                org_id=identity.organization.id,
-                event_type="task.dependency_removed",
-                project_id=task.project_id,
-                payload={
-                    "projectId": str(task.project_id),
-                    "taskId": str(task.id),
-                    "dependencyId": str(edge.id),
-                    "predecessorTaskId": str(edge.predecessor_task_id),
-                    "successorTaskId": str(task.id),
-                    "revision": task.revision,
-                },
+
+    def _delete_dependency_in_transaction(
+        self,
+        *,
+        identity: IdentityContextResponse,
+        task_id: UUID,
+        dependency_id: UUID,
+        expected_revision: int,
+        audit: RequestAuditContext,
+    ) -> None:
+        task = self._locked_task(identity, task_id)
+        self._check_revision(task, expected_revision)
+        edge = self._session.scalar(
+            select(TaskDependency).where(
+                TaskDependency.id == dependency_id,
+                TaskDependency.org_id == identity.organization.id,
+                TaskDependency.project_id == task.project_id,
+                TaskDependency.successor_task_id == task.id,
             )
+        )
+        if edge is None:
+            raise _not_found()
+        self._session.delete(edge)
+        task.revision += 1
+        self._session.flush()
+        self._audit(
+            identity=identity,
+            audit=audit,
+            action="task.dependency_removed",
+            resource_type="task_dependency",
+            resource_id=edge.id,
+        )
+        self._outbox(
+            org_id=identity.organization.id,
+            event_type="task.dependency_removed",
+            project_id=task.project_id,
+            payload={
+                "projectId": str(task.project_id),
+                "taskId": str(task.id),
+                "dependencyId": str(edge.id),
+                "predecessorTaskId": str(edge.predecessor_task_id),
+                "successorTaskId": str(task.id),
+                "revision": task.revision,
+            },
+        )
 
     def _audit(
         self,

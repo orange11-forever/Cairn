@@ -1,33 +1,7 @@
 from logging.config import fileConfig
 
 from alembic import context
-from cairn_api.audit.models import AuditLog
-from cairn_api.auth.models import AuthSession, User
-from cairn_api.authorization.models import ResourceAclEntry
-from cairn_api.db.base import Base
-from cairn_api.knowledge.models import (
-    ChunkEmbedding,
-    EmbeddingProfile,
-    IngestionBatch,
-    IngestionItem,
-    IngestionJob,
-    IngestionJobAttempt,
-    KnowledgeChunk,
-    KnowledgeResource,
-    KnowledgeResourceVersion,
-    SearchRateLimitBucket,
-    UploadSession,
-)
-from cairn_api.knowledge.source_models import KnowledgeSource
-from cairn_api.organizations.models import Membership, Organization
-from cairn_api.projects.models import (
-    Milestone,
-    OutboxEvent,
-    Project,
-    ProjectStage,
-    Task,
-    TaskDependency,
-)
+from cairn_api.db.metadata import load_model_metadata
 from cairn_api.settings import Settings
 from sqlalchemy import engine_from_config, pool
 
@@ -38,33 +12,7 @@ if config.config_file_name is not None:
 if not config.get_main_option("sqlalchemy.url"):
     config.set_main_option("sqlalchemy.url", Settings().database_url.replace("%", "%%"))
 
-target_metadata = Base.metadata
-_MAPPED_TYPES = (
-    AuditLog,
-    AuthSession,
-    ChunkEmbedding,
-    EmbeddingProfile,
-    IngestionBatch,
-    IngestionItem,
-    IngestionJob,
-    IngestionJobAttempt,
-    KnowledgeChunk,
-    KnowledgeResource,
-    KnowledgeResourceVersion,
-    KnowledgeSource,
-    Membership,
-    Milestone,
-    Organization,
-    OutboxEvent,
-    Project,
-    ProjectStage,
-    ResourceAclEntry,
-    SearchRateLimitBucket,
-    Task,
-    TaskDependency,
-    User,
-    UploadSession,
-)
+target_metadata = load_model_metadata()
 
 
 def run_migrations_offline() -> None:

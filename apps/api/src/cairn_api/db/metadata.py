@@ -16,6 +16,8 @@ MODEL_MODULES = (
     "cairn_api.knowledge.source_models",
     "cairn_api.organizations.models",
     "cairn_api.projects.models",
+    "cairn_api.projects.plan_models",
+    "cairn_api.projects.operation_models",
 )
 
 

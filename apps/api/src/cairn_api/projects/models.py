@@ -26,6 +26,11 @@ class Project(Base):
     __tablename__ = "projects"
     __table_args__ = (
         CheckConstraint("revision > 0", name="positive_revision"),
+        CheckConstraint("daily_capacity_minutes >= 0", name="nonnegative_daily_capacity"),
+        CheckConstraint(
+            "jsonb_typeof(working_weekdays) = 'array' AND jsonb_array_length(working_weekdays) BETWEEN 1 AND 7 AND working_weekdays <@ '[1,2,3,4,5,6,7]'::jsonb",
+            name="working_weekdays_values",
+        ),
         UniqueConstraint("org_id", "id"),
         Index("ix_projects_org_id_created_at_id", "org_id", "created_at", "id"),
     )
@@ -42,6 +47,10 @@ class Project(Base):
     revision: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     name: Mapped[str] = mapped_column(String(160))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    daily_capacity_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    working_weekdays: Mapped[list[int]] = mapped_column(
+        JSONB, default=lambda: [1, 2, 3, 4, 5], server_default=text("'[1,2,3,4,5]'::jsonb")
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -152,6 +161,8 @@ class Task(Base):
     __table_args__ = (
         UniqueConstraint("org_id", "project_id", "id"),
         CheckConstraint("revision > 0", name="positive_revision"),
+        CheckConstraint("estimated_effort_minutes >= 0", name="nonnegative_estimated_effort"),
+        CheckConstraint("remaining_effort_minutes >= 0", name="nonnegative_remaining_effort"),
         ForeignKeyConstraint(
             ["org_id", "assignee_user_id"], ["memberships.org_id", "memberships.user_id"]
         ),
@@ -224,6 +235,8 @@ class Task(Base):
     )
     title: Mapped[str] = mapped_column(String(240))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    estimated_effort_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    remaining_effort_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     acceptance_criteria: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="backlog", server_default="backlog")
     priority: Mapped[str] = mapped_column(

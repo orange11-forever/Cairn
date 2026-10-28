@@ -446,6 +446,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/capacity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Project Capacity */
+        patch: operations["update_project_capacity_api_v1_projects__project_id__capacity_patch"];
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/events": {
         parameters: {
             query?: never;
@@ -970,6 +987,58 @@ export interface paths {
         patch: operations["update_milestone_api_v1_projects__project_id__milestones__milestone_id__patch"];
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/operation-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Project Operation */
+        post: operations["preview_project_operation_api_v1_projects__project_id__operation_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Project Operations */
+        get: operations["list_project_operations_api_v1_projects__project_id__operations_get"];
+        put?: never;
+        /** Apply Project Operation */
+        post: operations["apply_project_operation_api_v1_projects__project_id__operations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/operations/{operation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Project Operation */
+        get: operations["get_project_operation_api_v1_projects__project_id__operations__operation_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/plan-preview": {
         parameters: {
             query?: never;
@@ -981,6 +1050,58 @@ export interface paths {
         put?: never;
         /** Preview Project Plan */
         post: operations["preview_project_plan_api_v1_projects__project_id__plan_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Applied Project Plans */
+        get: operations["list_applied_project_plans_api_v1_projects__project_id__plans_get"];
+        put?: never;
+        /** Apply Project Plan */
+        post: operations["apply_project_plan_api_v1_projects__project_id__plans_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/plans/{operation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Applied Project Plan */
+        get: operations["get_applied_project_plan_api_v1_projects__project_id__plans__operation_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/schedule-scenario": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Project Schedule Scenario */
+        get: operations["project_schedule_scenario_api_v1_projects__project_id__schedule_scenario_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1020,6 +1141,23 @@ export interface paths {
         head?: never;
         /** Update Stage */
         patch: operations["update_stage_api_v1_projects__project_id__stages__stage_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/task-graph": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Project Task Graph */
+        get: operations["project_task_graph_api_v1_projects__project_id__task_graph_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/projects/{project_id}/tasks": {
@@ -1207,6 +1345,24 @@ export interface components {
          * @enum {string}
          */
         ActorType: "user" | "system";
+        /** AddDependencyAction */
+        AddDependencyAction: {
+            /**
+             * Predecessortaskid
+             * Format: uuid
+             */
+            predecessorTaskId: string;
+            /**
+             * Successortaskid
+             * Format: uuid
+             */
+            successorTaskId: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "add_dependency";
+        };
         /** AnswerModelOption */
         AnswerModelOption: {
             /** Id */
@@ -1326,6 +1482,20 @@ export interface components {
             readyCount: number;
             status: components["schemas"]["IngestionBatchStatus"];
         };
+        /** ChangeStatusAction */
+        ChangeStatusAction: {
+            status: components["schemas"]["TaskStatus"];
+            /**
+             * Taskid
+             * Format: uuid
+             */
+            taskId: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "change_status";
+        };
         /** ChunkContextResponse */
         ChunkContextResponse: {
             after: components["schemas"]["ChunkResponse"] | null;
@@ -1356,6 +1526,26 @@ export interface components {
             /** Text */
             text: string;
         };
+        /** CreateTaskAction */
+        CreateTaskAction: {
+            /** Acceptancecriteria */
+            acceptanceCriteria?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Milestoneid */
+            milestoneId?: string | null;
+            /** @default medium */
+            priority: components["schemas"]["TaskPriority"];
+            /** Stageid */
+            stageId?: string | null;
+            /** Title */
+            title: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "create_task";
+        };
         /** CsvLocator */
         CsvLocator: {
             /** Rowend */
@@ -1367,6 +1557,15 @@ export interface components {
              * @enum {string}
              */
             type: "csv";
+        };
+        /** DependencyCriticalChain */
+        DependencyCriticalChain: {
+            /** Remainingminutes */
+            remainingMinutes: number;
+            /** Taskids */
+            taskIds: string[];
+            /** Workdaylowerbound */
+            workdayLowerBound: number;
         };
         /** DependencyPage */
         DependencyPage: {
@@ -1509,6 +1708,56 @@ export interface components {
             type: "github";
             /** Url */
             url: string;
+        };
+        /** GraphMilestone */
+        GraphMilestone: {
+            /** Archived */
+            archived: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Stageid */
+            stageId: string | null;
+        };
+        /** GraphStage */
+        GraphStage: {
+            /** Archived */
+            archived: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Position */
+            position: number;
+        };
+        /** GraphTask */
+        GraphTask: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Milestoneid */
+            milestoneId: string | null;
+            /**
+             * Projectid
+             * Format: uuid
+             */
+            projectId: string;
+            /** Revision */
+            revision: number;
+            /** Stageid */
+            stageId: string | null;
+            status: components["schemas"]["TaskStatus"];
+            /** Title */
+            title: string;
         };
         /** HealthResponse */
         HealthResponse: {
@@ -2541,6 +2790,26 @@ export interface components {
              */
             type: "pdf";
         };
+        /** PlanSourceReference */
+        PlanSourceReference: {
+            /**
+             * Chunkid
+             * Format: uuid
+             */
+            chunkId: string;
+            /** Id */
+            id: string;
+            /**
+             * Resourceid
+             * Format: uuid
+             */
+            resourceId: string;
+            /**
+             * Resourceversionid
+             * Format: uuid
+             */
+            resourceVersionId: string;
+        };
         /** PptxLocator */
         PptxLocator: {
             /**
@@ -2604,12 +2873,114 @@ export interface components {
             /** Tasks */
             tasks: components["schemas"]["TaskResponse"][];
         };
+        /** ProjectCapacityUpdateRequest */
+        ProjectCapacityUpdateRequest: {
+            /** Dailycapacityminutes */
+            dailyCapacityMinutes: number | null;
+            /** Expectedprojectrevision */
+            expectedProjectRevision: number;
+            /** Workingweekdays */
+            workingWeekdays: number[];
+        };
         /** ProjectCreateRequest */
         ProjectCreateRequest: {
             /** Description */
             description?: string | null;
             /** Name */
             name: string;
+        };
+        /** ProjectOperationApplyRequest */
+        ProjectOperationApplyRequest: {
+            /**
+             * Confirmed
+             * @constant
+             */
+            confirmed: true;
+            /**
+             * Operationid
+             * Format: uuid
+             */
+            operationId: string;
+            preview: components["schemas"]["ProjectOperationPreviewResponse"];
+        };
+        /** ProjectOperationPage */
+        ProjectOperationPage: {
+            /** Items */
+            items: components["schemas"]["ProjectOperationResponse"][];
+            /** Nextcursor */
+            nextCursor: string | null;
+        };
+        /** ProjectOperationPreviewRequest */
+        ProjectOperationPreviewRequest: {
+            /** Intent */
+            intent: string;
+        };
+        /** ProjectOperationPreviewResponse */
+        ProjectOperationPreviewResponse: {
+            /** Assistantname */
+            assistantName: string;
+            /** Canexecute */
+            canExecute: boolean;
+            /**
+             * Generatedat
+             * Format: date-time
+             */
+            generatedAt: string;
+            /** Intent */
+            intent: string;
+            model: components["schemas"]["AnswerModelOption"];
+            /**
+             * Projectid
+             * Format: uuid
+             */
+            projectId: string;
+            snapshot: components["schemas"]["ProjectAnalysisSnapshot"];
+            suggestion: components["schemas"]["ProjectOperationSuggestion"];
+        };
+        /** ProjectOperationResponse */
+        ProjectOperationResponse: {
+            /** Action */
+            action: components["schemas"]["CreateTaskAction"] | components["schemas"]["UpdateTaskAction"] | components["schemas"]["ChangeStatusAction"] | components["schemas"]["AddDependencyAction"] | components["schemas"]["RemoveDependencyAction"];
+            /**
+             * Appliedat
+             * Format: date-time
+             */
+            appliedAt: string;
+            /** Explanation */
+            explanation: string;
+            /**
+             * Generatedat
+             * Format: date-time
+             */
+            generatedAt: string;
+            /** Intent */
+            intent: string;
+            /**
+             * Operationid
+             * Format: uuid
+             */
+            operationId: string;
+            /**
+             * Projectid
+             * Format: uuid
+             */
+            projectId: string;
+            /** Result */
+            result: {
+                [key: string]: unknown;
+            };
+        };
+        /** ProjectOperationSuggestion */
+        ProjectOperationSuggestion: {
+            /** Action */
+            action: (components["schemas"]["CreateTaskAction"] | components["schemas"]["UpdateTaskAction"] | components["schemas"]["ChangeStatusAction"] | components["schemas"]["AddDependencyAction"] | components["schemas"]["RemoveDependencyAction"]) | null;
+            /** Explanation */
+            explanation: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "proposed" | "needs_clarification";
         };
         /** ProjectPage */
         ProjectPage: {
@@ -2623,6 +2994,60 @@ export interface components {
          * @enum {string}
          */
         ProjectPermission: "read" | "write" | "manage";
+        /** ProjectPlanApplicationPage */
+        ProjectPlanApplicationPage: {
+            /** Items */
+            items: components["schemas"]["ProjectPlanApplicationResponse"][];
+            /** Nextcursor */
+            nextCursor: string | null;
+        };
+        /** ProjectPlanApplicationResponse */
+        ProjectPlanApplicationResponse: {
+            /**
+             * Appliedat
+             * Format: date-time
+             */
+            appliedAt: string;
+            /**
+             * Generatedat
+             * Format: date-time
+             */
+            generatedAt: string;
+            /** Milestoneids */
+            milestoneIds: {
+                [key: string]: string;
+            };
+            /**
+             * Operationid
+             * Format: uuid
+             */
+            operationId: string;
+            plan: components["schemas"]["ProjectPlanDraft"];
+            /**
+             * Projectid
+             * Format: uuid
+             */
+            projectId: string;
+            /** Sources */
+            sources: components["schemas"]["PlanSourceReference"][];
+            /** Stageids */
+            stageIds: {
+                [key: string]: string;
+            };
+            /** Taskids */
+            taskIds: {
+                [key: string]: string;
+            };
+        };
+        /** ProjectPlanApplyRequest */
+        ProjectPlanApplyRequest: {
+            /**
+             * Operationid
+             * Format: uuid
+             */
+            operationId: string;
+            preview: components["schemas"]["ProjectPlanPreviewResponse"];
+        };
         /** ProjectPlanDraft */
         ProjectPlanDraft: {
             /** Assumptions */
@@ -2647,6 +3072,11 @@ export interface components {
         ProjectPlanPreviewResponse: {
             /** Assistantname */
             assistantName: string;
+            /**
+             * Canapply
+             * @default false
+             */
+            canApply: boolean;
             /** Citations */
             citations: components["schemas"]["KnowledgeAnswerCitation"][];
             /**
@@ -2675,6 +3105,8 @@ export interface components {
              * Format: date-time
              */
             createdAt: string;
+            /** Dailycapacityminutes */
+            dailyCapacityMinutes?: number | null;
             /** Description */
             description: string | null;
             /**
@@ -2691,6 +3123,66 @@ export interface components {
              * Format: date-time
              */
             updatedAt: string;
+            /** Workingweekdays */
+            workingWeekdays?: number[];
+        };
+        /** ProjectScheduleResponse */
+        ProjectScheduleResponse: {
+            /** Assumptions */
+            assumptions: string[];
+            /** Canwrite */
+            canWrite: boolean;
+            /** Completiondate */
+            completionDate: string | null;
+            criticalChain: components["schemas"]["DependencyCriticalChain"] | null;
+            /** Dependencies */
+            dependencies: components["schemas"]["DependencyResponse"][];
+            /** Effectivestartdate */
+            effectiveStartDate: string | null;
+            /** Gaps */
+            gaps: components["schemas"]["ScheduleIssue"][];
+            /** Knownremainingminutes */
+            knownRemainingMinutes: number;
+            /**
+             * Method
+             * @default serial_shared_capacity
+             * @constant
+             */
+            method: "serial_shared_capacity";
+            project: components["schemas"]["ScheduleProjectInput"];
+            /**
+             * Readat
+             * Format: date-time
+             */
+            readAt: string;
+            /** Schedule */
+            schedule: components["schemas"]["ScheduledTask"][];
+            /**
+             * Startdate
+             * Format: date
+             */
+            startDate: string;
+            /** Tasks */
+            tasks: components["schemas"]["ScheduleTaskInput"][];
+            /** Warnings */
+            warnings: components["schemas"]["ScheduleIssue"][];
+        };
+        /** ProjectTaskGraphResponse */
+        ProjectTaskGraphResponse: {
+            /** Dependencies */
+            dependencies: components["schemas"]["DependencyResponse"][];
+            /** Milestones */
+            milestones: components["schemas"]["GraphMilestone"][];
+            project: components["schemas"]["ProjectResponse"];
+            /**
+             * Readat
+             * Format: date-time
+             */
+            readAt: string;
+            /** Stages */
+            stages: components["schemas"]["GraphStage"][];
+            /** Tasks */
+            tasks: components["schemas"]["GraphTask"][];
         };
         /** ProposedMilestone */
         ProposedMilestone: {
@@ -2774,6 +3266,24 @@ export interface components {
             /** Password */
             password: string;
         };
+        /** RemoveDependencyAction */
+        RemoveDependencyAction: {
+            /**
+             * Dependencyid
+             * Format: uuid
+             */
+            dependencyId: string;
+            /**
+             * Taskid
+             * Format: uuid
+             */
+            taskId: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "remove_dependency";
+        };
         /**
          * ResourceType
          * @enum {string}
@@ -2784,6 +3294,88 @@ export interface components {
          * @enum {string}
          */
         ResourceVersionStatus: "queued" | "processing" | "ready" | "failed";
+        /** ScheduleIssue */
+        ScheduleIssue: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /** Taskids */
+            taskIds: string[];
+        };
+        /** ScheduleProjectInput */
+        ScheduleProjectInput: {
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Dailycapacityminutes */
+            dailyCapacityMinutes: number | null;
+            /** Description */
+            description: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Revision */
+            revision: number;
+            /**
+             * Updatedat
+             * Format: date-time
+             */
+            updatedAt: string;
+            /** Workingweekdays */
+            workingWeekdays: number[];
+        };
+        /** ScheduleTaskInput */
+        ScheduleTaskInput: {
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Estimatedeffortminutes */
+            estimatedEffortMinutes: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            priority: components["schemas"]["TaskPriority"];
+            /** Remainingeffortminutes */
+            remainingEffortMinutes: number | null;
+            /** Revision */
+            revision: number;
+            status: components["schemas"]["TaskStatus"];
+            /** Title */
+            title: string;
+        };
+        /** ScheduledTask */
+        ScheduledTask: {
+            /**
+             * Enddate
+             * Format: date
+             */
+            endDate: string;
+            /** Endoffsetminutes */
+            endOffsetMinutes: number;
+            /**
+             * Startdate
+             * Format: date
+             */
+            startDate: string;
+            /** Startoffsetminutes */
+            startOffsetMinutes: number;
+            /**
+             * Taskid
+             * Format: uuid
+             */
+            taskId: string;
+        };
         /** SkillImportRequest */
         SkillImportRequest: {
             /** Expecteddigest */
@@ -2896,6 +3488,8 @@ export interface components {
             description?: string | null;
             /** Dueat */
             dueAt?: string | null;
+            /** Estimatedeffortminutes */
+            estimatedEffortMinutes?: number | null;
             /** Expectedprojectrevision */
             expectedProjectRevision?: number | null;
             /** Milestoneid */
@@ -2903,6 +3497,8 @@ export interface components {
             /** Parenttaskid */
             parentTaskId?: string | null;
             priority?: components["schemas"]["TaskPriority"];
+            /** Remainingeffortminutes */
+            remainingEffortMinutes?: number | null;
             /** Stageid */
             stageId?: string | null;
             /** Title */
@@ -2946,6 +3542,8 @@ export interface components {
             description: string | null;
             /** Dueat */
             dueAt: string | null;
+            /** Estimatedeffortminutes */
+            estimatedEffortMinutes?: number | null;
             /**
              * Id
              * Format: uuid
@@ -2961,6 +3559,8 @@ export interface components {
              * Format: uuid
              */
             projectId: string;
+            /** Remainingeffortminutes */
+            remainingEffortMinutes?: number | null;
             /** Revision */
             revision: number;
             /** Stageid */
@@ -2995,12 +3595,16 @@ export interface components {
             description?: string | null;
             /** Dueat */
             dueAt?: string | null;
+            /** Estimatedeffortminutes */
+            estimatedEffortMinutes?: number | null;
             expectedProjectRevision: number;
             /** Expectedrevision */
             expectedRevision: number;
             /** Milestoneid */
             milestoneId?: string | null;
             priority?: components["schemas"]["TaskPriority"];
+            /** Remainingeffortminutes */
+            remainingEffortMinutes?: number | null;
             /** Stageid */
             stageId: string | null;
             /** Title */
@@ -3014,12 +3618,16 @@ export interface components {
             description?: string | null;
             /** Dueat */
             dueAt?: string | null;
+            /** Estimatedeffortminutes */
+            estimatedEffortMinutes?: number | null;
             expectedProjectRevision: number;
             /** Expectedrevision */
             expectedRevision: number;
             /** Milestoneid */
             milestoneId: string | null;
             priority?: components["schemas"]["TaskPriority"];
+            /** Remainingeffortminutes */
+            remainingEffortMinutes?: number | null;
             /** Stageid */
             stageId?: string | null;
             /** Title */
@@ -3033,12 +3641,16 @@ export interface components {
             description?: string | null;
             /** Dueat */
             dueAt?: string | null;
+            /** Estimatedeffortminutes */
+            estimatedEffortMinutes?: number | null;
             /** Expectedprojectrevision */
             expectedProjectRevision?: number | null;
             /** Expectedrevision */
             expectedRevision: number;
             milestoneId?: never;
             priority?: components["schemas"]["TaskPriority"];
+            /** Remainingeffortminutes */
+            remainingEffortMinutes?: number | null;
             stageId?: never;
             /** Title */
             title: string;
@@ -3051,12 +3663,60 @@ export interface components {
             description: string | null;
             /** Dueat */
             dueAt?: string | null;
+            /** Estimatedeffortminutes */
+            estimatedEffortMinutes?: number | null;
             /** Expectedprojectrevision */
             expectedProjectRevision?: number | null;
             /** Expectedrevision */
             expectedRevision: number;
             milestoneId?: never;
             priority?: components["schemas"]["TaskPriority"];
+            /** Remainingeffortminutes */
+            remainingEffortMinutes?: number | null;
+            stageId?: never;
+            /** Title */
+            title?: string;
+        } | {
+            /** Acceptancecriteria */
+            acceptanceCriteria?: string | null;
+            /** Assigneeuserid */
+            assigneeUserId?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Dueat */
+            dueAt?: string | null;
+            /** Estimatedeffortminutes */
+            estimatedEffortMinutes: number | null;
+            /** Expectedprojectrevision */
+            expectedProjectRevision?: number | null;
+            /** Expectedrevision */
+            expectedRevision: number;
+            milestoneId?: never;
+            priority?: components["schemas"]["TaskPriority"];
+            /** Remainingeffortminutes */
+            remainingEffortMinutes?: number | null;
+            stageId?: never;
+            /** Title */
+            title?: string;
+        } | {
+            /** Acceptancecriteria */
+            acceptanceCriteria?: string | null;
+            /** Assigneeuserid */
+            assigneeUserId?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Dueat */
+            dueAt?: string | null;
+            /** Estimatedeffortminutes */
+            estimatedEffortMinutes?: number | null;
+            /** Expectedprojectrevision */
+            expectedProjectRevision?: number | null;
+            /** Expectedrevision */
+            expectedRevision: number;
+            milestoneId?: never;
+            priority?: components["schemas"]["TaskPriority"];
+            /** Remainingeffortminutes */
+            remainingEffortMinutes: number | null;
             stageId?: never;
             /** Title */
             title?: string;
@@ -3069,12 +3729,16 @@ export interface components {
             description?: string | null;
             /** Dueat */
             dueAt?: string | null;
+            /** Estimatedeffortminutes */
+            estimatedEffortMinutes?: number | null;
             /** Expectedprojectrevision */
             expectedProjectRevision?: number | null;
             /** Expectedrevision */
             expectedRevision: number;
             milestoneId?: never;
             priority?: components["schemas"]["TaskPriority"];
+            /** Remainingeffortminutes */
+            remainingEffortMinutes?: number | null;
             stageId?: never;
             /** Title */
             title?: string;
@@ -3087,12 +3751,16 @@ export interface components {
             description?: string | null;
             /** Dueat */
             dueAt?: string | null;
+            /** Estimatedeffortminutes */
+            estimatedEffortMinutes?: number | null;
             /** Expectedprojectrevision */
             expectedProjectRevision?: number | null;
             /** Expectedrevision */
             expectedRevision: number;
             milestoneId?: never;
             priority: components["schemas"]["TaskPriority"];
+            /** Remainingeffortminutes */
+            remainingEffortMinutes?: number | null;
             stageId?: never;
             /** Title */
             title?: string;
@@ -3105,12 +3773,16 @@ export interface components {
             description?: string | null;
             /** Dueat */
             dueAt: string | null;
+            /** Estimatedeffortminutes */
+            estimatedEffortMinutes?: number | null;
             /** Expectedprojectrevision */
             expectedProjectRevision?: number | null;
             /** Expectedrevision */
             expectedRevision: number;
             milestoneId?: never;
             priority?: components["schemas"]["TaskPriority"];
+            /** Remainingeffortminutes */
+            remainingEffortMinutes?: number | null;
             stageId?: never;
             /** Title */
             title?: string;
@@ -3123,12 +3795,16 @@ export interface components {
             description?: string | null;
             /** Dueat */
             dueAt?: string | null;
+            /** Estimatedeffortminutes */
+            estimatedEffortMinutes?: number | null;
             /** Expectedprojectrevision */
             expectedProjectRevision?: number | null;
             /** Expectedrevision */
             expectedRevision: number;
             milestoneId?: never;
             priority?: components["schemas"]["TaskPriority"];
+            /** Remainingeffortminutes */
+            remainingEffortMinutes?: number | null;
             stageId?: never;
             /** Title */
             title?: string;
@@ -3146,6 +3822,26 @@ export interface components {
              * @enum {string}
              */
             type: "markdown" | "text";
+        };
+        /** UpdateTaskAction */
+        UpdateTaskAction: {
+            /**
+             * Field
+             * @enum {string}
+             */
+            field: "title" | "description" | "priority" | "acceptanceCriteria";
+            /**
+             * Taskid
+             * Format: uuid
+             */
+            taskId: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "update_task";
+            /** Value */
+            value: string | null;
         };
         /** UploadBatchCreateRequest */
         UploadBatchCreateRequest: {
@@ -5176,6 +5872,98 @@ export interface operations {
                     "X-Content-Type-Options"?: "nosniff";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_project_capacity_api_v1_projects__project_id__capacity_patch: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Session-bound CSRF token returned by login or session restore. */
+                "X-CSRF-Token": string;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectCapacityUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectResponse"];
+                };
+            };
+            /** @description 会话无效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求来源或 CSRF 令牌无效 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目版本冲突 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求参数无效 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 数据库暂时不可用 */
+            503: {
+                headers: {
                     [name: string]: unknown;
                 };
                 content: {
@@ -9848,6 +10636,565 @@ export interface operations {
             };
         };
     };
+    preview_project_operation_api_v1_projects__project_id__operation_preview_post: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Session-bound CSRF token returned by login or session restore. */
+                "X-CSRF-Token": string;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectOperationPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOperationPreviewResponse"];
+                };
+            };
+            /** @description 会话无效 */
+            401: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求来源或 CSRF 令牌无效 */
+            403: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目不存在或不可访问 */
+            404: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目知识在生成期间发生变化 */
+            409: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 搜索请求无效 */
+            422: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 搜索请求过于频繁 */
+            429: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 当前搜索限流窗口剩余秒数 */
+                    "Retry-After"?: number;
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 数据库、Embedding 或生成式回答服务暂时不可用 */
+            503: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_project_operations_api_v1_projects__project_id__operations_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOperationPage"];
+                };
+            };
+            /** @description 会话无效 */
+            401: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求来源或 CSRF 令牌无效 */
+            403: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目不存在或不可访问 */
+            404: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目知识在生成期间发生变化 */
+            409: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 搜索请求无效 */
+            422: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 搜索请求过于频繁 */
+            429: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 当前搜索限流窗口剩余秒数 */
+                    "Retry-After"?: number;
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 数据库、Embedding 或生成式回答服务暂时不可用 */
+            503: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    apply_project_operation_api_v1_projects__project_id__operations_post: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Session-bound CSRF token returned by login or session restore. */
+                "X-CSRF-Token": string;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectOperationApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOperationResponse"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOperationResponse"];
+                };
+            };
+            /** @description 会话无效 */
+            401: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求来源或 CSRF 令牌无效 */
+            403: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目不存在或不可访问 */
+            404: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目知识在生成期间发生变化 */
+            409: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 搜索请求无效 */
+            422: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 搜索请求过于频繁 */
+            429: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 当前搜索限流窗口剩余秒数 */
+                    "Retry-After"?: number;
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 数据库、Embedding 或生成式回答服务暂时不可用 */
+            503: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_project_operation_api_v1_projects__project_id__operations__operation_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectOperationResponse"];
+                };
+            };
+            /** @description 会话无效 */
+            401: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求来源或 CSRF 令牌无效 */
+            403: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目不存在或不可访问 */
+            404: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目知识在生成期间发生变化 */
+            409: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 搜索请求无效 */
+            422: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 搜索请求过于频繁 */
+            429: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 当前搜索限流窗口剩余秒数 */
+                    "Retry-After"?: number;
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 数据库、Embedding 或生成式回答服务暂时不可用 */
+            503: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     preview_project_plan_api_v1_projects__project_id__plan_preview_post: {
         parameters: {
             query?: never;
@@ -9975,6 +11322,495 @@ export interface operations {
                     "Cache-Control"?: "private, no-store";
                     /** @description 请求追踪标识 */
                     "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_applied_project_plans_api_v1_projects__project_id__plans_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectPlanApplicationPage"];
+                };
+            };
+            /** @description 会话无效 */
+            401: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求来源或 CSRF 令牌无效 */
+            403: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目不存在或不可访问 */
+            404: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目知识在生成期间发生变化 */
+            409: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 搜索请求无效 */
+            422: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 搜索请求过于频繁 */
+            429: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 当前搜索限流窗口剩余秒数 */
+                    "Retry-After"?: number;
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 数据库、Embedding 或生成式回答服务暂时不可用 */
+            503: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    apply_project_plan_api_v1_projects__project_id__plans_post: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Session-bound CSRF token returned by login or session restore. */
+                "X-CSRF-Token": string;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectPlanApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectPlanApplicationResponse"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectPlanApplicationResponse"];
+                };
+            };
+            /** @description 会话无效 */
+            401: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求来源或 CSRF 令牌无效 */
+            403: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目不存在或不可访问 */
+            404: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目知识在生成期间发生变化 */
+            409: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 搜索请求无效 */
+            422: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 搜索请求过于频繁 */
+            429: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 当前搜索限流窗口剩余秒数 */
+                    "Retry-After"?: number;
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 数据库、Embedding 或生成式回答服务暂时不可用 */
+            503: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_applied_project_plan_api_v1_projects__project_id__plans__operation_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectPlanApplicationResponse"];
+                };
+            };
+            /** @description 会话无效 */
+            401: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求来源或 CSRF 令牌无效 */
+            403: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目不存在或不可访问 */
+            404: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目知识在生成期间发生变化 */
+            409: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 搜索请求无效 */
+            422: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 搜索请求过于频繁 */
+            429: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 当前搜索限流窗口剩余秒数 */
+                    "Retry-After"?: number;
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 数据库、Embedding 或生成式回答服务暂时不可用 */
+            503: {
+                headers: {
+                    /** @description 防止受保护知识响应被浏览器或中间缓存保存 */
+                    "Cache-Control"?: "private, no-store";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    project_schedule_scenario_api_v1_projects__project_id__schedule_scenario_get: {
+        parameters: {
+            query: {
+                startDate: string;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectScheduleResponse"];
+                };
+            };
+            /** @description 会话无效 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 请求参数无效 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 数据库暂时不可用 */
+            503: {
+                headers: {
                     [name: string]: unknown;
                 };
                 content: {
@@ -10286,6 +12122,97 @@ export interface operations {
                 };
             };
             /** @description 请求参数无效 */
+            422: {
+                headers: {
+                    "Cache-Control"?: "private, no-store";
+                    "X-Content-Type-Options"?: "nosniff";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 服务器内部错误 */
+            500: {
+                headers: {
+                    "Cache-Control"?: "private, no-store";
+                    "X-Content-Type-Options"?: "nosniff";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 数据库暂时不可用 */
+            503: {
+                headers: {
+                    "Cache-Control"?: "private, no-store";
+                    "X-Content-Type-Options"?: "nosniff";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    project_task_graph_api_v1_projects__project_id__task_graph_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    "Cache-Control"?: "private, no-store";
+                    "X-Content-Type-Options"?: "nosniff";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectTaskGraphResponse"];
+                };
+            };
+            /** @description 会话无效 */
+            401: {
+                headers: {
+                    "Cache-Control"?: "private, no-store";
+                    "X-Content-Type-Options"?: "nosniff";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目不存在或无读取权限 */
+            404: {
+                headers: {
+                    "Cache-Control"?: "private, no-store";
+                    "X-Content-Type-Options"?: "nosniff";
+                    /** @description 请求追踪标识 */
+                    "X-Request-ID"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description 项目超出完整节点图显示上限 */
             422: {
                 headers: {
                     "Cache-Control"?: "private, no-store";

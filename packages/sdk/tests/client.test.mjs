@@ -486,3 +486,12 @@ test("structure lifecycle runtime schema rejects coercion and mixed updates", ()
     }
   }
 });
+
+test("schedule dates use valid pure calendar dates and effort minutes reject coercion", () => {
+  const row={taskId:"00000000-0000-4000-8000-000000005001",startOffsetMinutes:0,endOffsetMinutes:60,startDate:"2026-10-26",endDate:"2026-10-26"};
+  assert.equal(matchesComponentSchema("ScheduledTask",row),true);
+  for(const startDate of ["2026-02-30","0000-01-01","2026-10-26T00:00:00Z","2026-1-01"])assert.equal(matchesComponentSchema("ScheduledTask",{...row,startDate}),false,startDate);
+  assert.equal(matchesComponentSchema("ScheduledTask",{...row,startDate:"2024-02-29"}),true);
+  for(const remainingEffortMinutes of [-1,true,1.5,2147483648])assert.equal(matchesComponentSchema("TaskUpdateRequest",{expectedRevision:1,remainingEffortMinutes}),false);
+  assert.equal(matchesComponentSchema("TaskUpdateRequest",{expectedRevision:1,remainingEffortMinutes:0,estimatedEffortMinutes:null}),true);
+});

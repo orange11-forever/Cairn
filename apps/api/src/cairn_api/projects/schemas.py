@@ -1,9 +1,11 @@
 from copy import deepcopy
 from enum import StrEnum
-from typing import Any, cast
+from typing import Annotated, Any, cast
 from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+
+EffortMinutes = Annotated[int, Field(strict=True, ge=0, le=2_147_483_647)]
 
 
 class TaskStatus(StrEnum):
@@ -38,6 +40,12 @@ class TaskCreateRequest(BaseModel):
 
     title: str = Field(min_length=1, max_length=240)
     description: str | None = Field(default=None, max_length=10_000)
+    estimated_effort_minutes: EffortMinutes | None = Field(
+        default=None, alias="estimatedEffortMinutes"
+    )
+    remaining_effort_minutes: EffortMinutes | None = Field(
+        default=None, alias="remainingEffortMinutes"
+    )
     assignee_user_id: UUID | None = Field(default=None, alias="assigneeUserId")
     stage_id: UUID | None = Field(default=None, alias="stageId")
     milestone_id: UUID | None = Field(default=None, alias="milestoneId")
@@ -149,6 +157,12 @@ class TaskUpdateRequest(BaseModel):
     milestone_id: UUID | None = Field(default=None, alias="milestoneId")
     title: str = Field(default_factory=lambda: cast(str, None), min_length=1, max_length=240)
     description: str | None = Field(default=None, max_length=10_000)
+    estimated_effort_minutes: EffortMinutes | None = Field(
+        default=None, alias="estimatedEffortMinutes"
+    )
+    remaining_effort_minutes: EffortMinutes | None = Field(
+        default=None, alias="remainingEffortMinutes"
+    )
     assignee_user_id: UUID | None = Field(default=None, alias="assigneeUserId")
     priority: TaskPriority = Field(default_factory=lambda: cast(TaskPriority, None))
     due_at: AwareDatetime | None = Field(default=None, alias="dueAt")
@@ -189,10 +203,14 @@ class ProjectResponse(BaseModel):
 
     id: UUID
     revision: int | None = Field(default=None, ge=1)
+    daily_capacity_minutes: EffortMinutes | None = Field(default=None, alias="dailyCapacityMinutes")
+    working_weekdays: list[Annotated[int, Field(strict=True, ge=1, le=7)]] = Field(
+        default_factory=lambda: [1, 2, 3, 4, 5], alias="workingWeekdays", min_length=1, max_length=7
+    )
     name: str = Field(min_length=1, max_length=160)
     description: str | None = Field(max_length=4000)
-    created_at: AwareDatetime = Field(serialization_alias="createdAt")
-    updated_at: AwareDatetime = Field(serialization_alias="updatedAt")
+    created_at: AwareDatetime = Field(alias="createdAt")
+    updated_at: AwareDatetime = Field(alias="updatedAt")
 
 
 class ProjectPage(BaseModel):
@@ -206,23 +224,29 @@ class TaskResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: UUID
-    project_id: UUID = Field(serialization_alias="projectId")
+    project_id: UUID = Field(alias="projectId")
     revision: int = Field(ge=1)
     description: str | None = Field(max_length=10_000)
-    assignee_user_id: UUID | None = Field(serialization_alias="assigneeUserId")
+    estimated_effort_minutes: EffortMinutes | None = Field(
+        default=None, alias="estimatedEffortMinutes"
+    )
+    remaining_effort_minutes: EffortMinutes | None = Field(
+        default=None, alias="remainingEffortMinutes"
+    )
+    assignee_user_id: UUID | None = Field(alias="assigneeUserId")
     title: str = Field(min_length=1, max_length=240)
-    stage_id: UUID | None = Field(serialization_alias="stageId")
-    milestone_id: UUID | None = Field(serialization_alias="milestoneId")
-    parent_task_id: UUID | None = Field(serialization_alias="parentTaskId")
+    stage_id: UUID | None = Field(alias="stageId")
+    milestone_id: UUID | None = Field(alias="milestoneId")
+    parent_task_id: UUID | None = Field(alias="parentTaskId")
     status: TaskStatus
     priority: TaskPriority
-    due_at: AwareDatetime | None = Field(serialization_alias="dueAt")
+    due_at: AwareDatetime | None = Field(alias="dueAt")
     acceptance_criteria: str | None = Field(
-        serialization_alias="acceptanceCriteria",
+        alias="acceptanceCriteria",
         max_length=10_000,
     )
-    created_at: AwareDatetime = Field(serialization_alias="createdAt")
-    updated_at: AwareDatetime = Field(serialization_alias="updatedAt")
+    created_at: AwareDatetime = Field(alias="createdAt")
+    updated_at: AwareDatetime = Field(alias="updatedAt")
 
 
 class TaskPage(BaseModel):
@@ -236,9 +260,9 @@ class DependencyResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: UUID
-    predecessor_task_id: UUID = Field(serialization_alias="predecessorTaskId")
-    successor_task_id: UUID = Field(serialization_alias="successorTaskId")
-    created_at: AwareDatetime = Field(serialization_alias="createdAt")
+    predecessor_task_id: UUID = Field(alias="predecessorTaskId")
+    successor_task_id: UUID = Field(alias="successorTaskId")
+    created_at: AwareDatetime = Field(alias="createdAt")
 
 
 class DependencyPage(BaseModel):
@@ -335,30 +359,28 @@ class MilestoneUpdateRequest(StructureUpdateRequest):
 class StageResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
     id: UUID
-    project_id: UUID = Field(serialization_alias="projectId")
+    project_id: UUID = Field(alias="projectId")
     revision: int = Field(ge=1)
     archived: bool
     name: str = Field(min_length=1, max_length=120)
     position: int
-    created_at: AwareDatetime = Field(serialization_alias="createdAt")
-    updated_at: AwareDatetime = Field(serialization_alias="updatedAt")
+    created_at: AwareDatetime = Field(alias="createdAt")
+    updated_at: AwareDatetime = Field(alias="updatedAt")
 
 
 class MilestoneResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
     id: UUID
-    project_id: UUID = Field(serialization_alias="projectId")
+    project_id: UUID = Field(alias="projectId")
     revision: int = Field(ge=1)
     archived: bool
     name: str = Field(min_length=1, max_length=160)
     description: str | None = Field(max_length=4000)
-    acceptance_criteria: str | None = Field(
-        serialization_alias="acceptanceCriteria", max_length=10000
-    )
-    due_at: AwareDatetime | None = Field(serialization_alias="dueAt")
-    stage_id: UUID | None = Field(serialization_alias="stageId")
-    created_at: AwareDatetime = Field(serialization_alias="createdAt")
-    updated_at: AwareDatetime = Field(serialization_alias="updatedAt")
+    acceptance_criteria: str | None = Field(alias="acceptanceCriteria", max_length=10000)
+    due_at: AwareDatetime | None = Field(alias="dueAt")
+    stage_id: UUID | None = Field(alias="stageId")
+    created_at: AwareDatetime = Field(alias="createdAt")
+    updated_at: AwareDatetime = Field(alias="updatedAt")
 
 
 class StagePage(BaseModel):

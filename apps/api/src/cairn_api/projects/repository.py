@@ -83,12 +83,16 @@ def create_task(
     description: str | None = None,
     assignee_user_id: UUID | None = None,
     milestone_id: UUID | None = None,
+    estimated_effort_minutes: int | None = None,
+    remaining_effort_minutes: int | None = None,
 ) -> Task:
     task = Task(
         org_id=org_id,
         project_id=project_id,
         title=title,
         description=description,
+        estimated_effort_minutes=estimated_effort_minutes,
+        remaining_effort_minutes=remaining_effort_minutes,
         assignee_user_id=assignee_user_id,
         stage_id=stage_id,
         milestone_id=milestone_id,

@@ -109,6 +109,33 @@ export const componentSchemas = {
     "title": "ActorType",
     "type": "string"
   },
+  "AddDependencyAction": {
+    "additionalProperties": false,
+    "properties": {
+      "predecessorTaskId": {
+        "format": "uuid",
+        "title": "Predecessortaskid",
+        "type": "string"
+      },
+      "successorTaskId": {
+        "format": "uuid",
+        "title": "Successortaskid",
+        "type": "string"
+      },
+      "type": {
+        "const": "add_dependency",
+        "title": "Type",
+        "type": "string"
+      }
+    },
+    "required": [
+      "type",
+      "predecessorTaskId",
+      "successorTaskId"
+    ],
+    "title": "AddDependencyAction",
+    "type": "object"
+  },
   "AnswerModelOption": {
     "additionalProperties": false,
     "properties": {
@@ -472,6 +499,31 @@ export const componentSchemas = {
     "title": "BatchDetailResponse",
     "type": "object"
   },
+  "ChangeStatusAction": {
+    "additionalProperties": false,
+    "properties": {
+      "status": {
+        "$ref": "#/components/schemas/TaskStatus"
+      },
+      "taskId": {
+        "format": "uuid",
+        "title": "Taskid",
+        "type": "string"
+      },
+      "type": {
+        "const": "change_status",
+        "title": "Type",
+        "type": "string"
+      }
+    },
+    "required": [
+      "type",
+      "taskId",
+      "status"
+    ],
+    "title": "ChangeStatusAction",
+    "type": "object"
+  },
   "ChunkContextResponse": {
     "properties": {
       "after": {
@@ -582,6 +634,80 @@ export const componentSchemas = {
     "title": "ChunkResponse",
     "type": "object"
   },
+  "CreateTaskAction": {
+    "additionalProperties": false,
+    "properties": {
+      "acceptanceCriteria": {
+        "anyOf": [
+          {
+            "maxLength": 10000,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Acceptancecriteria"
+      },
+      "description": {
+        "anyOf": [
+          {
+            "maxLength": 10000,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Description"
+      },
+      "milestoneId": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Milestoneid"
+      },
+      "priority": {
+        "$ref": "#/components/schemas/TaskPriority",
+        "default": "medium"
+      },
+      "stageId": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Stageid"
+      },
+      "title": {
+        "maxLength": 240,
+        "minLength": 1,
+        "title": "Title",
+        "type": "string"
+      },
+      "type": {
+        "const": "create_task",
+        "title": "Type",
+        "type": "string"
+      }
+    },
+    "required": [
+      "type",
+      "title"
+    ],
+    "title": "CreateTaskAction",
+    "type": "object"
+  },
   "CsvLocator": {
     "properties": {
       "rowEnd": {
@@ -606,6 +732,36 @@ export const componentSchemas = {
       "rowEnd"
     ],
     "title": "CsvLocator",
+    "type": "object"
+  },
+  "DependencyCriticalChain": {
+    "additionalProperties": false,
+    "properties": {
+      "remainingMinutes": {
+        "minimum": 0,
+        "title": "Remainingminutes",
+        "type": "integer"
+      },
+      "taskIds": {
+        "items": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "title": "Taskids",
+        "type": "array"
+      },
+      "workdayLowerBound": {
+        "minimum": 0,
+        "title": "Workdaylowerbound",
+        "type": "number"
+      }
+    },
+    "required": [
+      "taskIds",
+      "remainingMinutes",
+      "workdayLowerBound"
+    ],
+    "title": "DependencyCriticalChain",
     "type": "object"
   },
   "DependencyPage": {
@@ -1110,6 +1266,133 @@ export const componentSchemas = {
       "url"
     ],
     "title": "GithubSkillSource",
+    "type": "object"
+  },
+  "GraphMilestone": {
+    "properties": {
+      "archived": {
+        "title": "Archived",
+        "type": "boolean"
+      },
+      "id": {
+        "format": "uuid",
+        "title": "Id",
+        "type": "string"
+      },
+      "name": {
+        "title": "Name",
+        "type": "string"
+      },
+      "stageId": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Stageid"
+      }
+    },
+    "required": [
+      "id",
+      "name",
+      "stageId",
+      "archived"
+    ],
+    "title": "GraphMilestone",
+    "type": "object"
+  },
+  "GraphStage": {
+    "properties": {
+      "archived": {
+        "title": "Archived",
+        "type": "boolean"
+      },
+      "id": {
+        "format": "uuid",
+        "title": "Id",
+        "type": "string"
+      },
+      "name": {
+        "title": "Name",
+        "type": "string"
+      },
+      "position": {
+        "title": "Position",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "id",
+      "name",
+      "position",
+      "archived"
+    ],
+    "title": "GraphStage",
+    "type": "object"
+  },
+  "GraphTask": {
+    "properties": {
+      "id": {
+        "format": "uuid",
+        "title": "Id",
+        "type": "string"
+      },
+      "milestoneId": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Milestoneid"
+      },
+      "projectId": {
+        "format": "uuid",
+        "title": "Projectid",
+        "type": "string"
+      },
+      "revision": {
+        "minimum": 1,
+        "title": "Revision",
+        "type": "integer"
+      },
+      "stageId": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Stageid"
+      },
+      "status": {
+        "$ref": "#/components/schemas/TaskStatus"
+      },
+      "title": {
+        "title": "Title",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "projectId",
+      "revision",
+      "title",
+      "status",
+      "stageId",
+      "milestoneId"
+    ],
+    "title": "GraphTask",
     "type": "object"
   },
   "HealthResponse": {
@@ -4006,6 +4289,38 @@ export const componentSchemas = {
     "title": "PdfLocator",
     "type": "object"
   },
+  "PlanSourceReference": {
+    "additionalProperties": false,
+    "properties": {
+      "chunkId": {
+        "format": "uuid",
+        "title": "Chunkid",
+        "type": "string"
+      },
+      "id": {
+        "title": "Id",
+        "type": "string"
+      },
+      "resourceId": {
+        "format": "uuid",
+        "title": "Resourceid",
+        "type": "string"
+      },
+      "resourceVersionId": {
+        "format": "uuid",
+        "title": "Resourceversionid",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "resourceId",
+      "resourceVersionId",
+      "chunkId"
+    ],
+    "title": "PlanSourceReference",
+    "type": "object"
+  },
   "PptxLocator": {
     "properties": {
       "area": {
@@ -4164,6 +4479,47 @@ export const componentSchemas = {
     "title": "ProjectAnalysisSnapshot",
     "type": "object"
   },
+  "ProjectCapacityUpdateRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "dailyCapacityMinutes": {
+        "anyOf": [
+          {
+            "maximum": 2147483647,
+            "minimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Dailycapacityminutes"
+      },
+      "expectedProjectRevision": {
+        "minimum": 1,
+        "title": "Expectedprojectrevision",
+        "type": "integer"
+      },
+      "workingWeekdays": {
+        "items": {
+          "maximum": 7,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "maxItems": 7,
+        "minItems": 1,
+        "title": "Workingweekdays",
+        "type": "array"
+      }
+    },
+    "required": [
+      "expectedProjectRevision",
+      "dailyCapacityMinutes",
+      "workingWeekdays"
+    ],
+    "title": "ProjectCapacityUpdateRequest",
+    "type": "object"
+  },
   "ProjectCreateRequest": {
     "additionalProperties": false,
     "properties": {
@@ -4190,6 +4546,269 @@ export const componentSchemas = {
       "name"
     ],
     "title": "ProjectCreateRequest",
+    "type": "object"
+  },
+  "ProjectOperationApplyRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "confirmed": {
+        "const": true,
+        "title": "Confirmed",
+        "type": "boolean"
+      },
+      "operationId": {
+        "format": "uuid",
+        "title": "Operationid",
+        "type": "string"
+      },
+      "preview": {
+        "$ref": "#/components/schemas/ProjectOperationPreviewResponse"
+      }
+    },
+    "required": [
+      "operationId",
+      "confirmed",
+      "preview"
+    ],
+    "title": "ProjectOperationApplyRequest",
+    "type": "object"
+  },
+  "ProjectOperationPage": {
+    "additionalProperties": false,
+    "properties": {
+      "items": {
+        "items": {
+          "$ref": "#/components/schemas/ProjectOperationResponse"
+        },
+        "title": "Items",
+        "type": "array"
+      },
+      "nextCursor": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Nextcursor"
+      }
+    },
+    "required": [
+      "items",
+      "nextCursor"
+    ],
+    "title": "ProjectOperationPage",
+    "type": "object"
+  },
+  "ProjectOperationPreviewRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "intent": {
+        "maxLength": 2000,
+        "minLength": 1,
+        "title": "Intent",
+        "type": "string"
+      }
+    },
+    "required": [
+      "intent"
+    ],
+    "title": "ProjectOperationPreviewRequest",
+    "type": "object"
+  },
+  "ProjectOperationPreviewResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "assistantName": {
+        "title": "Assistantname",
+        "type": "string"
+      },
+      "canExecute": {
+        "title": "Canexecute",
+        "type": "boolean"
+      },
+      "generatedAt": {
+        "format": "date-time",
+        "title": "Generatedat",
+        "type": "string"
+      },
+      "intent": {
+        "maxLength": 2000,
+        "minLength": 1,
+        "title": "Intent",
+        "type": "string"
+      },
+      "model": {
+        "$ref": "#/components/schemas/AnswerModelOption"
+      },
+      "projectId": {
+        "format": "uuid",
+        "title": "Projectid",
+        "type": "string"
+      },
+      "snapshot": {
+        "$ref": "#/components/schemas/ProjectAnalysisSnapshot"
+      },
+      "suggestion": {
+        "$ref": "#/components/schemas/ProjectOperationSuggestion"
+      }
+    },
+    "required": [
+      "projectId",
+      "intent",
+      "generatedAt",
+      "assistantName",
+      "model",
+      "snapshot",
+      "suggestion",
+      "canExecute"
+    ],
+    "title": "ProjectOperationPreviewResponse",
+    "type": "object"
+  },
+  "ProjectOperationResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "action": {
+        "discriminator": {
+          "mapping": {
+            "add_dependency": "#/components/schemas/AddDependencyAction",
+            "change_status": "#/components/schemas/ChangeStatusAction",
+            "create_task": "#/components/schemas/CreateTaskAction",
+            "remove_dependency": "#/components/schemas/RemoveDependencyAction",
+            "update_task": "#/components/schemas/UpdateTaskAction"
+          },
+          "propertyName": "type"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/CreateTaskAction"
+          },
+          {
+            "$ref": "#/components/schemas/UpdateTaskAction"
+          },
+          {
+            "$ref": "#/components/schemas/ChangeStatusAction"
+          },
+          {
+            "$ref": "#/components/schemas/AddDependencyAction"
+          },
+          {
+            "$ref": "#/components/schemas/RemoveDependencyAction"
+          }
+        ],
+        "title": "Action"
+      },
+      "appliedAt": {
+        "format": "date-time",
+        "title": "Appliedat",
+        "type": "string"
+      },
+      "explanation": {
+        "title": "Explanation",
+        "type": "string"
+      },
+      "generatedAt": {
+        "format": "date-time",
+        "title": "Generatedat",
+        "type": "string"
+      },
+      "intent": {
+        "title": "Intent",
+        "type": "string"
+      },
+      "operationId": {
+        "format": "uuid",
+        "title": "Operationid",
+        "type": "string"
+      },
+      "projectId": {
+        "format": "uuid",
+        "title": "Projectid",
+        "type": "string"
+      },
+      "result": {
+        "additionalProperties": true,
+        "title": "Result",
+        "type": "object"
+      }
+    },
+    "required": [
+      "operationId",
+      "projectId",
+      "intent",
+      "action",
+      "explanation",
+      "generatedAt",
+      "appliedAt",
+      "result"
+    ],
+    "title": "ProjectOperationResponse",
+    "type": "object"
+  },
+  "ProjectOperationSuggestion": {
+    "additionalProperties": false,
+    "properties": {
+      "action": {
+        "anyOf": [
+          {
+            "discriminator": {
+              "mapping": {
+                "add_dependency": "#/components/schemas/AddDependencyAction",
+                "change_status": "#/components/schemas/ChangeStatusAction",
+                "create_task": "#/components/schemas/CreateTaskAction",
+                "remove_dependency": "#/components/schemas/RemoveDependencyAction",
+                "update_task": "#/components/schemas/UpdateTaskAction"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CreateTaskAction"
+              },
+              {
+                "$ref": "#/components/schemas/UpdateTaskAction"
+              },
+              {
+                "$ref": "#/components/schemas/ChangeStatusAction"
+              },
+              {
+                "$ref": "#/components/schemas/AddDependencyAction"
+              },
+              {
+                "$ref": "#/components/schemas/RemoveDependencyAction"
+              }
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Action"
+      },
+      "explanation": {
+        "maxLength": 2000,
+        "minLength": 1,
+        "title": "Explanation",
+        "type": "string"
+      },
+      "status": {
+        "enum": [
+          "proposed",
+          "needs_clarification"
+        ],
+        "title": "Status",
+        "type": "string"
+      }
+    },
+    "required": [
+      "status",
+      "explanation",
+      "action"
+    ],
+    "title": "ProjectOperationSuggestion",
     "type": "object"
   },
   "ProjectPage": {
@@ -4228,6 +4847,126 @@ export const componentSchemas = {
     ],
     "title": "ProjectPermission",
     "type": "string"
+  },
+  "ProjectPlanApplicationPage": {
+    "additionalProperties": false,
+    "properties": {
+      "items": {
+        "items": {
+          "$ref": "#/components/schemas/ProjectPlanApplicationResponse"
+        },
+        "title": "Items",
+        "type": "array"
+      },
+      "nextCursor": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Nextcursor"
+      }
+    },
+    "required": [
+      "items",
+      "nextCursor"
+    ],
+    "title": "ProjectPlanApplicationPage",
+    "type": "object"
+  },
+  "ProjectPlanApplicationResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "appliedAt": {
+        "format": "date-time",
+        "title": "Appliedat",
+        "type": "string"
+      },
+      "generatedAt": {
+        "format": "date-time",
+        "title": "Generatedat",
+        "type": "string"
+      },
+      "milestoneIds": {
+        "additionalProperties": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "title": "Milestoneids",
+        "type": "object"
+      },
+      "operationId": {
+        "format": "uuid",
+        "title": "Operationid",
+        "type": "string"
+      },
+      "plan": {
+        "$ref": "#/components/schemas/ProjectPlanDraft"
+      },
+      "projectId": {
+        "format": "uuid",
+        "title": "Projectid",
+        "type": "string"
+      },
+      "sources": {
+        "items": {
+          "$ref": "#/components/schemas/PlanSourceReference"
+        },
+        "title": "Sources",
+        "type": "array"
+      },
+      "stageIds": {
+        "additionalProperties": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "title": "Stageids",
+        "type": "object"
+      },
+      "taskIds": {
+        "additionalProperties": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "title": "Taskids",
+        "type": "object"
+      }
+    },
+    "required": [
+      "operationId",
+      "projectId",
+      "generatedAt",
+      "appliedAt",
+      "plan",
+      "sources",
+      "stageIds",
+      "milestoneIds",
+      "taskIds"
+    ],
+    "title": "ProjectPlanApplicationResponse",
+    "type": "object"
+  },
+  "ProjectPlanApplyRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "operationId": {
+        "format": "uuid",
+        "title": "Operationid",
+        "type": "string"
+      },
+      "preview": {
+        "$ref": "#/components/schemas/ProjectPlanPreviewResponse"
+      }
+    },
+    "required": [
+      "operationId",
+      "preview"
+    ],
+    "title": "ProjectPlanApplyRequest",
+    "type": "object"
   },
   "ProjectPlanDraft": {
     "additionalProperties": false,
@@ -4309,6 +5048,11 @@ export const componentSchemas = {
         "title": "Assistantname",
         "type": "string"
       },
+      "canApply": {
+        "default": false,
+        "title": "Canapply",
+        "type": "boolean"
+      },
       "citations": {
         "items": {
           "$ref": "#/components/schemas/KnowledgeAnswerCitation"
@@ -4365,6 +5109,19 @@ export const componentSchemas = {
         "title": "Createdat",
         "type": "string"
       },
+      "dailyCapacityMinutes": {
+        "anyOf": [
+          {
+            "maximum": 2147483647,
+            "minimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Dailycapacityminutes"
+      },
       "description": {
         "anyOf": [
           {
@@ -4404,6 +5161,17 @@ export const componentSchemas = {
         "format": "date-time",
         "title": "Updatedat",
         "type": "string"
+      },
+      "workingWeekdays": {
+        "items": {
+          "maximum": 7,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "maxItems": 7,
+        "minItems": 1,
+        "title": "Workingweekdays",
+        "type": "array"
       }
     },
     "required": [
@@ -4414,6 +5182,183 @@ export const componentSchemas = {
       "updatedAt"
     ],
     "title": "ProjectResponse",
+    "type": "object"
+  },
+  "ProjectScheduleResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "assumptions": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Assumptions",
+        "type": "array"
+      },
+      "canWrite": {
+        "title": "Canwrite",
+        "type": "boolean"
+      },
+      "completionDate": {
+        "anyOf": [
+          {
+            "format": "date",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Completiondate"
+      },
+      "criticalChain": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/DependencyCriticalChain"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "dependencies": {
+        "items": {
+          "$ref": "#/components/schemas/DependencyResponse"
+        },
+        "title": "Dependencies",
+        "type": "array"
+      },
+      "effectiveStartDate": {
+        "anyOf": [
+          {
+            "format": "date",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Effectivestartdate"
+      },
+      "gaps": {
+        "items": {
+          "$ref": "#/components/schemas/ScheduleIssue"
+        },
+        "title": "Gaps",
+        "type": "array"
+      },
+      "knownRemainingMinutes": {
+        "minimum": 0,
+        "title": "Knownremainingminutes",
+        "type": "integer"
+      },
+      "method": {
+        "const": "serial_shared_capacity",
+        "default": "serial_shared_capacity",
+        "title": "Method",
+        "type": "string"
+      },
+      "project": {
+        "$ref": "#/components/schemas/ScheduleProjectInput"
+      },
+      "readAt": {
+        "format": "date-time",
+        "title": "Readat",
+        "type": "string"
+      },
+      "schedule": {
+        "items": {
+          "$ref": "#/components/schemas/ScheduledTask"
+        },
+        "title": "Schedule",
+        "type": "array"
+      },
+      "startDate": {
+        "format": "date",
+        "title": "Startdate",
+        "type": "string"
+      },
+      "tasks": {
+        "items": {
+          "$ref": "#/components/schemas/ScheduleTaskInput"
+        },
+        "title": "Tasks",
+        "type": "array"
+      },
+      "warnings": {
+        "items": {
+          "$ref": "#/components/schemas/ScheduleIssue"
+        },
+        "title": "Warnings",
+        "type": "array"
+      }
+    },
+    "required": [
+      "effectiveStartDate",
+      "completionDate",
+      "knownRemainingMinutes",
+      "gaps",
+      "warnings",
+      "schedule",
+      "criticalChain",
+      "project",
+      "readAt",
+      "startDate",
+      "tasks",
+      "dependencies",
+      "canWrite",
+      "assumptions"
+    ],
+    "title": "ProjectScheduleResponse",
+    "type": "object"
+  },
+  "ProjectTaskGraphResponse": {
+    "properties": {
+      "dependencies": {
+        "items": {
+          "$ref": "#/components/schemas/DependencyResponse"
+        },
+        "title": "Dependencies",
+        "type": "array"
+      },
+      "milestones": {
+        "items": {
+          "$ref": "#/components/schemas/GraphMilestone"
+        },
+        "title": "Milestones",
+        "type": "array"
+      },
+      "project": {
+        "$ref": "#/components/schemas/ProjectResponse"
+      },
+      "readAt": {
+        "format": "date-time",
+        "title": "Readat",
+        "type": "string"
+      },
+      "stages": {
+        "items": {
+          "$ref": "#/components/schemas/GraphStage"
+        },
+        "title": "Stages",
+        "type": "array"
+      },
+      "tasks": {
+        "items": {
+          "$ref": "#/components/schemas/GraphTask"
+        },
+        "title": "Tasks",
+        "type": "array"
+      }
+    },
+    "required": [
+      "project",
+      "readAt",
+      "tasks",
+      "dependencies",
+      "stages",
+      "milestones"
+    ],
+    "title": "ProjectTaskGraphResponse",
     "type": "object"
   },
   "ProposedMilestone": {
@@ -4662,6 +5607,33 @@ export const componentSchemas = {
     "title": "RegistrationRequest",
     "type": "object"
   },
+  "RemoveDependencyAction": {
+    "additionalProperties": false,
+    "properties": {
+      "dependencyId": {
+        "format": "uuid",
+        "title": "Dependencyid",
+        "type": "string"
+      },
+      "taskId": {
+        "format": "uuid",
+        "title": "Taskid",
+        "type": "string"
+      },
+      "type": {
+        "const": "remove_dependency",
+        "title": "Type",
+        "type": "string"
+      }
+    },
+    "required": [
+      "type",
+      "taskId",
+      "dependencyId"
+    ],
+    "title": "RemoveDependencyAction",
+    "type": "object"
+  },
   "ResourceType": {
     "enum": [
       "project"
@@ -4678,6 +5650,219 @@ export const componentSchemas = {
     ],
     "title": "ResourceVersionStatus",
     "type": "string"
+  },
+  "ScheduleIssue": {
+    "additionalProperties": false,
+    "properties": {
+      "code": {
+        "title": "Code",
+        "type": "string"
+      },
+      "message": {
+        "title": "Message",
+        "type": "string"
+      },
+      "taskIds": {
+        "items": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "title": "Taskids",
+        "type": "array"
+      }
+    },
+    "required": [
+      "code",
+      "message",
+      "taskIds"
+    ],
+    "title": "ScheduleIssue",
+    "type": "object"
+  },
+  "ScheduleProjectInput": {
+    "properties": {
+      "createdAt": {
+        "format": "date-time",
+        "title": "Createdat",
+        "type": "string"
+      },
+      "dailyCapacityMinutes": {
+        "anyOf": [
+          {
+            "maximum": 2147483647,
+            "minimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Dailycapacityminutes"
+      },
+      "description": {
+        "anyOf": [
+          {
+            "maxLength": 4000,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Description"
+      },
+      "id": {
+        "format": "uuid",
+        "title": "Id",
+        "type": "string"
+      },
+      "name": {
+        "maxLength": 160,
+        "minLength": 1,
+        "title": "Name",
+        "type": "string"
+      },
+      "revision": {
+        "minimum": 1,
+        "title": "Revision",
+        "type": "integer"
+      },
+      "updatedAt": {
+        "format": "date-time",
+        "title": "Updatedat",
+        "type": "string"
+      },
+      "workingWeekdays": {
+        "items": {
+          "maximum": 7,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "maxItems": 7,
+        "minItems": 1,
+        "title": "Workingweekdays",
+        "type": "array"
+      }
+    },
+    "required": [
+      "id",
+      "revision",
+      "dailyCapacityMinutes",
+      "workingWeekdays",
+      "name",
+      "description",
+      "createdAt",
+      "updatedAt"
+    ],
+    "title": "ScheduleProjectInput",
+    "type": "object"
+  },
+  "ScheduleTaskInput": {
+    "additionalProperties": false,
+    "properties": {
+      "createdAt": {
+        "format": "date-time",
+        "title": "Createdat",
+        "type": "string"
+      },
+      "estimatedEffortMinutes": {
+        "anyOf": [
+          {
+            "maximum": 2147483647,
+            "minimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Estimatedeffortminutes"
+      },
+      "id": {
+        "format": "uuid",
+        "title": "Id",
+        "type": "string"
+      },
+      "priority": {
+        "$ref": "#/components/schemas/TaskPriority"
+      },
+      "remainingEffortMinutes": {
+        "anyOf": [
+          {
+            "maximum": 2147483647,
+            "minimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Remainingeffortminutes"
+      },
+      "revision": {
+        "minimum": 1,
+        "title": "Revision",
+        "type": "integer"
+      },
+      "status": {
+        "$ref": "#/components/schemas/TaskStatus"
+      },
+      "title": {
+        "title": "Title",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "revision",
+      "title",
+      "status",
+      "priority",
+      "createdAt",
+      "estimatedEffortMinutes",
+      "remainingEffortMinutes"
+    ],
+    "title": "ScheduleTaskInput",
+    "type": "object"
+  },
+  "ScheduledTask": {
+    "additionalProperties": false,
+    "properties": {
+      "endDate": {
+        "format": "date",
+        "title": "Enddate",
+        "type": "string"
+      },
+      "endOffsetMinutes": {
+        "minimum": 0,
+        "title": "Endoffsetminutes",
+        "type": "integer"
+      },
+      "startDate": {
+        "format": "date",
+        "title": "Startdate",
+        "type": "string"
+      },
+      "startOffsetMinutes": {
+        "minimum": 0,
+        "title": "Startoffsetminutes",
+        "type": "integer"
+      },
+      "taskId": {
+        "format": "uuid",
+        "title": "Taskid",
+        "type": "string"
+      }
+    },
+    "required": [
+      "taskId",
+      "startOffsetMinutes",
+      "endOffsetMinutes",
+      "startDate",
+      "endDate"
+    ],
+    "title": "ScheduledTask",
+    "type": "object"
   },
   "SkillImportRequest": {
     "additionalProperties": false,
@@ -5037,6 +6222,19 @@ export const componentSchemas = {
         ],
         "title": "Dueat"
       },
+      "estimatedEffortMinutes": {
+        "anyOf": [
+          {
+            "maximum": 2147483647,
+            "minimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Estimatedeffortminutes"
+      },
       "expectedProjectRevision": {
         "anyOf": [
           {
@@ -5076,6 +6274,19 @@ export const componentSchemas = {
       "priority": {
         "$ref": "#/components/schemas/TaskPriority",
         "default": "medium"
+      },
+      "remainingEffortMinutes": {
+        "anyOf": [
+          {
+            "maximum": 2147483647,
+            "minimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Remainingeffortminutes"
       },
       "stageId": {
         "anyOf": [
@@ -5223,6 +6434,19 @@ export const componentSchemas = {
         ],
         "title": "Dueat"
       },
+      "estimatedEffortMinutes": {
+        "anyOf": [
+          {
+            "maximum": 2147483647,
+            "minimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Estimatedeffortminutes"
+      },
       "id": {
         "format": "uuid",
         "title": "Id",
@@ -5259,6 +6483,19 @@ export const componentSchemas = {
         "format": "uuid",
         "title": "Projectid",
         "type": "string"
+      },
+      "remainingEffortMinutes": {
+        "anyOf": [
+          {
+            "maximum": 2147483647,
+            "minimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Remainingeffortminutes"
       },
       "revision": {
         "minimum": 1,
@@ -5402,6 +6639,19 @@ export const componentSchemas = {
             ],
             "title": "Dueat"
           },
+          "estimatedEffortMinutes": {
+            "anyOf": [
+              {
+                "maximum": 2147483647,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimatedeffortminutes"
+          },
           "expectedProjectRevision": {
             "minimum": 1,
             "type": "integer"
@@ -5425,6 +6675,19 @@ export const componentSchemas = {
           },
           "priority": {
             "$ref": "#/components/schemas/TaskPriority"
+          },
+          "remainingEffortMinutes": {
+            "anyOf": [
+              {
+                "maximum": 2147483647,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remainingeffortminutes"
           },
           "stageId": {
             "anyOf": [
@@ -5503,6 +6766,19 @@ export const componentSchemas = {
             ],
             "title": "Dueat"
           },
+          "estimatedEffortMinutes": {
+            "anyOf": [
+              {
+                "maximum": 2147483647,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimatedeffortminutes"
+          },
           "expectedProjectRevision": {
             "minimum": 1,
             "type": "integer"
@@ -5526,6 +6802,19 @@ export const componentSchemas = {
           },
           "priority": {
             "$ref": "#/components/schemas/TaskPriority"
+          },
+          "remainingEffortMinutes": {
+            "anyOf": [
+              {
+                "maximum": 2147483647,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remainingeffortminutes"
           },
           "stageId": {
             "anyOf": [
@@ -5604,6 +6893,19 @@ export const componentSchemas = {
             ],
             "title": "Dueat"
           },
+          "estimatedEffortMinutes": {
+            "anyOf": [
+              {
+                "maximum": 2147483647,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimatedeffortminutes"
+          },
           "expectedProjectRevision": {
             "anyOf": [
               {
@@ -5624,6 +6926,19 @@ export const componentSchemas = {
           "milestoneId": false,
           "priority": {
             "$ref": "#/components/schemas/TaskPriority"
+          },
+          "remainingEffortMinutes": {
+            "anyOf": [
+              {
+                "maximum": 2147483647,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remainingeffortminutes"
           },
           "stageId": false,
           "title": {
@@ -5690,6 +7005,19 @@ export const componentSchemas = {
             ],
             "title": "Dueat"
           },
+          "estimatedEffortMinutes": {
+            "anyOf": [
+              {
+                "maximum": 2147483647,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimatedeffortminutes"
+          },
           "expectedProjectRevision": {
             "anyOf": [
               {
@@ -5710,6 +7038,19 @@ export const componentSchemas = {
           "milestoneId": false,
           "priority": {
             "$ref": "#/components/schemas/TaskPriority"
+          },
+          "remainingEffortMinutes": {
+            "anyOf": [
+              {
+                "maximum": 2147483647,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remainingeffortminutes"
           },
           "stageId": false,
           "title": {
@@ -5776,6 +7117,19 @@ export const componentSchemas = {
             ],
             "title": "Dueat"
           },
+          "estimatedEffortMinutes": {
+            "anyOf": [
+              {
+                "maximum": 2147483647,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimatedeffortminutes"
+          },
           "expectedProjectRevision": {
             "anyOf": [
               {
@@ -5796,6 +7150,243 @@ export const componentSchemas = {
           "milestoneId": false,
           "priority": {
             "$ref": "#/components/schemas/TaskPriority"
+          },
+          "remainingEffortMinutes": {
+            "anyOf": [
+              {
+                "maximum": 2147483647,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remainingeffortminutes"
+          },
+          "stageId": false,
+          "title": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expectedRevision",
+          "estimatedEffortMinutes"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "acceptanceCriteria": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acceptancecriteria"
+          },
+          "assigneeUserId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigneeuserid"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "dueAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dueat"
+          },
+          "estimatedEffortMinutes": {
+            "anyOf": [
+              {
+                "maximum": 2147483647,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimatedeffortminutes"
+          },
+          "expectedProjectRevision": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expectedprojectrevision"
+          },
+          "expectedRevision": {
+            "minimum": 1,
+            "title": "Expectedrevision",
+            "type": "integer"
+          },
+          "milestoneId": false,
+          "priority": {
+            "$ref": "#/components/schemas/TaskPriority"
+          },
+          "remainingEffortMinutes": {
+            "anyOf": [
+              {
+                "maximum": 2147483647,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remainingeffortminutes"
+          },
+          "stageId": false,
+          "title": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expectedRevision",
+          "remainingEffortMinutes"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "acceptanceCriteria": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acceptancecriteria"
+          },
+          "assigneeUserId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigneeuserid"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "dueAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dueat"
+          },
+          "estimatedEffortMinutes": {
+            "anyOf": [
+              {
+                "maximum": 2147483647,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimatedeffortminutes"
+          },
+          "expectedProjectRevision": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expectedprojectrevision"
+          },
+          "expectedRevision": {
+            "minimum": 1,
+            "title": "Expectedrevision",
+            "type": "integer"
+          },
+          "milestoneId": false,
+          "priority": {
+            "$ref": "#/components/schemas/TaskPriority"
+          },
+          "remainingEffortMinutes": {
+            "anyOf": [
+              {
+                "maximum": 2147483647,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remainingeffortminutes"
           },
           "stageId": false,
           "title": {
@@ -5862,6 +7453,19 @@ export const componentSchemas = {
             ],
             "title": "Dueat"
           },
+          "estimatedEffortMinutes": {
+            "anyOf": [
+              {
+                "maximum": 2147483647,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimatedeffortminutes"
+          },
           "expectedProjectRevision": {
             "anyOf": [
               {
@@ -5882,6 +7486,19 @@ export const componentSchemas = {
           "milestoneId": false,
           "priority": {
             "$ref": "#/components/schemas/TaskPriority"
+          },
+          "remainingEffortMinutes": {
+            "anyOf": [
+              {
+                "maximum": 2147483647,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remainingeffortminutes"
           },
           "stageId": false,
           "title": {
@@ -5948,6 +7565,19 @@ export const componentSchemas = {
             ],
             "title": "Dueat"
           },
+          "estimatedEffortMinutes": {
+            "anyOf": [
+              {
+                "maximum": 2147483647,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimatedeffortminutes"
+          },
           "expectedProjectRevision": {
             "anyOf": [
               {
@@ -5968,6 +7598,19 @@ export const componentSchemas = {
           "milestoneId": false,
           "priority": {
             "$ref": "#/components/schemas/TaskPriority"
+          },
+          "remainingEffortMinutes": {
+            "anyOf": [
+              {
+                "maximum": 2147483647,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remainingeffortminutes"
           },
           "stageId": false,
           "title": {
@@ -6034,6 +7677,19 @@ export const componentSchemas = {
             ],
             "title": "Dueat"
           },
+          "estimatedEffortMinutes": {
+            "anyOf": [
+              {
+                "maximum": 2147483647,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimatedeffortminutes"
+          },
           "expectedProjectRevision": {
             "anyOf": [
               {
@@ -6054,6 +7710,19 @@ export const componentSchemas = {
           "milestoneId": false,
           "priority": {
             "$ref": "#/components/schemas/TaskPriority"
+          },
+          "remainingEffortMinutes": {
+            "anyOf": [
+              {
+                "maximum": 2147483647,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remainingeffortminutes"
           },
           "stageId": false,
           "title": {
@@ -6106,6 +7775,51 @@ export const componentSchemas = {
       "lineEnd"
     ],
     "title": "TextLocator",
+    "type": "object"
+  },
+  "UpdateTaskAction": {
+    "additionalProperties": false,
+    "properties": {
+      "field": {
+        "enum": [
+          "title",
+          "description",
+          "priority",
+          "acceptanceCriteria"
+        ],
+        "title": "Field",
+        "type": "string"
+      },
+      "taskId": {
+        "format": "uuid",
+        "title": "Taskid",
+        "type": "string"
+      },
+      "type": {
+        "const": "update_task",
+        "title": "Type",
+        "type": "string"
+      },
+      "value": {
+        "anyOf": [
+          {
+            "maxLength": 10000,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Value"
+      }
+    },
+    "required": [
+      "type",
+      "taskId",
+      "field",
+      "value"
+    ],
+    "title": "UpdateTaskAction",
     "type": "object"
   },
   "UploadBatchCreateRequest": {

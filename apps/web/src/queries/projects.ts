@@ -18,6 +18,7 @@ import {
   fetchTask,
   fetchAssignees,
   fetchDependencies,
+  fetchProjectTaskGraph,
   type TaskStatus,
   type Project,
 } from "../api/projects.ts";
@@ -32,6 +33,14 @@ export const projectKeys = {
 export const structureKeys = {
   scope: (org: string, project: string) => ["project-structure", org, project] as const,
 };
+
+export function useProjectTaskGraph(organizationId: string, projectId: string, sessionSignal: AbortSignal) {
+  return useQuery({
+    queryKey: [...structureKeys.scope(organizationId, projectId), "task-graph"],
+    queryFn: ({signal}) => fetchProjectTaskGraph({projectId, signal: sessionQuerySignal(signal, sessionSignal)}),
+    retry: false, refetchOnMount: "always", refetchOnWindowFocus: false, refetchOnReconnect: false,
+  });
+}
 
 export const taskKeys = {
   all: ["project-tasks"] as const,
@@ -90,6 +99,7 @@ export function useProjectsQuery(
       }),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    retry: false,
   });
 }
 

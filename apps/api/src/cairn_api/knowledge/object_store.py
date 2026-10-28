@@ -11,9 +11,10 @@ import boto3
 import httpx
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
-from mypy_boto3_s3.client import S3Client
 
 if TYPE_CHECKING:
+    from mypy_boto3_s3.client import S3Client
+
     from cairn_api.settings import Settings
 
 
@@ -107,7 +108,7 @@ def _create_s3_client(
     aws_secret_access_key: str,
     region_name: str,
     config: Config,
-) -> S3Client:
+) -> "S3Client":
     # boto3-stubs leaves unrelated service overloads partially unknown in strict mode.
     return boto3.client(  # pyright: ignore[reportUnknownMemberType]
         "s3",

@@ -89,11 +89,11 @@ class KnowledgeSearchRequest(BaseModel):
 class KnowledgeCitation(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    resource_id: UUID = Field(serialization_alias="resourceId")
-    resource_version_id: UUID = Field(serialization_alias="resourceVersionId")
-    chunk_id: UUID = Field(serialization_alias="chunkId")
+    resource_id: UUID = Field(alias="resourceId")
+    resource_version_id: UUID = Field(alias="resourceVersionId")
+    chunk_id: UUID = Field(alias="chunkId")
     title: str
-    media_type: str = Field(serialization_alias="mediaType")
+    media_type: str = Field(alias="mediaType")
     excerpt: str
     locator: KnowledgeLocator
     score: float
