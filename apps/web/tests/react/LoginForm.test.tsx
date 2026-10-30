@@ -53,10 +53,12 @@ beforeEach(() => {
   stubFetch(async () => jsonResponse(VALID_IDENTITY));
 });
 
-test("desktop login does not expose settings before authentication", () => {
+test("desktop login does not expose API configuration or data controls before authentication", () => {
   vi.stubGlobal("chrome", { webview: { postMessage: vi.fn() } });
   render(<LoginForm onSuccess={vi.fn()} />);
+  expect(screen.queryByRole("button", { name: "AI / API 配置" })).not.toBeInTheDocument();
   expect(screen.queryByText("设置")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /备份|恢复/ })).not.toBeInTheDocument();
 });
 
 afterEach(() => {

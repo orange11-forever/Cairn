@@ -6,6 +6,16 @@ import { OAuthLoginButtons } from "../../src/components/OAuthLoginButtons.tsx";
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
+test("desktop explains unavailable third-party login before an authorization request", () => {
+  vi.stubGlobal("chrome", { webview: { postMessage: vi.fn() } });
+  const fetchMock = vi.fn();
+  vi.stubGlobal("fetch", fetchMock);
+  render(<OAuthLoginButtons />);
+  expect(screen.queryAllByRole("button", { name: /GitHub|飞书/ })).toHaveLength(0);
+  expect(screen.getByText(/桌面版尚未接通 GitHub 和飞书登录/)).toBeVisible();
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
 test("使用 GitHub 登录先发起安全请求再跳转到 provider", async () => {
   const user = userEvent.setup();
   const authorizationUrl = "https://github.com/login/oauth/authorize?client_id=test&state=test";

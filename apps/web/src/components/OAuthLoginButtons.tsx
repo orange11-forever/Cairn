@@ -5,6 +5,10 @@ export function OAuthLoginButtons({ navigate = (url: string) => window.location.
   navigate?: (url: string) => void;
 }) {
   const action = useAbortableAction(startOAuth);
+  const desktop = (window as Window & { chrome?: { webview?: unknown } }).chrome?.webview;
+  if (desktop) return <div className="oauth-login">
+    <p>桌面版尚未接通 GitHub 和飞书登录。请创建邮箱账号，在本机登录使用；已有账号可直接登录。</p>
+  </div>;
   async function begin(provider: OAuthProvider) {
     const url = await action.run({ provider, intent: "login" });
     if (url !== undefined) navigate(url);

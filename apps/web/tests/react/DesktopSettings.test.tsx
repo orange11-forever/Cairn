@@ -19,7 +19,7 @@ test("desktop settings group native actions and close after selection or Escape"
   await user.click(trigger);
   expect(screen.getByText("数据管理")).toBeVisible();
   expect(screen.getByText("帮助与诊断")).toBeVisible();
-  await user.click(screen.getByRole("button", { name: "模型连接" }));
+  await user.click(screen.getByRole("button", { name: "AI / API 配置" }));
   expect(postMessage).toHaveBeenCalledExactlyOnceWith("cairn:settings:models");
   expect(screen.getByRole("group")).not.toHaveAttribute("open");
   await user.click(trigger);
