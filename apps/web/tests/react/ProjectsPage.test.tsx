@@ -194,6 +194,35 @@ test("loading projects shows a workbench-shaped skeleton", () => {
   expect(screen.queryByRole("img", { name: /岑宁/ })).toBeNull();
 });
 
+test("node selection opens existing details and graph refresh keeps the list in sync", async () => {
+  let task = {...TASK};
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const {url} = requestDetails(input);
+    if (url.pathname.endsWith("/task-graph")) return jsonResponse({
+      project: PROJECT, readAt:"2026-10-23T13:00:00Z", stages:[], milestones:[], dependencies:[],
+      tasks:[{id:task.id, projectId:task.projectId, title:task.title, revision:task.revision, status:task.status, stageId:null, milestoneId:null}],
+    });
+    const fixture = structureFixture(input);
+    if (fixture) return fixture;
+    if (url.pathname === "/api/v1/projects") return jsonResponse({items:[PROJECT],nextCursor:null});
+    if (url.pathname === `/api/v1/tasks/${TASK.id}`) return jsonResponse(task);
+    if (url.pathname.endsWith("/tasks")) return jsonResponse({items:[task],nextCursor:null});
+    return jsonResponse({items:[],nextCursor:null});
+  }));
+  const user = userEvent.setup();
+  renderProjects(undefined, {...IDENTITY, membership:{...IDENTITY.membership,role:"viewer"}});
+  await screen.findByRole("heading",{name:TASK.title});
+  await user.click(screen.getByRole("button",{name:"节点图"}));
+  await user.click(await screen.findByRole("button",{name:`查看任务：${TASK.title}，待处理`}));
+  expect(await screen.findByRole("heading",{name:"任务详情"})).toBeInTheDocument();
+  await user.click(screen.getByRole("button",{name:"关闭详情"}));
+  task = {...task, title:"外部窗口更新后的任务", revision:2};
+  await user.click(screen.getByRole("button",{name:"刷新节点图"}));
+  await screen.findByRole("button",{name:/查看任务：外部窗口更新后的任务/});
+  await user.click(screen.getByRole("button",{name:"任务列表"}));
+  expect(await screen.findByRole("heading",{name:task.title})).toBeInTheDocument();
+});
+
 test("an organization with no projects gets a clear empty state", async () => {
   vi.stubGlobal(
     "fetch",
@@ -210,7 +239,87 @@ test("an organization with no projects gets a clear empty state", async () => {
     "data-variant",
     "full",
   );
-  expect(screen.queryByRole("button", { name: /创建/ })).toBeNull();
+  expect(screen.getByRole("button", { name: "创建第一个项目" })).toBeInTheDocument();
+});
+
+test("an empty workspace can create its first real project and enter the task workspace", async () => {
+  let created = false;
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const request = input instanceof Request ? input : new Request(input);
+    const {url, method} = requestDetails(input);
+    if (url.pathname === "/api/v1/projects" && method === "POST") {
+      expect(request.headers.get("X-CSRF-Token")).toBe(IDENTITY.csrfToken);
+      expect(await request.json()).toEqual({name:PROJECT.name,description:PROJECT.description});
+      created = true;
+      return jsonResponse(PROJECT,201);
+    }
+    const fixture=structureFixture(input); if(fixture)return fixture;
+    if(url.pathname === "/api/v1/projects") return jsonResponse({items:created?[PROJECT]:[],nextCursor:null});
+    return jsonResponse({items:[],nextCursor:null});
+  }));
+  const user=userEvent.setup();renderProjects();
+  await user.click(await screen.findByRole("button",{name:"创建第一个项目"}));
+  await user.type(screen.getByRole("textbox",{name:"项目名称"}),PROJECT.name);
+  await user.type(screen.getByRole("textbox",{name:"项目说明（选填）"}),PROJECT.description);
+  await user.click(screen.getByRole("button",{name:"创建项目"}));
+  expect(await screen.findByRole("heading",{name:PROJECT.name})).toBeInTheDocument();
+  expect(screen.getByRole("button",{name:"创建任务"})).toBeInTheDocument();
+});
+
+test("first-project creation never posts again when only the list refresh failed", async () => {
+  let created=false, failRefresh=true, posts=0;
+  vi.stubGlobal("fetch",vi.fn(async(input:RequestInfo|URL)=>{
+    const {url,method}=requestDetails(input);
+    if(url.pathname==="/api/v1/projects"&&method==="POST"){created=true;posts++;return jsonResponse(PROJECT,201);}
+    const fixture=structureFixture(input);if(fixture)return fixture;
+    if(url.pathname==="/api/v1/projects"){
+      if(created&&failRefresh)return jsonResponse({code:"database_unavailable",message:"列表读取失败",traceId:"first-project-refresh"},503);
+      return jsonResponse({items:created?[PROJECT]:[],nextCursor:null});
+    }
+    return jsonResponse({items:[],nextCursor:null});
+  }));
+  const user=userEvent.setup();renderProjects();
+  await user.click(await screen.findByRole("button",{name:"创建第一个项目"}));
+  await user.type(screen.getByRole("textbox",{name:"项目名称"}),PROJECT.name);
+  await user.click(screen.getByRole("button",{name:"创建项目"}));
+  expect(await screen.findByRole("alert")).toHaveTextContent("项目已创建");
+  expect(screen.queryByRole("button",{name:"创建项目"})).not.toBeInTheDocument();
+  failRefresh=false;
+  await user.click(screen.getByRole("button",{name:"重新读取项目"}));
+  await screen.findByRole("heading",{name:PROJECT.name});
+  expect(posts).toBe(1);
+});
+
+test("read-only users do not get a first-project creation control",async()=>{
+  vi.stubGlobal("fetch",vi.fn(async()=>jsonResponse({items:[],nextCursor:null})));
+  renderProjects(undefined,{...IDENTITY,membership:{...IDENTITY.membership,role:"viewer"}});
+  await screen.findByRole("heading",{name:"还没有项目"});
+  expect(screen.queryByRole("button",{name:"创建第一个项目"})).not.toBeInTheDocument();
+});
+
+test("a lost creation response requires list reconciliation and cannot send a duplicate POST",async()=>{
+  let created=false, posts=0;
+  vi.stubGlobal("fetch",vi.fn(async(input:RequestInfo|URL)=>{
+    const {url,method}=requestDetails(input);
+    if(url.pathname==="/api/v1/projects"&&method==="POST"){created=true;posts++;throw new TypeError("response lost");}
+    const fixture=structureFixture(input);if(fixture)return fixture;
+    if(url.pathname==="/api/v1/projects")return jsonResponse({items:created?[PROJECT]:[],nextCursor:null});
+    return jsonResponse({items:[],nextCursor:null});
+  }));
+  const user=userEvent.setup();renderProjects();
+  await user.click(await screen.findByRole("button",{name:"创建第一个项目"}));
+  await user.type(screen.getByRole("textbox",{name:"项目名称"}),PROJECT.name);
+  await user.click(screen.getByRole("button",{name:"创建项目"}));
+  expect(await screen.findByRole("alert")).toHaveTextContent("未收到创建确认");
+  expect(screen.queryByRole("button",{name:"创建项目"})).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button",{name:"核对项目列表"}));
+  await screen.findByText(/已读取全部可访问项目/);
+  expect(screen.getByRole("textbox",{name:"项目名称"})).toHaveValue(PROJECT.name);
+  expect(screen.getByRole("textbox",{name:"项目名称"})).toBeDisabled();
+  expect(screen.queryByRole("button",{name:"创建项目"})).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button",{name:"关闭并查看项目列表"}));
+  await screen.findByRole("heading",{name:PROJECT.name});
+  expect(posts).toBe(1);
 });
 
 test("a failed project request exposes retry and recovers", async () => {
@@ -2063,4 +2172,64 @@ test("an unchanged edit sends no revision-only PATCH", async () => {
   );
   expect(boundary.writes).toHaveLength(0);
   expect(boundary.current.revision).toBe(1);
+});
+
+test.each(["owner","admin","member"] as const)("existing %s projects expose a general creation entry",async role=>{
+  vi.stubGlobal("fetch",vi.fn(async(input:RequestInfo|URL)=>structureFixture(input)??jsonResponse(new URL(input instanceof Request?input.url:String(input)).pathname==="/api/v1/projects"?{items:[PROJECT],nextCursor:null}:{items:[],nextCursor:null})));
+  renderProjects(undefined,{...IDENTITY,membership:{...IDENTITY.membership,role}});
+  expect(await screen.findByRole("button",{name:"创建项目"})).toBeEnabled();
+});
+
+test("existing-project creation loads later pages before selecting the exact newly created ID",async()=>{
+  const createdProject={...PROJECT_B,id:"00000000-0000-4000-8000-000000004003",name:"新增项目"};let posts=0;const cursors:(string|null)[]=[];
+  vi.stubGlobal("fetch",vi.fn(async(input:RequestInfo|URL)=>{
+    const request=input instanceof Request?input:new Request(input);const url=new URL(request.url);
+    if(url.pathname==="/api/v1/projects"){
+      if(request.method==="POST"){posts++;return jsonResponse(createdProject,201);}
+      const cursor=url.searchParams.get("cursor");cursors.push(cursor);
+      return jsonResponse(cursor==="second"?{items:[PROJECT_B],nextCursor:"third"}:cursor==="third"?{items:[createdProject],nextCursor:null}:{items:[PROJECT],nextCursor:"second"});
+    }
+    return structureFixture(input)??jsonResponse({items:[],nextCursor:null});
+  }));
+  const user=userEvent.setup();renderProjects();await user.click(await screen.findByRole("button",{name:"创建项目"}));await user.type(screen.getByRole("textbox",{name:"项目名称"}),createdProject.name);await user.click(screen.getByRole("button",{name:"创建项目"}));
+  expect(await screen.findByRole("heading",{name:createdProject.name})).toBeVisible();expect(cursors).toEqual([null,null,"second","third"]);expect(posts).toBe(1);expect(screen.queryByRole("form",{name:"创建项目"})).not.toBeInTheDocument();
+});
+
+test("cancelling general creation keeps the selected task workspace and its unsaved input mounted",async()=>{
+  vi.stubGlobal("fetch",vi.fn(async(input:RequestInfo|URL)=>{
+    const request=input instanceof Request?input:new Request(input);const path=new URL(request.url).pathname;const fixture=structureFixture(input);if(fixture)return fixture;
+    if(path==="/api/v1/projects")return jsonResponse({items:[PROJECT,PROJECT_B],nextCursor:null});
+    if(path===`/api/v1/tasks/${TASK.id}`)return jsonResponse(TASK);
+    if(path===`/api/v1/projects/${PROJECT.id}/tasks`)return jsonResponse({items:[TASK],nextCursor:null});
+    return jsonResponse({items:[],nextCursor:null});
+  }));
+  const user=userEvent.setup();renderProjects();await user.click(await screen.findByRole("button",{name:`查看任务：${TASK.title}`}));const editor=await screen.findByRole("form",{name:"编辑任务"});await user.clear(within(editor).getByLabelText("任务标题"));await user.type(within(editor).getByLabelText("任务标题"),"保留未保存的任务输入");
+  await user.click(screen.getByRole("button",{name:"创建项目"}));expect(screen.getByRole("form",{name:"编辑任务"})).toBe(editor);await user.type(screen.getByRole("textbox",{name:"项目名称"}),"尚未创建");await user.click(screen.getByRole("button",{name:"取消"}));
+  expect(screen.getByRole("form",{name:"编辑任务"})).toBe(editor);expect(within(editor).getByLabelText("任务标题")).toHaveValue("保留未保存的任务输入");expect(screen.getByRole("heading",{name:PROJECT.name})).toBeVisible();
+});
+
+test("known general creation success with refresh failure can only reread and never post twice",async()=>{
+  let posts=0,created=false,fail=true;vi.stubGlobal("fetch",vi.fn(async(input:RequestInfo|URL)=>{
+    const request=input instanceof Request?input:new Request(input);const url=new URL(request.url);
+    if(url.pathname==="/api/v1/projects"){
+      if(request.method==="POST"){posts++;created=true;return jsonResponse(PROJECT_B,201);}
+      if(created&&fail)return jsonResponse({code:"database_unavailable",message:"列表读取失败",traceId:"general-refresh"},503);
+      return jsonResponse({items:created?[PROJECT,PROJECT_B]:[PROJECT],nextCursor:null});
+    }return structureFixture(input)??jsonResponse({items:[],nextCursor:null});
+  }));const user=userEvent.setup();renderProjects();await user.click(await screen.findByRole("button",{name:"创建项目"}));await user.type(screen.getByRole("textbox",{name:"项目名称"}),PROJECT_B.name);await user.click(screen.getByRole("button",{name:"创建项目"}));expect(await screen.findByRole("alert")).toHaveTextContent("项目已创建");expect(screen.getByRole("textbox",{name:"项目名称"})).toHaveValue(PROJECT_B.name);expect(screen.queryByRole("button",{name:"创建项目"})).not.toBeInTheDocument();fail=false;await user.click(screen.getByRole("button",{name:"重新读取项目"}));expect(await screen.findByRole("heading",{name:PROJECT_B.name})).toBeVisible();expect(posts).toBe(1);
+});
+
+test("unknown general creation inspects all pages while preserving the locked submission until explicit close",async()=>{
+  let posts=0;const cursors:(string|null)[]=[];vi.stubGlobal("fetch",vi.fn(async(input:RequestInfo|URL)=>{
+    const request=input instanceof Request?input:new Request(input);const url=new URL(request.url);
+    if(url.pathname==="/api/v1/projects"){
+      if(request.method==="POST"){posts++;throw new TypeError("lost acknowledgement");}
+      const cursor=url.searchParams.get("cursor");cursors.push(cursor);return jsonResponse(cursor==="later"?{items:[PROJECT_B],nextCursor:null}:{items:[PROJECT],nextCursor:"later"});
+    }return structureFixture(input)??jsonResponse({items:[],nextCursor:null});
+  }));const user=userEvent.setup();renderProjects();await user.click(await screen.findByRole("button",{name:"创建项目"}));await user.type(screen.getByRole("textbox",{name:"项目名称"}),PROJECT_B.name);await user.click(screen.getByRole("button",{name:"创建项目"}));expect(await screen.findByRole("alert")).toHaveTextContent("未收到创建确认");await user.click(screen.getByRole("button",{name:"核对项目列表"}));expect(await screen.findByText(/已读取全部可访问项目/)).toBeVisible();expect(within(screen.getByRole("list",{name:"已读取的完整项目列表"})).getByText(PROJECT_B.name)).toBeVisible();expect(cursors).toEqual([null,null,"later"]);expect(screen.getByRole("textbox",{name:"项目名称"})).toHaveValue(PROJECT_B.name);expect(screen.getByRole("textbox",{name:"项目名称"})).toBeDisabled();expect(screen.queryByRole("button",{name:"创建项目"})).not.toBeInTheDocument();expect(screen.getByRole("heading",{name:PROJECT.name})).toBeVisible();await user.click(screen.getByRole("button",{name:"关闭并查看项目列表"}));expect(screen.queryByRole("textbox",{name:"项目名称"})).not.toBeInTheDocument();expect(posts).toBe(1);
+});
+
+test("viewer with existing projects has no general creation entry",async()=>{
+  vi.stubGlobal("fetch",vi.fn(async(input:RequestInfo|URL)=>structureFixture(input)??jsonResponse(new URL(input instanceof Request?input.url:String(input)).pathname==="/api/v1/projects"?{items:[PROJECT],nextCursor:null}:{items:[],nextCursor:null})));
+  renderProjects(undefined,{...IDENTITY,membership:{...IDENTITY.membership,role:"viewer"}});await screen.findByRole("heading",{name:PROJECT.name});expect(screen.queryByRole("button",{name:"创建项目"})).not.toBeInTheDocument();
 });

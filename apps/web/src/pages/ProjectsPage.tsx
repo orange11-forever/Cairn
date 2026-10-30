@@ -12,6 +12,10 @@ import { TaskDetails } from "../components/projects/TaskDetails.tsx";
 import { ProjectStructure } from "../components/projects/ProjectStructure.tsx";
 import { ProjectAnalysis } from "../components/projects/ProjectAnalysis.tsx";
 import { ProjectPlanPreview } from "../components/projects/ProjectPlanPreview.tsx";
+import { ProjectOperations } from "../components/projects/ProjectOperations.tsx";
+import { ProjectSchedule } from "../components/projects/ProjectSchedule.tsx";
+import { ProjectTaskGraph } from "../components/projects/ProjectTaskGraph.tsx";
+import { ProjectCreator } from "../components/projects/ProjectCreator.tsx";
 import { Link } from "react-router-dom";
 
 import type { Project, Task, TaskStatus } from "../api/projects.ts";
@@ -86,6 +90,7 @@ export function ProjectsPage() {
       csrfToken={session.identity.csrfToken}
       membershipRole={session.identity.membership.role}
       organizationId={session.identity.organization.id}
+      userId={session.identity.user.id}
       signal={session.signal}
     />
   );
@@ -95,11 +100,13 @@ function ProjectsWorkspace({
   csrfToken,
   membershipRole,
   organizationId,
+  userId,
   signal,
 }: {
   csrfToken: string;
   membershipRole: string;
   organizationId: string;
+  userId: string;
   signal: AbortSignal;
 }) {
   const projects = useProjectsQuery(organizationId, signal);
@@ -107,6 +114,8 @@ function ProjectsWorkspace({
     null,
   );
   const [selectionAnnouncement, setSelectionAnnouncement] = useState("");
+  const [creatingProject,setCreatingProject]=useState(false);
+  const canCreateProject=["owner","admin","member"].includes(membershipRole);
 
   if (projects.isPending) {
     return (
@@ -161,32 +170,30 @@ function ProjectsWorkspace({
       />
     ) : null;
 
-  if (firstProject === undefined) {
-    return (
-      <section className="projects-page" aria-label="项目工作区">
-        <PageHeading />
-        {projectRefreshError}
-        <div className="project-state project-state-empty project-empty-state">
-          <MascotFigure
-            className="project-empty-mascot"
-            label="岑宁，Cairn 项目向导"
-            variant="full"
-          />
-          <div>
-            <h2>还没有项目</h2>
-            <p>项目创建后会显示在这里。</p>
-          </div>
-        </div>
-      </section>
-    );
+  async function rereadProjects(targetId?: string) {
+    let result=await projects.refetch();
+    if(result.isError)throw result.error;
+    while(!signal.aborted && result.data?.pages.at(-1)?.nextCursor != null && (!targetId || !result.data?.pages.some(page=>page.items.some(project=>project.id===targetId)))) {
+      result=await projects.fetchNextPage({cancelRefetch:false});
+      if(result.isError)throw result.error;
+    }
+    if(signal.aborted)return [];
+    if(targetId && !result.data?.pages.some(page=>page.items.some(project=>project.id===targetId)))throw new Error("完整列表中仍未找到已创建的项目，请重新读取项目；无需再次创建。");
+    return result.data!.pages.flatMap(page=>page.items);
+  }
+
+  async function enterCreatedProject(project:Project) {
+    await rereadProjects(project.id);
+    if(signal.aborted)return;
+    setRequestedProjectId(project.id);setCreatingProject(false);setSelectionAnnouncement(`已创建项目：${project.name}`);
   }
 
   const selectedProject =
     projectItems.find((project) => project.id === requestedProjectId) ??
     firstProject;
-  const selectedWorkspaceId = taskWorkspaceId(selectedProject.id);
+  const selectedWorkspaceId = selectedProject ? taskWorkspaceId(selectedProject.id) : undefined;
   const selectProject = (projectId: string) => {
-    if (projectId === selectedProject.id) return;
+    if (projectId === selectedProject?.id) return;
     const project = projectItems.find((item) => item.id === projectId);
     setRequestedProjectId(projectId);
     if (project !== undefined)
@@ -195,14 +202,17 @@ function ProjectsWorkspace({
 
   return (
     <section className="projects-page" aria-label="项目工作区">
-      <PageHeading />
-      {projectRefreshError}
+      <PageHeading onCreate={canCreateProject && !creatingProject && selectedProject ? ()=>setCreatingProject(true) : undefined}/>
+      {!creatingProject && projectRefreshError}
+      {creatingProject && canCreateProject && <ProjectCreator csrfToken={csrfToken} signal={signal} onCancel={()=>setCreatingProject(false)} onInspect={()=>rereadProjects()} onCreated={enterCreatedProject}/>}
+      {selectedProject ? <>
       <div className="project-mobile-switcher">
         <label htmlFor="project-switcher">切换项目</label>
         <select
           aria-controls={selectedWorkspaceId}
           id="project-switcher"
           value={selectedProject.id}
+          disabled={creatingProject}
           onChange={(event) => selectProject(event.target.value)}
         >
           {projectItems.map((project) => (
@@ -225,6 +235,7 @@ function ProjectsWorkspace({
                   type="button"
                   aria-controls={selectedWorkspaceId}
                   aria-pressed={project.id === selectedProject.id}
+                  disabled={creatingProject}
                   onClick={() => selectProject(project.id)}
                 >
                   <strong>{project.name}</strong>
@@ -237,13 +248,26 @@ function ProjectsWorkspace({
         <TaskWorkspace
           key={selectedProject.id}
           csrfToken={csrfToken}
+          userId={userId}
           membershipRole={membershipRole}
           organizationId={organizationId}
           project={selectedProject}
           signal={signal}
-          workspaceId={selectedWorkspaceId}
+          workspaceId={taskWorkspaceId(selectedProject.id)}
         />
       </div>
+      </> : !creatingProject && <div className="project-state project-state-empty project-empty-state">
+          <MascotFigure
+            className="project-empty-mascot"
+            label="岑宁，Cairn 项目向导"
+            variant="full"
+          />
+          <div>
+            <h2>还没有项目</h2>
+            <p>项目创建后会显示在这里。</p>
+            {canCreateProject&&<button type="button" className="project-first-create" onClick={()=>setCreatingProject(true)}>创建第一个项目</button>}
+          </div>
+        </div>}
       <p
         aria-atomic="true"
         aria-live="polite"
@@ -251,7 +275,7 @@ function ProjectsWorkspace({
       >
         {selectionAnnouncement}
       </p>
-      {projects.hasNextPage ? (
+      {projects.hasNextPage && !creatingProject ? (
         <PaginationAction
           className="project-pagination"
           error={projects.isFetchNextPageError ? projects.error : null}
@@ -268,13 +292,14 @@ function ProjectsWorkspace({
   );
 }
 
-function PageHeading() {
+function PageHeading({onCreate}:{onCreate?:()=>void}) {
   return (
     <header className="projects-heading">
       <div>
         <h1>项目任务</h1>
         <p>选择项目，查看任务并更新进度。</p>
       </div>
+      {onCreate && <button className="project-general-create" type="button" onClick={onCreate}>创建项目</button>}
     </header>
   );
 }
@@ -283,6 +308,7 @@ function TaskWorkspace({
   csrfToken,
   membershipRole,
   organizationId,
+  userId,
   project,
   signal,
   workspaceId,
@@ -290,6 +316,7 @@ function TaskWorkspace({
   csrfToken: string;
   membershipRole: string;
   organizationId: string;
+  userId: string;
   project: Project;
   signal: AbortSignal;
   workspaceId: string;
@@ -297,8 +324,18 @@ function TaskWorkspace({
   const scopeSignal = signal;
   const queryClient = useQueryClient();
   const [creating, setCreating] = useState(false);
+  const [taskView, setTaskView] = useState<"list" | "graph">("list");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const taskDetailsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (selectedTaskId === null) return;
+    taskDetailsRef.current?.scrollIntoView?.({block:"start"});
+    taskDetailsRef.current?.focus({preventScroll:true});
+  }, [selectedTaskId]);
   const [editorBusy, setEditorBusy] = useState(false);
+  const [operationsBusy, setOperationsBusy] = useState(false);
+  const [scheduleBusy, setScheduleBusy] = useState(false);
+  const [operationRereadVersion, setOperationRereadVersion] = useState(0);
   const [structureBusy, setStructureBusy] = useState(false);
   const [createRecovery, setCreateRecovery] = useState<"conflict" | "refresh_failed" | null>(null);
   const [createRereading, setCreateRereading] = useState(false);
@@ -341,6 +378,15 @@ function TaskWorkspace({
     ]);
   }
 
+  async function refreshOperationData() {
+    await Promise.all([
+      refreshCreateData(),
+      queryClient.invalidateQueries({queryKey: taskKeys.detailScope(organizationId, project.id), refetchType: "active"}, {throwOnError: true}),
+      queryClient.invalidateQueries({queryKey: taskKeys.dependencyScope(organizationId, project.id), refetchType: "active"}, {throwOnError: true}),
+    ]);
+    if (current()) setOperationRereadVersion(value => value + 1);
+  }
+
   async function reloadCreate() {
     if (!current() || createRereading || createRecovery !== "conflict") return;
     setCreateRereading(true);
@@ -380,7 +426,7 @@ function TaskWorkspace({
           {canTransition && (
             <button
               type="button"
-              disabled={editorBusy || structureBusy || statusBlocked || createBlocked}
+              disabled={operationsBusy || scheduleBusy || editorBusy || structureBusy || statusBlocked || createBlocked}
               onClick={() => {
                 setSelectedTaskId(null);
                 setCreating((value) => !value);
@@ -394,13 +440,15 @@ function TaskWorkspace({
       </header>
 
       <ProjectAnalysis projectId={project.id} csrfToken={csrfToken} signal={scopeSignal} />
-      <ProjectPlanPreview projectId={project.id} csrfToken={csrfToken} signal={scopeSignal} />
-      <ProjectStructure organizationId={organizationId} projectId={project.id} csrfToken={csrfToken} signal={scopeSignal} canWrite={canTransition} lifecycleDisabled={creating || selectedTaskId !== null} disabled={editorBusy || statusBlocked || createBlocked} onBusy={setStructureBusy}/>
+      <ProjectPlanPreview projectId={project.id} csrfToken={csrfToken} signal={scopeSignal} ownerId={userId} disabled={operationsBusy || scheduleBusy || editorBusy || structureBusy || statusBlocked || createBlocked || creating} onApplied={refreshCreateData} onOpenTask={id=>{if(!editorBusy && !creating)setSelectedTaskId(id);}} />
+      <ProjectOperations projectId={project.id} ownerId={userId} csrfToken={csrfToken} signal={scopeSignal} disabled={scheduleBusy || editorBusy || structureBusy || statusBlocked || createBlocked || creating} onApplied={refreshOperationData} onBusy={setOperationsBusy} onOpenTask={id=>{if(!editorBusy && !creating)setSelectedTaskId(id);}} />
+      <ProjectSchedule organizationId={organizationId} projectId={project.id} csrfToken={csrfToken} signal={scopeSignal} disabled={operationsBusy || editorBusy || structureBusy || statusBlocked || createBlocked || creating} onBusy={setScheduleBusy} onOpenTask={id=>{if(!editorBusy && !creating)setSelectedTaskId(id);}} />
+      <ProjectStructure organizationId={organizationId} projectId={project.id} csrfToken={csrfToken} signal={scopeSignal} canWrite={canTransition} lifecycleDisabled={creating || selectedTaskId !== null} disabled={operationsBusy || scheduleBusy || editorBusy || statusBlocked || createBlocked} onBusy={setStructureBusy}/>
 
       {creating && (
         <TaskEditor
           key={`${transition.rereadVersion}:${createGeneration}`}
-          disabled={statusBlocked || structureBusy || createRereading}
+          disabled={operationsBusy || scheduleBusy || statusBlocked || structureBusy || createRereading}
           organizationId={organizationId}
           projectId={project.id}
           csrfToken={csrfToken}
@@ -427,6 +475,7 @@ function TaskWorkspace({
       )}
       {createRecoveryError && <p role="alert">{createRecoveryError}</p>}
       {selectedTaskId && (
+        <div ref={taskDetailsRef} tabIndex={-1} className="task-detail-anchor">
         <TaskDetails
           key={selectedTaskId}
           taskId={selectedTaskId}
@@ -436,8 +485,8 @@ function TaskWorkspace({
           signal={scopeSignal}
           canWrite={canTransition}
           statusBaseRevision={transition.variables?.expectedRevision}
-          externalBlocked={statusBlocked || structureBusy || createBlocked}
-          externalRereadVersion={transition.rereadVersion}
+          externalBlocked={operationsBusy || scheduleBusy || statusBlocked || structureBusy || createBlocked}
+          externalRereadVersion={transition.rereadVersion + operationRereadVersion}
           statusRevision={
             transition.isSuccess &&
             transition.variables?.taskId === selectedTaskId &&
@@ -448,7 +497,14 @@ function TaskWorkspace({
           onBusy={setEditorBusy}
           onClose={() => setSelectedTaskId(null)}
         />
+        </div>
       )}
+      <div className="task-view-switch" role="group" aria-label="任务显示方式">
+        <button type="button" aria-pressed={taskView === "list"} disabled={operationsBusy || scheduleBusy || editorBusy || statusBlocked} onClick={()=>setTaskView("list")}>任务列表</button>
+        <button type="button" aria-pressed={taskView === "graph"} disabled={operationsBusy || scheduleBusy || editorBusy || statusBlocked} onClick={()=>setTaskView("graph")}>节点图</button>
+      </div>
+      {taskView === "graph" ? <ProjectTaskGraph organizationId={organizationId} projectId={project.id} signal={scopeSignal} selectedTaskId={selectedTaskId} disabled={operationsBusy || scheduleBusy || editorBusy || structureBusy || statusBlocked || createBlocked || creating} onOpenTask={setSelectedTaskId}/>
+      : <>
       {tasks.isPending ? (
         <div className="task-loading" aria-busy="true">
           <span className="project-skeleton">正在加载任务</span>
@@ -534,7 +590,7 @@ function TaskWorkspace({
               milestoneName={task.milestoneId ? milestones.data?.pages.flatMap(page=>page.items).find(row=>row.id===task.milestoneId)?.name ?? "里程碑尚未加载" : "未设置"}
               canTransition={canTransition}
               actionsDisabled={
-                statusBlocked || hasTaskRefetchError || editorBusy || structureBusy || createBlocked
+                operationsBusy || scheduleBusy || statusBlocked || hasTaskRefetchError || editorBusy || structureBusy || createBlocked
               }
               pending={transition.isPending}
               pendingTaskId={transition.variables?.taskId ?? null}
@@ -567,6 +623,7 @@ function TaskWorkspace({
           ) : null}
         </div>
       ) : null}
+      </>}
     </section>
   );
 }

@@ -628,11 +628,11 @@ def test_history_is_rechecked_after_provider_even_when_current_evidence_is_diffe
         chunks=[(new_chunk, "9 月 30 日交付。", [1.0] + [0.0] * 1023)],
     )
     citation = KnowledgeCitation(
-        resource_id=new_rid,
-        resource_version_id=new_vid,
-        chunk_id=new_chunk,
+        resourceId=new_rid,
+        resourceVersionId=new_vid,
+        chunkId=new_chunk,
         title="本轮合成证据",
-        media_type="application/pdf",
+        mediaType="application/pdf",
         excerpt="9 月 30 日交付。",
         locator=PdfLocator(type="pdf", page=1),
         score=0.5,

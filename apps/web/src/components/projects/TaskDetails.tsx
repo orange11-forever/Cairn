@@ -1,3 +1,4 @@
+import { effortLabel } from "../../lib/effort.ts";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { type Task } from "../../api/projects.ts";
@@ -189,6 +190,8 @@ export function TaskDetails({
                 <dd>{detail.data.priority}</dd>
                 <dt>截止时间</dt>
                 <dd>{detail.data.dueAt ?? "无到期时间"}</dd>
+                <dt>初始估算</dt><dd>{effortLabel(detail.data.estimatedEffortMinutes)}</dd>
+                <dt>剩余工作量</dt><dd>{effortLabel(detail.data.remainingEffortMinutes)}</dd>
                 <dt>验收标准</dt>
                 <dd>{detail.data.acceptanceCriteria ?? "未填写"}</dd>
               </dl>

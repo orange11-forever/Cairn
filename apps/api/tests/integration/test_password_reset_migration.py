@@ -11,6 +11,8 @@ def test_password_reset_downgrade_refuses_live_limits_and_removes_expired_limits
     config = Config("apps/api/alembic.ini")
     config.set_main_option("sqlalchemy.url", test_database_url)
     with migrated_engine.begin() as connection:
+        starting_revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
+        assert isinstance(starting_revision, str)
         connection.execute(
             text(
                 "INSERT INTO registration_rate_limits (purpose, key_digest, attempt_count, expires_at) "
@@ -23,7 +25,7 @@ def test_password_reset_downgrade_refuses_live_limits_and_removes_expired_limits
         with migrated_engine.connect() as connection:
             assert (
                 connection.scalar(text("SELECT version_num FROM alembic_version"))
-                == "0020_password_reset"
+                == starting_revision
             )
             assert (
                 connection.scalar(

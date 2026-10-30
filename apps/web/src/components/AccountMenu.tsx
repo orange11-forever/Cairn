@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import type { IdentityContext } from "../api/auth.ts";
 import type { ApiError } from "../api/errors.ts";
 import { LogOut, UserRound } from "lucide-react";
+import { DesktopSettings } from "./DesktopSettings.tsx";
 
 export function AccountMenu({
   identity,
@@ -27,6 +28,7 @@ export function AccountMenu({
         <p className="account-organization">{identity.organization.name}</p>
         {logoutError !== null && <p role="alert">{logoutError.message}</p>}
         <Link to="/account/identities">登录方式</Link>
+        <DesktopSettings />
         {appearance}
         <button type="button" className="logout-btn" onClick={() => void onLogout()}>
           <LogOut aria-hidden="true" size={16} strokeWidth={1.8} />

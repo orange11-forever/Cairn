@@ -88,7 +88,7 @@ def test_task_edit_single_field_agrees_with_nullable_omission_contract(
 def test_public_task_edit_contract_requires_one_editable_field() -> None:
     schema = schemas.TaskUpdateRequest.model_json_schema(by_alias=True)
     branches = schema.get("anyOf", [])
-    assert len(branches) == 8
+    assert len(branches) == 10
     assert {tuple(branch["required"]) for branch in branches} == {
         ("expectedRevision", "title"),
         ("expectedRevision", "description"),
@@ -96,6 +96,8 @@ def test_public_task_edit_contract_requires_one_editable_field() -> None:
         ("expectedRevision", "priority"),
         ("expectedRevision", "dueAt"),
         ("expectedRevision", "acceptanceCriteria"),
+        ("expectedRevision", "estimatedEffortMinutes"),
+        ("expectedRevision", "remainingEffortMinutes"),
         ("expectedRevision", "stageId", "expectedProjectRevision"),
         ("expectedRevision", "milestoneId", "expectedProjectRevision"),
     }

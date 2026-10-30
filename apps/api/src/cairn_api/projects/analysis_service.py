@@ -7,6 +7,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 
 from cairn_api.audit.repository import add_audit_log
+from cairn_api.authorization.types import ProjectPermission
 from cairn_api.errors import ApiProblem
 from cairn_api.knowledge import assistant_repository
 from cairn_api.knowledge.answer_models import ConfiguredAnswerModel, selected_answer_model
@@ -296,14 +297,20 @@ class ProjectAnalysisService(KnowledgeConversationService):
             raise ApiProblem(
                 status_code=503, code="answer_unavailable", message="规划预览暂时不可用，请稍后重试"
             ) from None
-        self._finish(project_id, inputs, plan.status, "project.plan_previewed")
+        response.can_apply = self._finish(project_id, inputs, plan.status, "project.plan_previewed")
         return response
 
     def _finish(
         self, project_id: UUID, inputs: ProjectAnalysisInputs, status: str, action: str
-    ) -> None:
+    ) -> bool:
         with self._session.begin():
             self._check_inputs(project_id, inputs.snapshot, inputs.found.results)
+            can_apply = (
+                self._policy.find_project(
+                    self._identity, project_id, ProjectPermission.WRITE, for_update=True
+                )
+                is not None
+            )
             add_audit_log(
                 self._session,
                 org_id=self._identity.organization.id,
@@ -322,3 +329,4 @@ class ProjectAnalysisService(KnowledgeConversationService):
                     "modelId": inputs.model.info.id,
                 },
             )
+            return can_apply

@@ -53,6 +53,12 @@ beforeEach(() => {
   stubFetch(async () => jsonResponse(VALID_IDENTITY));
 });
 
+test("desktop login does not expose settings before authentication", () => {
+  vi.stubGlobal("chrome", { webview: { postMessage: vi.fn() } });
+  render(<LoginForm onSuccess={vi.fn()} />);
+  expect(screen.queryByText("设置")).not.toBeInTheDocument();
+});
+
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();

@@ -42,6 +42,7 @@ def _project(org_id: UUID, *, created_at: datetime = NOW) -> Project:
         org_id=org_id,
         name="Project Alpha",
         description="Project description",
+        working_weekdays=[1, 2, 3, 4, 5],
         created_at=created_at,
         updated_at=created_at,
     )

@@ -674,3 +674,29 @@ def test_serve_stops_on_process_shutdown_signals_and_restores_handlers(
         (signal.SIGINT, previous[signal.SIGINT]),
         (signal.SIGTERM, previous[signal.SIGTERM]),
     ]
+
+
+def test_paused_indexing_claims_no_index_jobs_but_keeps_archive_handler(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    def claim(_session: object, **kwargs: Any) -> None:
+        captured.update(kwargs)
+
+    monkeypatch.setattr("cairn_worker.runner.claim_next_job", claim)
+    events: list[str] = []
+    def handler(*_args: object) -> None:
+        return None
+
+    assert (
+        run_once(
+            session_factory=lambda: _Session(events),
+            worker_id="desktop:test",
+            handlers={kind: handler for kind in REQUIRED_JOB_KINDS},
+            indexing_enabled=False,
+        )
+        is False
+    )
+    assert JobKind.INDEX_RESOURCE_VERSION not in captured["job_kinds"]
+    assert JobKind.EXPAND_ARCHIVE in captured["job_kinds"]

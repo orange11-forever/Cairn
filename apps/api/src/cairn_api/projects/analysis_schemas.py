@@ -67,6 +67,7 @@ class ProjectPlanPreviewResponse(BaseModel):
     retrieval_mode: Literal["hybrid", "keyword_fallback"] = Field(alias="retrievalMode")
     citations: list[KnowledgeAnswerCitation] = Field(max_length=5)
     plan: ProjectPlanDraft
+    can_apply: bool = Field(default=False, alias="canApply")
 
     @model_validator(mode="after")
     def validate_plan_evidence(self) -> "ProjectPlanPreviewResponse":

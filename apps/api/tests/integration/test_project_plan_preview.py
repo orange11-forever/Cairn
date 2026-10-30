@@ -92,6 +92,7 @@ def test_plan_preview_returns_evidence_and_dag_without_creating_project_objects(
         response = client.post(f"/api/v1/projects/{pid}/plan-preview")
         assert response.status_code == 200, response.text
         body = response.json()
+        assert body["canApply"] is False
         assert body["plan"]["tasks"][1]["dependsOn"] == ["T1"]
         assert body["plan"]["stages"][0]["id"] == "P1"
         assert body["snapshot"]["project"]["id"] == str(pid)
