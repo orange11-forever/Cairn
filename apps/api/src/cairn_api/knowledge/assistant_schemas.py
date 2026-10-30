@@ -3,6 +3,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from cairn_api.knowledge.assistant_avatar import AVATAR_MAX_LENGTH, validate_avatar
+
 
 class StrictSchema(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
@@ -11,6 +13,7 @@ class StrictSchema(BaseModel):
 class AssistantSettingsResponse(StrictSchema):
     id: UUID | None = None
     name: str = Field(min_length=1, max_length=60)
+    avatar_data_url: str | None = Field(default=None, alias="avatarDataUrl", max_length=AVATAR_MAX_LENGTH)
     instructions: str = Field(max_length=2000)
     enabled_skill_ids: list[str] = Field(alias="enabledSkillIds", max_length=22)
     revision: int = Field(ge=0)
@@ -20,6 +23,12 @@ class AssistantSettingsResponse(StrictSchema):
 class AssistantSettingsRequest(StrictSchema):
     expected_revision: int = Field(alias="expectedRevision", strict=True, ge=0)
     name: str = Field(min_length=1, max_length=60)
+    avatar_data_url: str | None = Field(default=None, alias="avatarDataUrl", max_length=AVATAR_MAX_LENGTH)
+
+    @field_validator("avatar_data_url")
+    @classmethod
+    def valid_avatar(cls, value: str | None) -> str | None:
+        return validate_avatar(value)
     instructions: str = Field(max_length=2000)
     enabled_skill_ids: list[str] = Field(alias="enabledSkillIds", max_length=22)
     model_id: str | None = Field(default=None, alias="modelId", pattern=r"^[a-z][a-z0-9_-]{0,63}$")
@@ -52,6 +61,7 @@ class AssistantSelectionRequest(StrictSchema):
 class AssistantProfileSummary(StrictSchema):
     id: UUID
     name: str = Field(min_length=1, max_length=60)
+    avatar_data_url: str | None = Field(default=None, alias="avatarDataUrl", max_length=AVATAR_MAX_LENGTH)
     model_id: str | None = Field(alias="modelId")
 
 

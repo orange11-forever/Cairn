@@ -26,15 +26,21 @@
 
 ## AI 模型设置
 
-登录后，工作区顶部的「AI / API 配置」可直接打开模型设置；也可从「账户 → 设置 → AI 服务 → AI / API 配置」进入。分别提供回答模型与知识索引配置，可只启用其中一项，也可全部留空。回答模型支持现有openai-compatible、openai-responses、anthropic和gemini协议，填写服务基础地址、模型名称与API Key；首版只有一个稳定default模型，不下载模型或管理OAuth。知识索引使用兼容`/embeddings`接口的基础地址、模型与API Key，固定1024维。云端和本机服务使用同一输入方式，无鉴权本机服务也须明确填写`local-no-auth`等非空占位值。
+登录后，工作区顶部的「AI / API 配置」可直接打开模型设置；也可从「账户 → 设置 → AI 服务 → AI / API 配置」进入。回答模型目录最多保存20个模型，每项独立设置显示名称、协议、服务基础地址、模型名称与API Key，并可选择默认模型。支持现有openai-compatible、openai-responses、anthropic和gemini协议。知识索引单独配置，可只配置其中一种用途，也可全部留空；应用不下载模型或管理OAuth。旧版单模型会保留稳定的default标识和原凭据，读取时不会改写旧文件，保存后升级为多模型格式。知识索引使用兼容`/embeddings`接口的基础地址、模型与API Key，固定1024维。云端和本机服务使用同一输入方式，无鉴权本机服务也须明确填写`local-no-auth`等非空占位值。
 
-API Key输入框以密码方式显示，打开对话框不会读回或显示旧Key；留空保留该组已保存的Key，新配置必须填写。取消启用并保存会清除此组配置；「清除全部模型配置」需要明确确认，保留项目、文件和已有索引。服务地址不能含用户名/密码、查询参数或片段。保存会安全停止服务、校验并加密写入，再正常重启；「已配置」只表示本机配置存在，不表示已联网或推理成功。
+API Key输入框以密码方式显示，打开对话框不会读回或显示旧Key；留空按模型标识保留已保存的Key，新模型必须填写。删除回答模型并保存会清除该项凭据；原来选用它的助手会提示模型不可用，需要重新选择，不会自动改用其他模型。取消启用知识索引并保存会清除索引凭据；「清除全部模型配置」需要明确确认，保留项目、文件和已有索引。服务地址不能含用户名/密码、查询参数或片段。保存会安全停止服务、校验并加密写入，再正常重启；「已保存」只表示本机配置存在，不表示已联网或推理成功。「测试所选模型」会发送一次小请求，分别检查服务响应和实际调用结果，并报告HTTP状态、网络失败、格式错误或非1024维向量等原因；可能消耗少量服务额度。测试不保存配置；编辑后原测试结果失效。
 
 模型凭据独立保存在数据目录的`model-settings.dpapi`，由Windows同用户DPAPI加密，沿用目录ACL和DataLock，通过临时文件和atomic replace保存，不改内部`settings.json`。Key仅经原生进程的UTF-8 stdin传给运行时，不放在命令行、环境变量、WebView、公共HTTP接口、状态元信息或日志。配置损坏时启动明确失败，原生菜单保持可用，可明确清除后重新填写；不会静默忽略损坏配置。默认备份不包含模型凭据，恢复后重新填写。
 
 配置命令复用正常桌面数据库初始化/升级。保存索引配置前只启动随包PostgreSQL，在DataLock与profile排他事务内检查绑定；没有任何历史向量、ready版本或current版本时，允许首次绑定或修正填错的地址/模型。默认profile的固定ID、default-v1版本、1024维、cosine、切片和索引参数保持原样；provider_key保存规范化实际`/embeddings`地址的SHA-256指纹，不含Key。任何历史向量、ready版本或current版本存在后，只允许保持已绑定地址与模型并更换Key；改地址/模型在替换加密文件前拒绝，旧profile、凭据和业务数据保持。尚未绑定地址的旧default索引不能被新配置认领；额外或组织级profile、不兼容合同明确拒绝。缺凭据或清除配置不重写profile。
 
-运行时的`model-status`仅返回安全地址/模型/协议、hasKey、corrupt与indexingPaused，`model-configure`从stdin接收JSON，不接受Key参数。公开API和Web不提供凭据读写路由。原生对话框是正常设置入口，不要把真实Key写入终端历史或提交到仓库。
+运行时的`model-status`仅返回安全模型目录、默认标识、地址/模型/协议、hasKey、corrupt与indexingPaused；`model-configure`与`model-test`从stdin接收JSON，不接受Key命令行参数。公开API和Web不提供凭据读写路由。原生对话框是正常设置入口，不要把真实Key写入终端历史或提交到仓库。
+
+## 自定义助手
+
+项目「知识工作台 → 助手与技能」支持新建和切换个人助手，分别保存名称、头像、回答模型、行为说明与启用的Skills。头像可上传PNG、JPEG或WebP（最大4 MB），在本机居中裁为128×128 PNG后预览；保存助手配置后生效，可替换或移除。头像随项目数据库备份，名称或头像修改不会改变其他助手。
+
+切换助手使用独立的未发送草稿和对话列表；历史回答保留当时的名称、实际模型、技能及配置修订号，头像按该回答所属助手的当前头像显示。修改配置影响后续回答。旧版未分组或混合助手对话通过「全部历史（含旧版）」读取，不能向其中追加另一助手的回答；请新建对话。当前仍是项目知识助手，编程执行与多Agent并行工作尚未接入。
 
 ## 当前限制
 
@@ -107,7 +113,7 @@ PYTHONPATH=apps/desktop/src .venv/bin/python -m pytest apps/desktop/tests/test_o
 桌面模型边界的Linux测试与Windows专项：
 
 ```bash
-PYTHONPATH=apps/desktop/src .venv/bin/python -m pytest apps/desktop/tests/test_model_settings.py -q
+PYTHONPATH=apps/desktop/src .venv/bin/python -m pytest apps/desktop/tests/test_model_settings.py apps/desktop/tests/test_model_catalog.py apps/desktop/tests/test_model_probe.py -q
 PYTHONPATH=apps/desktop/src CAIRN_TEST_DATABASE_URL='<隔离的postgresql+psycopg测试库cairn_test>' .venv/bin/python -m pytest apps/desktop/tests/integration/test_model_binding.py -q
 ```
 

@@ -47,9 +47,10 @@ def test_existing_assistant_keeps_identity_and_configuration_and_multiple_profil
                 "enabledSkillIds": ["knowledge-summary"],
                 "revision": 7,
                 "modelId": None,
+                "avatarDataUrl": None,
             }
             assert client.get(prefix + "/assistants").json() == {
-                "items": [{"id": str(aid), "name": "原助手", "modelId": None}]
+                "items": [{"id": str(aid), "name": "原助手", "modelId": None, "avatarDataUrl": None}]
             }
             with pytest.raises(IntegrityError), database.session_factory.begin() as session:
                 session.add(

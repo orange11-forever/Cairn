@@ -7,6 +7,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     String,
+    Text,
     func,
     text,
 )
@@ -38,6 +39,7 @@ class KnowledgeAssistantSettings(Base):
         ),
         CheckConstraint("revision > 0", name="revision_positive"),
         CheckConstraint("char_length(name) BETWEEN 1 AND 60", name="name_length"),
+        CheckConstraint("avatar_data_url IS NULL OR char_length(avatar_data_url) <= 90000", name="avatar_length"),
         CheckConstraint("char_length(instructions) <= 2000", name="instructions_length"),
         CheckConstraint(
             "jsonb_typeof(enabled_skill_ids) = 'array' AND jsonb_array_length(enabled_skill_ids) <= 22",
@@ -49,6 +51,7 @@ class KnowledgeAssistantSettings(Base):
     project_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True))
     owner_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True))
     name: Mapped[str] = mapped_column(String(60))
+    avatar_data_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     instructions: Mapped[str] = mapped_column(String(2000))
     enabled_skill_ids: Mapped[list[str]] = mapped_column(JSONB)
     model_id: Mapped[str | None] = mapped_column(String(64), nullable=True)

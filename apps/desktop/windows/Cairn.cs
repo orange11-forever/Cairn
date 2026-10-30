@@ -324,7 +324,8 @@ internal sealed class CairnWindow : Form
     private static string DescribeModels(Dictionary<string, object> value)
     {
         if ((bool)value["corrupt"]) return "模型配置损坏，请打开AI模型设置明确清除或重新配置。";
-        string answer = value["answer"] == null ? "未配置" : "已配置（未经联网验证）";
+        int count = 0; foreach (object item in (System.Collections.IEnumerable)value["answerModels"]) count++;
+        string answer = count == 0 ? "未配置" : count + "个已保存（状态不代表调用成功）";
         string embedding = value["embedding"] == null ? "未配置，索引任务已暂停；文件解包仍可用" : "已配置，1024维（未经联网验证）";
         return "回答模型：" + answer + "\n知识索引：" + embedding;
     }
@@ -363,7 +364,7 @@ internal sealed class CairnWindow : Form
             catch (Exception stopError) { if (!previouslyExited) throw; previousStatus += "\n" + stopError.Message; }
             var existing = await RunModelCommand("model-status", null);
             modelDescription = DescribeModels(existing);
-            using (var dialog = new ModelConfigurationDialog(existing))
+            using (var dialog = new ModelConfigurationDialog(existing, payload => RunModelCommand("model-test", payload)))
             {
                 if (dialog.ShowDialog(this) != DialogResult.OK) return;
                 status.Text = "正在校验并加密保存模型设置…";
@@ -410,44 +411,129 @@ internal sealed class CairnWindow : Form
 internal sealed class ModelConfigurationDialog : Form
 {
     public Dictionary<string, object> Payload { get; private set; }
-    private readonly ModelConnectionEditor answer;
+    private readonly ModelCatalogEditor answers;
     private readonly ModelConnectionEditor embedding;
+    private bool testing;
 
-    public ModelConfigurationDialog(Dictionary<string, object> existing)
+    public ModelConfigurationDialog(Dictionary<string, object> existing, Func<Dictionary<string, object>, Task<Dictionary<string, object>>> probe)
     {
         Text = "Cairn AI 模型设置"; AccessibleName = "AI 模型设置对话框";
-        Width = 700; Height = 640; MinimumSize = new Size(620, 560);
+        Width = 900; Height = 760; MinimumSize = new Size(760, 680);
         StartPosition = FormStartPosition.CenterParent; MinimizeBox = false; MaximizeBox = false;
         Font = new Font("Microsoft YaHei UI", 9);
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4, Padding = new Padding(16) };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5, Padding = new Padding(16) };
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        for (int i = 0; i < 3; i++) layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         bool corrupt = (bool)existing["corrupt"];
-        var description = new Label { AutoSize = true, MaximumSize = new Size(640, 0), Text = corrupt ? "配置损坏，原凭据无法读取。请先明确清除全部模型配置，再重新填写；项目数据会保留。" : "回答与知识索引分别配置。保存会安全重启本地服务，不进行联网测试。" };
-        layout.Controls.Add(description, 0, 0);
+        layout.Controls.Add(new Label { AutoSize = true, MaximumSize = new Size(820, 0), Text = corrupt ? "配置损坏，请先明确清除全部模型配置，再重新填写；项目数据会保留。" : "管理回答模型，随后在项目的助手配置中分别选用。知识索引独立配置。保存会重启本地服务。" }, 0, 0);
         var tabs = new TabControl { Dock = DockStyle.Fill, AccessibleName = "模型用途", TabIndex = 0 };
         var answerTab = new TabPage("回答模型"); var indexTab = new TabPage("知识索引（1024维）");
-        answer = new ModelConnectionEditor("回答模型", existing["answer"] as Dictionary<string, object>, false);
+        answers = new ModelCatalogEditor((System.Collections.IEnumerable)existing["answerModels"], existing["defaultModelId"] as string);
         embedding = new ModelConnectionEditor("知识索引", existing["embedding"] as Dictionary<string, object>, true);
-        answerTab.Controls.Add(answer); indexTab.Controls.Add(embedding); tabs.TabPages.Add(answerTab); tabs.TabPages.Add(indexTab);
+        answerTab.Controls.Add(answers); indexTab.Controls.Add(embedding); tabs.TabPages.Add(answerTab); tabs.TabPages.Add(indexTab);
         layout.Controls.Add(tabs, 0, 1);
-        layout.Controls.Add(new Label { AutoSize = true, MaximumSize = new Size(640, 0), Text = "API Key留空保留该组已保存的Key；新配置必须填写。无鉴权本地服务请明确填写 local-no-auth 等占位值。取消启用并保存会清除此组凭据。\n已有发布索引后只能换Key，不能更改索引服务地址或模型。模型凭据不进入备份，恢复后需重新填写。" }, 0, 2);
+        layout.Controls.Add(new Label { AutoSize = true, MaximumSize = new Size(820, 0), Text = "Key 留空保留该模型已保存的凭据；新增模型必须填写。无鉴权本地服务可填 local-no-auth。\n已有索引只允许更换 Key；模型凭据不进入备份。测试会向所填服务发送一次小请求，可能消耗少量额度。" }, 0, 2);
+        var result = new Label { AutoSize = true, MaximumSize = new Size(820, 0), AccessibleName = "模型测试结果", Text = "配置已读取。尚未测试；保存不代表服务连通或调用成功。", Margin = new Padding(0, 12, 0, 12) };
+        layout.Controls.Add(result, 0, 3);
+        Action resetTest = () => result.Text = "配置有未保存修改。请测试当前配置；先前测试结果已失效。";
+        answers.Changed += resetTest; embedding.Changed += resetTest;
         var buttons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, TabIndex = 1 };
-        var save = new Button { Text = "保存并重启", AutoSize = true, AccessibleName = "保存模型设置并重启", TabIndex = 0, Enabled = !corrupt };
-        var cancel = new Button { Text = "取消", AutoSize = true, AccessibleName = "取消模型设置", TabIndex = 1, DialogResult = DialogResult.Cancel };
-        var clear = new Button { Text = "清除全部模型配置…", AutoSize = true, AccessibleName = "清除全部模型配置", TabIndex = 2 };
+        var save = new Button { Text = "保存并重启", AutoSize = true, AccessibleName = "保存模型设置并重启", Enabled = !corrupt };
+        var cancel = new Button { Text = "取消", AutoSize = true, AccessibleName = "取消模型设置", DialogResult = DialogResult.Cancel };
+        var test = new Button { Text = "测试所选模型", AutoSize = true, AccessibleName = "测试所选模型", Enabled = !corrupt };
+        var clear = new Button { Text = "清除全部配置…", AutoSize = true, AccessibleName = "清除全部模型配置" };
         save.Click += (s, e) => {
-            try { Payload = new Dictionary<string, object> { { "answer", answer.Value() }, { "embedding", embedding.Value() } }; DialogResult = DialogResult.OK; }
+            try { Payload = Configuration(); DialogResult = DialogResult.OK; }
             catch (Exception error) { MessageBox.Show(this, error.Message, "请检查模型设置"); }
         };
+        test.Click += async (s, e) => {
+            try {
+                var payload = new Dictionary<string, object> { { "configuration", Configuration() }, { "kind", tabs.SelectedIndex == 0 ? "answer" : "embedding" }, { "modelId", answers.SelectedId } };
+                testing = true; tabs.Enabled = buttons.Enabled = false;
+                result.Text = "正在测试服务连通和实际调用…";
+                var response = await probe(payload);
+                result.Text = (string)response["message"];
+            }
+            catch (Exception error) { result.Text = "测试未完成：" + error.Message; }
+            finally { testing = false; tabs.Enabled = buttons.Enabled = true; }
+        };
         clear.Click += (s, e) => {
-            if (MessageBox.Show(this, "清除回答与索引模型凭据？项目、文件与已有索引会保留；索引任务将暂停。", "确认清除模型配置", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+            if (MessageBox.Show(this, "清除所有模型凭据？项目、文件与已有索引会保留；索引任务将暂停。", "确认清除模型配置", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
             Payload = new Dictionary<string, object> { { "clearAll", true } }; DialogResult = DialogResult.OK;
         };
-        buttons.Controls.Add(save); buttons.Controls.Add(cancel); buttons.Controls.Add(clear); layout.Controls.Add(buttons, 0, 3);
+        FormClosing += (s, e) => { if (testing) e.Cancel = true; };
+        buttons.Controls.Add(save); buttons.Controls.Add(cancel); buttons.Controls.Add(test); buttons.Controls.Add(clear); layout.Controls.Add(buttons, 0, 4);
         Controls.Add(layout); AcceptButton = save; CancelButton = cancel;
+    }
+    private Dictionary<string, object> Configuration()
+    {
+        return new Dictionary<string, object> { { "answerModels", answers.Value() }, { "defaultModelId", answers.DefaultId }, { "embedding", embedding.Value() } };
+    }
+}
+
+internal sealed class ModelCatalogEditor : UserControl
+{
+    private readonly ListBox list = new ListBox();
+    private readonly Panel detail = new Panel();
+    private readonly List<ModelConnectionEditor> editors = new List<ModelConnectionEditor>();
+    private readonly Label empty = new Label { Text = "尚无回答模型。点击“添加模型”后填写连接信息。", AutoSize = true, Dock = DockStyle.Top };
+    public string DefaultId { get; private set; }
+    public string SelectedId { get { return list.SelectedIndex < 0 ? null : editors[list.SelectedIndex].ModelId; } }
+    public event Action Changed;
+
+    public ModelCatalogEditor(System.Collections.IEnumerable existing, string defaultId)
+    {
+        Dock = DockStyle.Fill; DefaultId = defaultId; Padding = new Padding(8);
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2 };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 205)); layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        list.Dock = DockStyle.Fill; list.AccessibleName = "回答模型列表"; list.IntegralHeight = false; list.HorizontalScrollbar = true;
+        detail.Dock = DockStyle.Fill; detail.Controls.Add(empty);
+        list.SelectedIndexChanged += (s, e) => ShowSelected();
+        layout.Controls.Add(list, 0, 0); layout.Controls.Add(detail, 1, 0); layout.SetRowSpan(detail, 2);
+        var actions = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill };
+        var add = new Button { Text = "添加模型", AutoSize = true, AccessibleName = "添加回答模型" };
+        var remove = new Button { Text = "删除模型", AutoSize = true, AccessibleName = "删除所选模型" };
+        var makeDefault = new Button { Text = "设为默认", AutoSize = true, AccessibleName = "设为默认模型" };
+        add.Click += (s, e) => {
+            if (editors.Count >= 20) { MessageBox.Show(this, "最多保存20个回答模型。"); return; }
+            Add(null); list.SelectedIndex = editors.Count - 1; Notify();
+        };
+        remove.Click += (s, e) => {
+            int index = list.SelectedIndex; if (index < 0) return;
+            if (MessageBox.Show(this, "保存后将删除该模型及凭据；选用它的助手需重新选择模型。历史回答会保留。", "删除模型", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+            var editor = editors[index]; editors.RemoveAt(index); list.Items.RemoveAt(index); detail.Controls.Remove(editor); editor.Dispose();
+            if (DefaultId == editor.ModelId) DefaultId = editors.Count == 0 ? null : editors[0].ModelId;
+            RefreshNames(); list.SelectedIndex = editors.Count == 0 ? -1 : Math.Min(index, editors.Count - 1); ShowSelected(); Notify();
+        };
+        makeDefault.Click += (s, e) => { if (SelectedId != null) { DefaultId = SelectedId; RefreshNames(); Notify(); } };
+        actions.Controls.Add(add); actions.Controls.Add(remove); actions.Controls.Add(makeDefault); layout.Controls.Add(actions, 0, 1);
+        Controls.Add(layout);
+        foreach (Dictionary<string, object> item in existing) Add(item);
+        if (editors.Count > 0) list.SelectedIndex = 0;
+    }
+    private void Notify() { if (Changed != null) Changed(); }
+    private void Add(Dictionary<string, object> value)
+    {
+        var editor = new ModelConnectionEditor("回答模型", value, false);
+        editors.Add(editor); editor.Visible = false; detail.Controls.Add(editor);
+        if (DefaultId == null) DefaultId = editor.ModelId;
+        list.Items.Add(""); RefreshNames();
+        editor.Changed += () => { RefreshNames(); Notify(); };
+    }
+    private void RefreshNames()
+    {
+        for (int i = 0; i < editors.Count; i++) list.Items[i] = editors[i].DisplayName + (editors[i].ModelId == DefaultId ? "（默认）" : "");
+    }
+    private void ShowSelected()
+    {
+        empty.Visible = editors.Count == 0;
+        for (int i = 0; i < editors.Count; i++) editors[i].Visible = i == list.SelectedIndex;
+    }
+    public object[] Value()
+    {
+        var result = new List<object>(); foreach (var editor in editors) result.Add(editor.Value()); return result.ToArray();
     }
 }
 
@@ -458,18 +544,24 @@ internal sealed class ModelConnectionEditor : UserControl
     private readonly bool hasKey;
     private readonly CheckBox enabled = new CheckBox();
     private readonly ComboBox protocol = new ComboBox();
+    private readonly TextBox displayName = new TextBox();
     private readonly TextBox address = new TextBox();
     private readonly TextBox model = new TextBox();
     private readonly TextBox key = new TextBox();
+    public string ModelId { get; private set; }
+    public string DisplayName { get { return String.IsNullOrWhiteSpace(displayName.Text) ? "新模型" : displayName.Text; } }
+    public event Action Changed;
 
     public ModelConnectionEditor(string purpose, Dictionary<string, object> existing, bool index)
     {
         this.purpose = purpose; this.index = index; hasKey = existing != null && (bool)existing["hasKey"];
+        ModelId = index ? null : existing != null ? (string)existing["id"] : "model-" + Guid.NewGuid().ToString("N");
         Dock = DockStyle.Fill; AutoScroll = true; Padding = new Padding(12);
-        var layout = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1, RowCount = 9 };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1 };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        enabled.Text = "启用" + purpose; enabled.AccessibleName = enabled.Text; enabled.AutoSize = true; enabled.TabIndex = 0; enabled.Checked = existing != null;
-        layout.Controls.Add(enabled);
+        enabled.Text = "启用" + purpose; enabled.AccessibleName = enabled.Text; enabled.AutoSize = true; enabled.TabIndex = 0; enabled.Checked = !index || existing != null;
+        if (index) layout.Controls.Add(enabled);
+        else { AddField(layout, "显示名称", displayName, purpose + "显示名称", 0); displayName.MaxLength = 80; displayName.Text = existing != null ? (string)existing["name"] : "新模型"; }
         protocol.DropDownStyle = ComboBoxStyle.DropDownList; protocol.Dock = DockStyle.Top; protocol.AccessibleName = purpose + "协议"; protocol.TabIndex = 1;
         protocol.Items.AddRange(index ? new object[] { "openai-compatible" } : new object[] { "openai-compatible", "openai-responses", "anthropic", "gemini" });
         protocol.SelectedItem = existing != null ? (string)existing["protocol"] : "openai-compatible";
@@ -479,9 +571,12 @@ internal sealed class ModelConnectionEditor : UserControl
         AddField(layout, hasKey ? "API Key（已保存，留空保留）" : "API Key（未保存）", key, purpose + "API Key", 4);
         address.MaxLength = 16000; model.MaxLength = 200; key.MaxLength = 4096; key.UseSystemPasswordChar = true;
         if (existing != null) { address.Text = (string)existing["baseUrl"]; model.Text = (string)existing["model"]; }
-        enabled.CheckedChanged += (s, e) => SetFieldsEnabled(); SetFieldsEnabled(); Controls.Add(layout);
+        enabled.CheckedChanged += (s, e) => { SetFieldsEnabled(); Notify(); };
+        foreach (var field in new [] { displayName, address, model, key }) field.TextChanged += (s, e) => Notify();
+        protocol.SelectedIndexChanged += (s, e) => Notify();
+        SetFieldsEnabled(); Controls.Add(layout);
     }
-
+    private void Notify() { if (Changed != null) Changed(); }
     private static void AddField(TableLayoutPanel layout, string label, TextBox input, string accessibleName, int tabIndex)
     {
         layout.Controls.Add(new Label { Text = label, AutoSize = true, Margin = new Padding(0, 12, 0, 4) });
@@ -491,10 +586,12 @@ internal sealed class ModelConnectionEditor : UserControl
     public object Value()
     {
         if (!enabled.Checked) return null;
-        if (String.IsNullOrWhiteSpace(address.Text) || String.IsNullOrWhiteSpace(model.Text)) throw new Exception(purpose + "需要填写服务地址和模型名称。");
-        if (!hasKey && String.IsNullOrWhiteSpace(key.Text)) throw new Exception(purpose + "需要API Key；无鉴权本地服务可明确填写 local-no-auth。");
+        if (!index && String.IsNullOrWhiteSpace(displayName.Text)) throw new Exception("请填写模型显示名称。");
+        if (String.IsNullOrWhiteSpace(address.Text) || String.IsNullOrWhiteSpace(model.Text)) throw new Exception(DisplayName + "需要填写服务地址和模型名称。");
+        if (!hasKey && String.IsNullOrWhiteSpace(key.Text)) throw new Exception(DisplayName + "需要 API Key；无鉴权本地服务可明确填写 local-no-auth。");
         var value = new Dictionary<string, object> { { "protocol", (string)protocol.SelectedItem }, { "baseUrl", address.Text }, { "model", model.Text }, { "apiKey", key.Text } };
         if (index) value.Add("dimensions", 1024);
+        else { value.Add("id", ModelId); value.Add("name", displayName.Text); }
         return value;
     }
 }

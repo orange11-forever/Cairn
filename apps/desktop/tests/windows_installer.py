@@ -244,12 +244,14 @@ def main():
             ],
             input=json.dumps(
                 {
-                    "answer": {
+                    "answerModels": [{
+                        "id": "default", "name": "合成验收模型",
                         "protocol": "openai-responses",
                         "baseUrl": "http://127.0.0.1:9/v1",
                         "model": "合成验收模型",
                         "apiKey": key,
-                    },
+                    }],
+                    "defaultModelId": "default",
                     "embedding": None,
                 }
             ),
@@ -316,7 +318,7 @@ def main():
         result = runtime.client.get(f"/api/v1/tasks/{task}")
         assert result.status_code == 200 and result.json()["title"] == "更新卸载不丢失"
         assert result.json()["remainingEffortMinutes"] == 90
-        assert runtime.ready["modelStatus"]["answer"]["model"] == "合成验收模型"
+        assert runtime.ready["modelStatus"]["answerModels"][0]["model"] == "合成验收模型"
         runtime.stop()
         runtime = None
         passed(

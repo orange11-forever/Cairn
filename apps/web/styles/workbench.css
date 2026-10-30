@@ -521,3 +521,13 @@
   .knowledge-answers-docked.is-generating .knowledge-search-controls { padding: 8px; }
   .knowledge-answers-docked.is-generating .knowledge-answer-output { padding-block: 10px; }
 }
+
+.assistant-avatar { flex: none; width: 44px; height: 44px; border-radius: 50%; object-fit: cover; }
+.assistant-avatar-editor { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.assistant-avatar-editor > label { flex: 1; min-width: 180px; }
+.assistant-avatar-editor .mascot-figure, .assistant-avatar-editor .mascot-art, .assistant-avatar-editor .mascot-art > img { width: 44px; height: 44px; }
+.assistant-profile-controls > .mascot-figure, .assistant-profile-controls > .assistant-avatar { align-self: center; }
+.knowledge-answer-author > .assistant-avatar { width: 36px; height: 36px; }
+.conversation-history-scope { display: flex; align-items: flex-start; gap: 6px; margin: 0 12px 12px; color: var(--color-muted); font-size: 12px; line-height: 1.5; }
+.conversation-history-scope input { flex: none; margin: 3px 0 0; }
+.conversation-mobile-controls button { flex: none; }

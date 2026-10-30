@@ -1415,6 +1415,8 @@ export interface components {
         };
         /** AssistantProfileSummary */
         AssistantProfileSummary: {
+            /** Avatardataurl */
+            avatarDataUrl?: string | null;
             /**
              * Id
              * Format: uuid
@@ -1432,6 +1434,8 @@ export interface components {
         };
         /** AssistantSettingsRequest */
         AssistantSettingsRequest: {
+            /** Avatardataurl */
+            avatarDataUrl?: string | null;
             /** Enabledskillids */
             enabledSkillIds: string[];
             /** Expectedrevision */
@@ -1445,6 +1449,8 @@ export interface components {
         };
         /** AssistantSettingsResponse */
         AssistantSettingsResponse: {
+            /** Avatardataurl */
+            avatarDataUrl?: string | null;
             /** Enabledskillids */
             enabledSkillIds: string[];
             /** Id */
@@ -7082,6 +7088,7 @@ export interface operations {
             query?: {
                 cursor?: string | null;
                 limit?: number;
+                currentAssistant?: boolean;
             };
             header?: never;
             path: {

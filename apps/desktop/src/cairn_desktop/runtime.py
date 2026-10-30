@@ -172,7 +172,7 @@ def build_desktop_settings(values, origin, url, models, provider_key, embedding_
         ):
             return (init_settings,)
 
-    answer, embedding = models.answer, models.embedding
+    embedding = models.embedding
     return DesktopSettings(
         _env_file=None,
         database_url=url,
@@ -181,11 +181,11 @@ def build_desktop_settings(values, origin, url, models, provider_key, embedding_
         csrf_secret=values["csrfSecret"],
         auth_rate_limit_secret=values["rateLimitSecret"],
         search_audit_secret=values["searchSecret"],
-        answer_base_url=answer.base_url if answer else None,
-        answer_model=answer.model if answer else None,
-        answer_api_key=answer.api_key if answer else None,
-        answer_protocol=answer.protocol if answer else "openai-compatible",
-        answer_models=[],
+        answer_models=[
+            item.model_dump() for item in sorted(
+                models.answer_models, key=lambda item: item.id != models.default_model_id
+            )
+        ],
         embedding_base_url=embedding.base_url if embedding else "http://127.0.0.1:9/v1",
         embedding_model=embedding_model,
         embedding_provider_key=provider_key,
@@ -484,7 +484,7 @@ def _serve_app(bundle: Path, data: Path, values, log, pg_port, postgres):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "command", choices=["serve", "backup", "restore", "model-status", "model-configure"]
+        "command", choices=["serve", "backup", "restore", "model-status", "model-configure", "model-test"]
     )
     parser.add_argument("--bundle", type=Path, required=True)
     parser.add_argument("--data", type=Path, required=True)
@@ -517,19 +517,24 @@ def main():
 
                     load_settings(args.data)
                     print(json.dumps(model_status(args.data)), flush=True)
-                elif args.command == "model-configure":
+                elif args.command in {"model-configure", "model-test"}:
                     load_settings(args.data)
-                    raw = sys.stdin.buffer.read(32_769)
-                    if len(raw) > 32_768:
+                    from cairn_desktop.models import MAX_MODEL_FILE_BYTES
+
+                    raw = sys.stdin.buffer.read(MAX_MODEL_FILE_BYTES + 1)
+                    if len(raw) > MAX_MODEL_FILE_BYTES:
                         raise ModelSettingsError("模型配置输入过大。")
                     try:
                         payload = json.loads(raw)
                     except (ValueError, UnicodeError):
                         raise ModelSettingsError("模型配置不是有效JSON。") from None
-                    print(
-                        json.dumps(configure_model_settings(args.bundle, args.data, payload, log)),
-                        flush=True,
-                    )
+                    if args.command == "model-test":
+                        from cairn_desktop.model_probe import probe_model_settings
+
+                        result = probe_model_settings(args.data, payload)
+                    else:
+                        result = configure_model_settings(args.bundle, args.data, payload, log)
+                    print(json.dumps(result), flush=True)
                 elif args.command == "backup":
                     if args.archive is None:
                         parser.error("backup requires --archive")

@@ -56,7 +56,7 @@ class KnowledgeAssistantService(KnowledgeConversationService):
             identity = self._authorize(project_id)
             return AssistantCatalogResponse(
                 items=[
-                    AssistantProfileSummary(id=row.id, name=row.name, modelId=row.model_id)
+                    AssistantProfileSummary(id=row.id, name=row.name, modelId=row.model_id, avatarDataUrl=row.avatar_data_url)
                     for row in assistant_repository.assistant_rows(
                         self._session, identity.organization.id, project_id, identity.user.id
                     )
@@ -113,6 +113,7 @@ class KnowledgeAssistantService(KnowledgeConversationService):
                 project_id=project_id,
                 owner_id=identity.user.id,
                 name=payload.name,
+                avatar_data_url=payload.avatar_data_url,
                 instructions=payload.instructions,
                 enabled_skill_ids=payload.enabled_skill_ids,
                 model_id=payload.model_id,
@@ -195,13 +196,16 @@ class KnowledgeAssistantService(KnowledgeConversationService):
             if payload.expected_revision != current.revision:
                 raise assistant_repository.assistant_changed()
             self._validate_configuration(identity, project_id, payload)
+            avatar = payload.avatar_data_url if "avatar_data_url" in payload.model_fields_set else current.avatar_data_url
             if row is not None and (
                 row.name,
+                row.avatar_data_url,
                 row.instructions,
                 row.enabled_skill_ids,
                 row.model_id,
             ) == (
                 payload.name,
+                avatar,
                 payload.instructions,
                 payload.enabled_skill_ids,
                 payload.model_id,
@@ -222,6 +226,7 @@ class KnowledgeAssistantService(KnowledgeConversationService):
                 payload.enabled_skill_ids,
                 payload.model_id,
             )
+            row.avatar_data_url = avatar
             row.revision += 1
             self._session.flush()
             self._business_audit(

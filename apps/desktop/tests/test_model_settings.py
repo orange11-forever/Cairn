@@ -17,12 +17,17 @@ def configure_models(directory, payload):
 
 def payload(*, key="test-secret-not-user", model="model", address="http://localhost:11434/v1"):
     return {
-        "answer": {
-            "protocol": "openai-responses",
-            "baseUrl": address,
-            "model": model,
-            "apiKey": key,
-        },
+        "answerModels": [
+            {
+                "id": "default",
+                "name": "默认模型",
+                "protocol": "openai-responses",
+                "baseUrl": address,
+                "model": model,
+                "apiKey": key,
+            }
+        ],
+        "defaultModelId": "default",
         "embedding": None,
     }
 
@@ -48,13 +53,18 @@ def test_encrypted_config_roundtrip_safe_status_and_empty_key_retention(
     stored = (tmp_path / "model-settings.dpapi").read_bytes()
     assert b"test-secret-not-user" not in stored
     result = model_status(tmp_path)
-    assert result["answer"]["hasKey"] is True and result["answer"]["model"] == "model"
+    assert (
+        result["answerModels"][0]["hasKey"] is True
+        and result["answerModels"][0]["model"] == "model"
+    )
     assert "test-secret-not-user" not in json.dumps(result)
     configure_models(tmp_path, payload(key="", model="new-model"))
-    assert load_models(tmp_path).answer.api_key.get_secret_value() == "test-secret-not-user"
-    assert load_models(tmp_path).answer.model == "new-model"
-    configure_models(tmp_path, {"answer": None, "embedding": None})
-    assert model_status(tmp_path)["answer"] is None
+    assert (
+        load_models(tmp_path).answer_models[0].api_key.get_secret_value() == "test-secret-not-user"
+    )
+    assert load_models(tmp_path).answer_models[0].model == "new-model"
+    configure_models(tmp_path, {"answerModels": [], "defaultModelId": None, "embedding": None})
+    assert model_status(tmp_path)["answerModels"] == []
 
 
 @pytest.mark.parametrize(
@@ -74,7 +84,7 @@ def test_field_errors_never_include_secret_and_leave_previous_ciphertext(
     configure_models(tmp_path, payload())
     before = (tmp_path / "model-settings.dpapi").read_bytes()
     value = payload()
-    value["answer"].update(change)
+    value["answerModels"][0].update(change)
     with pytest.raises(ModelSettingsError) as error:
         configure_models(tmp_path, value)
     assert "test-secret-not-user" not in str(error.value)
@@ -109,7 +119,8 @@ def test_corruption_is_visible_and_explicit_clear_recovers_without_touching_data
     configure_models(tmp_path, {"clearAll": True})
     assert model_status(tmp_path) == {
         "corrupt": False,
-        "answer": None,
+        "answerModels": [],
+        "defaultModelId": None,
         "embedding": None,
         "indexingPaused": True,
     }
@@ -139,7 +150,9 @@ def test_oversized_ciphertext_is_rejected_before_replacing_previous_configuratio
 
     configure_models(tmp_path, payload())
     before = (tmp_path / "model-settings.dpapi").read_bytes()
-    monkeypatch.setattr(models, "protect_bytes", lambda value: b"x" * 32769)
+    monkeypatch.setattr(
+        models, "protect_bytes", lambda value: b"x" * (models.MAX_MODEL_FILE_BYTES + 1)
+    )
     with pytest.raises(ModelSettingsError, match="超过保存上限"):
         configure_models(tmp_path, payload(model="new-model"))
     assert (tmp_path / "model-settings.dpapi").read_bytes() == before
