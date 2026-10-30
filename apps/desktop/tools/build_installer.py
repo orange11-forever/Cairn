@@ -12,8 +12,22 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 REQUIRED = {
     "Cairn.exe",
+    "Microsoft.Web.WebView2.Core.dll",
+    "Microsoft.Web.WebView2.WinForms.dll",
+    "WebView2Loader.dll",
     "python/python.exe",
+    "python/python313.dll",
+    "python/python313.zip",
+    "python/python313._pth",
+    "python/vcruntime140.dll",
+    "python/vcruntime140_1.dll",
     "postgres/bin/postgres.exe",
+    "postgres/bin/initdb.exe",
+    "postgres/bin/pg_ctl.exe",
+    "postgres/lib/vector.dll",
+    "postgres/share/extension/vector.control",
+    "postgres/share/extension/vector--0.8.7.sql",
+    "app/cairn_desktop/runtime.py",
     "web/index.html",
     "bundle.json",
 }
@@ -61,7 +75,7 @@ def generate_payload(bundle: Path, destination: Path) -> dict:
             raise ValueError("Payload contains a nonregular file")
     if not REQUIRED.issubset(files):
         raise ValueError(
-            "Bundle is incomplete: required native/Python/PostgreSQL/Web files are absent"
+            "Bundle is incomplete: missing " + ", ".join(sorted(REQUIRED.difference(files)))
         )
     destination.mkdir(parents=True, exist_ok=True)
     install = ["; Generated explicit payload. No wildcard extraction."]
@@ -161,6 +175,7 @@ def main():
         generate_payload(bundle, working)
         shutil.copy2(ROOT / "apps/desktop/windows/Cairn.nsi", working / "Cairn.nsi")
         shutil.copy2(ROOT / "apps/desktop/windows/Cairn.ico", working / "Cairn.ico")
+        shutil.copy2(ROOT / "apps/desktop/windows/prerequisites.ps1", working / "prerequisites.ps1")
         script = working / "build.nsi"
         script.write_text(
             f'!define OUTPUT_FILE "{nsis_text(windows(output))}"\n!define APP_VERSION "{args.version}"\n!include "Cairn.nsi"\n',

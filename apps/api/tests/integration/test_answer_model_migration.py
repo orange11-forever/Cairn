@@ -72,6 +72,7 @@ def test_upgrade_retains_old_settings_and_turns_and_downgrade_preserves_new_data
                 "enabledSkillIds": [],
                 "revision": 3,
                 "modelId": None,
+                "avatarDataUrl": None,
             }
             detail = client.get(f"{prefix}/conversations/{cid}").json()
             assert detail["revision"] == 2

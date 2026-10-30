@@ -284,6 +284,18 @@
       "AssistantProfileSummary": {
         "additionalProperties": false,
         "properties": {
+          "avatarDataUrl": {
+            "anyOf": [
+              {
+                "maxLength": 90000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatardataurl"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -333,6 +345,18 @@
       "AssistantSettingsRequest": {
         "additionalProperties": false,
         "properties": {
+          "avatarDataUrl": {
+            "anyOf": [
+              {
+                "maxLength": 90000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatardataurl"
+          },
           "enabledSkillIds": {
             "items": {
               "type": "string"
@@ -382,6 +406,18 @@
       "AssistantSettingsResponse": {
         "additionalProperties": false,
         "properties": {
+          "avatarDataUrl": {
+            "anyOf": [
+              {
+                "maxLength": 90000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatardataurl"
+          },
           "enabledSkillIds": {
             "items": {
               "type": "string"
@@ -13298,6 +13334,16 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "currentAssistant",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Currentassistant",
+              "type": "boolean"
             }
           }
         ],

@@ -12,13 +12,11 @@ ShowUninstDetails show
 !include LogicLib.nsh
 !include x64.nsh
 !include FileFunc.nsh
-!include WordFunc.nsh
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\CairnDesktop"
 InstallDirRegKey HKCU "${UNINSTALL_KEY}" "InstallLocation"
 !define MARKER "Cairn.Desktop.PerUser.Install.v1"
 !define RUNNING_MUTEX "Local\Cairn.Desktop.Running.v1"
 !define MAINTENANCE_MUTEX "Local\Cairn.Desktop.Maintenance.v1"
-!define WEBVIEW_CLIENT "Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_UNPAGE_CONFIRM
@@ -41,40 +39,31 @@ Function .onInit
     SetErrorLevel 1
     Abort
   ${EndIf}
-  ReadRegDWORD $0 HKLM "Software\Microsoft\NET Framework Setup\NDP\v4\Full" "Release"
-  IntCmp $0 528040 net_ready net_missing net_ready
-net_missing:
-  MessageBox MB_ICONSTOP|MB_OK "请先安装.NET Framework 4.8，再运行安装程序。官方地址：https://dotnet.microsoft.com/download/dotnet-framework/net48" /SD IDOK
-  SetErrorLevel 1
-  Abort
-net_ready:
-  ReadRegStr $0 HKCU "${WEBVIEW_CLIENT}" "pv"
-  Call CheckWebViewVersion
-  StrCmp $1 1 prerequisites_ready
-  ReadRegStr $0 HKLM "${WEBVIEW_CLIENT}" "pv"
-  Call CheckWebViewVersion
-  StrCmp $1 1 prerequisites_ready
-  SetRegView 32
-  ReadRegStr $0 HKCU "${WEBVIEW_CLIENT}" "pv"
-  Call CheckWebViewVersion
-  StrCmp $1 1 prerequisites_ready
-  ReadRegStr $0 HKLM "${WEBVIEW_CLIENT}" "pv"
-  Call CheckWebViewVersion
-  StrCmp $1 1 prerequisites_ready
-  MessageBox MB_ICONSTOP|MB_OK "请先安装Microsoft Edge WebView2 Runtime（不是Edge浏览器），再运行安装程序。官方地址：https://developer.microsoft.com/microsoft-edge/webview2/" /SD IDOK
-  SetErrorLevel 1
-  Abort
-prerequisites_ready:
-  SetRegView 64
 FunctionEnd
 
-Function CheckWebViewVersion
-  StrCpy $1 0
-  StrCmp $0 "" version_done
-  ${VersionCompare} "$0" "0.0.0.0" $2
-  StrCmp $2 1 0 version_done
-  StrCpy $1 1
-version_done:
+Function EnsurePrerequisites
+  InitPluginsDir
+  SetOutPath "$PLUGINSDIR"
+  File "prerequisites.ps1"
+  DetailPrint "正在检查 .NET Framework、WebView2 和 Visual C++ 运行库；仅下载并安装缺失的组件。"
+  DetailPrint "下载的微软安装程序将先验证签名；需要系统授权时请确认 Windows 提示。"
+  nsExec::ExecToLog '"$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\prerequisites.ps1"'
+  Pop $0
+  StrCmp $0 0 prerequisites_ready
+  StrCmp $0 3010 prerequisites_reboot
+  StrCmp $0 1602 prerequisites_cancelled
+  MessageBox MB_ICONSTOP|MB_OK "系统组件准备失败，Cairn尚未安装。请查看安装详情中的组件名称和错误，检查网络或系统权限后重新运行。程序文件与项目数据尚未修改。" /SD IDOK
+  SetErrorLevel 1
+  Abort
+prerequisites_cancelled:
+  MessageBox MB_ICONINFORMATION|MB_OK "已取消系统组件安装或管理员授权，Cairn尚未安装。准备好后可重新运行此安装包；项目数据未修改。" /SD IDOK
+  SetErrorLevel 1602
+  Abort
+prerequisites_reboot:
+  MessageBox MB_ICONINFORMATION|MB_OK "系统组件要求重启。请保存工作并重启Windows，然后重新运行此安装包。Cairn尚未安装；安装器不会自动重启电脑。" /SD IDOK
+  SetErrorLevel 3010
+  Abort
+prerequisites_ready:
 FunctionEnd
 
 !macro GuardFunctions PREFIX
@@ -244,6 +233,7 @@ marked_target:
   Call CheckMarker
 install_ready:
   !include "payload-check.nsh"
+  Call EnsurePrerequisites
   ClearErrors
   CreateDirectory "$INSTDIR"
   IfErrors install_failed

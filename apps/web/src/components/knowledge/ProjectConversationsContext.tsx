@@ -33,6 +33,7 @@ function useConversationState({ organizationId, userId, projectId, generation, c
   const [error, setError] = useState<unknown>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [online, setOnline] = useState(() => navigator.onLine);
+  const [showAllHistory, setShowAllHistory] = useState(false);
   const [selectedSkill, setSelectedSkill] = useState<string | null>(null);
   const [assistantDraft, setAssistantDraft] = useState<(AssistantSettingsInput & { assistantId: string | null }) | null>(null);
   const [assistantNeedsReload, setAssistantNeedsReload] = useState(false);
@@ -44,8 +45,8 @@ function useConversationState({ organizationId, userId, projectId, generation, c
   const assistant = useQuery({ queryKey: [...scopeKey, "assistant-settings"], enabled: accessDenied === null, queryFn: ({ signal }) => fetchAssistantSettings({ projectId, signal: querySignal(signal) }), retry: false, gcTime: 0, refetchOnReconnect: false });
   const assistants = useQuery({ queryKey: [...scopeKey, "assistants"], enabled: accessDenied === null, queryFn: ({ signal }) => fetchAssistants({ projectId, signal: querySignal(signal) }), retry: false, gcTime: 0, refetchOnReconnect: false });
   const skills = useQuery({ queryKey: [...scopeKey, "skills"], enabled: accessDenied === null, queryFn: ({ signal }) => fetchSkillCatalog({ projectId, signal: querySignal(signal) }), retry: false, gcTime: 0, refetchOnReconnect: false });
-  const list = useInfiniteQuery({ queryKey: [...scopeKey, "list"], enabled: accessDenied === null, initialPageParam: null as string | null,
-    queryFn: ({ pageParam, signal }) => fetchKnowledgeConversations({ projectId, cursor: pageParam, signal: querySignal(signal) }),
+  const list = useInfiniteQuery({ queryKey: [...scopeKey, "list", assistant.data?.id ?? null, showAllHistory], enabled: accessDenied === null && assistant.data !== undefined, initialPageParam: null as string | null,
+    queryFn: ({ pageParam, signal }) => fetchKnowledgeConversations({ projectId, cursor: pageParam, currentAssistant: !showAllHistory, signal: querySignal(signal) }),
     getNextPageParam: page => page.nextCursor ?? undefined, retry: false, gcTime: 0, refetchOnReconnect: false });
   const model = useQuery({ queryKey: [...scopeKey, "model"], enabled: accessDenied === null, queryFn: ({ signal }) => fetchKnowledgeAnswerModel({ projectId, signal: querySignal(signal) }), retry: false, gcTime: 0, refetchOnReconnect: false });
   const activeModel = model.data?.models.find(item => item.id === (assistant.data?.modelId ?? model.data.defaultModelId));
@@ -54,7 +55,8 @@ function useConversationState({ organizationId, userId, projectId, generation, c
     queryFn: ({ signal }) => fetchKnowledgeConversation({ projectId, conversationId: selectedId!, signal: querySignal(signal) }),
     retry: false, gcTime: 0, staleTime: 0, refetchOnReconnect: false });
   const mutation = useMutation({ mutationFn: (operation: () => Promise<KnowledgeConversation>) => operation(), retry: false, networkMode: "always", gcTime: 0 });
-  const draftKey = selectedId ?? NEW;
+  const newDraftKey = `${NEW}:${assistant.data?.id ?? "default"}`;
+  const draftKey = selectedId ?? newDraftKey;
   const draft = drafts.current.get(draftKey)?.value ?? "";
   const recovery = selectedId === null ? undefined : recoveries.current.get(selectedId);
 
@@ -90,14 +92,29 @@ function useConversationState({ organizationId, userId, projectId, generation, c
     const current = drafts.current.get(draftKey);
     drafts.current.set(draftKey, { value, revision: (current?.revision ?? 0) + 1 }); update();
   }
-  function selectConversation(id: string | null) {
+  function selectConversation(id: string | null, preserveDraft = false) {
     abortAction(); setError(null); setNotice(null);
     const next = new URLSearchParams(params); next.set("view", "chat");
-    if (id === null) { next.delete("conversation"); drafts.current.set(NEW, { value: "", revision: 0 }); }
+    if (id === null) { next.delete("conversation"); if (!preserveDraft) drafts.current.set(newDraftKey, { value: "", revision: 0 }); }
     else next.set("conversation", id);
     selected.current = id;
     navigate({ pathname: `/projects/${projectId}/knowledge`, search: next.toString() }); update();
   }
+  const previousAssistant = useRef<string | null | undefined>(undefined);
+  useLayoutEffect(() => {
+    if (assistant.data === undefined) return;
+    const next = assistant.data.id ?? null;
+    const previous = previousAssistant.current;
+    previousAssistant.current = next;
+    if (previous === undefined) {
+      const early = drafts.current.get(`${NEW}:default`);
+      if (early !== undefined && next !== null) { drafts.current.set(newDraftKey, early); drafts.current.delete(`${NEW}:default`); update(); }
+      return;
+    }
+    if (previous !== next) {
+      setSelectedSkill(null); setShowAllHistory(false); selectConversation(null, true);
+    }
+  }, [assistant.data?.id]);
   function start(id: string, kind: "send" | "read" = "send") {
     action.current?.controller.abort();
     const controller = new AbortController(); const current = { controller, conversationId: id }; action.current = current;
@@ -199,9 +216,9 @@ function useConversationState({ organizationId, userId, projectId, generation, c
   function chooseSkill(id: string | null) { setSelectedSkill(id); const item = skills.data?.items.find(item => item.id === id); if (item !== undefined && !draft.trim()) setDraft(item.defaultQuestion); }
   function applyAssistant(value: AssistantSettings) { queryClient.setQueryData([...scopeKey, "assistant-settings"], value); }
   return { csrfToken, selectedId, selectConversation, draft, setDraft, send, reread, cancel: () => abortAction("已停止等待；服务端可能仍在处理，请重新读取会话。"), busy, activity, recovery, error, notice, online, detail, list, model, activeModel, entries, projectError, historyVerified, invalidateHistory, assistant, skills, selectedSkill, chooseSkill, assistantDraft, setAssistantDraft, importSource, setImportSource, importPreview, setImportPreview, pendingImport, setPendingImport, applyAssistant, importMode, setImportMode,
-    assistants, assistantNeedsReload, setAssistantNeedsReload,
+    assistants, assistantNeedsReload, setAssistantNeedsReload, showAllHistory, setShowAllHistory,
     preview: projectError === null && online && activity === "send" ? preview : [],
-    canSend: projectError === null && !assistantNeedsReload && assistant.data !== undefined && !assistant.isError && !assistant.isFetching && online && !busy && recovery === undefined && modelReady && (selectedId === null || (historyVerified && detail.data !== undefined && !detail.isFetching && !detail.isError && detail.data.turns.length < 50)) };
+    canSend: projectError === null && !assistantNeedsReload && assistant.data !== undefined && !assistant.isError && !assistant.isFetching && online && !busy && recovery === undefined && modelReady && (selectedId === null || (historyVerified && detail.data !== undefined && !detail.isFetching && !detail.isError && detail.data.turns.length < 50 && detail.data.turns.every(turn => (turn.assistantId ?? null) === (assistant.data?.id ?? null)))) };
 }
 interface Scope { organizationId: string; userId: string; projectId: string; generation: number; csrfToken: string; sessionSignal: AbortSignal }
 const Context = createContext<ReturnType<typeof useConversationState> | null>(null);

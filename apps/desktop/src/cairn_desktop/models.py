@@ -21,6 +21,7 @@ from pydantic import (
 )
 
 MODEL_FILE = "model-settings.dpapi"
+MAX_MODEL_FILE_BYTES = 512 * 1024
 
 
 class ModelSettingsError(RuntimeError):
@@ -61,11 +62,42 @@ class EmbeddingConnection(ModelConnection):
     dimensions: Literal[1024] = 1024
 
 
-class DesktopModels(BaseModel):
+class LegacyDesktopModels(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
     version: Literal[1] = 1
     answer: ModelConnection | None = None
     embedding: EmbeddingConnection | None = None
+
+
+class AnswerConnection(ModelConnection):
+    id: str = Field(pattern=r"^[a-z][a-z0-9_-]{0,63}$")
+    name: str = Field(min_length=1, max_length=80)
+
+    @field_validator("name")
+    @classmethod
+    def valid_name(cls, value: str) -> str:
+        return AnswerModelSettings.valid_model_text(value)
+
+
+class DesktopModels(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True, hide_input_in_errors=True)
+    version: Literal[2] = 2
+    answer_models: list[AnswerConnection] = Field(
+        default_factory=list, alias="answerModels", max_length=20
+    )
+    default_model_id: str | None = Field(default=None, alias="defaultModelId")
+    embedding: EmbeddingConnection | None = None
+
+    @model_validator(mode="after")
+    def valid_catalog(self):
+        ids = [item.id for item in self.answer_models]
+        if len(ids) != len(set(ids)):
+            raise ValueError("answer model IDs must be unique")
+        if (ids and self.default_model_id not in ids) or (
+            not ids and self.default_model_id is not None
+        ):
+            raise ValueError("select an existing default answer model")
+        return self
 
 
 def _crypt(data: bytes, *, decrypt: bool) -> bytes:
@@ -124,6 +156,10 @@ def _validation_error(error: ValidationError) -> ModelSettingsError:
         "api_key",
         "protocol",
         "dimensions",
+        "answerModels",
+        "defaultModelId",
+        "id",
+        "name",
     }
     fields = sorted(
         {
@@ -134,7 +170,7 @@ def _validation_error(error: ValidationError) -> ModelSettingsError:
     return ModelSettingsError(
         "模型配置字段无效："
         + ", ".join(fields)
-        + "。请检查协议、服务地址、模型及非空API Key；地址不能含用户名、密码、查询参数或片段。"
+        + "。请检查名称、协议、服务地址、模型及非空API Key；模型标识不能重复，默认模型必须在目录中；地址不能含用户名、密码、查询参数或片段。"
     )
 
 
@@ -143,9 +179,23 @@ def load_models(directory: Path) -> DesktopModels:
     if not path.exists():
         return DesktopModels()
     try:
-        if path.stat().st_size > 32_768:
+        if path.stat().st_size > MAX_MODEL_FILE_BYTES:
             raise ModelSettingsError("模型配置文件过大，请明确清除后重新配置。")
-        return DesktopModels.model_validate_json(unprotect_bytes(path.read_bytes()))
+        value = json.loads(unprotect_bytes(path.read_bytes()))
+        if isinstance(value, dict) and value.get("version", 1) == 1:
+            old = LegacyDesktopModels.model_validate(value)
+            return DesktopModels(
+                answer_models=[]
+                if old.answer is None
+                else [
+                    AnswerConnection(
+                        **old.answer.model_dump(), id="default", name=old.answer.model[:80]
+                    )
+                ],
+                default_model_id="default" if old.answer else None,
+                embedding=old.embedding,
+            )
+        return DesktopModels.model_validate(value)
     except (ValidationError, OSError, ValueError):
         raise ModelSettingsError("模型配置损坏或无法读取，请重新配置或明确清除。") from None
 
@@ -155,18 +205,30 @@ def prepare_model_update(directory: Path, payload: object) -> DesktopModels:
         raise ModelSettingsError("模型配置必须是JSON对象。")
     if payload == {"clearAll": True} and type(payload.get("clearAll")) is bool:
         return DesktopModels()
-    if set(payload) != {"answer", "embedding"}:
-        raise ModelSettingsError("模型配置必须分别提供answer与embedding，null表示明确清除该项。")
+    if set(payload) != {"answerModels", "defaultModelId", "embedding"}:
+        raise ModelSettingsError("模型配置必须提供answerModels、defaultModelId与embedding。")
     previous = load_models(directory)
-    values = {}
-    for name in ("answer", "embedding"):
-        value = payload[name]
+    values = dict(payload)
+
+    def retain_key(value, old):
         if isinstance(value, dict):
             value = dict(value)
-            old = getattr(previous, name)
             if value.get("apiKey") == "" and old is not None:
                 value["apiKey"] = old.api_key.get_secret_value()
-        values[name] = value
+        return value
+
+    old_models = {model.id: model for model in previous.answer_models}
+    if isinstance(values["answerModels"], list):
+        values["answerModels"] = [
+            retain_key(
+                value,
+                old_models.get(value.get("id"))
+                if isinstance(value, dict) and isinstance(value.get("id"), str)
+                else None,
+            )
+            for value in values["answerModels"]
+        ]
+    values["embedding"] = retain_key(values["embedding"], previous.embedding)
     try:
         return DesktopModels.model_validate(values)
     except ValidationError as error:
@@ -174,10 +236,8 @@ def prepare_model_update(directory: Path, payload: object) -> DesktopModels:
 
 
 def save_models(directory: Path, models: DesktopModels) -> None:
-    values = {"version": 1}
-    for name in ("answer", "embedding"):
-        connection = getattr(models, name)
-        values[name] = (
+    def private_connection(connection):
+        return (
             None
             if connection is None
             else {
@@ -185,8 +245,15 @@ def save_models(directory: Path, models: DesktopModels) -> None:
                 "apiKey": connection.api_key.get_secret_value(),
             }
         )
+
+    values = {
+        "version": 2,
+        "answerModels": [private_connection(item) for item in models.answer_models],
+        "defaultModelId": models.default_model_id,
+        "embedding": private_connection(models.embedding),
+    }
     encrypted = protect_bytes(json.dumps(values, ensure_ascii=False).encode("utf-8"))
-    if len(encrypted) > 32_768:
+    if len(encrypted) > MAX_MODEL_FILE_BYTES:
         raise ModelSettingsError(
             "模型配置加密后超过保存上限，原配置未修改；请缩短服务地址或API Key。"
         )
@@ -208,10 +275,8 @@ def save_models(directory: Path, models: DesktopModels) -> None:
 
 
 def public_status(models: DesktopModels) -> dict:
-    result = {"corrupt": False, "indexingPaused": models.embedding is None}
-    for name in ("answer", "embedding"):
-        connection = getattr(models, name)
-        result[name] = (
+    def safe_connection(connection):
+        return (
             None
             if connection is None
             else {
@@ -221,11 +286,24 @@ def public_status(models: DesktopModels) -> dict:
             }
             | {"hasKey": bool(connection.api_key.get_secret_value())}
         )
-    return result
+
+    return {
+        "corrupt": False,
+        "indexingPaused": models.embedding is None,
+        "answerModels": [safe_connection(item) for item in models.answer_models],
+        "defaultModelId": models.default_model_id,
+        "embedding": safe_connection(models.embedding),
+    }
 
 
 def model_status(directory: Path) -> dict:
     try:
         return public_status(load_models(directory))
     except ModelSettingsError:
-        return {"corrupt": True, "answer": None, "embedding": None, "indexingPaused": True}
+        return {
+            "corrupt": True,
+            "answerModels": [],
+            "defaultModelId": None,
+            "embedding": None,
+            "indexingPaused": True,
+        }

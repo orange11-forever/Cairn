@@ -305,18 +305,30 @@ class KnowledgeConversationService:
 
     @safe_knowledge_operation
     def list(
-        self, project_id: UUID, *, cursor: str | None, limit: int
+        self, project_id: UUID, *, cursor: str | None, limit: int, current_assistant: bool = False
     ) -> KnowledgeConversationPage:
         with self._session.begin():
             identity = self._authorize(project_id)
+            query = select(KnowledgeConversation).where(
+                KnowledgeConversation.org_id == identity.organization.id,
+                KnowledgeConversation.project_id == project_id,
+                KnowledgeConversation.owner_id == identity.user.id,
+            )
+            if current_assistant:
+                config = assistant_repository.settings_response(assistant_repository.settings_row(
+                    self._session, identity.organization.id, project_id, identity.user.id
+                ))
+                query = query.where(select(KnowledgeConversationTurn.id).where(
+                    KnowledgeConversationTurn.conversation_id == KnowledgeConversation.id,
+                    KnowledgeConversationTurn.assistant_id == config.id,
+                ).exists(), ~select(KnowledgeConversationTurn.id).where(
+                    KnowledgeConversationTurn.conversation_id == KnowledgeConversation.id,
+                    KnowledgeConversationTurn.assistant_id.is_distinct_from(config.id),
+                ).exists())
             rows, next_cursor = load_cursor_page(
                 lambda: page_by_timestamp(
                     self._session,
-                    select(KnowledgeConversation).where(
-                        KnowledgeConversation.org_id == identity.organization.id,
-                        KnowledgeConversation.project_id == project_id,
-                        KnowledgeConversation.owner_id == identity.user.id,
-                    ),
+                    query,
                     timestamp_column=KnowledgeConversation.created_at,
                     id_column=KnowledgeConversation.id,
                     cursor=cursor,
@@ -400,6 +412,12 @@ class KnowledgeConversationService:
             )
             selected_model = selected_answer_model(self._answer_models, config.model_id)
             detail = self._detail(identity, row)
+            if any(turn.assistant_id != config.id for turn in detail.turns):
+                raise ApiProblem(
+                    status_code=409,
+                    code="conversation_assistant_mismatch",
+                    message="这段对话包含其他助手的历史，请为当前助手新建对话；原历史仍保留。",
+                )
             eligible = [turn for turn in detail.turns if turn.answer is not None]
             history, truncated = bounded_history(
                 [

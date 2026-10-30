@@ -75,8 +75,9 @@ def list_conversations(
     service: ConversationService,
     cursor: Annotated[str | None, Query(max_length=2048)] = None,
     limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    current_assistant: Annotated[bool, Query(alias="currentAssistant")] = False,
 ) -> KnowledgeConversationPage:
-    return service.list(project_id, cursor=cursor, limit=limit)
+    return service.list(project_id, cursor=cursor, limit=limit, current_assistant=current_assistant)
 
 
 @router.post(

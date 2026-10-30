@@ -283,6 +283,18 @@ export const componentSchemas = {
   "AssistantProfileSummary": {
     "additionalProperties": false,
     "properties": {
+      "avatarDataUrl": {
+        "anyOf": [
+          {
+            "maxLength": 90000,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Avatardataurl"
+      },
       "id": {
         "format": "uuid",
         "title": "Id",
@@ -332,6 +344,18 @@ export const componentSchemas = {
   "AssistantSettingsRequest": {
     "additionalProperties": false,
     "properties": {
+      "avatarDataUrl": {
+        "anyOf": [
+          {
+            "maxLength": 90000,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Avatardataurl"
+      },
       "enabledSkillIds": {
         "items": {
           "type": "string"
@@ -381,6 +405,18 @@ export const componentSchemas = {
   "AssistantSettingsResponse": {
     "additionalProperties": false,
     "properties": {
+      "avatarDataUrl": {
+        "anyOf": [
+          {
+            "maxLength": 90000,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Avatardataurl"
+      },
       "enabledSkillIds": {
         "items": {
           "type": "string"

@@ -2,20 +2,23 @@ import { useMutation } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { importSkill, previewSkill, saveAssistantSettings, fetchAssistantSettings, createAssistant, selectAssistant, type SkillSource } from "../../api/assistantSkills.ts";
 import { useProjectConversations } from "./ProjectConversationsContext.tsx";
+import { AssistantAvatar, readAssistantAvatar } from "./AssistantAvatar.tsx";
 import { ApiError } from "../../api/errors.ts";
 
 export function AssistantSkills({ projectId, csrfToken, sessionSignal }: { projectId: string; csrfToken: string; sessionSignal: AbortSignal }) {
   const state = useProjectConversations();
+  const avatarSequence = useRef(0);
+  const [avatarLoading, setAvatarLoading] = useState(false);
   const request = useRef<AbortController | null>(null);
   const [error, setError] = useState<string | null>(null), [notice, setNotice] = useState<string | null>(null);
   const operation = useMutation({ mutationFn: (run: () => Promise<void>) => run(), retry: false, networkMode: "always", gcTime: 0 });
-  useEffect(() => () => request.current?.abort(), []);
+  useEffect(() => () => { request.current?.abort(); avatarSequence.current++; }, []);
   if (state === null) return null;
   const config = state.assistant.data;
   const defaultModel = state.model.data?.models.find(item => item.id === state.model.data?.defaultModelId);
-  const editing = state.assistantDraft ?? (config === undefined ? null : { assistantId: config.id ?? null, expectedRevision: config.revision, name: config.name, instructions: config.instructions, enabledSkillIds: config.enabledSkillIds, modelId: config.modelId ?? null });
+  const editing = state.assistantDraft ?? (config === undefined ? null : { assistantId: config.id ?? null, expectedRevision: config.revision, name: config.name, avatarDataUrl: config.avatarDataUrl ?? null, instructions: config.instructions, enabledSkillIds: config.enabledSkillIds, modelId: config.modelId ?? null });
   const changedAssistant = editing !== null && editing.assistantId !== (config?.id ?? null);
-  const switchingDisabled = operation.isPending || state.busy || state.assistantNeedsReload || state.assistantDraft !== null || config === undefined || state.assistant.isFetching || state.assistants.isFetching || state.assistants.isError;
+  const switchingDisabled = avatarLoading || operation.isPending || state.busy || state.assistantNeedsReload || state.assistantDraft !== null || config === undefined || state.assistant.isFetching || state.assistants.isFetching || state.assistants.isError;
   const source = state.importSource;
   async function run(action: (signal: AbortSignal) => Promise<void>) {
     request.current?.abort(); const controller = new AbortController(); request.current = controller;
@@ -34,6 +37,7 @@ export function AssistantSkills({ projectId, csrfToken, sessionSignal }: { proje
   }
   return <details className="assistant-skills"><summary><span>助手与技能</span><span className="assistant-current-name" title={config?.name}>{config?.name ?? "岑宁"}</span></summary><div className="assistant-skills-content">
     <div className="assistant-profile-controls">
+      <AssistantAvatar name={config?.name ?? "岑宁"} avatarDataUrl={config?.avatarDataUrl} />
       <label>当前助手<select aria-label="当前助手" value={config?.id ?? ""} disabled={switchingDisabled} onChange={event => { const assistantId = event.target.value; if (!assistantId || config === undefined) return; void run(async signal => { state.setAssistantNeedsReload(true); const saved = await selectAssistant({ projectId, assistantId, expectedRevision: config.revision, csrfToken, signal }); signal.throwIfAborted(); state.applyAssistant(saved); void state.assistants.refetch(); state.setAssistantNeedsReload(false); setNotice(`已切换到${saved.name}，后续回答使用该助手。`); }); }}>
         {config?.id == null ? <option value="">{config?.name ?? "岑宁"}</option> : !state.assistants.data?.items.some(item => item.id === config.id) ? <option value={config.id}>{config.name}</option> : null}
         {state.assistants.data?.items.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
@@ -45,7 +49,20 @@ export function AssistantSkills({ projectId, csrfToken, sessionSignal }: { proje
     {changedAssistant ? <p role="alert">当前助手已在别处切换，未保存编辑仍保留。请取消编辑后再选择要修改的助手。</p> : null}
     <p>技能只提供只读指导，不执行脚本、工具或项目写入。</p>
     {editing === null ? <p role="status">正在读取助手配置…</p> : <form onSubmit={event => { event.preventDefault(); void run(async signal => { const { assistantId, ...body } = editing; if (assistantId !== (config?.id ?? null)) return; const saved = await saveAssistantSettings({ projectId, csrfToken, signal, body }); signal.throwIfAborted(); state.applyAssistant(saved); void state.assistants.refetch(); state.setAssistantDraft(null); setNotice("助手配置已保存。"); }); }}>
-      <fieldset disabled={operation.isPending || state.busy || state.assistantNeedsReload}>
+      <fieldset disabled={avatarLoading || operation.isPending || state.busy || state.assistantNeedsReload}>
+      <div className="assistant-avatar-editor">
+        <AssistantAvatar name={editing.name} avatarDataUrl={editing.avatarDataUrl} />
+        <label>助手头像<input aria-label="上传助手头像" type="file" accept="image/png,image/jpeg,image/webp" onChange={event => {
+          const file = event.target.files?.[0]; event.target.value = ""; if (file === undefined) return;
+          const sequence = ++avatarSequence.current; state.setAssistantDraft(editing); setAvatarLoading(true); setError(null);
+          void readAssistantAvatar(file).then(avatarDataUrl => {
+            if (!sessionSignal.aborted && avatarSequence.current === sequence) state.setAssistantDraft({ ...editing, avatarDataUrl });
+          }).catch(failure => { if (!sessionSignal.aborted && avatarSequence.current === sequence) setError(failure instanceof Error ? failure.message : "头像处理失败，请重新选择。"); })
+            .finally(() => { if (avatarSequence.current === sequence) setAvatarLoading(false); });
+        }} /><small>PNG、JPEG 或 WebP，最大 4 MB；居中裁为方形，保存配置后生效。</small></label>
+        {editing.avatarDataUrl ? <button type="button" onClick={() => state.setAssistantDraft({ ...editing, avatarDataUrl: null })}>移除头像</button> : null}
+      </div>
+      {avatarLoading ? <p role="status">正在处理头像…</p> : null}
       <label>助手名称<input aria-label="助手名称" maxLength={60} value={editing.name} onChange={event => state.setAssistantDraft({ ...editing, name: event.target.value })} /></label>
       <label>回答模型<select aria-label="回答模型" value={editing.modelId ?? ""} disabled={state.model.isPending || state.model.isError} onChange={event => state.setAssistantDraft({ ...editing, modelId: event.target.value || null })}>
         <option value="">服务端默认{defaultModel ? `（${defaultModel.name}）` : "（尚未配置）"}</option>

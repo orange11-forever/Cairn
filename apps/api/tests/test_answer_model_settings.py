@@ -28,7 +28,6 @@ def test_model_profiles_load_from_environment_without_exposing_credentials(
     "profiles",
     [
         [PROFILE, PROFILE],
-        [{**PROFILE, "id": "default"}],
         [{**PROFILE, "id": "../unlisted"}],
         [{**PROFILE, "api_key": " "}],
         [{**PROFILE, "model": " "}],
@@ -48,5 +47,12 @@ def test_invalid_model_catalog_fails_at_configuration_boundary(
 
 def test_invalid_profile_error_does_not_print_the_api_key() -> None:
     with pytest.raises(ValidationError) as error:
-        Settings(answer_models=[{**PROFILE, "id": "default"}], _env_file=None)  # pyright: ignore[reportArgumentType, reportCallIssue]
+        Settings(answer_models=[{**PROFILE, "id": "../invalid"}], _env_file=None)  # pyright: ignore[reportArgumentType, reportCallIssue]
     assert "synthetic-model-secret" not in str(error.value)
+
+
+def test_legacy_default_id_is_retained_in_catalog_but_cannot_shadow_legacy_provider() -> None:
+    settings = Settings(answer_models=[{**PROFILE, "id": "default"}], _env_file=None)  # pyright: ignore[reportArgumentType, reportCallIssue]
+    assert settings.answer_models[0].id == "default"
+    with pytest.raises(ValidationError):
+        Settings(answer_models=[{**PROFILE, "id": "default"}], answer_model="legacy", answer_api_key="test-key", answer_base_url="http://localhost/v1", _env_file=None)  # pyright: ignore[reportArgumentType, reportCallIssue]

@@ -89,24 +89,19 @@ def test_create_switch_edit_and_answer_preserve_independent_assistant_settings(
             ]
             == 3
         )
-        next_turn = client.post(
+        assert_error(client.post(
             f"{prefix}/conversations/{cid}/turns",
-            json={
-                **body,
-                "id": str(uuid4()),
-                "expectedRevision": 2,
-                "assistantRevision": 3,
-                "skillId": "knowledge-summary",
-            },
+            json={**body, "id": str(uuid4()), "expectedRevision": 2, "assistantRevision": 3},
+        ), 409, "conversation_assistant_mismatch")
+        first_cid = create(client, prefix)
+        next_turn = client.post(
+            f"{prefix}/conversations/{first_cid}/turns",
+            json={**body, "id": str(uuid4()), "expectedRevision": 1, "assistantRevision": 3, "skillId": "knowledge-summary"},
         )
         assert next_turn.status_code == 200
-        assert [turn["assistantId"] for turn in next_turn.json()["turns"]] == [bid, aid]
-        assert [
-            (item.assistant_name, item.instructions, item.skill_id) for item in provider.guidance
-        ] == [("复核助手", "指出风险", None), ("规划助手", "先列计划", "knowledge-summary")]
-        assert (
-            client.post(f"{prefix}/conversations/{cid}/turns", json=body).json() == next_turn.json()
-        )
+        assert [turn["assistantId"] for turn in next_turn.json()["turns"]] == [aid]
+        assert [(item.assistant_name, item.instructions, item.skill_id) for item in provider.guidance] == [("复核助手", "指出风险", None), ("规划助手", "先列计划", "knowledge-summary")]
+        assert client.post(f"{prefix}/conversations/{cid}/turns", json=body).json() == saved.json()
         assert len(provider.guidance) == 2
         updated = client.put(
             prefix + "/assistant-settings", json={**plan, "expectedRevision": 3, "name": "计划助手"}
@@ -301,3 +296,57 @@ def test_switch_during_generation_rejects_old_assistant_turn(
                 release.set()
             assert_error(future.result(timeout=10), 409, "assistant_changed")
         assert client.get(f"{prefix}/conversations/{cid}").json()["turns"] == []
+
+
+@pytest.mark.integration
+def test_assistant_context_and_history_are_isolated_without_losing_legacy_reads(
+    database: Database, test_database_url: str
+) -> None:
+    actor, pid, _ = seed_conversation_boundary(database)
+    provider = AssistantProvider()
+    prefix = f"/api/v1/projects/{pid}/knowledge"
+    with knowledge_client(knowledge_settings(test_database_url), database, actor, MemoryObjectStore(), SearchEmbedding(), provider) as client:
+        first = client.put(prefix + "/assistant-settings", json={"expectedRevision": 0, "name": "计划", "instructions": "先列计划", "enabledSkillIds": []}).json()
+        cid = create(client, prefix)
+        first_turn = {"id": str(uuid4()), "question": "何时交付？", "expectedRevision": 1, "assistantRevision": 1}
+        response = client.post(f"{prefix}/conversations/{cid}/turns", json=first_turn)
+        assert response.status_code == 200
+        original = response.json()
+        second = client.post(prefix + "/assistants", json={"expectedRevision": 1, "name": "复核", "instructions": "指出风险", "enabledSkillIds": []}).json()
+        assert client.get(prefix + "/conversations?currentAssistant=true").json()["items"] == []
+        assert_error(client.post(f"{prefix}/conversations/{cid}/turns", json={**first_turn, "id": str(uuid4()), "expectedRevision": 2, "assistantRevision": 2}), 409, "conversation_assistant_mismatch")
+        assert client.get(f"{prefix}/conversations/{cid}").json() == original
+        cid2 = create(client, prefix)
+        assert client.post(f"{prefix}/conversations/{cid2}/turns", json={**first_turn, "id": str(uuid4()), "assistantRevision": 2}).status_code == 200
+        assert [item["id"] for item in client.get(prefix + "/conversations?currentAssistant=true").json()["items"]] == [str(cid2)]
+        assert len(client.get(prefix + "/conversations").json()["items"]) == 2
+        assert client.post(f"{prefix}/assistants/{first['id']}/select", json={"expectedRevision": 2}).status_code == 200
+        assert [item["id"] for item in client.get(prefix + "/conversations?currentAssistant=true").json()["items"]] == [str(cid)]
+        result = client.post(f"{prefix}/conversations/{cid}/turns", json={**first_turn, "id": str(uuid4()), "expectedRevision": 2, "assistantRevision": 3})
+        assert result.status_code == 200
+        assert len(provider.guidance) == 3
+        assert [turn["assistantId"] for turn in result.json()["turns"]] == [first["id"], first["id"]]
+        assert second["id"] != first["id"]
+        assert result.json()["turns"][0] == original["turns"][0]
+
+
+@pytest.mark.integration
+def test_legacy_mixed_history_is_only_in_all_history(database: Database, test_database_url: str) -> None:
+    from cairn_api.knowledge.conversation_models import KnowledgeConversationTurn
+    from sqlalchemy import select
+
+    actor, pid, _ = seed_conversation_boundary(database)
+    prefix = f"/api/v1/projects/{pid}/knowledge"
+    with knowledge_client(knowledge_settings(test_database_url), database, actor, MemoryObjectStore(), SearchEmbedding(), AssistantProvider()) as client:
+        config: dict[str, object] = {"expectedRevision": 0, "name": "当前助手", "instructions": "", "enabledSkillIds": []}
+        current = client.put(prefix + "/assistant-settings", json=config).json()
+        cid = create(client, prefix)
+        for revision in (1, 2):
+            assert client.post(f"{prefix}/conversations/{cid}/turns", json={"id": str(uuid4()), "question": "何时交付？", "expectedRevision": revision, "assistantRevision": 1}).status_code == 200
+        with database.session_factory.begin() as session:
+            turns = list(session.scalars(select(KnowledgeConversationTurn).where(KnowledgeConversationTurn.conversation_id == cid).order_by(KnowledgeConversationTurn.sequence)))
+            turns[0].assistant_id = None
+        assert client.get(prefix + "/conversations?currentAssistant=true").json()["items"] == []
+        assert [item["id"] for item in client.get(prefix + "/conversations").json()["items"]] == [str(cid)]
+        detail = client.get(f"{prefix}/conversations/{cid}").json()
+        assert len(detail["turns"]) == 2 and detail["turns"][1]["assistantId"] == current["id"]

@@ -70,7 +70,7 @@ def test_settings_import_and_actual_guidance_with_semantic_replay(
         provider,
     ) as client:
         default = client.get(prefix + "/assistant-settings").json()
-        assert default == {"id": None, "name": "岑宁", "instructions": "", "enabledSkillIds": [], "revision": 0, "modelId": None}
+        assert default == {"id": None, "name": "岑宁", "instructions": "", "enabledSkillIds": [], "revision": 0, "modelId": None, "avatarDataUrl": None}
         settings: dict[str, object] = {
             "expectedRevision": 0,
             "name": "岑宁",

@@ -33,6 +33,7 @@ def settings_response(row: KnowledgeAssistantSettings | None) -> AssistantSettin
     return AssistantSettingsResponse(
         id=None if row is None else row.id,
         name="岑宁" if row is None else row.name,
+        avatarDataUrl=None if row is None else row.avatar_data_url,
         instructions="" if row is None else row.instructions,
         enabledSkillIds=[] if row is None else row.enabled_skill_ids,
         revision=0 if row is None else row.revision,

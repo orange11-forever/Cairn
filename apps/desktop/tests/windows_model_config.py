@@ -63,25 +63,26 @@ def main():
 
     def payload(embedding=False, key=KEY, address="http://127.0.0.1:9/v1", model="受控索引模型"):
         return {
-            "answer": connection(key=key),
+            "answerModels": [{**connection(key=key), "id": "default", "name": "本地测试模型"}],
+            "defaultModelId": "default",
             "embedding": {"baseUrl": address, "model": model, "apiKey": key} if embedding else None,
         }
 
     assert json.loads(command("model-status").stdout)["indexingPaused"] is True
     original_settings = (data / "settings.json").read_bytes()
     saved = command("model-configure", payload=payload())
-    assert json.loads(saved.stdout)["answer"]["hasKey"] is True
-    assert json.loads(saved.stdout)["answer"]["model"] == "本地测试模型"
+    assert json.loads(saved.stdout)["answerModels"][0]["hasKey"] is True
+    assert json.loads(saved.stdout)["answerModels"][0]["model"] == "本地测试模型"
     encrypted = data / "model-settings.dpapi"
     assert KEY.encode() not in encrypted.read_bytes()
     from cairn_desktop.models import load_models
 
-    assert load_models(data).answer.api_key.get_secret_value() == KEY
+    assert load_models(data).answer_models[0].api_key.get_secret_value() == KEY
     command("model-configure", payload=payload(key=""))
-    assert load_models(data).answer.api_key.get_secret_value() == KEY
+    assert load_models(data).answer_models[0].api_key.get_secret_value() == KEY
     before = encrypted.read_bytes()
     invalid = payload()
-    invalid["answer"]["baseUrl"] = "http://127.0.0.1/v1?key=" + KEY
+    invalid["answerModels"][0]["baseUrl"] = "http://127.0.0.1/v1?key=" + KEY
     failed = command("model-configure", payload=invalid, success=False)
     assert "模型配置字段无效" in failed.stderr
     assert encrypted.read_bytes() == before
@@ -93,7 +94,7 @@ def main():
     assert json.loads(command("model-status").stdout)["corrupt"] is True
     command("model-configure", payload=payload(), success=False)
     command("model-configure", payload={"clearAll": True})
-    assert json.loads(command("model-status").stdout)["answer"] is None
+    assert json.loads(command("model-status").stdout)["answerModels"] == []
     assert (data / "settings.json").read_bytes() == original_settings
     command("model-configure", payload=payload(embedding=True))
 
@@ -145,7 +146,7 @@ def main():
 
     try:
         process, ready = start(data)
-        assert ready["modelStatus"]["answer"]["model"] == "本地测试模型"
+        assert ready["modelStatus"]["answerModels"][0]["model"] == "本地测试模型"
         assert ready["modelStatus"]["indexingPaused"] is False
         import psycopg
 
@@ -212,7 +213,7 @@ def main():
         process, ready = start(restored)
         assert (
             ready["modelStatus"]["indexingPaused"] is True
-            and ready["modelStatus"]["answer"] is None
+            and ready["modelStatus"]["answerModels"] == []
         )
         with connect(ready) as db:
             assert (

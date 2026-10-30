@@ -5,6 +5,7 @@ import { Link, Outlet, useLocation } from "react-router-dom";
 import { useSession } from "../session/SessionContext.tsx";
 import { ProjectSwitcher } from "./ProjectSwitcher.tsx";
 import { AccountMenu } from "./AccountMenu.tsx";
+import { DesktopModelSettings } from "./DesktopSettings.tsx";
 import { BrandMark } from "./BrandMark.tsx";
 import { MascotAssistant } from "./MascotAssistant.tsx";
 import { PrimaryNavigation } from "./PrimaryNavigation.tsx";
@@ -33,6 +34,7 @@ export function AppShell({ identity, onLogout, logoutError }: { identity: Identi
         </Link>
         {session === null ? <div /> : <ProjectSwitcher key={session.generation} organizationId={identity.organization.id} projectId={projectId} sessionSignal={session.signal} />}
         <div className="header-utilities">
+          <DesktopModelSettings />
           {page === "knowledge" ? null : <MascotAssistant page={page} />}
           <AccountMenu identity={identity} onLogout={onLogout} logoutError={logoutError} appearance={<ThemeControl />} />
         </div>

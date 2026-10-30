@@ -38,8 +38,6 @@ class AnswerModelSettings(BaseModel):
 
     @model_validator(mode="after")
     def validate_profile(self) -> "AnswerModelSettings":
-        if self.id == "default":
-            raise ValueError("model ID 'default' is reserved for ANSWER_MODEL")
         key = self.api_key.get_secret_value()
         if not key.strip() or any(character in key for character in "\r\n\x00"):
             raise ValueError("model API key cannot be blank or contain control characters")
@@ -59,6 +57,12 @@ class Settings(BaseSettings):
         populate_by_name=True,
         hide_input_in_errors=True,
     )
+
+    @model_validator(mode="after")
+    def no_legacy_model_collision(self) -> "Settings":
+        if self.answer_model is not None and any(item.id == "default" for item in self.answer_models):
+            raise ValueError("model ID 'default' conflicts with ANSWER_MODEL")
+        return self
 
     environment: Literal["development", "test", "production"] = Field(
         default="development",
