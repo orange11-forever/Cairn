@@ -40,11 +40,11 @@
 
 ## Windows 首发预发布版
 
-[v0.1.0 Release 与下载](https://github.com/orange11-forever/Cairn/releases/tag/v0.1.0)提供当前用户安装器和 SHA-256 校验文件。首发验证平台为 Windows 11 x64；需 .NET Framework 4.8 和 WebView2 Runtime，程序安装路径须使用 ASCII 字符，可含空格。安装包尚未签名。
+v0.1.0 已于 2026-10-30 撤回，当前暂停公开下载安装包。该版本不包含最新的多模型配置、助手头像与安装依赖补装；新版安装包尚未发布。后续下载以[仓库发布页](https://github.com/orange11-forever/Cairn/releases)为准。
 
 登录后先创建或选择项目，再进入知识工作台；模型连接和备份恢复位于「账户 → 设置」。已验收的 DeepSeek 回答配置为 `openai-responses`、`https://api.deepseek.com`、`deepseek-flash`，API Key 由用户自行填写。知识索引还需单独配置 1024 维 Embedding 服务。
 
-完整安装、更新与数据说明见[桌面使用说明](apps/desktop/README.md)，本版验收范围和限制见[发布说明](docs/releases/v0.1.0.md)。
+完整安装、更新与数据说明见[桌面使用说明](apps/desktop/README.md)，旧版验收范围和限制见[历史发布说明](docs/releases/v0.1.0.md)。
 
 ## 下一阶段：可操作的项目助手
 

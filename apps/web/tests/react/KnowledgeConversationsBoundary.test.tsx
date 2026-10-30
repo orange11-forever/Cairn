@@ -71,9 +71,9 @@ test.each(["list", "model"] as const)("project %s404 clears private sidebar/sele
   const api = fixture(); const { client } = mount();
   await screen.findByText("私有历史回答");
   const sidebar = screen.getByRole("region", { name: "项目对话历史" });
-  expect(within(sidebar).getByText("私有历史标题")).toBeInTheDocument();
+  expect(await within(sidebar).findByText("私有历史标题")).toBeInTheDocument();
   api.deny(target);
-  await act(async () => { await client.invalidateQueries({ predicate: query => query.queryKey.at(-1) === target }); });
+  await act(async () => { await client.invalidateQueries({ predicate: query => query.queryKey.includes(target) }); });
   await waitFor(() => expect(within(sidebar).queryByText("私有历史标题")).toBeNull());
   expect(screen.queryByText("私有历史回答")).toBeNull();
   expect(screen.queryByText("私有历史标题", { selector: "option" })).toBeNull();

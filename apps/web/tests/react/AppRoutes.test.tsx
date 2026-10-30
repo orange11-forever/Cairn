@@ -722,7 +722,7 @@ test("the project knowledge route loads the selected project inside the shared k
 
   expect(screen.queryByRole("button", { name: "打开岑宁助手" })).toBeNull();
   expect(await screen.findByRole("complementary", { name: "岑宁问答面板" }))
-    .toHaveTextContent("岑宁项目问答 · 私有对话");
+    .toHaveTextContent("岑宁项目问答 · 助手独立对话");
 });
 
 test("a read-only project reader can search real project knowledge", async () => {
@@ -3645,7 +3645,7 @@ test("the project knowledge assistant keeps its context with a trailing slash", 
 
   expect(await screen.findByRole("heading", { level: 1, name: "测试项目" })).toBeInTheDocument();
   expect(await screen.findByRole("complementary", { name: "岑宁问答面板" }))
-    .toHaveTextContent("岑宁项目问答 · 私有对话");
+    .toHaveTextContent("岑宁项目问答 · 助手独立对话");
 });
 
 test("account menu exposes identity and logout without duplicating session state", async () => {
