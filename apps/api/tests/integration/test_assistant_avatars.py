@@ -1,14 +1,21 @@
+import base64
+from io import BytesIO
 from uuid import uuid4
 
 import pytest
 from cairn_api.db.session import Database
-
-from apps.api.tests.test_assistant_avatar import avatar_png
+from PIL import Image
 
 from .knowledge_helpers import MemoryObjectStore, knowledge_client, knowledge_settings
 from .test_knowledge_search import SearchEmbedding
 from .test_multiple_assistants import AssistantProvider
 from .test_project_conversations import create, seed_conversation_boundary
+
+
+def avatar_png(color: str = "blue") -> str:
+    output = BytesIO()
+    Image.new("RGB", (128, 128), color=color).save(output, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(output.getvalue()).decode("ascii")
 
 
 @pytest.mark.integration

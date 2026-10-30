@@ -6,8 +6,7 @@ from alembic.config import Config
 from cairn_api.db.session import Database
 from sqlalchemy import Engine, text
 
-from apps.api.tests.test_assistant_avatar import avatar_png
-
+from .test_assistant_avatars import avatar_png
 from .test_project_conversations import seed_conversation_boundary
 
 
