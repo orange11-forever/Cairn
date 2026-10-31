@@ -1,12 +1,13 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronRight, FileCode2, FilePlus2, Folder, GitBranch, GitCompareArrows, RefreshCw, Save, X } from 'lucide-react';
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { fetchFileDiff, fetchFileTree, fetchWorkspaceChanges, readWorkspaceFile, saveWorkspaceFile, type FileDocument } from '../../api/workspace.ts';
 import { useSession } from '../../session/SessionContext.tsx';
 import { isDirty, useEditorSession, type EditorDraft } from './editorSession.ts';
+import type { AgentComparison } from './CodingPanel.tsx';
 const MonacoEditor = lazy(() => import('./MonacoEditor.tsx'));
 
-type Comparison = { kind: 'git' | 'conflict'; path: string; original: string; modified: string; draftId?: string; disk?: FileDocument };
+type Comparison = { kind: 'git' | 'conflict' | 'agent'; path: string; original: string; modified: string; draftId?: string; disk?: FileDocument; label?: string };
 function FileTree({ paths, prefix = '', selected, open }: { paths: string[]; prefix?: string; selected?: string; open: (path: string) => void }) {
   const groups = new Map<string, string[]>();
   const files: string[] = [];
@@ -18,7 +19,7 @@ function FileTree({ paths, prefix = '', selected, open }: { paths: string[]; pre
   return <ul className="code-tree">{[...groups].map(([name, children]) => <li key={name}><details open={prefix === ''}><summary><ChevronRight size={12} aria-hidden="true" /><Folder size={14} aria-hidden="true" />{name}</summary><FileTree paths={children} prefix={`${prefix}${name}/`} selected={selected} open={open} /></details></li>)}{files.map(path => <li key={path}><button type="button" className={selected === path ? 'is-selected' : ''} title={path} onClick={() => open(path)}><FileCode2 size={14} aria-hidden="true" /><span>{path.slice(prefix.length)}</span></button></li>)}</ul>;
 }
 
-export function RepositoryEditorPanel({ projectId, localPath, onConnection }: { projectId: string; localPath: string; onConnection: () => void }) {
+export function RepositoryEditorPanel({ projectId, localPath, onConnection, locked = false, agentComparison, refreshVersion }: { projectId: string; localPath: string; onConnection: () => void; locked?: boolean; agentComparison?: AgentComparison | null; refreshVersion?: string | null }) {
   const { session } = useSession();
   const state = useEditorSession(session!.signal, projectId);
   const queryClient = useQueryClient();
@@ -29,7 +30,28 @@ export function RepositoryEditorPanel({ projectId, localPath, onConnection }: { 
   const [comparison, setComparison] = useState<Comparison | null>(null);
   const [sidebar, setSidebar] = useState<'files' | 'changes'>('files');
   const [closeId, setCloseId] = useState<string | null>(null);
-  const writable = session!.identity.membership.role !== 'viewer';
+  const writable = session!.identity.membership.role !== 'viewer' && !locked;
+  useEffect(() => {
+    if (agentComparison) setComparison({ kind: 'agent', path: agentComparison.path, original: agentComparison.before, modified: agentComparison.after, label: agentComparison.label });
+  }, [agentComparison]);
+  useEffect(() => {
+    if (!refreshVersion) return;
+    const controller = new AbortController();
+    const signal = AbortSignal.any([controller.signal, session!.signal]);
+    const clean = state.tabs.filter(item => !isDirty(item));
+    void Promise.all(clean.map(async item => {
+      try {
+        const document = await readWorkspaceFile(projectId, item.document.path, signal);
+        if (signal.aborted) return;
+        state.update(current => ({ ...current, tabs: current.tabs.map(tab => tab.id === item.id && !isDirty(tab) && tab.document.revision === item.document.revision && document.workspaceId === tab.document.workspaceId ? { ...tab, document, content: document.content, savedRevision: undefined } : tab) }));
+      } catch (failure) {
+        if (!signal.aborted) setError(failure instanceof Error ? failure.message : '运行结束后读取文件失败，请刷新文件');
+      }
+    }));
+    return () => controller.abort();
+    // Refresh once per completed run; preserve edits made while requests are in flight.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshVersion, projectId, session]);
   const combine = (signal: AbortSignal) => AbortSignal.any([signal, session!.signal]);
   const tree = useQuery({ queryKey: ['editor-tree', session!.generation, projectId, localPath], retry: false,
     queryFn: ({ signal }) => fetchFileTree(projectId, combine(signal)) });
@@ -118,13 +140,14 @@ export function RepositoryEditorPanel({ projectId, localPath, onConnection }: { 
       {(tree.error || changes.error) && <p className="code-notice code-notice-error" role="alert">{(tree.error ?? changes.error)?.message}</p>}
     </aside>
     <div className="code-editor-main">
+      {locked && <p className="code-operation-status" role="status">Agent 正在运行，编辑暂时锁定；可以查看源码与差异，停止或结束后继续编辑。</p>}
       <div className="code-document-tabs" role="tablist" aria-label="打开的文件">{state.tabs.map(item => <div key={item.id} className={state.active === item.id && !comparison ? 'is-active' : ''}><button type="button" role="tab" id={`file-tab-${state.tabs.indexOf(item)}`} aria-controls="code-document-panel" aria-selected={state.active === item.id && !comparison} tabIndex={state.active === item.id ? 0 : -1} title={item.document.path} onClick={() => select(item.id)} onKeyDown={event => { if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) { event.preventDefault(); const index = event.key === 'Home' ? 0 : event.key === 'End' ? state.tabs.length - 1 : (state.tabs.indexOf(item) + (event.key === 'ArrowLeft' ? -1 : 1) + state.tabs.length) % state.tabs.length; select(state.tabs[index]!.id); document.getElementById(`file-tab-${index}`)?.focus(); } }}><FileCode2 size={14} />{item.document.path.split('/').pop()}{isDirty(item) && <span className="code-dirty" aria-label="未保存" />}</button><button type="button" aria-label={`关闭 ${item.document.path}`} disabled={pending} onClick={() => close(item.id)}><X size={13} /></button></div>)}</div>
       {closeId && <div className="code-inline-confirm" role="alert"><p>此文件有未保存内容。关闭会丢弃该草稿。</p><button type="button" onClick={() => close(closeId, true)}>丢弃草稿并关闭</button><button type="button" onClick={() => setCloseId(null)}>继续编辑</button></div>}
       {error && <div className="code-notice code-notice-error" role="alert">{error}{draft && !stale && <button type="button" disabled={pending} onClick={compareDisk}>对照磁盘版本</button>}</div>}
       {stale && <p className="code-notice" role="status">仓库关联、分支或 HEAD 已变化。此标签保留原草稿，请从文件树重新打开文件核对，再复制需要保留的内容。</p>}
       {pending && <p className="code-operation-status" role="status">正在处理文件…</p>}
-      {comparison ? <><div className="code-editor-toolbar"><strong>{comparison.path}</strong><span>{comparison.kind === 'git' ? 'HEAD → 工作目录 / 当前草稿' : '磁盘版本 → 保留的草稿'}</span><button type="button" onClick={() => setComparison(null)}>返回编辑</button></div>{comparison.kind === 'conflict' && <div className="code-inline-confirm"><p>先核对两侧内容。采用磁盘基线会保留右侧草稿，之后仍需手动保存。</p><button type="button" disabled={pending} onClick={acceptBase}>采用磁盘基线，保留草稿</button></div>}<Suspense fallback={<p role="status">正在加载差异编辑器…</p>}><MonacoEditor key={`diff:${comparison.path}`} path={comparison.path} original={comparison.original} value={comparison.modified} readOnly /></Suspense></> : draft ? <div id="code-document-panel" role="tabpanel" aria-labelledby={`file-tab-${state.tabs.indexOf(draft)}`} className="code-document-panel"><div className="code-editor-toolbar"><strong title={draft.document.path}>{draft.document.path}</strong><span>{isDirty(draft) ? '未保存' : draft.savedRevision === draft.document.revision ? '已手动保存' : '磁盘版本'}</span><button type="button" disabled={pending || stale} onClick={compareDisk}>对照磁盘</button><button type="button" disabled={pending || stale} onClick={() => showDiff(draft.document.path)}><GitCompareArrows size={14} />差异</button><button type="button" className="code-save-button" title="保存 (Ctrl/Cmd+S)" disabled={!writable || stale || !tree.data || pending || !isDirty(draft)} onClick={save}><Save size={14} />保存</button></div><Suspense fallback={<p role="status">正在加载代码编辑器…</p>}><MonacoEditor key={draft.id} path={draft.document.path} value={draft.content} readOnly={!writable} onChange={content => state.update(current => ({ ...current, tabs: current.tabs.map(item => item.id === draft.id ? { ...item, content } : item) }))} onSave={save} /></Suspense></div> : <div className="code-editor-empty"><FileCode2 size={38} strokeWidth={1.3} /><h2>打开文件，开始编写</h2><p>从左侧选择文件，或搜索文件路径。<br />保存用 Ctrl / ⌘ + S，差异对照当前 Git HEAD。</p><p>切换项目会保留本次会话的未保存草稿。<br />退出登录或关闭应用前，请先保存。</p></div>}
-      <details className="code-operations"><summary>操作记录 <span>{state.events.length}</span></summary>{state.events.length ? <ol>{state.events.map((event, index) => <li key={index}>{event}</li>)}</ol> : <p>当前会话尚无保存记录。Agent 架构解析位于上方标签；命令执行将在编程 Agent 阶段接入。</p>}</details>
+      {comparison ? <><div className="code-editor-toolbar"><strong>{comparison.path}</strong><span>{comparison.kind === 'agent' ? comparison.label : comparison.kind === 'git' ? 'HEAD → 工作目录 / 当前草稿' : '磁盘版本 → 保留的草稿'}</span><button type="button" onClick={() => setComparison(null)}>返回编辑</button></div>{comparison.kind === 'conflict' && <div className="code-inline-confirm"><p>先核对两侧内容。采用磁盘基线会保留右侧草稿，之后仍需手动保存。</p><button type="button" disabled={pending} onClick={acceptBase}>采用磁盘基线，保留草稿</button></div>}<Suspense fallback={<p role="status">正在加载差异编辑器…</p>}><MonacoEditor key={`diff:${comparison.path}`} path={comparison.path} original={comparison.original} value={comparison.modified} readOnly /></Suspense></> : draft ? <div id="code-document-panel" role="tabpanel" aria-labelledby={`file-tab-${state.tabs.indexOf(draft)}`} className="code-document-panel"><div className="code-editor-toolbar"><strong title={draft.document.path}>{draft.document.path}</strong><span>{isDirty(draft) ? '未保存' : draft.savedRevision === draft.document.revision ? '已手动保存' : '磁盘版本'}</span><button type="button" disabled={pending || stale} onClick={compareDisk}>对照磁盘</button><button type="button" disabled={pending || stale} onClick={() => showDiff(draft.document.path)}><GitCompareArrows size={14} />差异</button><button type="button" className="code-save-button" title="保存 (Ctrl/Cmd+S)" disabled={!writable || stale || !tree.data || pending || !isDirty(draft)} onClick={save}><Save size={14} />保存</button></div><Suspense fallback={<p role="status">正在加载代码编辑器…</p>}><MonacoEditor key={draft.id} path={draft.document.path} value={draft.content} readOnly={!writable} onChange={content => state.update(current => ({ ...current, tabs: current.tabs.map(item => item.id === draft.id ? { ...item, content } : item) }))} onSave={save} /></Suspense></div> : <div className="code-editor-empty"><FileCode2 size={38} strokeWidth={1.3} /><h2>打开文件，开始编写</h2><p>从左侧选择文件，或搜索文件路径。<br />保存用 Ctrl / ⌘ + S，差异对照当前 Git HEAD。</p><p>切换项目会保留本次会话的未保存草稿。<br />退出登录或关闭应用前，请先保存。</p></div>}
+      <details className="code-operations"><summary>操作记录 <span>{state.events.length}</span></summary>{state.events.length ? <ol>{state.events.map((event, index) => <li key={index}>{event}</li>)}</ol> : <p>当前会话尚无手动保存记录。Agent 的修改和命令输出位于编程 Agent 面板。</p>}</details>
     </div>
   </div>;
 }

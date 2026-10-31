@@ -42,6 +42,8 @@ from cairn_api.projects.operation_router import router as project_operation_rout
 from cairn_api.projects.router import router as projects_router
 from cairn_api.projects.schedule_router import router as project_schedule_router
 from cairn_api.settings import Settings
+from cairn_api.workspace.coding_router import router as coding_router
+from cairn_api.workspace.local import DesktopWorkspace
 from cairn_api.workspace.router import router as workspace_router
 
 
@@ -169,6 +171,9 @@ def create_app(
                 _application.state.answer_provider = next(iter(_application.state.answer_models.values())).provider
             yield
         finally:
+            workspace = _application.state.desktop_workspace
+            if isinstance(workspace, DesktopWorkspace) and workspace.coding is not None:
+                workspace.coding.close()
             try:
                 current_database.dispose()
             finally:
@@ -351,6 +356,7 @@ def create_app(
     application.include_router(auth_router)
     application.include_router(oauth_router)
     application.include_router(workspace_router)
+    application.include_router(coding_router)
     application.include_router(registration_router)
     application.include_router(organizations_router)
     application.include_router(authorization_router)

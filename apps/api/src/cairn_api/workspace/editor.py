@@ -207,7 +207,7 @@ class RepositoryEditor:
     def __init__(self, workspace: DesktopWorkspace, user_id: UUID, project_id: UUID):
         self.workspace, self.user_id, self.project_id = workspace, user_id, project_id
 
-    def _context(self, expected: str | None = None) -> tuple[Path, str | None, str | None, str]:
+    def context(self, expected: str | None = None) -> tuple[Path, str | None, str | None, str]:
         binding = self.workspace.binding(self.user_id, self.project_id)
         if binding is None:
             raise github_problem("workspace_not_bound", "请先关联此项目的本地代码仓库", 409)
@@ -226,7 +226,7 @@ class RepositoryEditor:
 
     def tree(self) -> FileTree:
         with self.workspace.lock:
-            root, branch, _, identity = self._context()
+            root, branch, _, identity = self.context()
             paths = sorted(set(self.workspace.source_paths(root).split("\0")) - {""})
             visible: list[str] = []
             for path in paths:
@@ -243,7 +243,7 @@ class RepositoryEditor:
 
     def read(self, path: str) -> FileDocument:
         with self.workspace.lock:
-            root, _, _, identity = self._context()
+            root, _, _, identity = self.context()
             raw, _ = _raw(root, path)
             return FileDocument(
                 workspace_id=identity, path=path, content=_text(raw), revision=_revision(raw)
@@ -251,7 +251,7 @@ class RepositoryEditor:
 
     def save(self, payload: SaveFileRequest) -> FileDocument:
         with self.workspace.lock:
-            root, _, _, identity = self._context(payload.workspace_id)
+            root, _, _, identity = self.context(payload.workspace_id)
             target = _target(root, payload.path)
             previous: bytes | None = None
             mode = 0o644
@@ -359,7 +359,7 @@ class RepositoryEditor:
 
     def changes(self) -> RepositoryChanges:
         with self.workspace.lock:
-            root, _, _, identity = self._context()
+            root, _, _, identity = self.context()
             raw = self.workspace.read_git(
                 root,
                 ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames"],
@@ -378,7 +378,7 @@ class RepositoryEditor:
 
     def diff(self, path: str) -> FileDiff:
         with self.workspace.lock:
-            root, _, head, identity = self._context()
+            root, _, head, identity = self.context()
             _valid_path(path)
             original = ""
             if head:

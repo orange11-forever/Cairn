@@ -90,3 +90,18 @@ export async function fetchWorkspaceChanges(projectId: string, signal: AbortSign
 export async function fetchFileDiff(projectId: string, path: string, signal: AbortSignal) {
   return parse('FileDiff', await perform(signal, signal => client().GET('/api/v1/desktop/projects/{project_id}/diff', { params: { path: { project_id: projectId }, query: { path } }, signal })));
 }
+
+export type CodingRun = components['schemas']['CodingRun'];
+export type CodingChange = components['schemas']['CodingChange'];
+export async function fetchCodingRuns(projectId: string, signal: AbortSignal) {
+  return parse('CodingRunList', await perform(signal, signal => client().GET('/api/v1/desktop/projects/{project_id}/coding-runs', { params: { path: { project_id: projectId } }, signal })));
+}
+export async function startCodingRun(projectId: string, body: components['schemas']['CodingStart'], csrfToken: string, signal: AbortSignal) {
+  return parse('CodingRun', await perform(signal, signal => client().POST('/api/v1/desktop/projects/{project_id}/coding-runs', { params: { path: { project_id: projectId }, header: { 'X-CSRF-Token': csrfToken } }, body, signal })));
+}
+export async function decideCodingCommand(projectId: string, runId: string, body: components['schemas']['CommandDecision'], csrfToken: string, signal: AbortSignal) {
+  return parse('CodingRun', await perform(signal, signal => client().POST('/api/v1/desktop/projects/{project_id}/coding-runs/{run_id}/decision', { params: { path: { project_id: projectId, run_id: runId }, header: { 'X-CSRF-Token': csrfToken } }, body, signal })));
+}
+export async function cancelCodingRun(projectId: string, runId: string, csrfToken: string, signal: AbortSignal) {
+  return parse('CodingRun', await perform(signal, signal => client().POST('/api/v1/desktop/projects/{project_id}/coding-runs/{run_id}/cancel', { params: { path: { project_id: projectId, run_id: runId }, header: { 'X-CSRF-Token': csrfToken } }, signal })));
+}

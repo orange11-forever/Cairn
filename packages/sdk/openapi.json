@@ -830,6 +830,368 @@
         "title": "ChunkResponse",
         "type": "object"
       },
+      "CodingChange": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "title": "After",
+            "type": "string"
+          },
+          "before": {
+            "title": "Before",
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "file_tool",
+              "command"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision"
+          }
+        },
+        "required": [
+          "path",
+          "before",
+          "after",
+          "revision",
+          "origin"
+        ],
+        "title": "CodingChange",
+        "type": "object"
+      },
+      "CodingEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "exitCode": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exitcode"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "started",
+              "step",
+              "read",
+              "write",
+              "approval",
+              "output",
+              "command_result",
+              "finished",
+              "error",
+              "cancelled",
+              "interrupted"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          }
+        },
+        "required": [
+          "id",
+          "at",
+          "kind",
+          "message"
+        ],
+        "title": "CodingEvent",
+        "type": "object"
+      },
+      "CodingRun": {
+        "additionalProperties": false,
+        "properties": {
+          "assistantId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assistantid"
+          },
+          "assistantName": {
+            "title": "Assistantname",
+            "type": "string"
+          },
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/CodingChange"
+            },
+            "maxItems": 50,
+            "title": "Changes",
+            "type": "array"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "errorCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errorcode"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/CodingEvent"
+            },
+            "maxItems": 1000,
+            "title": "Events",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "localPath": {
+            "title": "Localpath",
+            "type": "string"
+          },
+          "model": {
+            "$ref": "#/components/schemas/AnswerModelOption"
+          },
+          "pendingCommand": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PendingCommand"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "projectId": {
+            "format": "uuid",
+            "title": "Projectid",
+            "type": "string"
+          },
+          "skillId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skillid"
+          },
+          "status": {
+            "enum": [
+              "running",
+              "awaiting_approval",
+              "cancelling",
+              "cancelled",
+              "failed",
+              "succeeded",
+              "interrupted"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "task": {
+            "title": "Task",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "title": "Updatedat",
+            "type": "string"
+          },
+          "userId": {
+            "format": "uuid",
+            "title": "Userid",
+            "type": "string"
+          },
+          "workspaceId": {
+            "title": "Workspaceid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "userId",
+          "projectId",
+          "workspaceId",
+          "localPath",
+          "task",
+          "assistantId",
+          "assistantName",
+          "model",
+          "skillId",
+          "status",
+          "createdAt",
+          "updatedAt",
+          "events",
+          "changes"
+        ],
+        "title": "CodingRun",
+        "type": "object"
+      },
+      "CodingRunList": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CodingRun"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CodingRunList",
+        "type": "object"
+      },
+      "CodingStart": {
+        "additionalProperties": false,
+        "properties": {
+          "allowWrites": {
+            "const": true,
+            "title": "Allowwrites",
+            "type": "boolean"
+          },
+          "assistantId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assistantid"
+          },
+          "assistantRevision": {
+            "minimum": 0.0,
+            "title": "Assistantrevision",
+            "type": "integer"
+          },
+          "skillId": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skillid"
+          },
+          "task": {
+            "maxLength": 6000,
+            "minLength": 1,
+            "title": "Task",
+            "type": "string"
+          },
+          "workspaceId": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Workspaceid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspaceId",
+          "task",
+          "assistantRevision",
+          "allowWrites"
+        ],
+        "title": "CodingStart",
+        "type": "object"
+      },
+      "CommandDecision": {
+        "additionalProperties": false,
+        "properties": {
+          "approved": {
+            "title": "Approved",
+            "type": "boolean"
+          },
+          "eventId": {
+            "minimum": 0.0,
+            "title": "Eventid",
+            "type": "integer"
+          },
+          "verify": {
+            "default": false,
+            "title": "Verify",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "eventId",
+          "approved"
+        ],
+        "title": "CommandDecision",
+        "type": "object"
+      },
       "CreateTaskAction": {
         "additionalProperties": false,
         "properties": {
@@ -4834,6 +5196,52 @@
           "page"
         ],
         "title": "PdfLocator",
+        "type": "object"
+      },
+      "PendingCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "argv": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "title": "Argv",
+            "type": "array"
+          },
+          "eventId": {
+            "title": "Eventid",
+            "type": "integer"
+          },
+          "kind": {
+            "const": "run_command",
+            "title": "Kind",
+            "type": "string"
+          },
+          "purpose": {
+            "enum": [
+              "command",
+              "test"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          },
+          "timeoutSeconds": {
+            "maximum": 120.0,
+            "minimum": 1.0,
+            "title": "Timeoutseconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "argv",
+          "purpose",
+          "timeoutSeconds",
+          "eventId"
+        ],
+        "title": "PendingCommand",
         "type": "object"
       },
       "PlanSourceReference": {
@@ -11134,6 +11542,799 @@
         "summary": "Changes",
         "tags": [
           "desktop-workspace"
+        ]
+      }
+    },
+    "/api/v1/desktop/projects/{project_id}/coding-runs": {
+      "get": {
+        "operationId": "list_runs_api_v1_desktop_projects__project_id__coding_runs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodingRunList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          }
+        },
+        "summary": "List Runs",
+        "tags": [
+          "desktop-coding"
+        ]
+      },
+      "post": {
+        "operationId": "start_run_api_v1_desktop_projects__project_id__coding_runs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Session-bound CSRF token returned by login or session restore.",
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodingStart"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodingRun"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          }
+        },
+        "summary": "Start Run",
+        "tags": [
+          "desktop-coding"
+        ]
+      }
+    },
+    "/api/v1/desktop/projects/{project_id}/coding-runs/{run_id}": {
+      "get": {
+        "operationId": "get_run_api_v1_desktop_projects__project_id__coding_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodingRun"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          }
+        },
+        "summary": "Get Run",
+        "tags": [
+          "desktop-coding"
+        ]
+      }
+    },
+    "/api/v1/desktop/projects/{project_id}/coding-runs/{run_id}/cancel": {
+      "post": {
+        "operationId": "cancel_run_api_v1_desktop_projects__project_id__coding_runs__run_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Session-bound CSRF token returned by login or session restore.",
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodingRun"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          }
+        },
+        "summary": "Cancel Run",
+        "tags": [
+          "desktop-coding"
+        ]
+      }
+    },
+    "/api/v1/desktop/projects/{project_id}/coding-runs/{run_id}/decision": {
+      "post": {
+        "operationId": "decide_command_api_v1_desktop_projects__project_id__coding_runs__run_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Session-bound CSRF token returned by login or session restore.",
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommandDecision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodingRun"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "GitHub 授权或仓库操作失败"
+          }
+        },
+        "summary": "Decide Command",
+        "tags": [
+          "desktop-coding"
         ]
       }
     },

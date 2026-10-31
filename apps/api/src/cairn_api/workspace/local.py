@@ -12,6 +12,7 @@ import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError
@@ -22,6 +23,9 @@ from cairn_api.workspace.github import GitHubClient, GitHubToken, github_problem
 from cairn_api.workspace.schemas import GitHubAccount, GitHubRepository, RepositoryBinding
 
 WORKSPACE_FILE = "workspace-settings.dpapi"
+
+if TYPE_CHECKING:
+    from cairn_api.workspace.coding import CodingRunner
 
 
 class Credential(BaseModel):
@@ -57,9 +61,11 @@ class DesktopWorkspace:
         self.git = git
         self.client_id = client_id
         self.github = GitHubClient(client_id) if client_id else None
-        self._protect = protect
+        self.protect = protect
+        self.unprotect = unprotect
         self.lock = threading.RLock()
         self.devices = DeviceAuthorizations()
+        self.coding: CodingRunner | None = None
         self._values = WorkspaceFile()
         path = self.data / WORKSPACE_FILE
         if path.exists():
@@ -81,7 +87,7 @@ class DesktopWorkspace:
                     serialized["users"][str(user_id)]["credential"]["token"] = (
                         user.credential.token.get_secret_value()
                     )
-            encrypted = self._protect(json.dumps(serialized, ensure_ascii=False).encode())
+            encrypted = self.protect(json.dumps(serialized, ensure_ascii=False).encode())
             if len(encrypted) > 4_000_000:
                 raise ValueError("oversized settings")
             with tempfile.NamedTemporaryFile(

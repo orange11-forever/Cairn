@@ -362,6 +362,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/desktop/projects/{project_id}/coding-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Runs */
+        get: operations["list_runs_api_v1_desktop_projects__project_id__coding_runs_get"];
+        put?: never;
+        /** Start Run */
+        post: operations["start_run_api_v1_desktop_projects__project_id__coding_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/desktop/projects/{project_id}/coding-runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Run */
+        get: operations["get_run_api_v1_desktop_projects__project_id__coding_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/desktop/projects/{project_id}/coding-runs/{run_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Run */
+        post: operations["cancel_run_api_v1_desktop_projects__project_id__coding_runs__run_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/desktop/projects/{project_id}/coding-runs/{run_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide Command */
+        post: operations["decide_command_api_v1_desktop_projects__project_id__coding_runs__run_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/desktop/projects/{project_id}/diff": {
         parameters: {
             query?: never;
@@ -1767,6 +1836,130 @@ export interface components {
             /** Text */
             text: string;
         };
+        /** CodingChange */
+        CodingChange: {
+            /** After */
+            after: string;
+            /** Before */
+            before: string;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "file_tool" | "command";
+            /** Path */
+            path: string;
+            /** Revision */
+            revision: string | null;
+        };
+        /** CodingEvent */
+        CodingEvent: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Exitcode */
+            exitCode?: number | null;
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "started" | "step" | "read" | "write" | "approval" | "output" | "command_result" | "finished" | "error" | "cancelled" | "interrupted";
+            /** Message */
+            message: string;
+            /** Path */
+            path?: string | null;
+        };
+        /** CodingRun */
+        CodingRun: {
+            /** Assistantid */
+            assistantId: string | null;
+            /** Assistantname */
+            assistantName: string;
+            /** Changes */
+            changes: components["schemas"]["CodingChange"][];
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Errorcode */
+            errorCode?: string | null;
+            /** Events */
+            events: components["schemas"]["CodingEvent"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Localpath */
+            localPath: string;
+            model: components["schemas"]["AnswerModelOption"];
+            pendingCommand?: components["schemas"]["PendingCommand"] | null;
+            /**
+             * Projectid
+             * Format: uuid
+             */
+            projectId: string;
+            /** Skillid */
+            skillId: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "running" | "awaiting_approval" | "cancelling" | "cancelled" | "failed" | "succeeded" | "interrupted";
+            /** Summary */
+            summary?: string | null;
+            /** Task */
+            task: string;
+            /**
+             * Updatedat
+             * Format: date-time
+             */
+            updatedAt: string;
+            /**
+             * Userid
+             * Format: uuid
+             */
+            userId: string;
+            /** Workspaceid */
+            workspaceId: string;
+        };
+        /** CodingRunList */
+        CodingRunList: {
+            /** Items */
+            items: components["schemas"]["CodingRun"][];
+        };
+        /** CodingStart */
+        CodingStart: {
+            /**
+             * Allowwrites
+             * @constant
+             */
+            allowWrites: true;
+            /** Assistantid */
+            assistantId?: string | null;
+            /** Assistantrevision */
+            assistantRevision: number;
+            /** Skillid */
+            skillId?: string | null;
+            /** Task */
+            task: string;
+            /** Workspaceid */
+            workspaceId: string;
+        };
+        /** CommandDecision */
+        CommandDecision: {
+            /** Approved */
+            approved: boolean;
+            /** Eventid */
+            eventId: number;
+            /** Verify */
+            verify?: boolean;
+        };
         /** CreateTaskAction */
         CreateTaskAction: {
             /** Acceptancecriteria */
@@ -3149,6 +3342,25 @@ export interface components {
              * @enum {string}
              */
             type: "pdf";
+        };
+        /** PendingCommand */
+        PendingCommand: {
+            /** Argv */
+            argv: string[];
+            /** Eventid */
+            eventId: number;
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "run_command";
+            /**
+             * Purpose
+             * @enum {string}
+             */
+            purpose: "command" | "test";
+            /** Timeoutseconds */
+            timeoutSeconds: number;
         };
         /** PlanSourceReference */
         PlanSourceReference: {
@@ -6231,6 +6443,631 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RepositoryChanges"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_runs_api_v1_desktop_projects__project_id__coding_runs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodingRunList"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    start_run_api_v1_desktop_projects__project_id__coding_runs_post: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Session-bound CSRF token returned by login or session restore. */
+                "X-CSRF-Token": string;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CodingStart"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodingRun"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_run_api_v1_desktop_projects__project_id__coding_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodingRun"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    cancel_run_api_v1_desktop_projects__project_id__coding_runs__run_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Session-bound CSRF token returned by login or session restore. */
+                "X-CSRF-Token": string;
+            };
+            path: {
+                project_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodingRun"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    decide_command_api_v1_desktop_projects__project_id__coding_runs__run_id__decision_post: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Session-bound CSRF token returned by login or session restore. */
+                "X-CSRF-Token": string;
+            };
+            path: {
+                project_id: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommandDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodingRun"];
                 };
             };
             /** @description GitHub 授权或仓库操作失败 */

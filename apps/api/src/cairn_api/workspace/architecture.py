@@ -126,7 +126,7 @@ class RepositorySnapshot(WorkspaceModel):
         ]
 
 
-def _eligible(value: str) -> bool:
+def eligible_source(value: str) -> bool:
     path = PurePosixPath(value)
     lower = path.name.lower()
     return (
@@ -253,7 +253,7 @@ def read_snapshot(workspace: DesktopWorkspace, directory: str) -> RepositorySnap
             422,
         )
     all_paths = set(names.split("\0")) - {""}
-    eligible = sorted((name for name in all_paths if _eligible(name)), key=_priority)
+    eligible = sorted((name for name in all_paths if eligible_source(name)), key=_priority)
     sources: list[ArchitectureSource] = []
     size = 0
     excluded = len(all_paths) - len(eligible)
