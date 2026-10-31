@@ -257,6 +257,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/desktop/coding-concurrency": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Concurrency */
+        put: operations["set_concurrency_api_v1_desktop_coding_concurrency_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/desktop/coding-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Overview */
+        get: operations["overview_api_v1_desktop_coding_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/desktop/github/connection": {
         parameters: {
             query?: never;
@@ -1852,6 +1886,11 @@ export interface components {
             /** Revision */
             revision: string | null;
         };
+        /** CodingConcurrency */
+        CodingConcurrency: {
+            /** Limit */
+            limit: number;
+        };
         /** CodingEvent */
         CodingEvent: {
             /**
@@ -1867,11 +1906,30 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "started" | "step" | "read" | "write" | "approval" | "output" | "command_result" | "finished" | "error" | "cancelled" | "interrupted";
+            kind: "queued" | "started" | "step" | "read" | "write" | "approval" | "output" | "command_result" | "finished" | "error" | "cancelled" | "interrupted";
             /** Message */
             message: string;
             /** Path */
             path?: string | null;
+        };
+        /** CodingOverlap */
+        CodingOverlap: {
+            /** Assistantname */
+            assistantName: string;
+            /** Paths */
+            paths: string[];
+            /**
+             * Runid
+             * Format: uuid
+             */
+            runId: string;
+        };
+        /** CodingOverview */
+        CodingOverview: {
+            /** Concurrency */
+            concurrency: number;
+            /** Items */
+            items: components["schemas"]["CodingRunSummary"][];
         };
         /** CodingRun */
         CodingRun: {
@@ -1879,6 +1937,15 @@ export interface components {
             assistantId: string | null;
             /** Assistantname */
             assistantName: string;
+            /**
+             * Assistantrevision
+             * @default 0
+             */
+            assistantRevision: number;
+            /** Basehead */
+            baseHead?: string | null;
+            /** Branch */
+            branch?: string | null;
             /** Changes */
             changes: components["schemas"]["CodingChange"][];
             /**
@@ -1886,6 +1953,8 @@ export interface components {
              * Format: date-time
              */
             createdAt: string;
+            /** Dependson */
+            dependsOn?: string | null;
             /** Errorcode */
             errorCode?: string | null;
             /** Events */
@@ -1898,19 +1967,23 @@ export interface components {
             /** Localpath */
             localPath: string;
             model: components["schemas"]["AnswerModelOption"];
+            /** Overlaps */
+            overlaps?: components["schemas"]["CodingOverlap"][];
             pendingCommand?: components["schemas"]["PendingCommand"] | null;
             /**
              * Projectid
              * Format: uuid
              */
             projectId: string;
+            /** Repositorypath */
+            repositoryPath?: string | null;
             /** Skillid */
             skillId: string | null;
             /**
              * Status
              * @enum {string}
              */
-            status: "running" | "awaiting_approval" | "cancelling" | "cancelled" | "failed" | "succeeded" | "interrupted";
+            status: "queued" | "blocked" | "running" | "awaiting_approval" | "cancelling" | "cancelled" | "failed" | "succeeded" | "interrupted";
             /** Summary */
             summary?: string | null;
             /** Task */
@@ -1933,6 +2006,43 @@ export interface components {
             /** Items */
             items: components["schemas"]["CodingRun"][];
         };
+        /** CodingRunSummary */
+        CodingRunSummary: {
+            /** Assistantname */
+            assistantName: string;
+            /** Changedfiles */
+            changedFiles: number;
+            /** Dependson */
+            dependsOn: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Modelname */
+            modelName: string;
+            /** Progress */
+            progress: string;
+            /**
+             * Projectid
+             * Format: uuid
+             */
+            projectId: string;
+            /** Projectname */
+            projectName: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "blocked" | "running" | "awaiting_approval" | "cancelling" | "cancelled" | "failed" | "succeeded" | "interrupted";
+            /** Task */
+            task: string;
+            /**
+             * Updatedat
+             * Format: date-time
+             */
+            updatedAt: string;
+        };
         /** CodingStart */
         CodingStart: {
             /**
@@ -1944,6 +2054,8 @@ export interface components {
             assistantId?: string | null;
             /** Assistantrevision */
             assistantRevision: number;
+            /** Dependson */
+            dependsOn?: string | null;
             /** Skillid */
             skillId?: string | null;
             /** Task */
@@ -5440,6 +5552,251 @@ export interface operations {
             };
             /** @description 服务器内部错误 */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_concurrency_api_v1_desktop_coding_concurrency_put: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Session-bound CSRF token returned by login or session restore. */
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CodingConcurrency"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodingConcurrency"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    overview_api_v1_desktop_coding_runs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CodingOverview"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            504: {
                 headers: {
                     [name: string]: unknown;
                 };

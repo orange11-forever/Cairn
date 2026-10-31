@@ -135,6 +135,11 @@
 .coding-panel .coding-output { max-height: 310px; min-height: 100px; overflow: auto; white-space: pre; padding: 12px; background: var(--color-surface-subtle); }
 .coding-empty { margin: 26px 0; color: var(--color-muted); }
 .coding-history { display: grid; gap: 6px; margin: 22px 0 0; }
+.coding-agent > label { width: 100%; font-weight: 600; }
+.coding-location { display: grid; gap: 6px; padding: 12px 0; border-top: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); color: var(--color-muted); }
+.coding-overlaps { margin: 16px 0; padding: 12px; background: var(--color-surface-subtle); border: 1px solid var(--color-border); }
+.coding-overlaps p { margin: 7px 0; }
+.coding-overlaps button { width: 100%; text-align: left; justify-content: flex-start; overflow-wrap: anywhere; }
 .coding-footer { display: grid; gap: 6px; border-top: 1px solid var(--color-border); margin-top: 24px; padding-top: 12px; color: var(--color-muted); font-size: 11px; }
 .coding-panel :is(.coding-steps, .coding-output, textarea) { scrollbar-color: var(--color-border) var(--color-surface-subtle); scrollbar-width: thin; }
 @media (max-width: 1180px) { .code-editor-with-agent { grid-template-columns: minmax(0, 1fr); } .coding-panel { order: -1; max-height: none; overflow: visible; border-left: 0; border-bottom: 1px solid var(--color-border); } .coding-task, .coding-run, .coding-agent { max-width: 800px; } }

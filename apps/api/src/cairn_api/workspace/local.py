@@ -195,7 +195,7 @@ class DesktopWorkspace:
             )
         return environment
 
-    def _run(
+    def run_git(
         self,
         arguments: list[str],
         *,
@@ -290,10 +290,10 @@ class DesktopWorkspace:
         path = self._path(value)
         if not path.is_dir():
             raise github_problem("workspace_path_missing", "关联的本地目录不存在，请重新选择", 404)
-        root = self._run(["-C", str(path), "rev-parse", "--show-toplevel"])
+        root = self.run_git(["-C", str(path), "rev-parse", "--show-toplevel"])
         if root is None or Path(root).resolve() != path:
             raise github_problem("workspace_not_root", "请选择 Git 仓库的根目录", 422)
-        branch = self._run(
+        branch = self.run_git(
             ["-C", str(path), "symbolic-ref", "--quiet", "--short", "HEAD"], allow_one=True
         )
         return path, branch
@@ -389,7 +389,7 @@ class DesktopWorkspace:
             process.stdout.close()
 
     def head(self, root: Path) -> str | None:
-        return self._run(
+        return self.run_git(
             ["-C", str(root), "rev-parse", "--verify", "--quiet", "HEAD"], allow_one=True
         )
 
@@ -422,7 +422,7 @@ class DesktopWorkspace:
             )
 
     def verify_remote(self, path: Path, repository: GitHubRepository) -> None:
-        origin = self._run(
+        origin = self.run_git(
             ["-C", str(path), "config", "--get", "remote.origin.url"], allow_one=True
         )
         match = re.fullmatch(
@@ -459,7 +459,7 @@ class DesktopWorkspace:
                     "workspace_path_invalid", "无法创建目标目录，请检查父目录及写入权限", 422
                 ) from None
             try:
-                self._run(
+                self.run_git(
                     [
                         "clone",
                         "--template=",

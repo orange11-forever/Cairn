@@ -102,8 +102,6 @@ def save_file(
 ) -> FileDocument:
     AuthorizationPolicy(session).require_project(identity, project_id, ProjectPermission.WRITE)
     with workspace.lock:
-        if workspace.coding:
-            workspace.coding.require_idle()
         return RepositoryEditor(workspace, identity.user.id, project_id).save(payload)
 
 
@@ -305,7 +303,7 @@ def bind_repository(
     AuthorizationPolicy(session).require_project(identity, project_id, ProjectPermission.WRITE)
     with workspace.lock:
         if workspace.coding:
-            workspace.coding.require_idle()
+            workspace.coding.require_idle(identity.user.id, project_id)
         remote = None
         credential = None
         if payload.repository_id is not None:
@@ -349,7 +347,7 @@ def unbind_repository(
     AuthorizationPolicy(session).require_project(identity, project_id, ProjectPermission.WRITE)
     with workspace.lock:
         if workspace.coding:
-            workspace.coding.require_idle()
+            workspace.coding.require_idle(identity.user.id, project_id)
         workspace.unbind(identity.user.id, project_id)
     response = Response(status_code=204)
     no_store(response)

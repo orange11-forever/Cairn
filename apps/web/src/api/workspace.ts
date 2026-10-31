@@ -96,6 +96,15 @@ export type CodingChange = components['schemas']['CodingChange'];
 export async function fetchCodingRuns(projectId: string, signal: AbortSignal) {
   return parse('CodingRunList', await perform(signal, signal => client().GET('/api/v1/desktop/projects/{project_id}/coding-runs', { params: { path: { project_id: projectId } }, signal })));
 }
+export async function fetchCodingRun(projectId: string, runId: string, signal: AbortSignal) {
+  return parse('CodingRun', await perform(signal, signal => client().GET('/api/v1/desktop/projects/{project_id}/coding-runs/{run_id}', { params: { path: { project_id: projectId, run_id: runId } }, signal })));
+}
+export async function fetchCodingOverview(signal: AbortSignal) {
+  return parse('CodingOverview', await perform(signal, signal => client().GET('/api/v1/desktop/coding-runs', { signal })));
+}
+export async function setCodingConcurrency(limit: number, csrfToken: string, signal: AbortSignal) {
+  return parse('CodingConcurrency', await perform(signal, signal => client().PUT('/api/v1/desktop/coding-concurrency', { params: { header: { 'X-CSRF-Token': csrfToken } }, body: { limit }, signal })));
+}
 export async function startCodingRun(projectId: string, body: components['schemas']['CodingStart'], csrfToken: string, signal: AbortSignal) {
   return parse('CodingRun', await perform(signal, signal => client().POST('/api/v1/desktop/projects/{project_id}/coding-runs', { params: { path: { project_id: projectId }, header: { 'X-CSRF-Token': csrfToken } }, body, signal })));
 }

@@ -33,6 +33,8 @@ def coding(tmp_path: Path) -> Iterator[CodingFixture]:
     data.mkdir()
     subprocess.run(['git', '-C', str(root), 'init', '-b', 'main'], check=True, capture_output=True)
     (root / 'main.py').write_text('print("before")\n')
+    subprocess.run(['git', '-C', str(root), 'add', 'main.py'], check=True, capture_output=True)
+    subprocess.run(['git', '-C', str(root), '-c', 'user.name=Test', '-c', 'user.email=test@example.test', 'commit', '-m', 'baseline'], check=True, capture_output=True)
     workspace = DesktopWorkspace(data, Path('/usr/bin/git'), None, base64.b64encode, base64.b64decode)
     user, project = uuid4(), uuid4()
     workspace.bind_local(user, project, str(root))
@@ -77,7 +79,8 @@ def test_real_file_edit_approved_command_test_and_encrypted_restart_history(codi
         step('finish', summary='Updated and checked'),
     ])
     waiting = wait_status(coding, run.id, {'awaiting_approval'})
-    assert (root / 'main.py').read_text() == 'print("after")\n'
+    assert (Path(run.local_path) / 'main.py').read_text() == 'print("after")\n'
+    assert (root / 'main.py').read_text() == 'print("before")\n'
     assert waiting.pending_command is not None
     assert not any(event.kind == 'command_result' for event in waiting.events)
     runner.decide(user, project, run.id, CommandDecision(event_id=waiting.pending_command.event_id, approved=True, verify=True))
@@ -117,7 +120,7 @@ def test_nonzero_command_is_failure_even_if_model_would_claim_success(coding: Co
 
 
 def test_cancel_stops_command_and_its_child_before_delayed_write(coding: CodingFixture) -> None:
-    runner, user, project, root = coding
+    runner, user, project, _ = coding
     child = 'import time; from pathlib import Path; time.sleep(2); Path("escaped.txt").write_text("bad")'
     command = f'import subprocess,sys,time; subprocess.Popen([sys.executable,"-c",{child!r}]); print("READY",flush=True); time.sleep(30)'
     run = start(coding, [step('run_command', argv=[sys.executable, '-c', command], purpose='command', timeout_seconds=30)])
@@ -131,7 +134,7 @@ def test_cancel_stops_command_and_its_child_before_delayed_write(coding: CodingF
     runner.cancel(user, project, run.id)
     assert wait_status(coding, run.id, {'cancelled'}).status == 'cancelled'
     time.sleep(2.1)
-    assert not (root / 'escaped.txt').exists()
+    assert not (Path(run.local_path) / 'escaped.txt').exists()
 
 
 def test_authorization_loss_between_steps_prevents_file_write(coding: CodingFixture) -> None:
@@ -143,13 +146,12 @@ def test_authorization_loss_between_steps_prevents_file_write(coding: CodingFixt
     assert (root / 'main.py').read_text() == 'print("before")\n'
 
 
-def test_one_run_at_a_time_and_restart_does_not_resume_commands(coding: CodingFixture) -> None:
+def test_one_agent_runs_serially_and_restart_does_not_resume_commands(coding: CodingFixture) -> None:
     runner, user, project, root = coding
     run = start(coding, [step('run_command', argv=[sys.executable, '-c', 'from pathlib import Path; Path("never.txt").touch()'], purpose='test', timeout_seconds=10)])
     wait_status(coding, run.id, {'awaiting_approval'})
-    with pytest.raises(ApiProblem) as busy:
-        start(coding, [step('finish', summary='second')])
-    assert busy.value.code == 'coding_run_active'
+    second = start(coding, [step('finish', summary='second')])
+    assert second.status == 'queued'
     # Loading the persisted record after a stopped runtime must not execute it.
     runner.close()
     reopened = CodingRunner(runner.workspace)
@@ -161,12 +163,12 @@ def test_one_run_at_a_time_and_restart_does_not_resume_commands(coding: CodingFi
 
 
 def test_test_success_is_invalidated_by_later_external_edit(coding: CodingFixture, monkeypatch: pytest.MonkeyPatch) -> None:
-    runner, user, project, root = coding
+    runner, user, project, _ = coding
     original = ScriptedModel.coding_step
     def change_before_finish(self: ScriptedModel, *, context: dict[str, object], check_cancelled: Callable[[], None]) -> CodingStep:
         value = original(self, context=context, check_cancelled=check_cancelled)
         if value.action.kind == 'finish':
-            (root / 'main.py').write_text('external untested code')
+            (Path(str(context['workingDirectory'])) / 'main.py').write_text('external untested code')
         return value
     monkeypatch.setattr(ScriptedModel, 'coding_step', change_before_finish)
     run = start(coding, [step('run_command', argv=[sys.executable, '-c', 'from pathlib import Path; assert "before" in Path("main.py").read_text()'], purpose='test', timeout_seconds=10), step('finish', summary='done')])
@@ -177,7 +179,7 @@ def test_test_success_is_invalidated_by_later_external_edit(coding: CodingFixtur
     assert done.status == 'failed' and done.error_code == 'coding_verification_stale'
 
 
-def test_command_changes_are_recorded_relative_to_preexisting_manual_edits(coding: CodingFixture) -> None:
+def test_command_changes_are_recorded_in_worktree_without_copying_main_edits(coding: CodingFixture) -> None:
     runner, user, project, root = coding
     (root / 'main.py').write_text('manual before\n')
     run = start(coding, [
@@ -191,21 +193,21 @@ def test_command_changes_are_recorded_relative_to_preexisting_manual_edits(codin
         runner.decide(user, project, run.id, CommandDecision(event_id=pending.event_id, approved=True, verify=True))
     done = wait_status(coding, run.id, {'succeeded', 'failed'})
     assert done.status == 'succeeded'
-    assert [(change.path, change.before, change.after) for change in done.changes] == [('main.py', 'manual before\n', 'command after\n')]
+    assert [(change.path, change.before, change.after) for change in done.changes] == [('main.py', 'print("before")\n', 'command after\n')]
+    assert (root / 'main.py').read_text() == 'manual before\n'
 
 
 def test_external_change_after_model_read_is_not_overwritten(coding: CodingFixture, monkeypatch: pytest.MonkeyPatch) -> None:
-    _, _, _, root = coding
     original = ScriptedModel.coding_step
     def change_after_read(self: ScriptedModel, *, context: dict[str, object], check_cancelled: Callable[[], None]) -> CodingStep:
         value = original(self, context=context, check_cancelled=check_cancelled)
         if value.action.kind == 'write_file':
-            (root / 'main.py').write_text('external kept')
+            (Path(str(context['workingDirectory'])) / 'main.py').write_text('external kept')
         return value
     monkeypatch.setattr(ScriptedModel, 'coding_step', change_after_read)
     run = start(coding, [step('read_file', path='main.py'), step('write_file', path='main.py', content='agent change', create=False)])
     assert wait_status(coding, run.id, {'failed'}).error_code == 'workspace_file_conflict'
-    assert (root / 'main.py').read_text() == 'external kept'
+    assert (Path(run.local_path) / 'main.py').read_text() == 'external kept'
 
 
 def test_model_labelled_print_command_is_not_verification_without_user_confirmation(coding: CodingFixture) -> None:
@@ -218,7 +220,7 @@ def test_model_labelled_print_command_is_not_verification_without_user_confirmat
     assert done.status == 'failed' and done.error_code == 'coding_verification_required'
 
 
-def test_command_deleting_untracked_file_keeps_its_before_content(coding: CodingFixture) -> None:
+def test_command_deleting_tracked_file_keeps_its_before_content(coding: CodingFixture) -> None:
     runner, user, project, _ = coding
     run = start(coding, [
         step('run_command', argv=[sys.executable, '-c', 'from pathlib import Path; Path("main.py").unlink()'], purpose='command', timeout_seconds=10),

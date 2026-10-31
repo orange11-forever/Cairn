@@ -874,6 +874,22 @@ export const componentSchemas = {
     "title": "CodingChange",
     "type": "object"
   },
+  "CodingConcurrency": {
+    "additionalProperties": false,
+    "properties": {
+      "limit": {
+        "maximum": 4,
+        "minimum": 1,
+        "title": "Limit",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "limit"
+    ],
+    "title": "CodingConcurrency",
+    "type": "object"
+  },
   "CodingEvent": {
     "additionalProperties": false,
     "properties": {
@@ -899,6 +915,7 @@ export const componentSchemas = {
       },
       "kind": {
         "enum": [
+          "queued",
           "started",
           "step",
           "read",
@@ -939,6 +956,56 @@ export const componentSchemas = {
     "title": "CodingEvent",
     "type": "object"
   },
+  "CodingOverlap": {
+    "additionalProperties": false,
+    "properties": {
+      "assistantName": {
+        "title": "Assistantname",
+        "type": "string"
+      },
+      "paths": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Paths",
+        "type": "array"
+      },
+      "runId": {
+        "format": "uuid",
+        "title": "Runid",
+        "type": "string"
+      }
+    },
+    "required": [
+      "runId",
+      "assistantName",
+      "paths"
+    ],
+    "title": "CodingOverlap",
+    "type": "object"
+  },
+  "CodingOverview": {
+    "additionalProperties": false,
+    "properties": {
+      "concurrency": {
+        "title": "Concurrency",
+        "type": "integer"
+      },
+      "items": {
+        "items": {
+          "$ref": "#/components/schemas/CodingRunSummary"
+        },
+        "title": "Items",
+        "type": "array"
+      }
+    },
+    "required": [
+      "concurrency",
+      "items"
+    ],
+    "title": "CodingOverview",
+    "type": "object"
+  },
   "CodingRun": {
     "additionalProperties": false,
     "properties": {
@@ -958,6 +1025,33 @@ export const componentSchemas = {
         "title": "Assistantname",
         "type": "string"
       },
+      "assistantRevision": {
+        "default": 0,
+        "title": "Assistantrevision",
+        "type": "integer"
+      },
+      "baseHead": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Basehead"
+      },
+      "branch": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Branch"
+      },
       "changes": {
         "items": {
           "$ref": "#/components/schemas/CodingChange"
@@ -970,6 +1064,18 @@ export const componentSchemas = {
         "format": "date-time",
         "title": "Createdat",
         "type": "string"
+      },
+      "dependsOn": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Dependson"
       },
       "errorCode": {
         "anyOf": [
@@ -1002,6 +1108,13 @@ export const componentSchemas = {
       "model": {
         "$ref": "#/components/schemas/AnswerModelOption"
       },
+      "overlaps": {
+        "items": {
+          "$ref": "#/components/schemas/CodingOverlap"
+        },
+        "title": "Overlaps",
+        "type": "array"
+      },
       "pendingCommand": {
         "anyOf": [
           {
@@ -1017,6 +1130,17 @@ export const componentSchemas = {
         "title": "Projectid",
         "type": "string"
       },
+      "repositoryPath": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Repositorypath"
+      },
       "skillId": {
         "anyOf": [
           {
@@ -1030,6 +1154,8 @@ export const componentSchemas = {
       },
       "status": {
         "enum": [
+          "queued",
+          "blocked",
           "running",
           "awaiting_approval",
           "cancelling",
@@ -1108,6 +1234,92 @@ export const componentSchemas = {
     "title": "CodingRunList",
     "type": "object"
   },
+  "CodingRunSummary": {
+    "additionalProperties": false,
+    "properties": {
+      "assistantName": {
+        "title": "Assistantname",
+        "type": "string"
+      },
+      "changedFiles": {
+        "title": "Changedfiles",
+        "type": "integer"
+      },
+      "dependsOn": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Dependson"
+      },
+      "id": {
+        "format": "uuid",
+        "title": "Id",
+        "type": "string"
+      },
+      "modelName": {
+        "title": "Modelname",
+        "type": "string"
+      },
+      "progress": {
+        "title": "Progress",
+        "type": "string"
+      },
+      "projectId": {
+        "format": "uuid",
+        "title": "Projectid",
+        "type": "string"
+      },
+      "projectName": {
+        "title": "Projectname",
+        "type": "string"
+      },
+      "status": {
+        "enum": [
+          "queued",
+          "blocked",
+          "running",
+          "awaiting_approval",
+          "cancelling",
+          "cancelled",
+          "failed",
+          "succeeded",
+          "interrupted"
+        ],
+        "title": "Status",
+        "type": "string"
+      },
+      "task": {
+        "title": "Task",
+        "type": "string"
+      },
+      "updatedAt": {
+        "format": "date-time",
+        "title": "Updatedat",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "projectId",
+      "projectName",
+      "assistantName",
+      "task",
+      "modelName",
+      "status",
+      "updatedAt",
+      "progress",
+      "changedFiles",
+      "dependsOn"
+    ],
+    "title": "CodingRunSummary",
+    "type": "object"
+  },
   "CodingStart": {
     "additionalProperties": false,
     "properties": {
@@ -1132,6 +1344,18 @@ export const componentSchemas = {
         "minimum": 0,
         "title": "Assistantrevision",
         "type": "integer"
+      },
+      "dependsOn": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Dependson"
       },
       "skillId": {
         "anyOf": [

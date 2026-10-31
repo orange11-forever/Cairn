@@ -12,13 +12,12 @@ export function CodingWorkspace({ projectId, localPath, assistant, modelName, on
 }) {
   const { session } = useSession();
   const editors = useEditorSession(session!.signal, projectId);
-  const [busy, setBusy] = useState(false);
   const [comparison, setComparison] = useState<AgentComparison | null>(null);
   const [finished, setFinished] = useState<string | null>(null);
   const tree = useQuery({ queryKey: ['editor-tree', session!.generation, projectId, localPath], retry: false,
     queryFn: ({ signal }) => fetchFileTree(projectId, AbortSignal.any([signal, session!.signal])) });
   return <div className="code-editor-with-agent">
-    <RepositoryEditorPanel projectId={projectId} localPath={localPath} onConnection={onConnection} locked={busy} agentComparison={comparison} refreshVersion={finished} />
-    <CodingPanel projectId={projectId} localPath={localPath} workspaceId={tree.data?.workspaceId} assistant={assistant} modelName={modelName} dirty={editors.tabs.some(isDirty)} onBusyChange={setBusy} onCompare={setComparison} onFinished={setFinished} />
+    <RepositoryEditorPanel projectId={projectId} localPath={localPath} onConnection={onConnection} agentComparison={comparison} refreshVersion={finished} />
+    <CodingPanel projectId={projectId} localPath={localPath} workspaceId={tree.data?.workspaceId} assistant={assistant} modelName={modelName} dirty={editors.tabs.some(isDirty)} onCompare={setComparison} onFinished={setFinished} />
   </div>;
 }

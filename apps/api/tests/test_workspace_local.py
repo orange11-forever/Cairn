@@ -133,7 +133,7 @@ import base64,sys
 from pathlib import Path
 from cairn_api.workspace.local import DesktopWorkspace
 workspace=DesktopWorkspace(Path(sys.argv[1]),Path(sys.argv[2]),None,base64.b64encode,base64.b64decode)
-print(workspace._run(['probe'],timeout=2))
+print(workspace.run_git(['probe'],timeout=2))
 """
     process = subprocess.Popen(
         [sys.executable, "-c", code, str(data), str(executable)],

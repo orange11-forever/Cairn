@@ -1,4 +1,4 @@
-"""One local coding run at a time, with an encrypted, durable execution journal."""
+"""Bounded local coding workers with isolated worktrees and encrypted journals."""
 
 import json
 import logging
@@ -34,6 +34,7 @@ from cairn_api.workspace.coding_schemas import (
     CodingChange,
     CodingEvent,
     CodingEventKind,
+    CodingOverlap,
     CodingRun,
     CodingRunList,
     CodingStart,
@@ -45,10 +46,16 @@ from cairn_api.workspace.coding_schemas import (
     RunCommand,
     WriteFile,
 )
+from cairn_api.workspace.coding_worktree import (
+    WorktreeEditor,
+    create_worktree,
+    require_plain_git,
+    worktree_path,
+)
 from cairn_api.workspace.editor import FileDocument, RepositoryEditor, SaveFileRequest
 from cairn_api.workspace.local import DesktopWorkspace
 
-ACTIVE = {'running', 'awaiting_approval', 'cancelling'}
+ACTIVE = {'queued', 'running', 'awaiting_approval', 'cancelling'}
 logger = logging.getLogger(__name__)
 
 
@@ -74,6 +81,10 @@ class Cancelled(Exception):
 @dataclass
 class Execution:
     run: CodingRun
+    provider: CodingProvider
+    guidance: dict[str, object] | None
+    authorize: Callable[[], None]
+    binding_json: str
     cancel: threading.Event = field(default_factory=threading.Event)
     decision: threading.Event = field(default_factory=threading.Event)
     approved: bool = False
@@ -86,7 +97,8 @@ class CodingRunner:
         self.workspace = workspace
         self.directory = workspace.data / 'coding-runs'
         self.runs: dict[UUID, CodingRun] = {}
-        self.active: Execution | None = None
+        self.executions: dict[UUID, Execution] = {}
+        self.concurrency = 2
         self.closed = False
         try:
             self.directory.mkdir(exist_ok=True)
@@ -134,50 +146,110 @@ class CodingRunner:
                 run.events.append(CodingEvent(id=len(run.events), at=run.updated_at, kind=kind, message=message, path=path, exit_code=exit_code))
             self._save(run)
 
-    def require_idle(self) -> None:
-        if self.active is not None:
-            raise problem('coding_run_active', '已有编程 Agent 正在运行，请先停止或等待完成；草稿已保留')
+    def require_idle(self, user: UUID, project: UUID) -> None:
+        if any(item.run.user_id == user and item.run.project_id == project for item in self.executions.values()):
+            raise problem('coding_run_active', '此项目有运行或排队的 Agent，请先停止或等待完成后更换仓库。')
         if self.closed:
             raise problem('coding_runtime_stopped', '编程执行服务正在关闭')
+
+    def _view(self, run: CodingRun) -> CodingRun:
+        result = run.model_copy(deep=True)
+        paths = {item.path for item in run.changes}
+        result.overlaps = []
+        for other in self.runs.values():
+            if (other.id == run.id or other.user_id != run.user_id or other.project_id != run.project_id
+                    or not run.repository_path or other.repository_path != run.repository_path):
+                continue
+            overlap = sorted(paths.intersection(item.path for item in other.changes))
+            if overlap:
+                result.overlaps.append(CodingOverlap(run_id=other.id, assistant_name=other.assistant_name, paths=overlap))
+        return result
 
     def get(self, user: UUID, project: UUID, run_id: UUID) -> CodingRun:
         with self.workspace.lock:
             run = self.runs.get(run_id)
             if run is None or run.user_id != user or run.project_id != project:
                 raise ApiProblem(status_code=404, code='coding_run_missing', message='运行记录不存在')
-            return run.model_copy(deep=True)
+            return self._view(run)
 
     def list(self, user: UUID, project: UUID) -> CodingRunList:
         with self.workspace.lock:
-            return CodingRunList(items=[run.model_copy(deep=True) for run in sorted(
-                self.runs.values(), key=lambda item: item.created_at, reverse=True,
-            ) if run.user_id == user and run.project_id == project][:20])
+            values = sorted((run for run in self.runs.values() if run.user_id == user and run.project_id == project),
+                            key=lambda item: item.created_at, reverse=True)
+            # Never hide active/queued tasks behind a history pagination limit.
+            visible = [run for run in values if run.status in ACTIVE]
+            visible += [run for run in values if run.status not in ACTIVE][:20]
+            return CodingRunList(items=[self._view(run) for run in visible])
+
+    def set_concurrency(self, limit: int) -> None:
+        with self.workspace.lock:
+            self.concurrency = limit
+            self._schedule()
 
     def start(self, user: UUID, project: UUID, payload: CodingStart, *, assistant_name: str,
               model: AnswerModelOption, provider: CodingProvider, guidance: dict[str, object] | None,
               authorize: Callable[[], None]) -> CodingRun:
         with self.workspace.lock:
-            self.require_idle()
+            if self.closed:
+                raise problem('coding_runtime_stopped', '编程执行服务正在关闭')
+            if len(self.executions) >= 40:
+                raise problem('coding_queue_full', '运行和排队任务已达到 40 个，请等待或取消部分任务。')
             editor = RepositoryEditor(self.workspace, user, project)
-            root, _, _, workspace_id = editor.context(payload.workspace_id)
-            now = datetime.now(UTC)
-            run = CodingRun(id=uuid4(), user_id=user, project_id=project, workspace_id=workspace_id,
-                local_path=str(root), task=payload.task, assistant_id=payload.assistant_id,
-                assistant_name=assistant_name, model=model, skill_id=payload.skill_id,
-                status='running', created_at=now, updated_at=now, events=[], changes=[])
-            self._event(run, 'started', '已开始；文件写入限关联仓库，命令逐条确认后以当前系统用户权限运行。')
+            root, _, head, workspace_id = editor.context(payload.workspace_id)
+            if head is None:
+                raise problem('coding_commit_required', '请先为仓库创建一次本地 Git 提交，Agent 将从该提交建立独立工作区。')
+            require_plain_git(self.workspace, root)
+            if payload.depends_on:
+                dependency = self.get(user, project, payload.depends_on)
+                if dependency.status not in ACTIVE | {'succeeded'}:
+                    raise problem('coding_dependency_failed', '前置任务未成功，请选择可运行或已成功的任务。')
+            binding = self.workspace.binding(user, project)
+            assert binding is not None
+            now, run_id = datetime.now(UTC), uuid4()
+            run = CodingRun(id=run_id, user_id=user, project_id=project, workspace_id=workspace_id,
+                local_path=str(worktree_path(root, str(run_id))), repository_path=str(root),
+                branch='cairn/agent-' + str(run_id), base_head=head,
+                task=payload.task, assistant_id=payload.assistant_id, assistant_revision=payload.assistant_revision,
+                assistant_name=assistant_name, model=model, skill_id=payload.skill_id, depends_on=payload.depends_on,
+                status='queued', created_at=now, updated_at=now, events=[], changes=[])
+            self._event(run, 'queued', '已排队；将从提交 ' + head[:8] + ' 创建独立工作区，原目录未提交的修改不包含在内。')
             self.runs[run.id] = run
-            execution = Execution(run)
-            self.active = execution
-            execution.thread = threading.Thread(target=self._execute, args=(execution, editor, provider, guidance, authorize), daemon=True)
+            self.executions[run.id] = Execution(run, provider, guidance, authorize, binding.model_dump_json())
+            self._schedule()
+            return self._view(run)
+
+    def _schedule(self) -> None:
+        # Called with workspace.lock: selecting slots and starting workers is atomic.
+        if self.closed:
+            return
+        for execution in list(self.executions.values()):
+            run = execution.run
+            if run.status != 'queued':
+                continue
+            if run.depends_on:
+                dependency = self.runs[run.depends_on]
+                if dependency.status in ACTIVE:
+                    continue
+                if dependency.status != 'succeeded':
+                    self._finish_failure(run, 'blocked', 'coding_dependency_failed',
+                                         '前置任务未成功，此任务未启动；请审阅前置结果后新建任务。')
+                    self.executions.pop(run.id)
+                    continue
+            active = [item for item in self.executions.values() if item.thread is not None]
+            if len(active) >= self.concurrency:
+                continue
+            if any((item.run.user_id, item.run.project_id, item.run.assistant_id) ==
+                   (run.user_id, run.project_id, run.assistant_id) for item in active):
+                continue
+            run.status = 'running'
+            execution.thread = threading.Thread(target=self._execute, args=(execution,), daemon=True)
             execution.thread.start()
-            return run.model_copy(deep=True)
 
     def decide(self, user: UUID, project: UUID, run_id: UUID, decision: CommandDecision) -> CodingRun:
         with self.workspace.lock:
             self.get(user, project, run_id)
-            execution = self.active
-            if (execution is None or execution.run.id != run_id or execution.run.status != 'awaiting_approval'
+            execution = self.executions.get(run_id)
+            if (execution is None or execution.run.status != 'awaiting_approval'
                     or execution.run.pending_command is None or execution.run.pending_command.event_id != decision.event_id):
                 raise problem('coding_approval_changed', '此命令已处理或运行状态已变化，请刷新记录')
             execution.approved = decision.approved
@@ -187,34 +259,44 @@ class CodingRunner:
                 execution.cancel.set()
             self._event(execution.run, 'approval', ('用户批准了此命令并确认其用于验证任务' if execution.verified else '用户批准了此命令，未将其认定为任务验证') if decision.approved else '用户拒绝了此命令，停止本次运行')
             execution.decision.set()
-            return execution.run.model_copy(deep=True)
+            return self._view(execution.run)
 
     def cancel(self, user: UUID, project: UUID, run_id: UUID) -> CodingRun:
         with self.workspace.lock:
             run = self.get(user, project, run_id)
-            if self.active is not None and self.active.run.id == run_id:
-                if self.active.cancel.is_set():
-                    return run
-                self.active.cancel.set()
-                self.active.decision.set()
-                self.active.run.status = 'cancelling'
-                self._event(self.active.run, 'cancelled', '正在停止；已发生的文件修改和输出将保留。')
-                return self.active.run.model_copy(deep=True)
-            return run
+            execution = self.executions.get(run_id)
+            if execution is None or execution.cancel.is_set():
+                return run
+            execution.cancel.set()
+            execution.decision.set()
+            if execution.thread is None:
+                self._finish_failure(execution.run, 'cancelled', None, '已取消排队，未启动模型或创建工作区。')
+                self.executions.pop(run_id)
+                self._schedule()
+            else:
+                execution.run.status = 'cancelling'
+                self._event(execution.run, 'cancelled', '正在停止此任务；其他 Agent 继续执行，已发生的修改和输出将保留。')
+            return self._view(execution.run)
 
     def close(self) -> None:
         with self.workspace.lock:
             self.closed = True
-            execution = self.active
-            if execution:
+            executions = list(self.executions.values())
+            for execution in executions:
                 execution.cancel.set()
                 execution.decision.set()
-        if execution and execution.thread:
-            execution.thread.join(timeout=3)
+                if execution.thread is None:
+                    execution.run.status = 'interrupted'
+                    self._event(execution.run, 'interrupted', '应用已关闭；排队任务未启动，下次打开不会自动执行。')
+                    self.executions.pop(execution.run.id)
+        for execution in executions:
+            if execution.thread:
+                execution.thread.join(timeout=3)
 
-    def _execute(self, execution: Execution, editor: RepositoryEditor, provider: CodingProvider,
-                 guidance: dict[str, object] | None, authorize: Callable[[], None]) -> None:
+    def _execute(self, execution: Execution) -> None:
         run = execution.run
+        editor = WorktreeEditor(self.workspace, run)
+        provider, guidance, authorize = execution.provider, execution.guidance, execution.authorize
         documents: dict[str, FileDocument] = {}
         history: list[dict[str, object]] = []
         tested = False
@@ -229,6 +311,10 @@ class CodingRunner:
             check()
             authorize()
             with self.workspace.lock:
+                binding = self.workspace.binding(run.user_id, run.project_id)
+                if binding is None or binding.model_dump_json() != execution.binding_json:
+                    raise problem('workspace_changed', '项目仓库关联已变化；运行停止，工作区和修改已保留。')
+                require_plain_git(self.workspace, Path(run.local_path))
                 editor.context(run.workspace_id)
 
         def command_check() -> None:
@@ -280,6 +366,13 @@ class CodingRunner:
             change.origin = 'command' if origin == 'command' else 'file_tool'
 
         try:
+            check()
+            authorize()
+            create_worktree(self.workspace, run)
+            with self.workspace.lock:
+                run.workspace_id = editor.context()[3]
+                check()
+                self._event(run, 'started', '已在独立分支和工作区启动；命令逐条确认，完成后仍需单独审阅与集成。')
             for _ in range(40):
                 boundary()
                 paths = [path for path in editor.tree().paths if eligible_source(path)]
@@ -287,6 +380,11 @@ class CodingRunner:
                     'files': paths[:1000], 'fileCount': len(paths), 'history': history,
                     'platform': sys.platform, 'pythonExecutable': sys.executable,
                     'gitExecutable': str(self.workspace.git), 'workingDirectory': run.local_path}
+                if run.depends_on:
+                    dependency = self.get(run.user_id, run.project_id, run.depends_on)
+                    context['dependency'] = {'task': dependency.task, 'summary': dependency.summary,
+                        'changes': [item.model_dump(mode='json') for item in dependency.changes],
+                        'instruction': '前置任务已成功。以上是结果参考，代码未自动合并；如本任务需要，请明确应用并重新测试。'}
                 if len(json.dumps(context, ensure_ascii=False).encode()) > 256000:
                     raise problem('coding_context_limit', '本次执行上下文超过 256 KiB，已保留结果，请拆分任务')
                 result = provider.coding_step(context=context, check_cancelled=check)
@@ -395,11 +493,12 @@ class CodingRunner:
             self._finish_failure(run, 'failed', 'coding_execution_failed', f'执行出现未预期错误，运行编号：{run.id}')
         finally:
             with self.workspace.lock:
-                self.active = None
+                self.executions.pop(run.id, None)
+                self._schedule()
 
     def _finish_failure(self, run: CodingRun, status: str, code: str | None, message: str) -> None:
         with self.workspace.lock:
-            run.status = 'cancelled' if status == 'cancelled' else 'failed'
+            run.status = 'cancelled' if status == 'cancelled' else 'blocked' if status == 'blocked' else 'failed'
             run.pending_command = None
             run.error_code, run.summary = code, message
             try:

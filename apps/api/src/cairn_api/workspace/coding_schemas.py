@@ -68,6 +68,7 @@ class CodingStart(WorkspaceModel):
     assistant_revision: int = Field(ge=0, strict=True)
     skill_id: str | None = Field(default=None, max_length=100)
     allow_writes: Literal[True]
+    depends_on: UUID | None = None
 
     @field_validator('task')
     @classmethod
@@ -87,7 +88,7 @@ class PendingCommand(RunCommand):
     event_id: int
 
 
-CodingEventKind = Literal['started', 'step', 'read', 'write', 'approval', 'output', 'command_result', 'finished', 'error', 'cancelled', 'interrupted']
+CodingEventKind = Literal['queued', 'started', 'step', 'read', 'write', 'approval', 'output', 'command_result', 'finished', 'error', 'cancelled', 'interrupted']
 
 
 class CodingEvent(WorkspaceModel):
@@ -107,6 +108,15 @@ class CodingChange(WorkspaceModel):
     origin: Literal['file_tool', 'command']
 
 
+class CodingOverlap(WorkspaceModel):
+    run_id: UUID
+    assistant_name: str
+    paths: list[str]
+
+
+CodingStatus = Literal['queued', 'blocked', 'running', 'awaiting_approval', 'cancelling', 'cancelled', 'failed', 'succeeded', 'interrupted']
+
+
 class CodingRun(WorkspaceModel):
     id: UUID
     user_id: UUID
@@ -118,7 +128,7 @@ class CodingRun(WorkspaceModel):
     assistant_name: str
     model: AnswerModelOption
     skill_id: str | None
-    status: Literal['running', 'awaiting_approval', 'cancelling', 'cancelled', 'failed', 'succeeded', 'interrupted']
+    status: CodingStatus
     created_at: datetime
     updated_at: datetime
     events: list[CodingEvent] = Field(max_length=1000)
@@ -126,6 +136,36 @@ class CodingRun(WorkspaceModel):
     pending_command: PendingCommand | None = None
     error_code: str | None = None
     summary: str | None = None
+    # Defaults allow reading the existing encrypted single-Agent journals.
+    repository_path: str | None = None
+    branch: str | None = None
+    base_head: str | None = None
+    assistant_revision: int = 0
+    depends_on: UUID | None = None
+    overlaps: list[CodingOverlap] = Field(default_factory=list[CodingOverlap])
+
+
+class CodingConcurrency(WorkspaceModel):
+    limit: int = Field(ge=1, le=4, strict=True)
+
+
+class CodingRunSummary(WorkspaceModel):
+    id: UUID
+    project_id: UUID
+    project_name: str
+    assistant_name: str
+    task: str
+    model_name: str
+    status: CodingStatus
+    updated_at: datetime
+    progress: str
+    changed_files: int
+    depends_on: UUID | None
+
+
+class CodingOverview(WorkspaceModel):
+    concurrency: int
+    items: list[CodingRunSummary]
 
 
 class CodingRunList(WorkspaceModel):
