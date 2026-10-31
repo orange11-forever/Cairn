@@ -700,6 +700,25 @@ export const componentSchemas = {
     "title": "ChangeStatusAction",
     "type": "object"
   },
+  "ChangedFile": {
+    "additionalProperties": false,
+    "properties": {
+      "path": {
+        "title": "Path",
+        "type": "string"
+      },
+      "status": {
+        "title": "Status",
+        "type": "string"
+      }
+    },
+    "required": [
+      "path",
+      "status"
+    ],
+    "title": "ChangedFile",
+    "type": "object"
+  },
   "ChunkContextResponse": {
     "properties": {
       "after": {
@@ -1396,6 +1415,110 @@ export const componentSchemas = {
       }
     ],
     "title": "FeishuSourcePatchRequest"
+  },
+  "FileDiff": {
+    "additionalProperties": false,
+    "properties": {
+      "modified": {
+        "title": "Modified",
+        "type": "string"
+      },
+      "original": {
+        "title": "Original",
+        "type": "string"
+      },
+      "path": {
+        "title": "Path",
+        "type": "string"
+      },
+      "revision": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Revision"
+      },
+      "workspaceId": {
+        "title": "Workspaceid",
+        "type": "string"
+      }
+    },
+    "required": [
+      "workspaceId",
+      "path",
+      "original",
+      "modified",
+      "revision"
+    ],
+    "title": "FileDiff",
+    "type": "object"
+  },
+  "FileDocument": {
+    "additionalProperties": false,
+    "properties": {
+      "content": {
+        "title": "Content",
+        "type": "string"
+      },
+      "path": {
+        "title": "Path",
+        "type": "string"
+      },
+      "revision": {
+        "title": "Revision",
+        "type": "string"
+      },
+      "workspaceId": {
+        "title": "Workspaceid",
+        "type": "string"
+      }
+    },
+    "required": [
+      "workspaceId",
+      "path",
+      "content",
+      "revision"
+    ],
+    "title": "FileDocument",
+    "type": "object"
+  },
+  "FileTree": {
+    "additionalProperties": false,
+    "properties": {
+      "branch": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Branch"
+      },
+      "paths": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Paths",
+        "type": "array"
+      },
+      "workspaceId": {
+        "title": "Workspaceid",
+        "type": "string"
+      }
+    },
+    "required": [
+      "workspaceId",
+      "branch",
+      "paths"
+    ],
+    "title": "FileTree",
+    "type": "object"
   },
   "GitHubAccount": {
     "additionalProperties": false,
@@ -6141,6 +6264,28 @@ export const componentSchemas = {
     "title": "RepositoryBinding",
     "type": "object"
   },
+  "RepositoryChanges": {
+    "additionalProperties": false,
+    "properties": {
+      "files": {
+        "items": {
+          "$ref": "#/components/schemas/ChangedFile"
+        },
+        "title": "Files",
+        "type": "array"
+      },
+      "workspaceId": {
+        "title": "Workspaceid",
+        "type": "string"
+      }
+    },
+    "required": [
+      "workspaceId",
+      "files"
+    ],
+    "title": "RepositoryChanges",
+    "type": "object"
+  },
   "RepositorySnapshot": {
     "additionalProperties": false,
     "properties": {
@@ -6227,6 +6372,46 @@ export const componentSchemas = {
     ],
     "title": "ResourceVersionStatus",
     "type": "string"
+  },
+  "SaveFileRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "content": {
+        "maxLength": 524288,
+        "title": "Content",
+        "type": "string"
+      },
+      "path": {
+        "maxLength": 4096,
+        "minLength": 1,
+        "title": "Path",
+        "type": "string"
+      },
+      "revision": {
+        "anyOf": [
+          {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Revision"
+      },
+      "workspaceId": {
+        "pattern": "^[0-9a-f]{64}$",
+        "title": "Workspaceid",
+        "type": "string"
+      }
+    },
+    "required": [
+      "workspaceId",
+      "path",
+      "content"
+    ],
+    "title": "SaveFileRequest",
+    "type": "object"
   },
   "ScheduleIssue": {
     "additionalProperties": false,

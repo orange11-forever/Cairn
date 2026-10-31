@@ -117,6 +117,8 @@ class RepositorySnapshot(WorkspaceModel):
                     "path": source.path,
                     "startLine": source.start_line,
                     "endLine": source.end_line,
+                    "truncated": source.truncated,
+                    "redacted": source.redacted,
                 },
                 text=source.content,
             )
@@ -174,7 +176,7 @@ def _priority(value: str) -> tuple[int, int, str]:
     return score, len(path.parts), value
 
 
-def _opened_path(descriptor: int) -> Path:
+def opened_path(descriptor: int) -> Path:
     if os.name != "nt":
         return Path(f"/proc/self/fd/{descriptor}").resolve(strict=True)
     import ctypes
@@ -214,7 +216,7 @@ def _read(root: Path, relative: str) -> tuple[str, bool, bool] | None:
             | getattr(os, "O_BINARY", 0),
         )
         with os.fdopen(descriptor, "rb") as source:
-            opened = _opened_path(source.fileno())
+            opened = opened_path(source.fileno())
             metadata = os.fstat(source.fileno())
             if not opened.is_relative_to(root) or not stat.S_ISREG(metadata.st_mode):
                 return None

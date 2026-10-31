@@ -51,6 +51,13 @@ def build_answer_request(
                 "stream": False,
                 "response_format": {"type": "json_object"},
                 "max_tokens": max_output_tokens,
+                # DeepSeek now enables thinking by default. These bounded JSON
+                # answers need the output budget for the actual report.
+                **(
+                    {"thinking": {"type": "disabled"}}
+                    if parsed.hostname == "api.deepseek.com"
+                    else {}
+                ),
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_content},

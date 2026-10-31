@@ -226,6 +226,7 @@ class DesktopWorkspace:
         try:
             process = subprocess.Popen(
                 command,
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 env=self._environment(token),
@@ -292,29 +293,48 @@ class DesktopWorkspace:
         return path, branch
 
     def source_paths(self, root: Path) -> str:
+        raw = self.read_git(
+            root,
+            ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+            global_excludes=True,
+        )
+        try:
+            return raw.decode("utf-8")
+        except UnicodeDecodeError:
+            raise github_problem(
+                "architecture_path_invalid", "仓库包含无法识别的文件名编码", 422
+            ) from None
+
+    def read_git(
+        self,
+        root: Path,
+        arguments: list[str],
+        *,
+        limit: int = 2_000_000,
+        global_excludes: bool = False,
+    ) -> bytes:
         # Only this read-only inventory respects global excludes. Execution-related
         # settings remain overridden; clone and other commands keep isolated config.
         environment = self._environment()
-        environment.pop("GIT_CONFIG_GLOBAL", None)
-        if "GIT_CONFIG_GLOBAL" in os.environ:
-            environment["GIT_CONFIG_GLOBAL"] = os.environ["GIT_CONFIG_GLOBAL"]
+        if global_excludes:
+            environment.pop("GIT_CONFIG_GLOBAL", None)
+            if "GIT_CONFIG_GLOBAL" in os.environ:
+                environment["GIT_CONFIG_GLOBAL"] = os.environ["GIT_CONFIG_GLOBAL"]
         command = [
             str(self.git),
             "-c",
             "core.fsmonitor=false",
             "-c",
             "core.hooksPath=" + os.devnull,
+            "--literal-pathspecs",
             "-C",
             str(root),
-            "ls-files",
-            "--cached",
-            "--others",
-            "--exclude-standard",
-            "-z",
+            *arguments,
         ]
         try:
             process = subprocess.Popen(
                 command,
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
                 env=environment,
@@ -342,13 +362,13 @@ class DesktopWorkspace:
         assert process.stdout is not None
         try:
             with ThreadPoolExecutor(max_workers=1) as pool:
-                pending = pool.submit(process.stdout.read, 2_000_001)
+                pending = pool.submit(process.stdout.read, limit + 1)
                 try:
                     output = pending.result(timeout=15)
-                    if len(output) > 2_000_000:
+                    if len(output) > limit:
                         stop()
                         raise github_problem(
-                            "architecture_repository_too_large", "仓库文件清单超出本次分析容量", 422
+                            "architecture_repository_too_large", "Git 输出超出容量限制", 422
                         )
                     process.wait(timeout=15)
                 except (TimeoutError, subprocess.TimeoutExpired):
@@ -358,12 +378,7 @@ class DesktopWorkspace:
                     ) from None
             if process.returncode:
                 raise github_problem("git_failed", "无法读取仓库文件清单，请检查 Git 仓库状态", 409)
-            try:
-                return output.decode("utf-8")
-            except UnicodeDecodeError:
-                raise github_problem(
-                    "architecture_path_invalid", "仓库包含无法识别的文件名编码", 422
-                ) from None
+            return output
         finally:
             process.stdout.close()
 

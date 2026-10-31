@@ -72,3 +72,21 @@ export async function fetchRepositorySources(projectId: string, signal: AbortSig
 export async function analyzeArchitecture({ projectId, csrfToken, ...body }: components["schemas"]["ArchitectureRequest"] & { projectId: string; csrfToken: string }, signal: AbortSignal) {
   return parse("ArchitectureAnalysis", await perform(signal, signal => client().POST("/api/v1/desktop/projects/{project_id}/architecture", { params: { path: { project_id: projectId }, header: { "X-CSRF-Token": csrfToken } }, body, signal }), 120_000));
 }
+
+export type FileDocument = components['schemas']['FileDocument'];
+export type FileDiff = components['schemas']['FileDiff'];
+export async function fetchFileTree(projectId: string, signal: AbortSignal) {
+  return parse('FileTree', await perform(signal, signal => client().GET('/api/v1/desktop/projects/{project_id}/files', { params: { path: { project_id: projectId } }, signal })));
+}
+export async function readWorkspaceFile(projectId: string, path: string, signal: AbortSignal) {
+  return parse('FileDocument', await perform(signal, signal => client().GET('/api/v1/desktop/projects/{project_id}/file', { params: { path: { project_id: projectId }, query: { path } }, signal })));
+}
+export async function saveWorkspaceFile(projectId: string, body: components['schemas']['SaveFileRequest'], csrfToken: string, signal: AbortSignal) {
+  return parse('FileDocument', await perform(signal, signal => client().PUT('/api/v1/desktop/projects/{project_id}/file', { params: { path: { project_id: projectId }, header: { 'X-CSRF-Token': csrfToken } }, body, signal })));
+}
+export async function fetchWorkspaceChanges(projectId: string, signal: AbortSignal) {
+  return parse('RepositoryChanges', await perform(signal, signal => client().GET('/api/v1/desktop/projects/{project_id}/changes', { params: { path: { project_id: projectId } }, signal })));
+}
+export async function fetchFileDiff(projectId: string, path: string, signal: AbortSignal) {
+  return parse('FileDiff', await perform(signal, signal => client().GET('/api/v1/desktop/projects/{project_id}/diff', { params: { path: { project_id: projectId }, query: { path } }, signal })));
+}

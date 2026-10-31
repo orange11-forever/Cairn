@@ -119,3 +119,34 @@ def test_failed_persistence_is_not_reported_as_saved(tmp_path: Path) -> None:
         workspace.bind_local(user, project, str(repo))
     assert failure.value.code == "workspace_storage_failed"
     assert workspace.binding(user, project) is None
+
+
+def test_noninteractive_git_does_not_wait_for_supervisor_command_pipe(tmp_path: Path) -> None:
+    import sys
+
+    executable = tmp_path / "git-probe"
+    executable.write_text('#!/bin/sh\ncat >/dev/null\nprintf "completed\\n"\n')
+    executable.chmod(0o755)
+    data = data_directory(tmp_path)
+    code = """
+import base64,sys
+from pathlib import Path
+from cairn_api.workspace.local import DesktopWorkspace
+workspace=DesktopWorkspace(Path(sys.argv[1]),Path(sys.argv[2]),None,base64.b64encode,base64.b64decode)
+print(workspace._run(['probe'],timeout=2))
+"""
+    process = subprocess.Popen(
+        [sys.executable, "-c", code, str(data), str(executable)],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        process.wait(timeout=5)  # Keep supervisor input open until the Git operation finishes.
+    finally:
+        if process.poll() is None:
+            process.kill()
+    output, error = process.communicate()
+    assert process.returncode == 0, error
+    assert output.strip() == "completed"

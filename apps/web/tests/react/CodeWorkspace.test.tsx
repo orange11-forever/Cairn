@@ -16,6 +16,8 @@ function mount(failure=false){
  vi.stubGlobal('fetch',vi.fn(async(input:RequestInfo|URL)=>{
   const request=input as Request;const path=new URL(request.url).pathname;
   if(path.endsWith('/architecture')&&request.method==='POST')return failure?json({code:'architecture_changed',message:'代码已变化，请刷新源码',traceId:'test'},409):json({generatedAt:'2026-10-31T03:00:00Z',assistantId:null,assistantName:'岑宁',assistantRevision:0,model:{id:'default',name:'测试模型',model:'test',protocol:'openai-compatible'},status:'answered',paragraphs:[{text:'技术栈与入口：Python 程序从 main.py 启动。',citationIds:['S1']}],snapshot});
+  if(path.endsWith('/files'))return json({workspaceId:'a'.repeat(64),branch:'main',paths:[]});
+  if(path.endsWith('/changes'))return json({workspaceId:'a'.repeat(64),files:[]});
   if(path.endsWith('/architecture'))return json(snapshot);
   if(path.endsWith('/assistant-settings'))return json({id:null,name:'岑宁',instructions:'',enabledSkillIds:[],revision:0,modelId:null,avatarDataUrl:null});
   if(path.endsWith('/answer-model'))return json({configured:true,model:'test',protocol:'openai-compatible',defaultModelId:'default',models:[{id:'default',name:'测试模型',model:'test',protocol:'openai-compatible'}]});
@@ -28,6 +30,7 @@ function mount(failure=false){
 }
 test('code workspace explains analysis scope and reveals cited source lines',async()=>{
  const client=mount();
+ await userEvent.click(await screen.findByRole('tab',{name:'架构解析'}));
  expect(await screen.findByRole('heading',{name:'mikuOJ'})).toBeVisible();
  await userEvent.click(await screen.findByRole('button',{name:'解析项目架构'}));
  expect(await screen.findByText(/Python 程序从 main.py 启动/)).toBeVisible();
@@ -38,6 +41,7 @@ test('code workspace explains analysis scope and reveals cited source lines',asy
 });
 test('source changes show a recoverable error without stale architecture success',async()=>{
  const client=mount(true);
+ await userEvent.click(await screen.findByRole('tab',{name:'架构解析'}));
  await userEvent.click(await screen.findByRole('button',{name:'解析项目架构'}));
  expect(await screen.findByRole('alert')).toHaveTextContent('代码已变化');
  expect(screen.queryByText(/Python 程序从 main.py 启动/)).not.toBeInTheDocument();
@@ -46,6 +50,7 @@ test('source changes show a recoverable error without stale architecture success
 
 test('unlinking the repository hides the old architecture report and source',async()=>{
  const client=mount();
+ await userEvent.click(await screen.findByRole('tab',{name:'架构解析'}));
  await userEvent.click(await screen.findByRole('button',{name:'解析项目架构'}));
  expect(await screen.findByText(/Python 程序从 main.py 启动/)).toBeVisible();
  await userEvent.click(screen.getByRole('button',{name:'查看引用 S1：src/main.py'}));
@@ -53,5 +58,16 @@ test('unlinking the repository hides the old architecture report and source',asy
  await act(async()=>{client.setQueryData(['desktop-workspace',1,projectId],{binding:null,gitAvailable:true,repositoryStatus:'local',message:null});});
  await waitFor(()=>expect(screen.queryByText(/Python 程序从 main.py 启动/)).not.toBeInTheDocument());
  expect(screen.queryByText('print("entry")')).not.toBeInTheDocument();
+ client.clear();
+});
+
+test('changed source digest after editing hides the stale architecture report',async()=>{
+ const client=mount();
+ await userEvent.click(await screen.findByRole('tab',{name:'架构解析'}));
+ await userEvent.click(await screen.findByRole('button',{name:'解析项目架构'}));
+ expect(await screen.findByText(/Python 程序从 main.py 启动/)).toBeVisible();
+ const {act}=await import('@testing-library/react');
+ await act(async()=>{client.setQueryData(['code-sources',1,projectId,'D:\\code\\mikuOJ'],{...snapshot,digest:'c'.repeat(64)});});
+ await waitFor(()=>expect(screen.queryByText(/Python 程序从 main.py 启动/)).not.toBeInTheDocument());
  client.clear();
 });

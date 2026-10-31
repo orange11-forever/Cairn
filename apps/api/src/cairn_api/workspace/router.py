@@ -18,6 +18,14 @@ from cairn_api.workspace.architecture_service import (
     RepositoryArchitectureService,
 )
 from cairn_api.workspace.device import DEVICE_COOKIE
+from cairn_api.workspace.editor import (
+    FileDiff,
+    FileDocument,
+    FileTree,
+    RepositoryChanges,
+    RepositoryEditor,
+    SaveFileRequest,
+)
 from cairn_api.workspace.github import github_problem
 from cairn_api.workspace.local import DesktopWorkspace
 from cairn_api.workspace.schemas import (
@@ -56,6 +64,64 @@ def desktop_workspace(request: Request) -> DesktopWorkspace:
 
 
 Workspace = Annotated[DesktopWorkspace, Depends(desktop_workspace)]
+
+
+@router.get("/projects/{project_id}/files", response_model=FileTree, responses=ERRORS)
+def files(
+    project_id: UUID, identity: CurrentIdentity, session: Db, workspace: Workspace
+) -> FileTree:
+    AuthorizationPolicy(session).require_project(identity, project_id, ProjectPermission.READ)
+    return RepositoryEditor(workspace, identity.user.id, project_id).tree()
+
+
+@router.get("/projects/{project_id}/file", response_model=FileDocument, responses=ERRORS)
+def read_file(
+    project_id: UUID,
+    identity: CurrentIdentity,
+    session: Db,
+    workspace: Workspace,
+    path: Annotated[str, Query(min_length=1, max_length=4096)],
+) -> FileDocument:
+    AuthorizationPolicy(session).require_project(identity, project_id, ProjectPermission.READ)
+    return RepositoryEditor(workspace, identity.user.id, project_id).read(path)
+
+
+@router.put(
+    "/projects/{project_id}/file",
+    response_model=FileDocument,
+    responses=ERRORS,
+    dependencies=[Depends(require_mutation_csrf)],
+    openapi_extra=CSRF_REQUIRED_OPENAPI,
+)
+def save_file(
+    project_id: UUID,
+    payload: SaveFileRequest,
+    identity: CurrentIdentity,
+    session: Db,
+    workspace: Workspace,
+) -> FileDocument:
+    AuthorizationPolicy(session).require_project(identity, project_id, ProjectPermission.WRITE)
+    return RepositoryEditor(workspace, identity.user.id, project_id).save(payload)
+
+
+@router.get("/projects/{project_id}/changes", response_model=RepositoryChanges, responses=ERRORS)
+def changes(
+    project_id: UUID, identity: CurrentIdentity, session: Db, workspace: Workspace
+) -> RepositoryChanges:
+    AuthorizationPolicy(session).require_project(identity, project_id, ProjectPermission.READ)
+    return RepositoryEditor(workspace, identity.user.id, project_id).changes()
+
+
+@router.get("/projects/{project_id}/diff", response_model=FileDiff, responses=ERRORS)
+def file_diff(
+    project_id: UUID,
+    identity: CurrentIdentity,
+    session: Db,
+    workspace: Workspace,
+    path: Annotated[str, Query(min_length=1, max_length=4096)],
+) -> FileDiff:
+    AuthorizationPolicy(session).require_project(identity, project_id, ProjectPermission.READ)
+    return RepositoryEditor(workspace, identity.user.id, project_id).diff(path)
 
 
 @router.get(

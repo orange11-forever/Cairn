@@ -1,5 +1,6 @@
 """GitHub's public-client device flow; upstream secrets never enter API responses."""
 
+import ssl
 from typing import Literal, cast
 
 import httpx
@@ -77,7 +78,11 @@ class GitHubClient:
             )
         try:
             with httpx.Client(
-                transport=self._transport, timeout=15, trust_env=False, follow_redirects=False
+                transport=self._transport,
+                timeout=15,
+                trust_env=False,
+                follow_redirects=False,
+                verify=ssl.create_default_context(),
             ) as client:
                 response = client.request(method, url, headers=headers, data=data)
             if response.status_code == 401:
