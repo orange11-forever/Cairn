@@ -1257,6 +1257,253 @@ export const componentSchemas = {
     ],
     "title": "FeishuSourcePatchRequest"
   },
+  "GitHubAccount": {
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "exclusiveMinimum": 0,
+        "title": "Id",
+        "type": "integer"
+      },
+      "login": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}$",
+        "title": "Login",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "login"
+    ],
+    "title": "GitHubAccount",
+    "type": "object"
+  },
+  "GitHubConnection": {
+    "additionalProperties": false,
+    "properties": {
+      "account": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/GitHubAccount"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "configured": {
+        "title": "Configured",
+        "type": "boolean"
+      },
+      "message": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Message"
+      },
+      "status": {
+        "enum": [
+          "disconnected",
+          "connected",
+          "expired",
+          "revoked",
+          "unavailable"
+        ],
+        "title": "Status",
+        "type": "string"
+      }
+    },
+    "required": [
+      "configured",
+      "status"
+    ],
+    "title": "GitHubConnection",
+    "type": "object"
+  },
+  "GitHubDevicePoll": {
+    "additionalProperties": false,
+    "properties": {
+      "attemptId": {
+        "maxLength": 128,
+        "minLength": 32,
+        "pattern": "^[A-Za-z0-9_-]+$",
+        "title": "Attemptid",
+        "type": "string"
+      }
+    },
+    "required": [
+      "attemptId"
+    ],
+    "title": "GitHubDevicePoll",
+    "type": "object"
+  },
+  "GitHubDeviceResult": {
+    "additionalProperties": false,
+    "properties": {
+      "account": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/GitHubAccount"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "interval": {
+        "default": 5,
+        "title": "Interval",
+        "type": "integer"
+      },
+      "status": {
+        "enum": [
+          "pending",
+          "login_ready",
+          "linked",
+          "connected"
+        ],
+        "title": "Status",
+        "type": "string"
+      }
+    },
+    "required": [
+      "status"
+    ],
+    "title": "GitHubDeviceResult",
+    "type": "object"
+  },
+  "GitHubDeviceStart": {
+    "additionalProperties": false,
+    "properties": {
+      "intent": {
+        "enum": [
+          "login",
+          "link",
+          "repositories"
+        ],
+        "title": "Intent",
+        "type": "string"
+      }
+    },
+    "required": [
+      "intent"
+    ],
+    "title": "GitHubDeviceStart",
+    "type": "object"
+  },
+  "GitHubDeviceStarted": {
+    "additionalProperties": false,
+    "properties": {
+      "attemptId": {
+        "title": "Attemptid",
+        "type": "string"
+      },
+      "expiresIn": {
+        "title": "Expiresin",
+        "type": "integer"
+      },
+      "interval": {
+        "title": "Interval",
+        "type": "integer"
+      },
+      "userCode": {
+        "title": "Usercode",
+        "type": "string"
+      },
+      "verificationUri": {
+        "const": "https://github.com/login/device",
+        "default": "https://github.com/login/device",
+        "title": "Verificationuri",
+        "type": "string"
+      }
+    },
+    "required": [
+      "attemptId",
+      "userCode",
+      "expiresIn",
+      "interval"
+    ],
+    "title": "GitHubDeviceStarted",
+    "type": "object"
+  },
+  "GitHubRepository": {
+    "additionalProperties": false,
+    "properties": {
+      "canPush": {
+        "title": "Canpush",
+        "type": "boolean"
+      },
+      "defaultBranch": {
+        "maxLength": 1024,
+        "minLength": 1,
+        "title": "Defaultbranch",
+        "type": "string"
+      },
+      "fullName": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9_.-]{1,100}$",
+        "title": "Fullname",
+        "type": "string"
+      },
+      "id": {
+        "exclusiveMinimum": 0,
+        "title": "Id",
+        "type": "integer"
+      },
+      "private": {
+        "title": "Private",
+        "type": "boolean"
+      },
+      "url": {
+        "readOnly": true,
+        "title": "Url",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "fullName",
+      "private",
+      "defaultBranch",
+      "canPush",
+      "url"
+    ],
+    "title": "GitHubRepository",
+    "type": "object"
+  },
+  "GitHubRepositoryPage": {
+    "additionalProperties": false,
+    "properties": {
+      "items": {
+        "items": {
+          "$ref": "#/components/schemas/GitHubRepository"
+        },
+        "title": "Items",
+        "type": "array"
+      },
+      "nextPage": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Nextpage"
+      }
+    },
+    "required": [
+      "items",
+      "nextPage"
+    ],
+    "title": "GitHubRepositoryPage",
+    "type": "object"
+  },
   "GithubSkillSource": {
     "additionalProperties": false,
     "properties": {
@@ -5670,6 +5917,90 @@ export const componentSchemas = {
     "title": "RemoveDependencyAction",
     "type": "object"
   },
+  "RepositoryBindRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "localPath": {
+        "maxLength": 4096,
+        "minLength": 1,
+        "pattern": "^[^\\x00-\\x1f]+$",
+        "title": "Localpath",
+        "type": "string"
+      },
+      "mode": {
+        "default": "existing",
+        "enum": [
+          "existing",
+          "clone"
+        ],
+        "title": "Mode",
+        "type": "string"
+      },
+      "repositoryId": {
+        "anyOf": [
+          {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Repositoryid"
+      }
+    },
+    "required": [
+      "localPath"
+    ],
+    "title": "RepositoryBindRequest",
+    "type": "object"
+  },
+  "RepositoryBinding": {
+    "additionalProperties": false,
+    "properties": {
+      "account": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/GitHubAccount"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "branch": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Branch"
+      },
+      "localPath": {
+        "title": "Localpath",
+        "type": "string"
+      },
+      "repository": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/GitHubRepository"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "localPath",
+      "branch"
+    ],
+    "title": "RepositoryBinding",
+    "type": "object"
+  },
   "ResourceType": {
     "enum": [
       "project"
@@ -8071,6 +8402,53 @@ export const componentSchemas = {
       "displayName"
     ],
     "title": "UserResponse",
+    "type": "object"
+  },
+  "WorkspaceStatus": {
+    "additionalProperties": false,
+    "properties": {
+      "binding": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/RepositoryBinding"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "gitAvailable": {
+        "title": "Gitavailable",
+        "type": "boolean"
+      },
+      "message": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Message"
+      },
+      "repositoryStatus": {
+        "default": "local",
+        "enum": [
+          "local",
+          "available",
+          "unavailable",
+          "changed"
+        ],
+        "title": "Repositorystatus",
+        "type": "string"
+      }
+    },
+    "required": [
+      "binding",
+      "gitAvailable"
+    ],
+    "title": "WorkspaceStatus",
     "type": "object"
   },
   "XlsxLocator": {

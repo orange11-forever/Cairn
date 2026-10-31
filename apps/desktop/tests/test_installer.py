@@ -27,6 +27,11 @@ def bundle_at(directory):
         "app/cairn_desktop/runtime.py",
         "web/index.html",
         "bundle.json",
+        "github-app.json",
+        "git/cmd/git.exe",
+        "git/ucrt64/bin/git.exe",
+        "git/ucrt64/bin/git-remote-https.exe",
+        "git/LICENSE.txt",
         "app/main.py",
         "empty/.keep",
     ]:
@@ -43,7 +48,7 @@ def test_generated_uninstall_only_names_owned_files_and_nonrecursive_directories
     target.mkdir()
     manifest = tool["generate_payload"](bundle, target)
     uninstall = (target / "payload-uninstall.nsh").read_text()
-    assert len(manifest["files"]) == 21
+    assert len(manifest["files"]) == 26
     assert "WebView2Loader.dll" in manifest["files"]
     assert 'Delete "$INSTDIR\\app\\main.py"' in uninstall
     assert 'RMDir "$INSTDIR\\postgres\\bin"' in uninstall
@@ -51,7 +56,7 @@ def test_generated_uninstall_only_names_owned_files_and_nonrecursive_directories
     assert "$LOCALAPPDATA" not in uninstall and "settings.json" not in uninstall
 
 
-@pytest.mark.parametrize("missing", ["WebView2Loader.dll", "postgres/lib/vector.dll", "python/python313.dll"])
+@pytest.mark.parametrize("missing", ["WebView2Loader.dll", "postgres/lib/vector.dll", "python/python313.dll", "git/cmd/git.exe", "git/ucrt64/bin/git-remote-https.exe"])
 def test_payload_refuses_missing_runtime_dependencies(tmp_path, missing):
     tool = runpy.run_path(str(TOOL))
     bundle = bundle_at(tmp_path / "bundle")
@@ -71,6 +76,8 @@ def test_payload_refuses_missing_runtime_dependencies(tmp_path, missing):
         ".cairn-owned.ini",
         "Settings.JSON",
         "app/MODEL-SETTINGS.DPAPI",
+        "workspace-settings.dpapi",
+        "app/WORKSPACE-SETTINGS.DPAPI",
     ],
 )
 def test_payload_refuses_data_or_reserved_installer_ownership_files(tmp_path, name):

@@ -1,5 +1,6 @@
 import { startOAuth, type OAuthProvider } from "../api/oauth.ts";
 import { useAbortableAction } from "../hooks/useAbortableAction.ts";
+import { GitHubDeviceAuthorization } from "./GitHubDeviceAuthorization.tsx";
 
 export function OAuthLoginButtons({ navigate = (url: string) => window.location.assign(url) }: {
   navigate?: (url: string) => void;
@@ -7,7 +8,9 @@ export function OAuthLoginButtons({ navigate = (url: string) => window.location.
   const action = useAbortableAction(startOAuth);
   const desktop = (window as Window & { chrome?: { webview?: unknown } }).chrome?.webview;
   if (desktop) return <div className="oauth-login">
-    <p>桌面版尚未接通 GitHub 和飞书登录。请创建邮箱账号，在本机登录使用；已有账号可直接登录。</p>
+    <GitHubDeviceAuthorization intent="login" label="使用 GitHub 登录" onComplete={() => navigate("/login?oauth=login_ready")} />
+    <p>在系统浏览器完成 GitHub 授权后，返回 Cairn 确认登录。首次使用将创建个人账号和个人空间。</p>
+    <p>飞书登录尚未启用；也可以使用本机邮箱账号登录。</p>
   </div>;
   async function begin(provider: OAuthProvider) {
     const url = await action.run({ provider, intent: "login" });

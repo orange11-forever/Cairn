@@ -6,13 +6,14 @@ import { OAuthLoginButtons } from "../../src/components/OAuthLoginButtons.tsx";
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
-test("desktop explains unavailable third-party login before an authorization request", () => {
+test("desktop offers device login while keeping Feishu unavailable", () => {
   vi.stubGlobal("chrome", { webview: { postMessage: vi.fn() } });
   const fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
   render(<OAuthLoginButtons />);
-  expect(screen.queryAllByRole("button", { name: /GitHub|飞书/ })).toHaveLength(0);
-  expect(screen.getByText(/桌面版尚未接通 GitHub 和飞书登录/)).toBeVisible();
+  expect(screen.getByRole("button", { name: "使用 GitHub 登录" })).toBeVisible();
+  expect(screen.queryByRole("button", { name: /飞书/ })).not.toBeInTheDocument();
+  expect(screen.getByText(/飞书登录尚未启用/)).toBeVisible();
   expect(fetchMock).not.toHaveBeenCalled();
 });
 

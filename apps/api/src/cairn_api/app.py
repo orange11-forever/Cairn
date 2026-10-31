@@ -42,6 +42,7 @@ from cairn_api.projects.operation_router import router as project_operation_rout
 from cairn_api.projects.router import router as projects_router
 from cairn_api.projects.schedule_router import router as project_schedule_router
 from cairn_api.settings import Settings
+from cairn_api.workspace.router import router as workspace_router
 
 
 class HealthResponse(BaseModel):
@@ -191,6 +192,7 @@ def create_app(
     application.state.embedding_client = embedding_client
     application.state.answer_provider = answer_provider
     application.state.answer_models = {}
+    application.state.desktop_workspace = None
 
     @application.middleware("http")
     async def protect_oauth_responses(  # pyright: ignore[reportUnusedFunction]
@@ -198,7 +200,7 @@ def create_app(
         call_next: RequestResponseEndpoint,
     ) -> Response:
         response = await call_next(request)
-        if request.url.path.startswith("/api/v1/auth/"):
+        if request.url.path.startswith(("/api/v1/auth/", "/api/v1/desktop/")):
             response.headers["Cache-Control"] = "no-store"
             response.headers["Referrer-Policy"] = "no-referrer"
         return response
@@ -348,6 +350,7 @@ def create_app(
 
     application.include_router(auth_router)
     application.include_router(oauth_router)
+    application.include_router(workspace_router)
     application.include_router(registration_router)
     application.include_router(organizations_router)
     application.include_router(authorization_router)

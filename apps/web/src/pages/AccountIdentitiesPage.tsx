@@ -6,12 +6,15 @@ import { fetchLinkedIdentities, fetchOAuthProviders, startOAuth, unlinkIdentity,
 import { OAuthNotice } from "../components/OAuthNotice.tsx";
 import { useAbortableAction } from "../hooks/useAbortableAction.ts";
 import { useSession } from "../session/SessionContext.tsx";
+import { GitHubDeviceAuthorization } from "../components/GitHubDeviceAuthorization.tsx";
+import { GitHubRepositoryAccess } from "../components/GitHubRepositoryAccess.tsx";
 
 export function AccountIdentitiesPage() {
   const { session, logout, logoutError } = useSession();
   const [params] = useSearchParams();
   const queryClient = useQueryClient();
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const desktop = Boolean((window as Window & { chrome?: { webview?: unknown } }).chrome?.webview);
   const key = ["account-identities", session?.generation];
   const identities = useQuery({ queryKey: key, enabled: session !== null,
     queryFn: ({ signal }) => fetchLinkedIdentities(AbortSignal.any([signal, session!.signal])) });
@@ -37,7 +40,7 @@ export function AccountIdentitiesPage() {
 
   return <section className="identity-page" aria-labelledby="identity-title">
     <h1 id="identity-title">登录方式</h1>
-    <p>查看当前账号的登录方式。GitHub 和飞书需启用后才能绑定；桌面版目前支持本机邮箱密码登录。</p>
+    <p>查看当前账号的登录方式。GitHub 和飞书需启用后才能绑定；仓库访问需要另外授权。</p>
     <p className="identity-account">当前账号：{session.user.displayName ?? session.user.email ?? "Cairn 用户"} · {session.user.email ?? "未提供邮箱"}</p>
     <OAuthNotice outcome={params.get("oauth")} />
     {identities.isPending || providers.isPending ? <p role="status">正在读取登录方式…</p> : null}
@@ -61,12 +64,15 @@ export function AccountIdentitiesPage() {
                 <button type="button" disabled={pending} onClick={() => setConfirmId(null)}>取消</button>
               </div> : <button type="button" disabled={pending} onClick={() => setConfirmId(item.id)}>解绑 {name}</button>}
             </div>)}
-          </div>{linked.length === 0 && <button type="button" disabled={!enabled || pending}
-            onClick={() => void bind(provider)}>绑定 {name}</button>}</li>;
+          </div>{linked.length === 0 && (desktop && provider === "github" ?
+            <GitHubDeviceAuthorization intent="link" label="绑定 GitHub" csrfToken={session.identity.csrfToken}
+              signal={session.signal} disabled={!enabled || pending} onComplete={() => void queryClient.invalidateQueries({ queryKey: key })} /> :
+            <button type="button" disabled={!enabled || pending} onClick={() => void bind(provider)}>绑定 {name}</button>)}</li>;
         })}
       </ul>
       <p className="identity-help">绑定不会改变你的组织和权限。解绑时需保留至少一种可用的登录方式。</p>
     </>}
+    {desktop && <GitHubRepositoryAccess />}
     {error && <p className="form-error" role="alert">{error.message}</p>}
     {(error?.code === "reauthentication_required" || error?.code === "oauth_session_invalid") &&
       <button type="button" disabled={pending} onClick={() => void logout()}>重新登录</button>}

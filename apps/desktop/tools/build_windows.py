@@ -8,12 +8,15 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
 from zipfile import ZipFile
 
 ROOT = Path(__file__).resolve().parents[3]
+MINGIT_ARCHIVE = "MinGit-2.56.0.4-64-bit.zip"
+MINGIT_SHA256 = "e3bf78351fe777fba47ddee5950082f8a98bb0f02604fdc7ba3ee2cb68ffa877"
 
 
 def windows(path: Path) -> str:
@@ -28,6 +31,7 @@ def run_batch(path: Path, lines: list[str]):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--github-client-id", help="Publisher's public OAuth App Client ID (Device Flow enabled); never a secret")
     parser.add_argument(
         "--code-only",
         action="store_true",
@@ -42,10 +46,19 @@ def main():
         ),
     )
     args = parser.parse_args()
+    if args.github_client_id is not None and not re.fullmatch(r"[A-Za-z0-9_.-]{1,160}", args.github_client_id):
+        parser.error("--github-client-id must be a public Client ID")
     bundle = args.output.resolve()
     bundle.mkdir(parents=True, exist_ok=True)
     shutil.copy2(ROOT / "LICENSE", bundle / "CAIRN-LICENSE.txt")
     downloads = ROOT / ".superpowers/desktop-downloads"
+    mingit = downloads / MINGIT_ARCHIVE
+    with mingit.open("rb") as source:
+        if hashlib.file_digest(source, "sha256").hexdigest() != MINGIT_SHA256:
+            raise ValueError("Official MinGit download checksum mismatch")
+    with ZipFile(mingit) as archive:
+        archive.extractall(bundle / "git")
+    (bundle / "github-app.json").write_text(json.dumps({"clientId": args.github_client_id}), encoding="utf-8")
     build = ROOT / ".superpowers/desktop-build"
     # Copy only the disposable bundle's known runtime directories on subsequent builds.
     for source, target in [
@@ -133,12 +146,14 @@ def main():
         "postgres": "18",
         "pgvector": "0.8.7",
         "webview2Sdk": "1.0.4258.31",
+        "git": "2.56.0.windows.4",
         "downloads": {},
     }
     for name in (
         "python-3.13.17-embed-amd64.zip",
         "pgvector-0.8.7.zip",
         "webview2-1.0.4258.31.zip",
+        MINGIT_ARCHIVE,
     ):
         with (downloads / name).open("rb") as source:
             manifest["downloads"][name] = hashlib.file_digest(source, "sha256").hexdigest()

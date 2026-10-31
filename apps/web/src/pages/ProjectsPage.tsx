@@ -16,6 +16,7 @@ import { ProjectOperations } from "../components/projects/ProjectOperations.tsx"
 import { ProjectSchedule } from "../components/projects/ProjectSchedule.tsx";
 import { ProjectTaskGraph } from "../components/projects/ProjectTaskGraph.tsx";
 import { ProjectCreator } from "../components/projects/ProjectCreator.tsx";
+import { ProjectRepository } from "../components/projects/ProjectRepository.tsx";
 import { Link } from "react-router-dom";
 
 import type { Project, Task, TaskStatus } from "../api/projects.ts";
@@ -439,6 +440,7 @@ function TaskWorkspace({
         </div>
       </header>
 
+      <ProjectRepository projectId={project.id} canWrite={canTransition} />
       <ProjectAnalysis projectId={project.id} csrfToken={csrfToken} signal={scopeSignal} />
       <ProjectPlanPreview projectId={project.id} csrfToken={csrfToken} signal={scopeSignal} ownerId={userId} disabled={operationsBusy || scheduleBusy || editorBusy || structureBusy || statusBlocked || createBlocked || creating} onApplied={refreshCreateData} onOpenTask={id=>{if(!editorBusy && !creating)setSelectedTaskId(id);}} />
       <ProjectOperations projectId={project.id} ownerId={userId} csrfToken={csrfToken} signal={scopeSignal} disabled={scheduleBusy || editorBusy || structureBusy || statusBlocked || createBlocked || creating} onApplied={refreshOperationData} onBusy={setOperationsBusy} onOpenTask={id=>{if(!editorBusy && !creating)setSelectedTaskId(id);}} />

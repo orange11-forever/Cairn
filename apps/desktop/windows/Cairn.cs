@@ -116,6 +116,8 @@ internal sealed class CairnWindow : Form
             case "\"cairn:settings:restore\"": return "restore";
             case "\"cairn:settings:folder\"": return "folder";
             case "\"cairn:settings:diagnostics\"": return "diagnostics";
+            case "\"cairn:github:authorize\"": return "github-authorize";
+            case "\"cairn:repository:folder\"": return "repository-folder";
             default: return null;
         }
     }
@@ -209,6 +211,17 @@ internal sealed class CairnWindow : Form
                     case "restore": await Restore(); break;
                     case "folder": Process.Start("explorer.exe", Quote(data)); break;
                     case "diagnostics": ShowDiagnostics(); break;
+                    case "github-authorize":
+                        Process.Start(new ProcessStartInfo("https://github.com/login/device") { UseShellExecute = true });
+                        break;
+                    case "repository-folder":
+                        using (var directory = new FolderBrowserDialog { Description = "选择已有仓库，或新克隆目录的父目录", ShowNewFolderButton = true })
+                        {
+                            string selected = directory.ShowDialog(this) == DialogResult.OK ? directory.SelectedPath : null;
+                            if (web != null && !closing) web.CoreWebView2.PostWebMessageAsJson(new JavaScriptSerializer().Serialize(
+                                new Dictionary<string, object> { { "type", "cairn:repository:folder" }, { "path", selected } }));
+                        }
+                        break;
                 }
             }
             catch (Exception error) { MessageBox.Show(this, error.Message, "设置操作失败", MessageBoxButtons.OK, MessageBoxIcon.Error); }
@@ -293,7 +306,7 @@ internal sealed class CairnWindow : Form
                 await StopRuntime();
                 status.Text = "正在备份本地数据…";
                 await RunDataCommand("backup", data, dialog.FileName);
-                MessageBox.Show("备份已保存。文件包含账号和项目数据，请妥善保管。模型凭据不在备份内；恢复后需重新填写。", "Cairn");
+                MessageBox.Show("备份已保存。文件包含账号和项目数据，请妥善保管。模型凭据、GitHub仓库授权、本机代码目录关联和代码文件不在备份内；恢复后需重新配置和关联。", "Cairn");
             }
             catch (Exception error) { MessageBox.Show(error.Message, "备份失败"); }
             finally { busy = false; try { await StartRuntime(); } catch (Exception error) { ShowFailure(error); } }
