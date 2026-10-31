@@ -327,6 +327,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/desktop/projects/{project_id}/architecture": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Architecture Sources */
+        get: operations["architecture_sources_api_v1_desktop_projects__project_id__architecture_get"];
+        put?: never;
+        /** Analyze Architecture */
+        post: operations["analyze_architecture_api_v1_desktop_projects__project_id__architecture_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/desktop/projects/{project_id}/repository": {
         parameters: {
             query?: never;
@@ -1477,6 +1495,58 @@ export interface components {
              * @constant
              */
             version: "v1";
+        };
+        /** ArchitectureAnalysis */
+        ArchitectureAnalysis: {
+            /** Assistantid */
+            assistantId: string | null;
+            /** Assistantname */
+            assistantName: string;
+            /** Assistantrevision */
+            assistantRevision: number;
+            /**
+             * Generatedat
+             * Format: date-time
+             */
+            generatedAt: string;
+            model: components["schemas"]["AnswerModelOption"];
+            /** Paragraphs */
+            paragraphs: components["schemas"]["KnowledgeAnswerParagraph"][];
+            snapshot: components["schemas"]["RepositorySnapshot"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "answered" | "insufficient_evidence";
+        };
+        /** ArchitectureRequest */
+        ArchitectureRequest: {
+            /** Assistantid */
+            assistantId?: string | null;
+            /** Assistantrevision */
+            assistantRevision: number;
+            /** Snapshotdigest */
+            snapshotDigest: string;
+        };
+        /** ArchitectureSource */
+        ArchitectureSource: {
+            /** Content */
+            content: string;
+            /** Endline */
+            endLine: number;
+            /** Id */
+            id: string;
+            /** Path */
+            path: string;
+            /** Redacted */
+            redacted: boolean;
+            /**
+             * Startline
+             * @default 1
+             */
+            startLine: number;
+            /** Truncated */
+            truncated: boolean;
         };
         /** AssigneePage */
         AssigneePage: {
@@ -3485,6 +3555,25 @@ export interface components {
             /** Localpath */
             localPath: string;
             repository?: components["schemas"]["GitHubRepository"] | null;
+        };
+        /** RepositorySnapshot */
+        RepositorySnapshot: {
+            /** Branch */
+            branch: string | null;
+            /** Digest */
+            digest: string;
+            /** Eligiblefiles */
+            eligibleFiles: number;
+            /** Excludedfiles */
+            excludedFiles: number;
+            /** Head */
+            head: string | null;
+            /** Paths */
+            paths: string[];
+            /** Sources */
+            sources: components["schemas"]["ArchitectureSource"][];
+            /** Truncated */
+            truncated: boolean;
         };
         /**
          * ResourceType
@@ -5645,6 +5734,255 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GitHubRepositoryPage"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    architecture_sources_api_v1_desktop_projects__project_id__architecture_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepositorySnapshot"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description GitHub 授权或仓库操作失败 */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    analyze_architecture_api_v1_desktop_projects__project_id__architecture_post: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Session-bound CSRF token returned by login or session restore. */
+                "X-CSRF-Token": string;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArchitectureRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchitectureAnalysis"];
                 };
             };
             /** @description GitHub 授权或仓库操作失败 */

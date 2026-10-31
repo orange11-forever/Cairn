@@ -9,6 +9,8 @@ export type GitHubRepository = components["schemas"]["GitHubRepository"];
 export type RepositoryBinding = components["schemas"]["RepositoryBinding"];
 export type RepositoryBindRequest = components["schemas"]["RepositoryBindRequest"];
 export type GitHubConnection = components["schemas"]["GitHubConnection"];
+export type RepositorySnapshot = components["schemas"]["RepositorySnapshot"];
+export type ArchitectureAnalysis = components["schemas"]["ArchitectureAnalysis"];
 const client = () => createCairnClient({ baseUrl: apiOrigins.identity });
 const headers = (csrfToken?: string) => csrfToken ? { "X-CSRF-Token": csrfToken } : {};
 
@@ -62,4 +64,11 @@ export async function bindRepository({ projectId, csrfToken, ...body }: Reposito
 export async function unbindRepository({ projectId, csrfToken }: { projectId: string; csrfToken: string }, signal: AbortSignal) {
   await perform(signal, signal => client().DELETE("/api/v1/desktop/projects/{project_id}/repository", { params: { path: { project_id: projectId }, header: { "X-CSRF-Token": csrfToken } }, signal }));
   return true;
+}
+
+export async function fetchRepositorySources(projectId: string, signal: AbortSignal) {
+  return parse("RepositorySnapshot", await perform(signal, signal => client().GET("/api/v1/desktop/projects/{project_id}/architecture", { params: { path: { project_id: projectId } }, signal })));
+}
+export async function analyzeArchitecture({ projectId, csrfToken, ...body }: components["schemas"]["ArchitectureRequest"] & { projectId: string; csrfToken: string }, signal: AbortSignal) {
+  return parse("ArchitectureAnalysis", await perform(signal, signal => client().POST("/api/v1/desktop/projects/{project_id}/architecture", { params: { path: { project_id: projectId }, header: { "X-CSRF-Token": csrfToken } }, body, signal }), 120_000));
 }

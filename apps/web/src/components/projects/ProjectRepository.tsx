@@ -12,10 +12,10 @@ type DesktopHost = {
 };
 function host() { return (window as Window & { chrome?: { webview?: DesktopHost } }).chrome?.webview; }
 
-export function ProjectRepository({ projectId, canWrite }: { projectId: string; canWrite: boolean }) {
-  const [open, setOpen] = useState(false);
+export function ProjectRepository({ projectId, canWrite, initiallyOpen = false }: { projectId: string; canWrite: boolean; initiallyOpen?: boolean }) {
+  const [open, setOpen] = useState(initiallyOpen);
   if (!host()) return null;
-  return <details className="project-repository" onToggle={event => setOpen(event.currentTarget.open)}>
+  return <details className="project-repository" open={open} onToggle={event => setOpen(event.currentTarget.open)}>
     <summary>代码仓库</summary>
     {open && <RepositoryEditor key={projectId} projectId={projectId} canWrite={canWrite} />}
   </details>;
@@ -31,9 +31,7 @@ function RepositoryEditor({ projectId, canWrite }: { projectId: string; canWrite
   const [confirm, setConfirm] = useState(false);
   const [notice, setNotice] = useState("");
   const selecting = useRef(false);
-  const scope = useRef(new AbortController());
-  useEffect(() => () => scope.current.abort(), []);
-  const combined = (signal: AbortSignal) => AbortSignal.any([signal, session!.signal, scope.current.signal]);
+  const combined = (signal: AbortSignal) => AbortSignal.any([signal, session!.signal]);
   const key = ["desktop-workspace", session?.generation, projectId];
   const current = useQuery({ queryKey: key, enabled: session !== null, retry: false,
     queryFn: ({ signal }) => fetchWorkspace(projectId, combined(signal)) });

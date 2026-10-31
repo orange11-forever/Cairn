@@ -9,6 +9,7 @@ import { KnowledgePage } from "../pages/KnowledgePage.tsx";
 import { KnowledgeSourcesPage } from "../pages/KnowledgeSourcesPage.tsx";
 import { AccountIdentitiesPage } from "../pages/AccountIdentitiesPage.tsx";
 import { ProjectsPage } from "../pages/ProjectsPage.tsx";
+import { CodeWorkspacePage } from "../pages/CodeWorkspacePage.tsx";
 import { useSession } from "../session/SessionContext.tsx";
 
 function LoginRoute() {
@@ -67,6 +68,7 @@ function SessionRoutes() {
         <Route element={<AuthenticatedLayout />}>
           <Route path="/account/identities" element={<AccountIdentitiesPage />} />
           <Route path="/projects" element={<ProjectsPage />} />
+          <Route path="/projects/:projectId/code" element={<CodeWorkspacePage />} />
           <Route path="/projects/:projectId/knowledge" element={<KnowledgePage />} />
           <Route path="/projects/:projectId/knowledge/sources" element={<KnowledgeSourcesPage />} />
           <Route path="/documents" element={<Navigate to="/projects" replace />} />

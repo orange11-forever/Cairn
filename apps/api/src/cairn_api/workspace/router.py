@@ -5,11 +5,18 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy.orm import Session
 
 from cairn_api.auth.csrf import CSRF_REQUIRED_OPENAPI, require_mutation_csrf
-from cairn_api.auth.dependencies import CurrentIdentity
+from cairn_api.auth.dependencies import CurrentIdentity, get_audit_context, get_request_settings
 from cairn_api.authorization.policy import AuthorizationPolicy
 from cairn_api.authorization.types import ProjectPermission
 from cairn_api.db.session import get_db
 from cairn_api.errors import ApiProblem, ErrorBody
+from cairn_api.knowledge.dependencies import AnswerModelsDependency
+from cairn_api.workspace.architecture import RepositorySnapshot
+from cairn_api.workspace.architecture_service import (
+    ArchitectureAnalysis,
+    ArchitectureRequest,
+    RepositoryArchitectureService,
+)
 from cairn_api.workspace.device import DEVICE_COOKIE
 from cairn_api.workspace.github import github_problem
 from cairn_api.workspace.local import DesktopWorkspace
@@ -49,6 +56,47 @@ def desktop_workspace(request: Request) -> DesktopWorkspace:
 
 
 Workspace = Annotated[DesktopWorkspace, Depends(desktop_workspace)]
+
+
+@router.get(
+    "/projects/{project_id}/architecture", response_model=RepositorySnapshot, responses=ERRORS
+)
+def architecture_sources(
+    project_id: UUID, request: Request, identity: CurrentIdentity, session: Db, workspace: Workspace
+) -> RepositorySnapshot:
+    settings = get_request_settings(request)
+    return RepositoryArchitectureService(
+        session,
+        identity,
+        request.cookies.get(settings.session_cookie_name),
+        get_audit_context(request),
+    ).preview(project_id, workspace)
+
+
+@router.post(
+    "/projects/{project_id}/architecture",
+    response_model=ArchitectureAnalysis,
+    responses=ERRORS,
+    dependencies=[Depends(require_mutation_csrf)],
+    openapi_extra=CSRF_REQUIRED_OPENAPI,
+)
+def analyze_architecture(
+    project_id: UUID,
+    payload: ArchitectureRequest,
+    request: Request,
+    identity: CurrentIdentity,
+    session: Db,
+    workspace: Workspace,
+    models: AnswerModelsDependency,
+) -> ArchitectureAnalysis:
+    settings = get_request_settings(request)
+    return RepositoryArchitectureService(
+        session,
+        identity,
+        request.cookies.get(settings.session_cookie_name),
+        get_audit_context(request),
+        answer_models=models,
+    ).analyze(project_id, workspace, payload)
 
 
 @router.post("/github/device", response_model=GitHubDeviceStarted, responses=ERRORS)

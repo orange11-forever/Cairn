@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Check, ChevronDown, FolderOpen } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { fetchProject, type Project } from '../api/projects.ts';
 import { projectKeys, useProjectsQuery } from '../queries/projects.ts';
 
@@ -13,6 +13,7 @@ export function ProjectSwitcher({ organizationId, projectId, sessionSignal }: {
   const trigger = useRef<HTMLButtonElement>(null);
   const panelId = useId();
   const navigate = useNavigate();
+  const location = useLocation();
   const projects = useProjectsQuery(organizationId, sessionSignal, open);
   // Observe the already-authorized page title without starting another detail request.
   const current = useQuery<Project>({ queryKey: projectKeys.detail(organizationId, projectId ?? ''), queryFn: ({ signal }) => fetchProject({ projectId: projectId ?? '', signal: AbortSignal.any([signal, sessionSignal]) }), enabled: false });
@@ -41,7 +42,7 @@ export function ProjectSwitcher({ organizationId, projectId, sessionSignal }: {
           <button type='button' onClick={() => void projects.refetch()}>重新加载项目列表</button></div> : null}
         {!projects.isError && items.length === 0 ? <p>暂无可访问的项目。</p> : null}
         {!projects.isError ? <ul>{items.map(project => <li key={project.id}><button type='button' aria-current={project.id === projectId ? 'true' : undefined}
-          onClick={() => { setOpen(false); navigate(`/projects/${encodeURIComponent(project.id)}/knowledge`); }}>
+          onClick={() => { setOpen(false); navigate(`/projects/${encodeURIComponent(project.id)}/${location.pathname.endsWith('/code') ? 'code' : 'knowledge'}`); }}>
           <FolderOpen size={17} aria-hidden='true' /><span>{project.name}</span>{project.id === projectId ? <Check size={16} aria-hidden='true' /> : null}
         </button></li>)}</ul> : null}
         {projects.hasNextPage ? <button type='button' disabled={projects.isFetchingNextPage} onClick={() => void projects.fetchNextPage()}>

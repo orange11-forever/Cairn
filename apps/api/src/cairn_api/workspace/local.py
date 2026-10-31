@@ -10,6 +10,7 @@ import tempfile
 import threading
 import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from uuid import UUID
 
@@ -289,6 +290,87 @@ class DesktopWorkspace:
             ["-C", str(path), "symbolic-ref", "--quiet", "--short", "HEAD"], allow_one=True
         )
         return path, branch
+
+    def source_paths(self, root: Path) -> str:
+        # Only this read-only inventory respects global excludes. Execution-related
+        # settings remain overridden; clone and other commands keep isolated config.
+        environment = self._environment()
+        environment.pop("GIT_CONFIG_GLOBAL", None)
+        if "GIT_CONFIG_GLOBAL" in os.environ:
+            environment["GIT_CONFIG_GLOBAL"] = os.environ["GIT_CONFIG_GLOBAL"]
+        command = [
+            str(self.git),
+            "-c",
+            "core.fsmonitor=false",
+            "-c",
+            "core.hooksPath=" + os.devnull,
+            "-C",
+            str(root),
+            "ls-files",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "-z",
+        ]
+        try:
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                env=environment,
+                start_new_session=os.name != "nt",
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+            )
+        except OSError:
+            raise github_problem(
+                "git_unavailable", "无法启动 Git 读取源码清单，请检查安装", 503
+            ) from None
+
+        def stop() -> None:
+            if process.poll() is None:
+                if os.name == "nt":
+                    subprocess.run(
+                        ["taskkill.exe", "/PID", str(process.pid), "/T", "/F"],
+                        capture_output=True,
+                        check=False,
+                        timeout=10,
+                    )
+                else:
+                    os.killpg(process.pid, signal.SIGKILL)
+            process.wait(timeout=10)
+
+        assert process.stdout is not None
+        try:
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                pending = pool.submit(process.stdout.read, 2_000_001)
+                try:
+                    output = pending.result(timeout=15)
+                    if len(output) > 2_000_000:
+                        stop()
+                        raise github_problem(
+                            "architecture_repository_too_large", "仓库文件清单超出本次分析容量", 422
+                        )
+                    process.wait(timeout=15)
+                except (TimeoutError, subprocess.TimeoutExpired):
+                    stop()
+                    raise github_problem(
+                        "git_timeout", "读取仓库文件清单超时，请检查工作目录", 504
+                    ) from None
+            if process.returncode:
+                raise github_problem("git_failed", "无法读取仓库文件清单，请检查 Git 仓库状态", 409)
+            try:
+                return output.decode("utf-8")
+            except UnicodeDecodeError:
+                raise github_problem(
+                    "architecture_path_invalid", "仓库包含无法识别的文件名编码", 422
+                ) from None
+        finally:
+            process.stdout.close()
+
+    def head(self, root: Path) -> str | None:
+        return self._run(
+            ["-C", str(root), "rev-parse", "--verify", "--quiet", "HEAD"], allow_one=True
+        )
 
     def _record(
         self, user_id: UUID, project_id: UUID, binding: RepositoryBinding

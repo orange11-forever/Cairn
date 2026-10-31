@@ -203,6 +203,146 @@ export const componentSchemas = {
     "title": "ApiVersionResponse",
     "type": "object"
   },
+  "ArchitectureAnalysis": {
+    "additionalProperties": false,
+    "properties": {
+      "assistantId": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Assistantid"
+      },
+      "assistantName": {
+        "title": "Assistantname",
+        "type": "string"
+      },
+      "assistantRevision": {
+        "title": "Assistantrevision",
+        "type": "integer"
+      },
+      "generatedAt": {
+        "format": "date-time",
+        "title": "Generatedat",
+        "type": "string"
+      },
+      "model": {
+        "$ref": "#/components/schemas/AnswerModelOption"
+      },
+      "paragraphs": {
+        "items": {
+          "$ref": "#/components/schemas/KnowledgeAnswerParagraph"
+        },
+        "title": "Paragraphs",
+        "type": "array"
+      },
+      "snapshot": {
+        "$ref": "#/components/schemas/RepositorySnapshot"
+      },
+      "status": {
+        "enum": [
+          "answered",
+          "insufficient_evidence"
+        ],
+        "title": "Status",
+        "type": "string"
+      }
+    },
+    "required": [
+      "generatedAt",
+      "assistantId",
+      "assistantName",
+      "assistantRevision",
+      "model",
+      "status",
+      "paragraphs",
+      "snapshot"
+    ],
+    "title": "ArchitectureAnalysis",
+    "type": "object"
+  },
+  "ArchitectureRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "assistantId": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Assistantid"
+      },
+      "assistantRevision": {
+        "minimum": 0,
+        "title": "Assistantrevision",
+        "type": "integer"
+      },
+      "snapshotDigest": {
+        "pattern": "^[0-9a-f]{64}$",
+        "title": "Snapshotdigest",
+        "type": "string"
+      }
+    },
+    "required": [
+      "snapshotDigest",
+      "assistantRevision"
+    ],
+    "title": "ArchitectureRequest",
+    "type": "object"
+  },
+  "ArchitectureSource": {
+    "additionalProperties": false,
+    "properties": {
+      "content": {
+        "title": "Content",
+        "type": "string"
+      },
+      "endLine": {
+        "title": "Endline",
+        "type": "integer"
+      },
+      "id": {
+        "title": "Id",
+        "type": "string"
+      },
+      "path": {
+        "title": "Path",
+        "type": "string"
+      },
+      "redacted": {
+        "title": "Redacted",
+        "type": "boolean"
+      },
+      "startLine": {
+        "default": 1,
+        "title": "Startline",
+        "type": "integer"
+      },
+      "truncated": {
+        "title": "Truncated",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "id",
+      "path",
+      "endLine",
+      "content",
+      "truncated",
+      "redacted"
+    ],
+    "title": "ArchitectureSource",
+    "type": "object"
+  },
   "AssigneePage": {
     "properties": {
       "items": {
@@ -5999,6 +6139,76 @@ export const componentSchemas = {
       "branch"
     ],
     "title": "RepositoryBinding",
+    "type": "object"
+  },
+  "RepositorySnapshot": {
+    "additionalProperties": false,
+    "properties": {
+      "branch": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Branch"
+      },
+      "digest": {
+        "title": "Digest",
+        "type": "string"
+      },
+      "eligibleFiles": {
+        "title": "Eligiblefiles",
+        "type": "integer"
+      },
+      "excludedFiles": {
+        "title": "Excludedfiles",
+        "type": "integer"
+      },
+      "head": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Head"
+      },
+      "paths": {
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 300,
+        "title": "Paths",
+        "type": "array"
+      },
+      "sources": {
+        "items": {
+          "$ref": "#/components/schemas/ArchitectureSource"
+        },
+        "title": "Sources",
+        "type": "array"
+      },
+      "truncated": {
+        "title": "Truncated",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "branch",
+      "head",
+      "digest",
+      "eligibleFiles",
+      "sources",
+      "truncated",
+      "excludedFiles",
+      "paths"
+    ],
+    "title": "RepositorySnapshot",
     "type": "object"
   },
   "ResourceType": {
