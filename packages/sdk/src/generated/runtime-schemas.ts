@@ -890,6 +890,181 @@ export const componentSchemas = {
     "title": "CodingConcurrency",
     "type": "object"
   },
+  "CodingDeliveryState": {
+    "additionalProperties": false,
+    "properties": {
+      "authorEmail": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Authoremail"
+      },
+      "authorName": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Authorname"
+      },
+      "commitSha": {
+        "anyOf": [
+          {
+            "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Commitsha"
+      },
+      "error": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Error"
+      },
+      "indexDigest": {
+        "anyOf": [
+          {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Indexdigest"
+      },
+      "message": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Message"
+      },
+      "phase": {
+        "default": "uncommitted",
+        "enum": [
+          "uncommitted",
+          "committing",
+          "commit_unknown",
+          "committed",
+          "pushing",
+          "push_unknown",
+          "pushed",
+          "creating_pr",
+          "pr_unknown",
+          "pr_created"
+        ],
+        "title": "Phase",
+        "type": "string"
+      },
+      "prDraft": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Prdraft"
+      },
+      "prNumber": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Prnumber"
+      },
+      "prState": {
+        "anyOf": [
+          {
+            "enum": [
+              "open",
+              "closed"
+            ],
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Prstate"
+      },
+      "prUrl": {
+        "anyOf": [
+          {
+            "pattern": "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9_.-]+/pull/[1-9][0-9]*$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Prurl"
+      },
+      "snapshotId": {
+        "anyOf": [
+          {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Snapshotid"
+      },
+      "target": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/RemoteTarget"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "treeSha": {
+        "anyOf": [
+          {
+            "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Treesha"
+      }
+    },
+    "title": "CodingDeliveryState",
+    "type": "object"
+  },
   "CodingEvent": {
     "additionalProperties": false,
     "properties": {
@@ -1064,6 +1239,16 @@ export const componentSchemas = {
         "format": "date-time",
         "title": "Createdat",
         "type": "string"
+      },
+      "delivery": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/CodingDeliveryState"
+          },
+          {
+            "type": "null"
+          }
+        ]
       },
       "dependsOn": {
         "anyOf": [
@@ -1245,6 +1430,29 @@ export const componentSchemas = {
         "title": "Changedfiles",
         "type": "integer"
       },
+      "deliveryPhase": {
+        "anyOf": [
+          {
+            "enum": [
+              "uncommitted",
+              "committing",
+              "commit_unknown",
+              "committed",
+              "pushing",
+              "push_unknown",
+              "pushed",
+              "creating_pr",
+              "pr_unknown",
+              "pr_created"
+            ],
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Deliveryphase"
+      },
       "dependsOn": {
         "anyOf": [
           {
@@ -1265,6 +1473,17 @@ export const componentSchemas = {
       "modelName": {
         "title": "Modelname",
         "type": "string"
+      },
+      "prUrl": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Prurl"
       },
       "progress": {
         "title": "Progress",
@@ -1415,6 +1634,43 @@ export const componentSchemas = {
     "title": "CommandDecision",
     "type": "object"
   },
+  "CommitRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "authorEmail": {
+        "maxLength": 254,
+        "minLength": 3,
+        "pattern": "^[^\\s\\x00-\\x1f\\x7f<>@]+@[^\\s\\x00-\\x1f\\x7f<>@]+$",
+        "title": "Authoremail",
+        "type": "string"
+      },
+      "authorName": {
+        "maxLength": 100,
+        "minLength": 1,
+        "title": "Authorname",
+        "type": "string"
+      },
+      "message": {
+        "maxLength": 4000,
+        "minLength": 1,
+        "title": "Message",
+        "type": "string"
+      },
+      "snapshotId": {
+        "pattern": "^[0-9a-f]{64}$",
+        "title": "Snapshotid",
+        "type": "string"
+      }
+    },
+    "required": [
+      "snapshotId",
+      "message",
+      "authorName",
+      "authorEmail"
+    ],
+    "title": "CommitRequest",
+    "type": "object"
+  },
   "CreateTaskAction": {
     "additionalProperties": false,
     "properties": {
@@ -1513,6 +1769,57 @@ export const componentSchemas = {
       "rowEnd"
     ],
     "title": "CsvLocator",
+    "type": "object"
+  },
+  "DeliveryReview": {
+    "additionalProperties": false,
+    "properties": {
+      "delivery": {
+        "$ref": "#/components/schemas/CodingDeliveryState"
+      },
+      "excludedPaths": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Excludedpaths",
+        "type": "array"
+      },
+      "files": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Files",
+        "type": "array"
+      },
+      "snapshotId": {
+        "pattern": "^[0-9a-f]{64}$",
+        "title": "Snapshotid",
+        "type": "string"
+      },
+      "suggestedBody": {
+        "maxLength": 12000,
+        "title": "Suggestedbody",
+        "type": "string"
+      },
+      "suggestedMessage": {
+        "title": "Suggestedmessage",
+        "type": "string"
+      },
+      "suggestedTitle": {
+        "title": "Suggestedtitle",
+        "type": "string"
+      }
+    },
+    "required": [
+      "snapshotId",
+      "files",
+      "excludedPaths",
+      "suggestedMessage",
+      "suggestedTitle",
+      "suggestedBody",
+      "delivery"
+    ],
+    "title": "DeliveryReview",
     "type": "object"
   },
   "DependencyCriticalChain": {
@@ -5528,6 +5835,23 @@ export const componentSchemas = {
     "title": "PptxLocator",
     "type": "object"
   },
+  "PrepareRemoteRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "baseBranch": {
+        "maxLength": 1024,
+        "minLength": 1,
+        "pattern": "^[^\\x00-\\x20\\x7f\\\\~^:?*\\[]+$",
+        "title": "Basebranch",
+        "type": "string"
+      }
+    },
+    "required": [
+      "baseBranch"
+    ],
+    "title": "PrepareRemoteRequest",
+    "type": "object"
+  },
   "PrincipalType": {
     "enum": [
       "org",
@@ -6712,6 +7036,63 @@ export const componentSchemas = {
     "title": "ProposedTask",
     "type": "object"
   },
+  "PullRequestInput": {
+    "additionalProperties": false,
+    "properties": {
+      "allowCreate": {
+        "const": true,
+        "title": "Allowcreate",
+        "type": "boolean"
+      },
+      "body": {
+        "maxLength": 12000,
+        "minLength": 1,
+        "title": "Body",
+        "type": "string"
+      },
+      "draft": {
+        "default": true,
+        "title": "Draft",
+        "type": "boolean"
+      },
+      "target": {
+        "$ref": "#/components/schemas/RemoteTarget"
+      },
+      "title": {
+        "maxLength": 200,
+        "minLength": 1,
+        "title": "Title",
+        "type": "string"
+      }
+    },
+    "required": [
+      "target",
+      "title",
+      "body",
+      "allowCreate"
+    ],
+    "title": "PullRequestInput",
+    "type": "object"
+  },
+  "PushRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "allowPush": {
+        "const": true,
+        "title": "Allowpush",
+        "type": "boolean"
+      },
+      "target": {
+        "$ref": "#/components/schemas/RemoteTarget"
+      }
+    },
+    "required": [
+      "target",
+      "allowPush"
+    ],
+    "title": "PushRequest",
+    "type": "object"
+  },
   "ReadyResponse": {
     "properties": {
       "status": {
@@ -6783,6 +7164,69 @@ export const componentSchemas = {
       "password"
     ],
     "title": "RegistrationRequest",
+    "type": "object"
+  },
+  "RemoteTarget": {
+    "additionalProperties": false,
+    "properties": {
+      "accountId": {
+        "exclusiveMinimum": 0,
+        "title": "Accountid",
+        "type": "integer"
+      },
+      "accountLogin": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}$",
+        "title": "Accountlogin",
+        "type": "string"
+      },
+      "baseBranch": {
+        "maxLength": 1024,
+        "minLength": 1,
+        "pattern": "^[^\\x00-\\x20\\x7f\\\\~^:?*\\[]+$",
+        "title": "Basebranch",
+        "type": "string"
+      },
+      "baseSha": {
+        "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$",
+        "title": "Basesha",
+        "type": "string"
+      },
+      "fullName": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9_.-]{1,100}$",
+        "title": "Fullname",
+        "type": "string"
+      },
+      "headBranch": {
+        "title": "Headbranch",
+        "type": "string"
+      },
+      "headSha": {
+        "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$",
+        "title": "Headsha",
+        "type": "string"
+      },
+      "private": {
+        "title": "Private",
+        "type": "boolean"
+      },
+      "repositoryId": {
+        "exclusiveMinimum": 0,
+        "title": "Repositoryid",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "repositoryId",
+      "fullName",
+      "private",
+      "accountId",
+      "accountLogin",
+      "baseBranch",
+      "baseSha",
+      "headBranch",
+      "headSha"
+    ],
+    "title": "RemoteTarget",
     "type": "object"
   },
   "RemoveDependencyAction": {

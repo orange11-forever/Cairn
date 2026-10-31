@@ -43,6 +43,7 @@ from cairn_api.projects.router import router as projects_router
 from cairn_api.projects.schedule_router import router as project_schedule_router
 from cairn_api.settings import Settings
 from cairn_api.workspace.coding_router import router as coding_router
+from cairn_api.workspace.delivery_router import router as delivery_router
 from cairn_api.workspace.local import DesktopWorkspace
 from cairn_api.workspace.router import router as workspace_router
 
@@ -357,6 +358,7 @@ def create_app(
     application.include_router(oauth_router)
     application.include_router(workspace_router)
     application.include_router(coding_router)
+    application.include_router(delivery_router)
     application.include_router(registration_router)
     application.include_router(organizations_router)
     application.include_router(authorization_router)

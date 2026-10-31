@@ -114,3 +114,24 @@ export async function decideCodingCommand(projectId: string, runId: string, body
 export async function cancelCodingRun(projectId: string, runId: string, csrfToken: string, signal: AbortSignal) {
   return parse('CodingRun', await perform(signal, signal => client().POST('/api/v1/desktop/projects/{project_id}/coding-runs/{run_id}/cancel', { params: { path: { project_id: projectId, run_id: runId }, header: { 'X-CSRF-Token': csrfToken } }, signal })));
 }
+
+export type DeliveryReview = components['schemas']['DeliveryReview'];
+export type RemoteTarget = components['schemas']['RemoteTarget'];
+export async function fetchDeliveryReview(projectId: string, runId: string, signal: AbortSignal) {
+  return parse('DeliveryReview', await perform(signal, signal => client().GET('/api/v1/desktop/projects/{project_id}/coding-runs/{run_id}/delivery', { params: { path: { project_id: projectId, run_id: runId } }, signal })));
+}
+export async function commitCodingRun(projectId: string, runId: string, body: components['schemas']['CommitRequest'], csrfToken: string, signal: AbortSignal) {
+  return parse('CodingRun', await perform(signal, signal => client().POST('/api/v1/desktop/projects/{project_id}/coding-runs/{run_id}/delivery/commit', { params: { path: { project_id: projectId, run_id: runId }, header: { 'X-CSRF-Token': csrfToken } }, body, signal }), 180_000));
+}
+export async function prepareCodingTarget(projectId: string, runId: string, baseBranch: string, csrfToken: string, signal: AbortSignal) {
+  return parse('RemoteTarget', await perform(signal, signal => client().POST('/api/v1/desktop/projects/{project_id}/coding-runs/{run_id}/delivery/target', { params: { path: { project_id: projectId, run_id: runId }, header: { 'X-CSRF-Token': csrfToken } }, body: { baseBranch }, signal }), 90_000));
+}
+export async function pushCodingRun(projectId: string, runId: string, target: RemoteTarget, csrfToken: string, signal: AbortSignal) {
+  return parse('CodingRun', await perform(signal, signal => client().POST('/api/v1/desktop/projects/{project_id}/coding-runs/{run_id}/delivery/push', { params: { path: { project_id: projectId, run_id: runId }, header: { 'X-CSRF-Token': csrfToken } }, body: { target, allowPush: true }, signal }), 240_000));
+}
+export async function createCodingPullRequest(projectId: string, runId: string, body: components['schemas']['PullRequestInput'], csrfToken: string, signal: AbortSignal) {
+  return parse('CodingRun', await perform(signal, signal => client().POST('/api/v1/desktop/projects/{project_id}/coding-runs/{run_id}/delivery/pull-request', { params: { path: { project_id: projectId, run_id: runId }, header: { 'X-CSRF-Token': csrfToken } }, body, signal }), 120_000));
+}
+export async function reconcileCodingDelivery(projectId: string, runId: string, csrfToken: string, signal: AbortSignal) {
+  return parse('CodingRun', await perform(signal, signal => client().POST('/api/v1/desktop/projects/{project_id}/coding-runs/{run_id}/delivery/reconcile', { params: { path: { project_id: projectId, run_id: runId }, header: { 'X-CSRF-Token': csrfToken } }, signal }), 90_000));
+}

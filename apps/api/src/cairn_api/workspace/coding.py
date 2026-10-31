@@ -52,6 +52,7 @@ from cairn_api.workspace.coding_worktree import (
     require_plain_git,
     worktree_path,
 )
+from cairn_api.workspace.delivery_schemas import CodingDeliveryState
 from cairn_api.workspace.editor import FileDocument, RepositoryEditor, SaveFileRequest
 from cairn_api.workspace.local import DesktopWorkspace
 
@@ -98,6 +99,7 @@ class CodingRunner:
         self.directory = workspace.data / 'coding-runs'
         self.runs: dict[UUID, CodingRun] = {}
         self.executions: dict[UUID, Execution] = {}
+        self.delivering: set[UUID] = set()
         self.concurrency = 2
         self.closed = False
         try:
@@ -109,6 +111,15 @@ class CodingRunner:
                 if path.stem != str(run.id):
                     raise ValueError('Run identity mismatch')
                 self.runs[run.id] = run
+                if run.delivery and run.delivery.phase in {'committing', 'pushing', 'creating_pr'}:
+                    if run.delivery.phase == 'committing':
+                        run.delivery.phase = 'commit_unknown'
+                    elif run.delivery.phase == 'pushing':
+                        run.delivery.phase = 'push_unknown'
+                    else:
+                        run.delivery.phase = 'pr_unknown'
+                    run.delivery.error = '上次操作未结束，请先核对结果；不会自动重试提交、推送或创建 PR。'
+                    self._save(run)
                 if run.status in ACTIVE:
                     run.status = 'interrupted'
                     run.pending_command = None
@@ -147,10 +158,20 @@ class CodingRunner:
             self._save(run)
 
     def require_idle(self, user: UUID, project: UUID) -> None:
-        if any(item.run.user_id == user and item.run.project_id == project for item in self.executions.values()):
+        if (any(item.run.user_id == user and item.run.project_id == project for item in self.executions.values())
+                or any(self.runs[item].user_id == user and self.runs[item].project_id == project for item in self.delivering)):
             raise problem('coding_run_active', '此项目有运行或排队的 Agent，请先停止或等待完成后更换仓库。')
         if self.closed:
             raise problem('coding_runtime_stopped', '编程执行服务正在关闭')
+
+    def save_delivery(self, run_id: UUID, delivery: CodingDeliveryState) -> CodingRun:
+        with self.workspace.lock:
+            run = self.runs[run_id].model_copy(deep=True)
+            run.delivery = delivery.model_copy(deep=True)
+            run.updated_at = datetime.now(UTC)
+            self._save(run)
+            self.runs[run_id] = run
+            return self._view(run)
 
     def _view(self, run: CodingRun) -> CodingRun:
         result = run.model_copy(deep=True)

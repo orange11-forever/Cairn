@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import Field, field_validator
 
 from cairn_api.knowledge.answer_models import AnswerModelOption
+from cairn_api.workspace.delivery_schemas import CodingDeliveryState, DeliveryPhase
 from cairn_api.workspace.schemas import WorkspaceModel
 
 
@@ -143,6 +144,7 @@ class CodingRun(WorkspaceModel):
     assistant_revision: int = 0
     depends_on: UUID | None = None
     overlaps: list[CodingOverlap] = Field(default_factory=list[CodingOverlap])
+    delivery: CodingDeliveryState | None = None
 
 
 class CodingConcurrency(WorkspaceModel):
@@ -161,6 +163,8 @@ class CodingRunSummary(WorkspaceModel):
     progress: str
     changed_files: int
     depends_on: UUID | None
+    delivery_phase: DeliveryPhase | None = None
+    pr_url: str | None = None
 
 
 class CodingOverview(WorkspaceModel):

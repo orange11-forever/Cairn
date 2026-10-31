@@ -140,6 +140,18 @@
 .coding-overlaps { margin: 16px 0; padding: 12px; background: var(--color-surface-subtle); border: 1px solid var(--color-border); }
 .coding-overlaps p { margin: 7px 0; }
 .coding-overlaps button { width: 100%; text-align: left; justify-content: flex-start; overflow-wrap: anywhere; }
+.coding-delivery { margin: 20px 0; border-top: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); }
+.coding-delivery > summary { display: flex; align-items: center; gap: 7px; padding: 12px 0; cursor: pointer; font-weight: 600; }
+.coding-delivery > summary > span { margin-left: auto; font-size: 11px; font-weight: 400; color: var(--color-muted); }
+.coding-delivery-body { padding-bottom: 14px; overflow-wrap: anywhere; }
+.coding-delivery-body > p { margin: 0 0 12px; }
+.coding-delivery form, .coding-remote, .coding-target { display: grid; gap: 10px; margin-top: 14px; }
+.coding-delivery label:not(.coding-consent) { display: grid; gap: 5px; }
+.coding-delivery input:not([type=checkbox]) { width: 100%; min-width: 0; padding: 8px 9px; border: 1px solid var(--color-border); border-radius: 4px; background: var(--color-surface); color: var(--color-ink); font: inherit; }
+.coding-delivery textarea { min-height: 70px; }
+.coding-author { display: grid; gap: 9px; }
+.coding-target { padding: 12px 0; border-top: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); }
+.coding-delivery .coding-pr-link { display: inline-flex; align-items: center; gap: 6px; color: var(--color-accent); text-underline-offset: 3px; }
 .coding-footer { display: grid; gap: 6px; border-top: 1px solid var(--color-border); margin-top: 24px; padding-top: 12px; color: var(--color-muted); font-size: 11px; }
 .coding-panel :is(.coding-steps, .coding-output, textarea) { scrollbar-color: var(--color-border) var(--color-surface-subtle); scrollbar-width: thin; }
 @media (max-width: 1180px) { .code-editor-with-agent { grid-template-columns: minmax(0, 1fr); } .coding-panel { order: -1; max-height: none; overflow: visible; border-left: 0; border-bottom: 1px solid var(--color-border); } .coding-task, .coding-run, .coding-agent { max-width: 800px; } }

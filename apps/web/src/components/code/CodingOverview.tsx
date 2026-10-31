@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { fetchCodingOverview, setCodingConcurrency } from '../../api/workspace.ts';
 import { useSession } from '../../session/SessionContext.tsx';
 import { running, statuses } from './CodingPanel.tsx';
+import { deliveryLabels } from './CodingDeliveryPanel.tsx';
 import '../../../styles/coding-overview.css';
 
 export function CodingOverview() {
@@ -47,6 +48,7 @@ function Overview() {
         <div className="coding-overview-title"><strong>{run.projectName} · {run.assistantName}</strong><span>{statuses[run.status]}</span></div>
         <p className="coding-overview-task">{run.task}</p>
         <p className="coding-overview-progress">{run.progress}</p>
+        {run.deliveryPhase && <p className="coding-overview-progress">{deliveryLabels[run.deliveryPhase]}{run.prUrl && <> · <a href={run.prUrl} target="_blank" rel="noopener noreferrer">打开 PR</a></>}</p>}
         <div className="coding-overview-meta"><span>{run.modelName} · {run.changedFiles} 个文件{run.dependsOn ? ' · 有前置任务' : ''}</span><Link to={`/projects/${run.projectId}/code?run=${run.id}`} onClick={() => { if (details.current) details.current.open = false; }}>查看运行与差异<ExternalLink size={12} aria-hidden="true" /></Link></div>
       </li>)}</ul>}
     </section>

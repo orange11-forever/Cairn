@@ -45,9 +45,10 @@ def create_worktree(workspace: DesktopWorkspace, run: CodingRun) -> None:
 
 
 class WorktreeEditor(RepositoryEditor):
-    def __init__(self, workspace: DesktopWorkspace, run: CodingRun):
+    def __init__(self, workspace: DesktopWorkspace, run: CodingRun, *, expected_head: str | None = None):
         super().__init__(workspace, run.user_id, run.project_id)
         self.run = run
+        self.expected_head = expected_head or run.base_head
 
     def context(self, expected: str | None = None) -> tuple[Path, str | None, str | None, str]:
         run = self.run
@@ -57,6 +58,6 @@ class WorktreeEditor(RepositoryEditor):
         root, branch = self.workspace.inspect(run.local_path)
         head = self.workspace.head(root)
         identity = hashlib.sha256((str(run.id) + str(root) + str(branch) + str(head)).encode()).hexdigest()
-        if branch != run.branch or head != run.base_head or (expected is not None and expected != identity):
+        if branch != run.branch or head != self.expected_head or (expected is not None and expected != identity):
             raise problem('workspace_changed', 'Agent 工作区的分支或 HEAD 已变化；运行停止，改动已保留。')
         return root, branch, head, identity

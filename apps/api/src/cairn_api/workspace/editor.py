@@ -112,7 +112,7 @@ def _text(raw: bytes) -> str:
         ) from None
 
 
-def _raw(root: Path, relative: str) -> tuple[bytes, os.stat_result]:
+def read_file_bytes(root: Path, relative: str) -> tuple[bytes, os.stat_result]:
     path = _target(root, relative)
     try:
         descriptor = os.open(
@@ -244,7 +244,7 @@ class RepositoryEditor:
     def read(self, path: str) -> FileDocument:
         with self.workspace.lock:
             root, _, _, identity = self.context()
-            raw, _ = _raw(root, path)
+            raw, _ = read_file_bytes(root, path)
             return FileDocument(
                 workspace_id=identity, path=path, content=_text(raw), revision=_revision(raw)
             )
@@ -257,7 +257,7 @@ class RepositoryEditor:
             mode = 0o644
             if payload.revision is not None:
                 try:
-                    previous, metadata = _raw(root, payload.path)
+                    previous, metadata = read_file_bytes(root, payload.path)
                 except ApiProblem as error:
                     if error.code != "workspace_file_missing":
                         raise
@@ -312,7 +312,7 @@ class RepositoryEditor:
                                 "workspace_path_invalid", "保存目录已离开关联仓库", 422
                             )
                         if previous is not None:
-                            current, _ = _raw(root, payload.path)
+                            current, _ = read_file_bytes(root, payload.path)
                             if current != previous:
                                 raise github_problem(
                                     "workspace_file_conflict",
@@ -401,7 +401,7 @@ class RepositoryEditor:
                         )
                     )
             try:
-                raw, _ = _raw(root, path)
+                raw, _ = read_file_bytes(root, path)
                 modified, revision = _text(raw), _revision(raw)
             except ApiProblem as error:
                 if error.code != "workspace_file_missing":

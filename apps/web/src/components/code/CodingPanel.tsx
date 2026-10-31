@@ -5,6 +5,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { fetchAssistants, fetchSkillCatalog, selectAssistant, type AssistantSettings } from '../../api/assistantSkills.ts';
 import { cancelCodingRun, decideCodingCommand, fetchCodingRun, fetchCodingRuns, startCodingRun, type CodingChange, type CodingRun } from '../../api/workspace.ts';
 import { useSession } from '../../session/SessionContext.tsx';
+import { CodingDeliveryPanel } from './CodingDeliveryPanel.tsx';
 
 export const running = (run: Pick<CodingRun, 'status'>) => ['queued', 'running', 'awaiting_approval', 'cancelling'].includes(run.status);
 export const statuses: Record<CodingRun['status'], string> = { queued: '排队中', blocked: '前置任务未成功', running: '正在执行', awaiting_approval: '等待命令确认', cancelling: '正在停止', cancelled: '已停止', succeeded: '已完成 · 已确认检查退出码 0', failed: '执行失败', interrupted: '运行已中断' };
@@ -117,6 +118,7 @@ export function CodingPanel({ projectId, workspaceId, localPath, assistant, mode
       </div>}
       {run.summary && <p className={`coding-summary${run.status === 'failed' ? ' code-notice-error' : ''}`}>{run.summary}{run.errorCode && <small>错误代码：{run.errorCode}</small>}</p>}
       {run.changes.length > 0 && <div className="coding-changes"><h3>本次运行的源码改动</h3>{run.changes.map(change => <button key={change.path} type="button" onClick={() => onCompare({ ...change, label: `${run.assistantName} · ${change.origin === 'command' ? '命令期间的变化' : '文件工具写入前后'}` })}><FileDiff size={14} aria-hidden="true" />{change.path}<span>查看差异</span></button>)}</div>}
+      {run.status === 'succeeded' && run.branch && <CodingDeliveryPanel key={run.id} run={run} onUpdated={updated => client.setQueryData(key, (previous: { items: CodingRun[] } | undefined) => ({ items: [updated, ...(previous?.items ?? []).filter(item => item.id !== updated.id)] }))} />}
       <div className="coding-output-tabs" aria-label="运行记录视图"><button type="button" aria-pressed={view === 'steps'} onClick={() => setView('steps')}>执行步骤</button><button type="button" aria-pressed={view === 'output'} onClick={() => setView('output')}><Terminal size={13} aria-hidden="true" />命令输出</button></div>
       {view === 'steps' ? <ol className="coding-steps">{run.events.filter(event => event.kind !== 'output').map(event => <li key={event.id}><time>{new Date(event.at).toLocaleTimeString('zh-CN')}</time><span>{event.message}{event.path && <code>{event.path}</code>}</span></li>)}</ol> : <pre className="coding-output" tabIndex={0} aria-label="命令输出">{run.events.filter(event => event.kind === 'output' || event.kind === 'command_result').map(event => event.message).join('') || '尚无命令输出。批准命令后，实际输出会显示在这里。'}</pre>}
     </section> : !selectedId && !runs.isPending && <p className="coding-empty">从一个小任务开始。Agent 的每一步、文件修改和测试结果都会留在这里。</p>}

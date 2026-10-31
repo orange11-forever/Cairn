@@ -182,6 +182,7 @@ class DesktopWorkspace:
                 "GIT_TERMINAL_PROMPT": "0",
                 "GCM_INTERACTIVE": "Never",
                 "GIT_LFS_SKIP_SMUDGE": "1",
+                "GIT_NO_REPLACE_OBJECTS": "1",
             }
         )
         if token:
@@ -202,6 +203,8 @@ class DesktopWorkspace:
         token: str | None = None,
         timeout: int = 15,
         allow_one: bool = False,
+        index: Path | None = None,
+        input_data: bytes | None = None,
     ) -> str | None:
         if not self.git.is_file():
             raise github_problem(
@@ -229,21 +232,21 @@ class DesktopWorkspace:
         ]
         if os.name == "nt":
             command[1:1] = ["-c", "http.sslBackend=schannel"]
+        environment = self._environment(token)
+        if index is not None:
+            environment['GIT_INDEX_FILE'] = str(index)
         try:
             process = subprocess.Popen(
                 command,
-                stdin=subprocess.DEVNULL,
+                stdin=subprocess.PIPE if input_data is not None else subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                env=self._environment(token),
-                text=True,
-                encoding="utf-8",
-                errors="replace",
+                env=environment,
                 start_new_session=os.name != "nt",
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
             )
             try:
-                output, _ = process.communicate(timeout=timeout)
+                output, _ = process.communicate(input=input_data, timeout=timeout)
             except subprocess.TimeoutExpired:
                 if os.name == "nt":
                     subprocess.run(
@@ -271,7 +274,7 @@ class DesktopWorkspace:
                 f"Git 操作失败（退出码 {process.returncode}），请检查仓库目录、网络和访问权限",
                 409,
             )
-        return output.strip()
+        return output.decode('utf-8', errors='replace').strip()
 
     def _path(self, value: str) -> Path:
         path = Path(value).expanduser()

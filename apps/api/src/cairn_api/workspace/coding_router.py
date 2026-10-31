@@ -52,6 +52,8 @@ def overview(identity: CurrentIdentity, session: Db, workspace: Workspace) -> Co
             status=run.status, updated_at=run.updated_at,
             progress=run.summary or (run.events[-1].message[-300:] if run.events else ''),
             changed_files=len(run.changes), depends_on=run.depends_on,
+            delivery_phase=run.delivery.phase if run.delivery else None,
+            pr_url=run.delivery.pr_url if run.delivery else None,
         ) for run in service.runs.values() if run.user_id == identity.user.id]
         limit = service.concurrency
     names: dict[UUID, str] = {}

@@ -2,6 +2,7 @@
 
 import ssl
 from typing import Literal, cast
+from urllib.parse import quote, urlencode
 
 import httpx
 from pydantic import BaseModel, Field, SecretStr, ValidationError
@@ -63,13 +64,48 @@ class RemoteRepository(BaseModel):
         )
 
 
+class RemoteCommit(BaseModel):
+    sha: str = Field(pattern=r'^[0-9a-f]{40}$')
+
+
+class RemoteBranch(BaseModel):
+    name: str
+    commit: RemoteCommit
+
+
+class RemoteComparison(BaseModel):
+    status: Literal['ahead', 'behind', 'identical', 'diverged']
+    merge_base_commit: RemoteCommit
+
+
+class PullRepository(BaseModel):
+    id: int = Field(gt=0, strict=True)
+
+
+class PullRef(BaseModel):
+    ref: str
+    sha: str | None = Field(default=None, pattern=r'^[0-9a-f]{40}$')
+    repo: PullRepository
+
+
+class RemotePullRequest(BaseModel):
+    number: int = Field(gt=0, strict=True)
+    html_url: str
+    state: Literal['open', 'closed']
+    draft: bool
+    head: PullRef
+    base: PullRef
+
+
 class GitHubClient:
     def __init__(self, client_id: str, *, transport: httpx.BaseTransport | None = None):
         self.client_id = client_id
         self._transport = transport
 
     def _request(
-        self, method: str, url: str, *, token: str | None = None, data: dict[str, str] | None = None
+        self, method: str, url: str, *, token: str | None = None, data: dict[str, str] | None = None,
+        json_body: dict[str, str | bool] | None = None, expected_status: int = 200,
+        allow_missing: bool = False,
     ) -> object:
         headers = {"Accept": "application/json", "User-Agent": "Cairn-desktop"}
         if token:
@@ -84,7 +120,7 @@ class GitHubClient:
                 follow_redirects=False,
                 verify=ssl.create_default_context(),
             ) as client:
-                response = client.request(method, url, headers=headers, data=data)
+                response = client.request(method, url, headers=headers, data=data, json=json_body)
             if response.status_code == 401:
                 raise github_problem(
                     "github_credentials_invalid", "GitHub 授权已失效或被撤回，请重新授权", 401
@@ -100,12 +136,16 @@ class GitHubClient:
                     "github_permission_denied", "GitHub 拒绝访问，请检查仓库权限或组织授权", 403
                 )
             if response.status_code == 404:
+                if allow_missing:
+                    return None
                 raise github_problem(
                     "github_repository_unavailable", "仓库不存在或当前授权无权访问", 404
                 )
             if response.status_code >= 500:
                 raise github_problem("github_unavailable", "GitHub 服务暂时不可用，请稍后再试")
-            if response.status_code != 200 or len(response.content) > 4_000_000:
+            if response.status_code == 422:
+                raise github_problem('github_request_rejected', 'GitHub 拒绝此操作，请核对分支、权限及是否已有 PR', 422)
+            if response.status_code != expected_status or len(response.content) > 4_000_000:
                 raise ValueError("unexpected response")
             return response.json()
         except httpx.RequestError:
@@ -207,3 +247,49 @@ class GitHubClient:
             return remote
         except (ValidationError, ValueError):
             raise github_problem("github_invalid_response", "GitHub 仓库响应无效") from None
+
+    def branch(self, token: str, full_name: str, branch: str) -> str | None:
+        data = self._request('GET', f'https://api.github.com/repos/{full_name}/branches/{quote(branch, safe="")}', token=token, allow_missing=True)
+        if data is None:
+            return None
+        try:
+            value = RemoteBranch.model_validate(data)
+            if value.name != branch:
+                raise ValueError('branch identity mismatch')
+            return value.commit.sha
+        except ValueError:
+            raise github_problem('github_invalid_response', 'GitHub 分支响应与目标不一致') from None
+
+    def contains_base(self, token: str, full_name: str, ancestor: str, base_sha: str) -> bool:
+        try:
+            data = self._request('GET', f'https://api.github.com/repos/{full_name}/compare/{ancestor}...{base_sha}', token=token, allow_missing=True)
+            if data is None:
+                return False
+            value = RemoteComparison.model_validate(data)
+            return value.status in {'ahead', 'identical'} and value.merge_base_commit.sha == ancestor
+        except ValueError:
+            raise github_problem('github_invalid_response', 'GitHub 提交关系响应无效') from None
+
+    def _pull(self, data: object, full_name: str, repository_id: int, head: str, base: str, sha: str) -> RemotePullRequest:
+        try:
+            value = RemotePullRequest.model_validate(data)
+            if (value.head.repo.id != repository_id or value.base.repo.id != repository_id
+                    or value.head.ref != head or value.base.ref != base or value.head.sha != sha
+                    or value.html_url != f'https://github.com/{full_name}/pull/{value.number}'):
+                raise ValueError('pull identity mismatch')
+            return value
+        except ValueError:
+            raise github_problem('github_invalid_response', 'GitHub PR 响应与本次仓库、分支或提交不一致') from None
+
+    def find_pull(self, token: str, full_name: str, repository_id: int, head: str, base: str, sha: str) -> RemotePullRequest | None:
+        query = urlencode({'state': 'all', 'head': full_name.split('/')[0] + ':' + head, 'base': base, 'per_page': 100})
+        data = self._request('GET', f'https://api.github.com/repos/{full_name}/pulls?{query}', token=token)
+        if not isinstance(data, list) or len(cast(list[object], data)) > 1:
+            raise github_problem('coding_pr_ambiguous', '远端 PR 结果不唯一或无效，请在 GitHub 核对；未创建新 PR', 409)
+        return self._pull(cast(list[object], data)[0], full_name, repository_id, head, base, sha) if data else None
+
+    def create_pull(self, token: str, full_name: str, repository_id: int, head: str, base: str, sha: str,
+                    title: str, body: str, draft: bool) -> RemotePullRequest:
+        data = self._request('POST', f'https://api.github.com/repos/{full_name}/pulls', token=token,
+            json_body={'head': head, 'base': base, 'title': title, 'body': body, 'draft': draft}, expected_status=201)
+        return self._pull(data, full_name, repository_id, head, base, sha)
