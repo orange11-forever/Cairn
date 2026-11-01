@@ -22,7 +22,7 @@
 
 登录后的「账户 → 设置 → 数据管理」提供备份、恢复到新目录及打开数据目录。登录和注册页面不显示 API 配置或数据管理；启动失败时提供错误说明与「重试启动」。备份先停服，生成带 SHA-256 清单的 `.cairn` 文件，再重新启动。恢复会校验内容并创建新目录，保留现有数据；默认启动方式会记住恢复位置，自定义启动仍以 `--data` 为准。已有备份文件和已有恢复目录均不会被覆盖。
 
-备份是 Windows PostgreSQL 18 冷备份，包含账号、项目、文件及应用内部密钥，不包含AI模型凭据（`model-settings.dpapi`）、浏览器缓存、日志或程序文件。恢复后服务地址、模型名和API Key均需重新填写；已有索引仍须使用相同地址/模型。已有项目、索引与资料保留。仅导入自己信任的备份并妥善保管。异常退出后须先启动再正常关闭，才能备份。跨平台恢复与数据库大版本升级尚未支持。
+备份是 Windows PostgreSQL 18 冷备份，包含账号、项目、资料及应用内部密钥，不包含AI模型凭据（`model-settings.dpapi`）、GitHub仓库凭据及本机目录关联（`workspace-settings.dpapi`）、代码仓库、浏览器缓存、日志或程序文件。恢复后需重新填写模型配置、授权GitHub并关联本地目录；已有索引仍须使用相同地址/模型。已有项目、索引与资料保留。仅导入自己信任的备份并妥善保管。异常退出后须先启动再正常关闭，才能备份。跨平台恢复与数据库大版本升级尚未支持。
 
 ## AI 模型设置
 
@@ -44,7 +44,9 @@ API Key输入框以密码方式显示，打开对话框不会读回或显示旧K
 
 ## 当前限制
 
-桌面版通过「AI / API 配置」填写回答与知识索引服务。GitHub/飞书身份登录尚未接通，登录页会明确说明并使用本机邮箱密码账号；这与 GitHub Skills 导入和飞书文档来源是独立能力。飞书文档同步的桌面服务凭据入口也尚未交付。未配置回答模型时，问答/分析/规划/助手操作生成不可用；项目、任务及历史读取继续可用。未配置索引时，索引任务暂停领取并保留queued，后台文件解包继续工作；已有资料可按关键词检索，响应明确标记keyword_fallback。旧failed上传仍沿现有手动重试入口恢复，不自动改为ready。本地软件与受控服务验收不代表真实云端或本地模型已连通。样机不读取仓库 `.env` 或继承进程中的服务凭据，包括恢复的来源任务也不读取服务器飞书密钥。
+项目已增加独立的「代码与架构」工作台，提供仓库连接、受限源码预览和当前 Agent 的静态架构解析，详见[使用说明](ARCHITECTURE.md)。这是只读分析能力；代码编辑器、终端与多 Agent 编程执行仍是后续阶段。
+
+桌面版通过「AI / API 配置」填写回答与知识索引服务。GitHub 设备登录与独立仓库授权已实现，需要发布方在构建时配置专用 OAuth App Client ID，真实账号流程仍待验收；详见[GitHub配置与仓库关联](GITHUB.md)。飞书身份登录及文档同步的桌面凭据入口尚未交付；这与 GitHub Skills 导入是独立能力。未配置回答模型时，问答/分析/规划/助手操作生成不可用；项目、任务及历史读取继续可用。未配置索引时，索引任务暂停领取并保留queued，后台文件解包继续工作；已有资料可按关键词检索，响应明确标记keyword_fallback。旧failed上传仍沿现有手动重试入口恢复，不自动改为ready。本地软件与受控服务验收不代表真实云端或本地模型已连通。样机不读取仓库 `.env` 或继承进程中的服务凭据，包括恢复的来源任务也不读取服务器飞书密钥。
 
 新账号可在空工作区点击“创建第一个项目”；已有项目时可从项目任务页标题旁点击“创建项目”。owner/admin/member可创建，viewer没有入口；打开表单保留原任务区，取消不丢任务输入。成功后逐页读取直到找到新项目ID再进入；响应未知时完整读取列表供人工核对，保持该次提交锁定，明确关闭后才返回列表。节点图支持阶段分组、进展与依赖提示，编辑复用现有任务详情。完整 V1 仍须完成下列交付项。
 
@@ -57,7 +59,8 @@ API Key输入框以密码方式显示，打开对话框不会读回或显示旧K
 | Python 3.13、Python 包及扩展 | 随包提供，不使用用户安装的 Python |
 | PostgreSQL 18、pgvector | 随包提供独立实例，不需要另装数据库 |
 | .NET Framework 4.8+、WebView2、Visual C++ v14 x64 | 检测后下载缺失项，校验微软签名后安装 |
-| Docker、Node.js、Git、SMTP | 正常使用桌面版不需要安装或配置 |
+| Git for Windows MinGit 2.56.0.windows.4 | 随包提供，支持本地关联和GitHub克隆 |
+| Docker、Node.js、SMTP | 正常使用桌面版不需要安装或配置 |
 | AI 回答与 1024 维 Embedding 服务 | 用户填写服务地址、模型与 Key，不随包提供模型 |
 
 随 PostgreSQL 二进制带入的可选 Perl/Tcl 扩展不在 Cairn 的运行路径中，不要求用户安装这些语言。打包前检查 WebView2 DLL、Python 运行文件、数据库工具和 pgvector 扩展是否完整；安装后的隔离启动验证需覆盖实际加载的 Python 扩展和数据库扩展。
@@ -75,12 +78,13 @@ API Key输入框以密码方式显示，打开对话框不会读回或显示旧K
 | `python-3.13.17-embed-amd64.zip` | [Python](https://www.python.org/ftp/python/3.13.17/python-3.13.17-embed-amd64.zip) | `9e35319bffedab8b36ad44d8f377cb4f1733bcec257a0b6d04d94f01486ddb38` |
 | `pgvector-0.8.7.zip` | [pgvector](https://github.com/pgvector/pgvector/archive/refs/tags/v0.8.7.zip) | `7b3b8188a5cc0aa96db3c8f3fca1e78a8a612c46545065490c76448705c6b29e` |
 | `webview2-1.0.4258.31.zip` | [Microsoft WebView2](https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/1.0.4258.31/microsoft.web.webview2.1.0.4258.31.nupkg) | `56f7f4b8bf9aee4b8efefbbdd4f67d5f74ebd1b100ed0806da71bf76af481aa9` |
+| `MinGit-2.56.0.4-64-bit.zip` | [Git for Windows](https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/MinGit-2.56.0.4-64-bit.zip) | `e3bf78351fe777fba47ddee5950082f8a98bb0f02604fdc7ba3ee2cb68ffa877` |
 
 ```bash
 mkdir -p .superpowers/desktop-build
 uv export --frozen --package cairn-api --package cairn-worker --no-dev --no-emit-workspace --format requirements-txt --output-file .superpowers/desktop-build/requirements.txt
 uv pip install --python-platform x86_64-pc-windows-msvc --python-version 3.13 --only-binary :all: --target .superpowers/desktop-build/python-libs --require-hashes -r .superpowers/desktop-build/requirements.txt
-python3 apps/desktop/tools/build_windows.py --output /mnt/c/path/to/cairn-bundle
+python3 apps/desktop/tools/build_windows.py --output /mnt/c/path/to/cairn-bundle --github-client-id PUBLIC_CLIENT_ID
 ```
 
 输出目录须在 Windows 本地磁盘。已完成一次构建后，修改自身代码可加 `--code-only` 复用第三方运行文件。前端使用同源 API；不能仅拷贝 `Cairn.exe`，须保留整个目录。

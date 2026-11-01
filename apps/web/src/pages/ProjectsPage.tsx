@@ -4,6 +4,7 @@ import {
   ClipboardCheck,
   Flag,
   ListChecks,
+  Code2,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -16,7 +17,7 @@ import { ProjectOperations } from "../components/projects/ProjectOperations.tsx"
 import { ProjectSchedule } from "../components/projects/ProjectSchedule.tsx";
 import { ProjectTaskGraph } from "../components/projects/ProjectTaskGraph.tsx";
 import { ProjectCreator } from "../components/projects/ProjectCreator.tsx";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 import type { Project, Task, TaskStatus } from "../api/projects.ts";
 import { MascotFigure } from "../components/MascotFigure.tsx";
@@ -110,8 +111,9 @@ function ProjectsWorkspace({
   signal: AbortSignal;
 }) {
   const projects = useProjectsQuery(organizationId, signal);
+  const [searchParams] = useSearchParams();
   const [requestedProjectId, setRequestedProjectId] = useState<string | null>(
-    null,
+    searchParams.get("project"),
   );
   const [selectionAnnouncement, setSelectionAnnouncement] = useState("");
   const [creatingProject,setCreatingProject]=useState(false);
@@ -415,6 +417,7 @@ function TaskWorkspace({
           <p>{project.description ?? "暂无项目说明"}</p>
         </div>
         <div className="task-workspace-tools">
+          {Boolean((window as Window & { chrome?: { webview?: unknown } }).chrome?.webview) && <Link className="task-knowledge-link" to={`/projects/${project.id}/code`}><Code2 size={17} aria-hidden="true" /><span>代码与架构</span></Link>}
           <Link
             aria-label="打开知识工作区"
             className="task-knowledge-link"

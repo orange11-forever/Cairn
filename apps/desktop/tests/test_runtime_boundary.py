@@ -56,6 +56,7 @@ def test_backup_roundtrip_and_restore_never_overwrites_existing_data(tmp_path: P
     (data / "logs").mkdir()
     (data / "logs" / "private.log").write_text("excluded")
     (data / "model-settings.dpapi").write_bytes(b"encrypted-model-credentials-excluded")
+    (data / "workspace-settings.dpapi").write_bytes(b"encrypted-github-credentials-excluded")
     archive = tmp_path / "backup.cairn"
     backup_data(data, archive)
     restored = tmp_path / "restored"
@@ -65,6 +66,7 @@ def test_backup_roundtrip_and_restore_never_overwrites_existing_data(tmp_path: P
     assert (restored / "postgres" / "pg_tblspc").is_dir()
     assert not (restored / "logs").exists()
     assert not (restored / "model-settings.dpapi").exists()
+    assert not (restored / "workspace-settings.dpapi").exists()
     import pytest
 
     with pytest.raises(ValueError, match="empty|exist"):

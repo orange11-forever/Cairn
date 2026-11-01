@@ -30,6 +30,11 @@ REQUIRED = {
     "app/cairn_desktop/runtime.py",
     "web/index.html",
     "bundle.json",
+    "github-app.json",
+    "git/cmd/git.exe",
+    "git/ucrt64/bin/git.exe",
+    "git/ucrt64/bin/git-remote-https.exe",
+    "git/LICENSE.txt",
 }
 RESERVED = {"uninstall.exe", ".cairn-install.marker", ".cairn-owned.ini"}
 
@@ -63,7 +68,7 @@ def generate_payload(bundle: Path, destination: Path) -> dict:
         seen.add(name.casefold())
         if (
             name.casefold() in RESERVED
-            or relative.name.casefold() in {"model-settings.dpapi", ".env"}
+            or relative.name.casefold() in {"model-settings.dpapi", "workspace-settings.dpapi", ".env"}
             or name.casefold() in {"settings.json", "postgres/pg_version"}
         ):
             raise ValueError("Payload contains data, credentials, or reserved installer files")

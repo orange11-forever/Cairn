@@ -1,4 +1,4 @@
-import { BookOpenText, FolderKanban, Search, RefreshCw } from "lucide-react";
+import { BookOpenText, FolderKanban, Search, RefreshCw, Code2 } from "lucide-react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 
 import { navigationItems } from "../app/navigation.ts";
@@ -7,6 +7,8 @@ import { ConversationHistory } from "./knowledge/ConversationHistory.tsx";
 export function PrimaryNavigation({ currentKnowledgePath = null }: { currentKnowledgePath?: string | null }) {
   const location = useLocation();
   const pathname = location.pathname.replace(/\/+$/, "") || "/";
+  const projectId = pathname.match(/^\/projects\/([^/]+)\/(?:knowledge|code)/)?.[1];
+  const desktop = Boolean((window as Window & { chrome?: { webview?: unknown } }).chrome?.webview);
   const searchActive = new URLSearchParams(location.search).get("view") === "search" && pathname === currentKnowledgePath;
   const icons = {
     "/projects": FolderKanban,
@@ -31,6 +33,7 @@ export function PrimaryNavigation({ currentKnowledgePath = null }: { currentKnow
             </li>
           );
         })}
+        {desktop && projectId && <li><NavLink to={`/projects/${projectId}/code`} aria-label="代码与架构"><Code2 aria-hidden="true" size={20} strokeWidth={1.8} /><span className="nav-label-full">代码与架构</span><span className="nav-label-short">代码</span></NavLink></li>}
         {currentKnowledgePath === null ? null : <li>
           <Link to={knowledgeLink("chat")} aria-current={pathname === currentKnowledgePath && !searchActive ? "page" : undefined} aria-label="知识工作台">
             <BookOpenText aria-hidden="true" size={18} strokeWidth={1.8} />

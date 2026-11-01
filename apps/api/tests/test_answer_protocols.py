@@ -130,3 +130,26 @@ def test_protocol_extractors_reject_refusal_tools_safety_and_truncation(
 ) -> None:
     with pytest.raises(AnswerProtocolError):
         extract_answer_text(protocol=protocol, payload=payload)
+
+
+def test_official_deepseek_structured_answers_disable_default_thinking():
+    request = build_answer_request(
+        protocol="openai-compatible",
+        base_url="https://api.deepseek.com/v1",
+        api_key="test",
+        model="deepseek-flash",
+        system_prompt="JSON",
+        user_content="{}",
+        answer_schema={},
+    )
+    assert request.body["thinking"] == {"type": "disabled"}
+    unrelated = build_answer_request(
+        protocol="openai-compatible",
+        base_url="https://example.com/v1",
+        api_key="test",
+        model="deepseek-flash",
+        system_prompt="JSON",
+        user_content="{}",
+        answer_schema={},
+    )
+    assert "thinking" not in unrelated.body

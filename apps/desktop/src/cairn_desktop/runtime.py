@@ -234,6 +234,7 @@ def prepare_app(bundle: Path, data: Path, values: dict, origin: str, pg_port: in
     from cairn_desktop.http import DesktopAccess
     from cairn_desktop.models import load_models, public_status
     from cairn_desktop.object_store import LocalObjectStore
+    from cairn_desktop.workspace import load_workspace
 
     url = prepare_database(bundle, values, pg_port)
     models = load_models(data)
@@ -256,6 +257,7 @@ def prepare_app(bundle: Path, data: Path, values: dict, origin: str, pg_port: in
         else PausedEmbeddingClient(provider_key, embedding_model),
     )
     app.state.desktop_model_status = public_status(models)
+    app.state.desktop_workspace = load_workspace(bundle, data)
     app.include_router(store.router())
     worker_database = Database(url)
     worker = WorkerRuntime(

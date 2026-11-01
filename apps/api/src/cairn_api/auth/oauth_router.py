@@ -22,6 +22,7 @@ from cairn_api.auth.schemas import IdentityContextResponse
 from cairn_api.db.session import get_db
 from cairn_api.errors import ApiProblem, ErrorBody
 from cairn_api.settings import Settings
+from cairn_api.workspace.local import DesktopWorkspace
 
 router = APIRouter(prefix="/api/v1/auth", tags=["identity"])
 SessionDependency = Annotated[Session, Depends(get_db)]
@@ -33,6 +34,16 @@ ERRORS: dict[int | str, dict[str, Any]] = {
 
 def _providers(request: Request) -> dict[ProviderName, OAuthProvider]:
     return cast(dict[ProviderName, OAuthProvider], request.app.state.oauth_providers)
+
+
+def _enabled_clients(request: Request) -> dict[ProviderName, str]:
+    clients: dict[ProviderName, str] = {
+        name: adapter.client_id for name, adapter in _providers(request).items()
+    }
+    workspace = getattr(request.app.state, "desktop_workspace", None)
+    if isinstance(workspace, DesktopWorkspace) and workspace.client_id:
+        clients["github"] = workspace.client_id
+    return clients
 
 
 def _provider(request: Request, provider: ProviderName) -> OAuthProvider:
@@ -64,7 +75,7 @@ def _no_store(response: Response) -> None:
 
 @router.get("/oauth/providers", response_model=list[OAuthProviderResponse])
 def providers(request: Request) -> list[OAuthProviderResponse]:
-    enabled = _providers(request)
+    enabled = _enabled_clients(request)
     return [
         OAuthProviderResponse(provider=name, enabled=name in enabled)
         for name in ("github", "feishu")
@@ -197,7 +208,7 @@ def unlink(identity_id: UUID, request: Request, session: SessionDependency) -> R
     OAuthService(session, settings).unlink(
         identity_id=identity_id,
         session_token=request.cookies.get(settings.session_cookie_name),
-        enabled_clients={name: adapter.client_id for name, adapter in _providers(request).items()},
+        enabled_clients=_enabled_clients(request),
         audit=get_audit_context(request),
     )
     response = Response(status_code=204)
@@ -214,7 +225,7 @@ def finalize(
     result = OAuthService(session, settings).finalize(
         login_browser=request.cookies.get(browser_cookie_name(settings.session_cookie_name)),
         session_token=request.cookies.get(settings.session_cookie_name),
-        enabled_clients={name: adapter.client_id for name, adapter in _providers(request).items()},
+        enabled_clients=_enabled_clients(request),
         audit=get_audit_context(request),
     )
     set_session_cookie(response, settings, result.session_token)

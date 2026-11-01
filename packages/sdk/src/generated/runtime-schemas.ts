@@ -203,6 +203,263 @@ export const componentSchemas = {
     "title": "ApiVersionResponse",
     "type": "object"
   },
+  "ArchitectureAnalysis": {
+    "additionalProperties": false,
+    "properties": {
+      "assistantId": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Assistantid"
+      },
+      "assistantName": {
+        "title": "Assistantname",
+        "type": "string"
+      },
+      "assistantRevision": {
+        "title": "Assistantrevision",
+        "type": "integer"
+      },
+      "generatedAt": {
+        "format": "date-time",
+        "title": "Generatedat",
+        "type": "string"
+      },
+      "graph": {
+        "$ref": "#/components/schemas/ArchitectureGraph"
+      },
+      "model": {
+        "$ref": "#/components/schemas/AnswerModelOption"
+      },
+      "paragraphs": {
+        "items": {
+          "$ref": "#/components/schemas/KnowledgeAnswerParagraph"
+        },
+        "title": "Paragraphs",
+        "type": "array"
+      },
+      "snapshot": {
+        "$ref": "#/components/schemas/RepositorySnapshot"
+      },
+      "status": {
+        "enum": [
+          "answered",
+          "insufficient_evidence"
+        ],
+        "title": "Status",
+        "type": "string"
+      }
+    },
+    "required": [
+      "generatedAt",
+      "assistantId",
+      "assistantName",
+      "assistantRevision",
+      "model",
+      "status",
+      "paragraphs",
+      "graph",
+      "snapshot"
+    ],
+    "title": "ArchitectureAnalysis",
+    "type": "object"
+  },
+  "ArchitectureEdge": {
+    "additionalProperties": false,
+    "properties": {
+      "basis": {
+        "enum": [
+          "direct",
+          "inferred"
+        ],
+        "title": "Basis",
+        "type": "string"
+      },
+      "citationIds": {
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 6,
+        "minItems": 1,
+        "title": "Citationids",
+        "type": "array"
+      },
+      "label": {
+        "maxLength": 80,
+        "minLength": 1,
+        "title": "Label",
+        "type": "string"
+      },
+      "source": {
+        "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,39}$",
+        "title": "Source",
+        "type": "string"
+      },
+      "target": {
+        "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,39}$",
+        "title": "Target",
+        "type": "string"
+      }
+    },
+    "required": [
+      "source",
+      "target",
+      "label",
+      "basis",
+      "citationIds"
+    ],
+    "title": "ArchitectureEdge",
+    "type": "object"
+  },
+  "ArchitectureGraph": {
+    "additionalProperties": false,
+    "properties": {
+      "edges": {
+        "items": {
+          "$ref": "#/components/schemas/ArchitectureEdge"
+        },
+        "maxItems": 20,
+        "title": "Edges",
+        "type": "array"
+      },
+      "nodes": {
+        "items": {
+          "$ref": "#/components/schemas/ArchitectureNode"
+        },
+        "maxItems": 12,
+        "title": "Nodes",
+        "type": "array"
+      }
+    },
+    "required": [
+      "nodes",
+      "edges"
+    ],
+    "title": "ArchitectureGraph",
+    "type": "object"
+  },
+  "ArchitectureNode": {
+    "additionalProperties": false,
+    "properties": {
+      "citationIds": {
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 6,
+        "minItems": 1,
+        "title": "Citationids",
+        "type": "array"
+      },
+      "description": {
+        "maxLength": 400,
+        "minLength": 1,
+        "title": "Description",
+        "type": "string"
+      },
+      "id": {
+        "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,39}$",
+        "title": "Id",
+        "type": "string"
+      },
+      "label": {
+        "maxLength": 80,
+        "minLength": 1,
+        "title": "Label",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "label",
+      "description",
+      "citationIds"
+    ],
+    "title": "ArchitectureNode",
+    "type": "object"
+  },
+  "ArchitectureRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "assistantId": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Assistantid"
+      },
+      "assistantRevision": {
+        "minimum": 0,
+        "title": "Assistantrevision",
+        "type": "integer"
+      },
+      "snapshotDigest": {
+        "pattern": "^[0-9a-f]{64}$",
+        "title": "Snapshotdigest",
+        "type": "string"
+      }
+    },
+    "required": [
+      "snapshotDigest",
+      "assistantRevision"
+    ],
+    "title": "ArchitectureRequest",
+    "type": "object"
+  },
+  "ArchitectureSource": {
+    "additionalProperties": false,
+    "properties": {
+      "content": {
+        "title": "Content",
+        "type": "string"
+      },
+      "endLine": {
+        "title": "Endline",
+        "type": "integer"
+      },
+      "id": {
+        "title": "Id",
+        "type": "string"
+      },
+      "path": {
+        "title": "Path",
+        "type": "string"
+      },
+      "redacted": {
+        "title": "Redacted",
+        "type": "boolean"
+      },
+      "startLine": {
+        "default": 1,
+        "title": "Startline",
+        "type": "integer"
+      },
+      "truncated": {
+        "title": "Truncated",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "id",
+      "path",
+      "endLine",
+      "content",
+      "truncated",
+      "redacted"
+    ],
+    "title": "ArchitectureSource",
+    "type": "object"
+  },
   "AssigneePage": {
     "properties": {
       "items": {
@@ -560,6 +817,25 @@ export const componentSchemas = {
     "title": "ChangeStatusAction",
     "type": "object"
   },
+  "ChangedFile": {
+    "additionalProperties": false,
+    "properties": {
+      "path": {
+        "title": "Path",
+        "type": "string"
+      },
+      "status": {
+        "title": "Status",
+        "type": "string"
+      }
+    },
+    "required": [
+      "path",
+      "status"
+    ],
+    "title": "ChangedFile",
+    "type": "object"
+  },
   "ChunkContextResponse": {
     "properties": {
       "after": {
@@ -670,6 +946,848 @@ export const componentSchemas = {
     "title": "ChunkResponse",
     "type": "object"
   },
+  "CodingChange": {
+    "additionalProperties": false,
+    "properties": {
+      "after": {
+        "title": "After",
+        "type": "string"
+      },
+      "before": {
+        "title": "Before",
+        "type": "string"
+      },
+      "origin": {
+        "enum": [
+          "file_tool",
+          "command"
+        ],
+        "title": "Origin",
+        "type": "string"
+      },
+      "path": {
+        "title": "Path",
+        "type": "string"
+      },
+      "revision": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Revision"
+      }
+    },
+    "required": [
+      "path",
+      "before",
+      "after",
+      "revision",
+      "origin"
+    ],
+    "title": "CodingChange",
+    "type": "object"
+  },
+  "CodingConcurrency": {
+    "additionalProperties": false,
+    "properties": {
+      "limit": {
+        "maximum": 4,
+        "minimum": 1,
+        "title": "Limit",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "limit"
+    ],
+    "title": "CodingConcurrency",
+    "type": "object"
+  },
+  "CodingDeliveryState": {
+    "additionalProperties": false,
+    "properties": {
+      "authorEmail": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Authoremail"
+      },
+      "authorName": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Authorname"
+      },
+      "commitSha": {
+        "anyOf": [
+          {
+            "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Commitsha"
+      },
+      "error": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Error"
+      },
+      "indexDigest": {
+        "anyOf": [
+          {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Indexdigest"
+      },
+      "message": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Message"
+      },
+      "phase": {
+        "default": "uncommitted",
+        "enum": [
+          "uncommitted",
+          "committing",
+          "commit_unknown",
+          "committed",
+          "pushing",
+          "push_unknown",
+          "pushed",
+          "creating_pr",
+          "pr_unknown",
+          "pr_created"
+        ],
+        "title": "Phase",
+        "type": "string"
+      },
+      "prDraft": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Prdraft"
+      },
+      "prNumber": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Prnumber"
+      },
+      "prState": {
+        "anyOf": [
+          {
+            "enum": [
+              "open",
+              "closed"
+            ],
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Prstate"
+      },
+      "prUrl": {
+        "anyOf": [
+          {
+            "pattern": "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9_.-]+/pull/[1-9][0-9]*$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Prurl"
+      },
+      "snapshotId": {
+        "anyOf": [
+          {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Snapshotid"
+      },
+      "target": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/RemoteTarget"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "treeSha": {
+        "anyOf": [
+          {
+            "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Treesha"
+      }
+    },
+    "title": "CodingDeliveryState",
+    "type": "object"
+  },
+  "CodingEvent": {
+    "additionalProperties": false,
+    "properties": {
+      "at": {
+        "format": "date-time",
+        "title": "At",
+        "type": "string"
+      },
+      "exitCode": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Exitcode"
+      },
+      "id": {
+        "title": "Id",
+        "type": "integer"
+      },
+      "kind": {
+        "enum": [
+          "queued",
+          "started",
+          "step",
+          "read",
+          "write",
+          "approval",
+          "output",
+          "command_result",
+          "finished",
+          "error",
+          "cancelled",
+          "interrupted"
+        ],
+        "title": "Kind",
+        "type": "string"
+      },
+      "message": {
+        "title": "Message",
+        "type": "string"
+      },
+      "path": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Path"
+      }
+    },
+    "required": [
+      "id",
+      "at",
+      "kind",
+      "message"
+    ],
+    "title": "CodingEvent",
+    "type": "object"
+  },
+  "CodingOverlap": {
+    "additionalProperties": false,
+    "properties": {
+      "assistantName": {
+        "title": "Assistantname",
+        "type": "string"
+      },
+      "paths": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Paths",
+        "type": "array"
+      },
+      "runId": {
+        "format": "uuid",
+        "title": "Runid",
+        "type": "string"
+      }
+    },
+    "required": [
+      "runId",
+      "assistantName",
+      "paths"
+    ],
+    "title": "CodingOverlap",
+    "type": "object"
+  },
+  "CodingOverview": {
+    "additionalProperties": false,
+    "properties": {
+      "concurrency": {
+        "title": "Concurrency",
+        "type": "integer"
+      },
+      "items": {
+        "items": {
+          "$ref": "#/components/schemas/CodingRunSummary"
+        },
+        "title": "Items",
+        "type": "array"
+      }
+    },
+    "required": [
+      "concurrency",
+      "items"
+    ],
+    "title": "CodingOverview",
+    "type": "object"
+  },
+  "CodingRun": {
+    "additionalProperties": false,
+    "properties": {
+      "assistantId": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Assistantid"
+      },
+      "assistantName": {
+        "title": "Assistantname",
+        "type": "string"
+      },
+      "assistantRevision": {
+        "default": 0,
+        "title": "Assistantrevision",
+        "type": "integer"
+      },
+      "baseHead": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Basehead"
+      },
+      "branch": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Branch"
+      },
+      "changes": {
+        "items": {
+          "$ref": "#/components/schemas/CodingChange"
+        },
+        "maxItems": 50,
+        "title": "Changes",
+        "type": "array"
+      },
+      "createdAt": {
+        "format": "date-time",
+        "title": "Createdat",
+        "type": "string"
+      },
+      "delivery": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/CodingDeliveryState"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "dependsOn": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Dependson"
+      },
+      "errorCode": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Errorcode"
+      },
+      "events": {
+        "items": {
+          "$ref": "#/components/schemas/CodingEvent"
+        },
+        "maxItems": 1000,
+        "title": "Events",
+        "type": "array"
+      },
+      "id": {
+        "format": "uuid",
+        "title": "Id",
+        "type": "string"
+      },
+      "localPath": {
+        "title": "Localpath",
+        "type": "string"
+      },
+      "model": {
+        "$ref": "#/components/schemas/AnswerModelOption"
+      },
+      "overlaps": {
+        "items": {
+          "$ref": "#/components/schemas/CodingOverlap"
+        },
+        "title": "Overlaps",
+        "type": "array"
+      },
+      "pendingCommand": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/PendingCommand"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "projectId": {
+        "format": "uuid",
+        "title": "Projectid",
+        "type": "string"
+      },
+      "repositoryPath": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Repositorypath"
+      },
+      "skillId": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Skillid"
+      },
+      "status": {
+        "enum": [
+          "queued",
+          "blocked",
+          "running",
+          "awaiting_approval",
+          "cancelling",
+          "cancelled",
+          "failed",
+          "succeeded",
+          "interrupted"
+        ],
+        "title": "Status",
+        "type": "string"
+      },
+      "summary": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Summary"
+      },
+      "task": {
+        "title": "Task",
+        "type": "string"
+      },
+      "updatedAt": {
+        "format": "date-time",
+        "title": "Updatedat",
+        "type": "string"
+      },
+      "userId": {
+        "format": "uuid",
+        "title": "Userid",
+        "type": "string"
+      },
+      "workspaceId": {
+        "title": "Workspaceid",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "userId",
+      "projectId",
+      "workspaceId",
+      "localPath",
+      "task",
+      "assistantId",
+      "assistantName",
+      "model",
+      "skillId",
+      "status",
+      "createdAt",
+      "updatedAt",
+      "events",
+      "changes"
+    ],
+    "title": "CodingRun",
+    "type": "object"
+  },
+  "CodingRunList": {
+    "additionalProperties": false,
+    "properties": {
+      "items": {
+        "items": {
+          "$ref": "#/components/schemas/CodingRun"
+        },
+        "title": "Items",
+        "type": "array"
+      }
+    },
+    "required": [
+      "items"
+    ],
+    "title": "CodingRunList",
+    "type": "object"
+  },
+  "CodingRunSummary": {
+    "additionalProperties": false,
+    "properties": {
+      "assistantName": {
+        "title": "Assistantname",
+        "type": "string"
+      },
+      "changedFiles": {
+        "title": "Changedfiles",
+        "type": "integer"
+      },
+      "deliveryPhase": {
+        "anyOf": [
+          {
+            "enum": [
+              "uncommitted",
+              "committing",
+              "commit_unknown",
+              "committed",
+              "pushing",
+              "push_unknown",
+              "pushed",
+              "creating_pr",
+              "pr_unknown",
+              "pr_created"
+            ],
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Deliveryphase"
+      },
+      "dependsOn": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Dependson"
+      },
+      "id": {
+        "format": "uuid",
+        "title": "Id",
+        "type": "string"
+      },
+      "modelName": {
+        "title": "Modelname",
+        "type": "string"
+      },
+      "prUrl": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Prurl"
+      },
+      "progress": {
+        "title": "Progress",
+        "type": "string"
+      },
+      "projectId": {
+        "format": "uuid",
+        "title": "Projectid",
+        "type": "string"
+      },
+      "projectName": {
+        "title": "Projectname",
+        "type": "string"
+      },
+      "status": {
+        "enum": [
+          "queued",
+          "blocked",
+          "running",
+          "awaiting_approval",
+          "cancelling",
+          "cancelled",
+          "failed",
+          "succeeded",
+          "interrupted"
+        ],
+        "title": "Status",
+        "type": "string"
+      },
+      "task": {
+        "title": "Task",
+        "type": "string"
+      },
+      "updatedAt": {
+        "format": "date-time",
+        "title": "Updatedat",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "projectId",
+      "projectName",
+      "assistantName",
+      "task",
+      "modelName",
+      "status",
+      "updatedAt",
+      "progress",
+      "changedFiles",
+      "dependsOn"
+    ],
+    "title": "CodingRunSummary",
+    "type": "object"
+  },
+  "CodingStart": {
+    "additionalProperties": false,
+    "properties": {
+      "allowWrites": {
+        "const": true,
+        "title": "Allowwrites",
+        "type": "boolean"
+      },
+      "assistantId": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Assistantid"
+      },
+      "assistantRevision": {
+        "minimum": 0,
+        "title": "Assistantrevision",
+        "type": "integer"
+      },
+      "dependsOn": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Dependson"
+      },
+      "skillId": {
+        "anyOf": [
+          {
+            "maxLength": 100,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Skillid"
+      },
+      "task": {
+        "maxLength": 6000,
+        "minLength": 1,
+        "title": "Task",
+        "type": "string"
+      },
+      "workspaceId": {
+        "pattern": "^[0-9a-f]{64}$",
+        "title": "Workspaceid",
+        "type": "string"
+      }
+    },
+    "required": [
+      "workspaceId",
+      "task",
+      "assistantRevision",
+      "allowWrites"
+    ],
+    "title": "CodingStart",
+    "type": "object"
+  },
+  "CommandDecision": {
+    "additionalProperties": false,
+    "properties": {
+      "approved": {
+        "title": "Approved",
+        "type": "boolean"
+      },
+      "eventId": {
+        "minimum": 0,
+        "title": "Eventid",
+        "type": "integer"
+      },
+      "verify": {
+        "default": false,
+        "title": "Verify",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "eventId",
+      "approved"
+    ],
+    "title": "CommandDecision",
+    "type": "object"
+  },
+  "CommitRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "authorEmail": {
+        "maxLength": 254,
+        "minLength": 3,
+        "pattern": "^[^\\s\\x00-\\x1f\\x7f<>@]+@[^\\s\\x00-\\x1f\\x7f<>@]+$",
+        "title": "Authoremail",
+        "type": "string"
+      },
+      "authorName": {
+        "maxLength": 100,
+        "minLength": 1,
+        "title": "Authorname",
+        "type": "string"
+      },
+      "message": {
+        "maxLength": 4000,
+        "minLength": 1,
+        "title": "Message",
+        "type": "string"
+      },
+      "snapshotId": {
+        "pattern": "^[0-9a-f]{64}$",
+        "title": "Snapshotid",
+        "type": "string"
+      }
+    },
+    "required": [
+      "snapshotId",
+      "message",
+      "authorName",
+      "authorEmail"
+    ],
+    "title": "CommitRequest",
+    "type": "object"
+  },
   "CreateTaskAction": {
     "additionalProperties": false,
     "properties": {
@@ -768,6 +1886,57 @@ export const componentSchemas = {
       "rowEnd"
     ],
     "title": "CsvLocator",
+    "type": "object"
+  },
+  "DeliveryReview": {
+    "additionalProperties": false,
+    "properties": {
+      "delivery": {
+        "$ref": "#/components/schemas/CodingDeliveryState"
+      },
+      "excludedPaths": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Excludedpaths",
+        "type": "array"
+      },
+      "files": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Files",
+        "type": "array"
+      },
+      "snapshotId": {
+        "pattern": "^[0-9a-f]{64}$",
+        "title": "Snapshotid",
+        "type": "string"
+      },
+      "suggestedBody": {
+        "maxLength": 12000,
+        "title": "Suggestedbody",
+        "type": "string"
+      },
+      "suggestedMessage": {
+        "title": "Suggestedmessage",
+        "type": "string"
+      },
+      "suggestedTitle": {
+        "title": "Suggestedtitle",
+        "type": "string"
+      }
+    },
+    "required": [
+      "snapshotId",
+      "files",
+      "excludedPaths",
+      "suggestedMessage",
+      "suggestedTitle",
+      "suggestedBody",
+      "delivery"
+    ],
+    "title": "DeliveryReview",
     "type": "object"
   },
   "DependencyCriticalChain": {
@@ -1256,6 +2425,357 @@ export const componentSchemas = {
       }
     ],
     "title": "FeishuSourcePatchRequest"
+  },
+  "FileDiff": {
+    "additionalProperties": false,
+    "properties": {
+      "modified": {
+        "title": "Modified",
+        "type": "string"
+      },
+      "original": {
+        "title": "Original",
+        "type": "string"
+      },
+      "path": {
+        "title": "Path",
+        "type": "string"
+      },
+      "revision": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Revision"
+      },
+      "workspaceId": {
+        "title": "Workspaceid",
+        "type": "string"
+      }
+    },
+    "required": [
+      "workspaceId",
+      "path",
+      "original",
+      "modified",
+      "revision"
+    ],
+    "title": "FileDiff",
+    "type": "object"
+  },
+  "FileDocument": {
+    "additionalProperties": false,
+    "properties": {
+      "content": {
+        "title": "Content",
+        "type": "string"
+      },
+      "path": {
+        "title": "Path",
+        "type": "string"
+      },
+      "revision": {
+        "title": "Revision",
+        "type": "string"
+      },
+      "workspaceId": {
+        "title": "Workspaceid",
+        "type": "string"
+      }
+    },
+    "required": [
+      "workspaceId",
+      "path",
+      "content",
+      "revision"
+    ],
+    "title": "FileDocument",
+    "type": "object"
+  },
+  "FileTree": {
+    "additionalProperties": false,
+    "properties": {
+      "branch": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Branch"
+      },
+      "paths": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Paths",
+        "type": "array"
+      },
+      "workspaceId": {
+        "title": "Workspaceid",
+        "type": "string"
+      }
+    },
+    "required": [
+      "workspaceId",
+      "branch",
+      "paths"
+    ],
+    "title": "FileTree",
+    "type": "object"
+  },
+  "GitHubAccount": {
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "exclusiveMinimum": 0,
+        "title": "Id",
+        "type": "integer"
+      },
+      "login": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}$",
+        "title": "Login",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "login"
+    ],
+    "title": "GitHubAccount",
+    "type": "object"
+  },
+  "GitHubConnection": {
+    "additionalProperties": false,
+    "properties": {
+      "account": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/GitHubAccount"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "configured": {
+        "title": "Configured",
+        "type": "boolean"
+      },
+      "message": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Message"
+      },
+      "status": {
+        "enum": [
+          "disconnected",
+          "connected",
+          "expired",
+          "revoked",
+          "unavailable"
+        ],
+        "title": "Status",
+        "type": "string"
+      }
+    },
+    "required": [
+      "configured",
+      "status"
+    ],
+    "title": "GitHubConnection",
+    "type": "object"
+  },
+  "GitHubDevicePoll": {
+    "additionalProperties": false,
+    "properties": {
+      "attemptId": {
+        "maxLength": 128,
+        "minLength": 32,
+        "pattern": "^[A-Za-z0-9_-]+$",
+        "title": "Attemptid",
+        "type": "string"
+      }
+    },
+    "required": [
+      "attemptId"
+    ],
+    "title": "GitHubDevicePoll",
+    "type": "object"
+  },
+  "GitHubDeviceResult": {
+    "additionalProperties": false,
+    "properties": {
+      "account": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/GitHubAccount"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "interval": {
+        "default": 5,
+        "title": "Interval",
+        "type": "integer"
+      },
+      "status": {
+        "enum": [
+          "pending",
+          "login_ready",
+          "linked",
+          "connected"
+        ],
+        "title": "Status",
+        "type": "string"
+      }
+    },
+    "required": [
+      "status"
+    ],
+    "title": "GitHubDeviceResult",
+    "type": "object"
+  },
+  "GitHubDeviceStart": {
+    "additionalProperties": false,
+    "properties": {
+      "intent": {
+        "enum": [
+          "login",
+          "link",
+          "repositories"
+        ],
+        "title": "Intent",
+        "type": "string"
+      }
+    },
+    "required": [
+      "intent"
+    ],
+    "title": "GitHubDeviceStart",
+    "type": "object"
+  },
+  "GitHubDeviceStarted": {
+    "additionalProperties": false,
+    "properties": {
+      "attemptId": {
+        "title": "Attemptid",
+        "type": "string"
+      },
+      "expiresIn": {
+        "title": "Expiresin",
+        "type": "integer"
+      },
+      "interval": {
+        "title": "Interval",
+        "type": "integer"
+      },
+      "userCode": {
+        "title": "Usercode",
+        "type": "string"
+      },
+      "verificationUri": {
+        "const": "https://github.com/login/device",
+        "default": "https://github.com/login/device",
+        "title": "Verificationuri",
+        "type": "string"
+      }
+    },
+    "required": [
+      "attemptId",
+      "userCode",
+      "expiresIn",
+      "interval"
+    ],
+    "title": "GitHubDeviceStarted",
+    "type": "object"
+  },
+  "GitHubRepository": {
+    "additionalProperties": false,
+    "properties": {
+      "canPush": {
+        "title": "Canpush",
+        "type": "boolean"
+      },
+      "defaultBranch": {
+        "maxLength": 1024,
+        "minLength": 1,
+        "title": "Defaultbranch",
+        "type": "string"
+      },
+      "fullName": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9_.-]{1,100}$",
+        "title": "Fullname",
+        "type": "string"
+      },
+      "id": {
+        "exclusiveMinimum": 0,
+        "title": "Id",
+        "type": "integer"
+      },
+      "private": {
+        "title": "Private",
+        "type": "boolean"
+      },
+      "url": {
+        "readOnly": true,
+        "title": "Url",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "fullName",
+      "private",
+      "defaultBranch",
+      "canPush",
+      "url"
+    ],
+    "title": "GitHubRepository",
+    "type": "object"
+  },
+  "GitHubRepositoryPage": {
+    "additionalProperties": false,
+    "properties": {
+      "items": {
+        "items": {
+          "$ref": "#/components/schemas/GitHubRepository"
+        },
+        "title": "Items",
+        "type": "array"
+      },
+      "nextPage": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Nextpage"
+      }
+    },
+    "required": [
+      "items",
+      "nextPage"
+    ],
+    "title": "GitHubRepositoryPage",
+    "type": "object"
   },
   "GithubSkillSource": {
     "additionalProperties": false,
@@ -4325,6 +5845,52 @@ export const componentSchemas = {
     "title": "PdfLocator",
     "type": "object"
   },
+  "PendingCommand": {
+    "additionalProperties": false,
+    "properties": {
+      "argv": {
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 64,
+        "minItems": 1,
+        "title": "Argv",
+        "type": "array"
+      },
+      "eventId": {
+        "title": "Eventid",
+        "type": "integer"
+      },
+      "kind": {
+        "const": "run_command",
+        "title": "Kind",
+        "type": "string"
+      },
+      "purpose": {
+        "enum": [
+          "command",
+          "test"
+        ],
+        "title": "Purpose",
+        "type": "string"
+      },
+      "timeoutSeconds": {
+        "maximum": 120,
+        "minimum": 1,
+        "title": "Timeoutseconds",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "kind",
+      "argv",
+      "purpose",
+      "timeoutSeconds",
+      "eventId"
+    ],
+    "title": "PendingCommand",
+    "type": "object"
+  },
   "PlanSourceReference": {
     "additionalProperties": false,
     "properties": {
@@ -4384,6 +5950,23 @@ export const componentSchemas = {
       "area"
     ],
     "title": "PptxLocator",
+    "type": "object"
+  },
+  "PrepareRemoteRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "baseBranch": {
+        "maxLength": 1024,
+        "minLength": 1,
+        "pattern": "^[^\\x00-\\x20\\x7f\\\\~^:?*\\[]+$",
+        "title": "Basebranch",
+        "type": "string"
+      }
+    },
+    "required": [
+      "baseBranch"
+    ],
+    "title": "PrepareRemoteRequest",
     "type": "object"
   },
   "PrincipalType": {
@@ -5570,6 +7153,63 @@ export const componentSchemas = {
     "title": "ProposedTask",
     "type": "object"
   },
+  "PullRequestInput": {
+    "additionalProperties": false,
+    "properties": {
+      "allowCreate": {
+        "const": true,
+        "title": "Allowcreate",
+        "type": "boolean"
+      },
+      "body": {
+        "maxLength": 12000,
+        "minLength": 1,
+        "title": "Body",
+        "type": "string"
+      },
+      "draft": {
+        "default": true,
+        "title": "Draft",
+        "type": "boolean"
+      },
+      "target": {
+        "$ref": "#/components/schemas/RemoteTarget"
+      },
+      "title": {
+        "maxLength": 200,
+        "minLength": 1,
+        "title": "Title",
+        "type": "string"
+      }
+    },
+    "required": [
+      "target",
+      "title",
+      "body",
+      "allowCreate"
+    ],
+    "title": "PullRequestInput",
+    "type": "object"
+  },
+  "PushRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "allowPush": {
+        "const": true,
+        "title": "Allowpush",
+        "type": "boolean"
+      },
+      "target": {
+        "$ref": "#/components/schemas/RemoteTarget"
+      }
+    },
+    "required": [
+      "target",
+      "allowPush"
+    ],
+    "title": "PushRequest",
+    "type": "object"
+  },
   "ReadyResponse": {
     "properties": {
       "status": {
@@ -5643,6 +7283,69 @@ export const componentSchemas = {
     "title": "RegistrationRequest",
     "type": "object"
   },
+  "RemoteTarget": {
+    "additionalProperties": false,
+    "properties": {
+      "accountId": {
+        "exclusiveMinimum": 0,
+        "title": "Accountid",
+        "type": "integer"
+      },
+      "accountLogin": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}$",
+        "title": "Accountlogin",
+        "type": "string"
+      },
+      "baseBranch": {
+        "maxLength": 1024,
+        "minLength": 1,
+        "pattern": "^[^\\x00-\\x20\\x7f\\\\~^:?*\\[]+$",
+        "title": "Basebranch",
+        "type": "string"
+      },
+      "baseSha": {
+        "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$",
+        "title": "Basesha",
+        "type": "string"
+      },
+      "fullName": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9_.-]{1,100}$",
+        "title": "Fullname",
+        "type": "string"
+      },
+      "headBranch": {
+        "title": "Headbranch",
+        "type": "string"
+      },
+      "headSha": {
+        "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$",
+        "title": "Headsha",
+        "type": "string"
+      },
+      "private": {
+        "title": "Private",
+        "type": "boolean"
+      },
+      "repositoryId": {
+        "exclusiveMinimum": 0,
+        "title": "Repositoryid",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "repositoryId",
+      "fullName",
+      "private",
+      "accountId",
+      "accountLogin",
+      "baseBranch",
+      "baseSha",
+      "headBranch",
+      "headSha"
+    ],
+    "title": "RemoteTarget",
+    "type": "object"
+  },
   "RemoveDependencyAction": {
     "additionalProperties": false,
     "properties": {
@@ -5670,6 +7373,182 @@ export const componentSchemas = {
     "title": "RemoveDependencyAction",
     "type": "object"
   },
+  "RepositoryBindRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "localPath": {
+        "maxLength": 4096,
+        "minLength": 1,
+        "pattern": "^[^\\x00-\\x1f]+$",
+        "title": "Localpath",
+        "type": "string"
+      },
+      "mode": {
+        "default": "existing",
+        "enum": [
+          "existing",
+          "clone"
+        ],
+        "title": "Mode",
+        "type": "string"
+      },
+      "repositoryId": {
+        "anyOf": [
+          {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Repositoryid"
+      }
+    },
+    "required": [
+      "localPath"
+    ],
+    "title": "RepositoryBindRequest",
+    "type": "object"
+  },
+  "RepositoryBinding": {
+    "additionalProperties": false,
+    "properties": {
+      "account": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/GitHubAccount"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "branch": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Branch"
+      },
+      "localPath": {
+        "title": "Localpath",
+        "type": "string"
+      },
+      "repository": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/GitHubRepository"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "localPath",
+      "branch"
+    ],
+    "title": "RepositoryBinding",
+    "type": "object"
+  },
+  "RepositoryChanges": {
+    "additionalProperties": false,
+    "properties": {
+      "files": {
+        "items": {
+          "$ref": "#/components/schemas/ChangedFile"
+        },
+        "title": "Files",
+        "type": "array"
+      },
+      "workspaceId": {
+        "title": "Workspaceid",
+        "type": "string"
+      }
+    },
+    "required": [
+      "workspaceId",
+      "files"
+    ],
+    "title": "RepositoryChanges",
+    "type": "object"
+  },
+  "RepositorySnapshot": {
+    "additionalProperties": false,
+    "properties": {
+      "branch": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Branch"
+      },
+      "digest": {
+        "title": "Digest",
+        "type": "string"
+      },
+      "eligibleFiles": {
+        "title": "Eligiblefiles",
+        "type": "integer"
+      },
+      "excludedFiles": {
+        "title": "Excludedfiles",
+        "type": "integer"
+      },
+      "head": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Head"
+      },
+      "paths": {
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 300,
+        "title": "Paths",
+        "type": "array"
+      },
+      "sources": {
+        "items": {
+          "$ref": "#/components/schemas/ArchitectureSource"
+        },
+        "title": "Sources",
+        "type": "array"
+      },
+      "truncated": {
+        "title": "Truncated",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "branch",
+      "head",
+      "digest",
+      "eligibleFiles",
+      "sources",
+      "truncated",
+      "excludedFiles",
+      "paths"
+    ],
+    "title": "RepositorySnapshot",
+    "type": "object"
+  },
   "ResourceType": {
     "enum": [
       "project"
@@ -5686,6 +7565,46 @@ export const componentSchemas = {
     ],
     "title": "ResourceVersionStatus",
     "type": "string"
+  },
+  "SaveFileRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "content": {
+        "maxLength": 524288,
+        "title": "Content",
+        "type": "string"
+      },
+      "path": {
+        "maxLength": 4096,
+        "minLength": 1,
+        "title": "Path",
+        "type": "string"
+      },
+      "revision": {
+        "anyOf": [
+          {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Revision"
+      },
+      "workspaceId": {
+        "pattern": "^[0-9a-f]{64}$",
+        "title": "Workspaceid",
+        "type": "string"
+      }
+    },
+    "required": [
+      "workspaceId",
+      "path",
+      "content"
+    ],
+    "title": "SaveFileRequest",
+    "type": "object"
   },
   "ScheduleIssue": {
     "additionalProperties": false,
@@ -8071,6 +9990,53 @@ export const componentSchemas = {
       "displayName"
     ],
     "title": "UserResponse",
+    "type": "object"
+  },
+  "WorkspaceStatus": {
+    "additionalProperties": false,
+    "properties": {
+      "binding": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/RepositoryBinding"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "gitAvailable": {
+        "title": "Gitavailable",
+        "type": "boolean"
+      },
+      "message": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Message"
+      },
+      "repositoryStatus": {
+        "default": "local",
+        "enum": [
+          "local",
+          "available",
+          "unavailable",
+          "changed"
+        ],
+        "title": "Repositorystatus",
+        "type": "string"
+      }
+    },
+    "required": [
+      "binding",
+      "gitAvailable"
+    ],
+    "title": "WorkspaceStatus",
     "type": "object"
   },
   "XlsxLocator": {

@@ -11,6 +11,7 @@ import { MascotAssistant } from "./MascotAssistant.tsx";
 import { PrimaryNavigation } from "./PrimaryNavigation.tsx";
 import { ThemeControl } from "./ThemeControl.tsx";
 import { ProjectConversationsProvider } from "./knowledge/ProjectConversationsContext.tsx";
+import { CodingOverview } from "./code/CodingOverview.tsx";
 
 export function AppShell({ identity, onLogout, logoutError }: { identity: IdentityContext; onLogout: () => Promise<void>; logoutError: ApiError | null }) {
   const { pathname } = useLocation();
@@ -34,6 +35,7 @@ export function AppShell({ identity, onLogout, logoutError }: { identity: Identi
         </Link>
         {session === null ? <div /> : <ProjectSwitcher key={session.generation} organizationId={identity.organization.id} projectId={projectId} sessionSignal={session.signal} />}
         <div className="header-utilities">
+          <CodingOverview />
           <DesktopModelSettings />
           {page === "knowledge" ? null : <MascotAssistant page={page} />}
           <AccountMenu identity={identity} onLogout={onLogout} logoutError={logoutError} appearance={<ThemeControl />} />
