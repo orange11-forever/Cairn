@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from typing import Literal, cast
 from uuid import UUID
 
-from pydantic import Field, ValidationError
+from pydantic import Field
 
 from cairn_api.audit.repository import add_audit_log
 from cairn_api.errors import ApiProblem
@@ -11,8 +11,7 @@ from cairn_api.knowledge.answer_models import AnswerModelOption, selected_answer
 from cairn_api.knowledge.answer_provider import (
     AnswerProviderInvalidResponse,
     AnswerProviderUnavailable,
-    GuidedAnswerProvider,
-    ProviderAnswer,
+    ArchitectureProvider,
 )
 from cairn_api.knowledge.answer_schemas import KnowledgeAnswerParagraph
 from cairn_api.knowledge.conversation_service import (
@@ -20,6 +19,7 @@ from cairn_api.knowledge.conversation_service import (
     safe_knowledge_operation,
 )
 from cairn_api.workspace.architecture import RepositorySnapshot, read_snapshot
+from cairn_api.workspace.architecture_schemas import ArchitectureGraph, ProviderArchitecture
 from cairn_api.workspace.local import DesktopWorkspace
 from cairn_api.workspace.schemas import RepositoryBinding, WorkspaceModel
 
@@ -50,6 +50,7 @@ class ArchitectureAnalysis(WorkspaceModel):
     model: AnswerModelOption
     status: Literal["answered", "insufficient_evidence"]
     paragraphs: list[KnowledgeAnswerParagraph]
+    graph: ArchitectureGraph
     snapshot: RepositorySnapshot
 
 
@@ -110,32 +111,24 @@ class RepositoryArchitectureService(KnowledgeConversationService):
             + f" 本次读取{len(snapshot.sources)}个文件片段，候选源码共{snapshot.eligible_files}个。"
         )
         try:
-            if guidance is not None:
-                if not callable(getattr(model.provider, "generate_with_guidance", None)):
-                    raise AnswerProviderUnavailable()
-                generated = cast(GuidedAnswerProvider, model.provider).generate_with_guidance(
-                    question=question, evidence=snapshot.evidence(), history=[], guidance=guidance
-                )
-            else:
-                generated = model.provider.generate(question=question, evidence=snapshot.evidence())
-            generated = ProviderAnswer.model_validate(generated)
-            known = {source.id for source in snapshot.sources}
-            if any(
-                not set(paragraph.citation_ids).issubset(known)
-                for paragraph in generated.paragraphs
-            ):
-                raise AnswerProviderInvalidResponse()
+            if not callable(getattr(model.provider, "generate_architecture", None)):
+                raise AnswerProviderUnavailable()
+            generated = cast(ArchitectureProvider, model.provider).generate_architecture(
+                question=question, evidence=snapshot.evidence(), guidance=guidance
+            )
+            generated = ProviderArchitecture.model_validate(generated)
+            generated.check_sources({source.id for source in snapshot.sources})
         except AnswerProviderUnavailable:
             raise ApiProblem(
                 status_code=503,
                 code="architecture_model_unavailable",
                 message="Agent 模型暂时不可用，请检查模型配置后重试",
             ) from None
-        except (AnswerProviderInvalidResponse, ValidationError):
+        except (AnswerProviderInvalidResponse, ValueError):
             raise ApiProblem(
                 status_code=502,
                 code="architecture_invalid_response",
-                message="模型未返回有效的架构说明或文件引用，请重试",
+                message="模型未返回有效的架构说明、节点关系或源码引用，请重试",
             ) from None
         with workspace.lock:
             if (
@@ -181,5 +174,6 @@ class RepositoryArchitectureService(KnowledgeConversationService):
                 KnowledgeAnswerParagraph(text=item.text, citationIds=item.citation_ids)
                 for item in generated.paragraphs
             ],
+            graph=generated.graph,
             snapshot=snapshot,
         )

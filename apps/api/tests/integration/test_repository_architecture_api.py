@@ -5,7 +5,13 @@ from uuid import UUID, uuid4
 
 import pytest
 from cairn_api.knowledge.answer_models import AnswerModelOption, ConfiguredAnswerModel
-from cairn_api.knowledge.answer_provider import AnswerEvidence, ProviderAnswer, ProviderParagraph
+from cairn_api.knowledge.answer_provider import (
+    AnswerEvidence,
+    AnswerGuidance,
+    ProviderAnswer,
+    ProviderParagraph,
+)
+from cairn_api.workspace.architecture_schemas import ProviderArchitecture
 from fastapi import FastAPI
 
 from apps.api.tests.integration.test_desktop_workspace_api import (
@@ -22,6 +28,7 @@ class ArchitectureProvider:
     def __init__(self) -> None:
         self.evidence: list[AnswerEvidence] = []
         self.invalid = False
+        self.invalid_edge = False
         self.change_file: Path | None = None
 
     def generate(self, *, question: str, evidence: list[AnswerEvidence]) -> ProviderAnswer:
@@ -39,9 +46,20 @@ class ArchitectureProvider:
             ],
         )
 
+    def generate_architecture(self, *, question: str, evidence: list[AnswerEvidence], guidance: AnswerGuidance | None) -> ProviderArchitecture:
+        answer = self.generate(question=question, evidence=evidence)
+        return ProviderArchitecture.model_validate({**answer.model_dump(by_alias=True), "graph": {
+            "nodes": [
+                {"id": "entry", "label": "入口", "description": "启动服务", "citationIds": [evidence[0].id]},
+                {"id": "console", "label": "控制台", "description": "输出启动消息", "citationIds": [evidence[0].id]},
+            ],
+            "edges": [{"source": "entry", "target": "console", "label": "输出", "basis": "direct",
+                "citationIds": ["missing" if self.invalid_edge else evidence[0].id]}],
+        }})
+
 
 @pytest.mark.integration
-@pytest.mark.parametrize("outcome", ["success", "invalid-citation", "source-changed", "no-model"])
+@pytest.mark.parametrize("outcome", ["success", "invalid-citation", "invalid-edge", "source-changed", "no-model"])
 def test_architecture_reads_real_bound_code_and_checks_model_boundary(
     desktop_client: DesktopFixture, tmp_path: Path, outcome: str
 ) -> None:
@@ -69,6 +87,7 @@ def test_architecture_reads_real_bound_code_and_checks_model_boundary(
     assert "must-not-reach-model" not in preview.text
     provider = ArchitectureProvider()
     provider.invalid = outcome == "invalid-citation"
+    provider.invalid_edge = outcome == "invalid-edge"
     if outcome == "source-changed":
         provider.change_file = code / "main.py"
     cast(FastAPI, client.app).state.answer_models = (
@@ -100,6 +119,10 @@ def test_architecture_reads_real_bound_code_and_checks_model_boundary(
         assert response.json()["model"]["id"] == "test"
         assert response.json()["snapshot"]["digest"] == snapshot["digest"]
         assert response.json()["paragraphs"][0]["citationIds"] == ["S1"]
+        assert response.json()["graph"]["nodes"][0]["label"] == "入口"
+        assert response.json()["graph"]["edges"][0] == {
+            "source": "entry", "target": "console", "label": "输出", "basis": "direct", "citationIds": ["S1"],
+        }
         assert "Python application entry" in provider.evidence[0].text
         assert (
             workspace.binding(
@@ -107,7 +130,7 @@ def test_architecture_reads_real_bound_code_and_checks_model_boundary(
             )
             is not None
         )
-    elif outcome == "invalid-citation":
+    elif outcome in {"invalid-citation", "invalid-edge"}:
         assert (
             response.status_code == 502
             and response.json()["code"] == "architecture_invalid_response"

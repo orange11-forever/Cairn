@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { BookOpenText, ChevronRight, Code2, FileCode2, FolderGit2, GitBranch, Layers3, ListChecks, Play, RefreshCw, Settings2, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { fetchProject } from '../api/projects.ts';
 import { fetchAssistantSettings } from '../api/assistantSkills.ts';
@@ -8,6 +8,7 @@ import { fetchKnowledgeAnswerModel } from '../api/knowledgeConversations.ts';
 import { analyzeArchitecture, fetchRepositorySources, fetchWorkspace, type ArchitectureAnalysis } from '../api/workspace.ts';
 import { ProjectRepository } from '../components/projects/ProjectRepository.tsx';
 import { CodingWorkspace } from '../components/code/CodingWorkspace.tsx';
+import { ArchitectureGraph } from '../components/code/ArchitectureGraph.tsx';
 import { KnowledgeText } from '../components/knowledge/KnowledgeText.tsx';
 import { useAbortableAction } from '../hooks/useAbortableAction.ts';
 import { projectKeys } from '../queries/projects.ts';
@@ -28,6 +29,7 @@ function CodeWorkspace({ projectId }: { projectId: string }) {
   const [tab, setTab] = useState<'editor' | 'architecture' | 'connection'>('editor');
   const [storedResult, setResult] = useState<{ value: ArchitectureAnalysis; bindingIdentity: string } | null>(null);
   const [sourceId, setSourceId] = useState<string | null>(null);
+  const sourcePreview = useRef<HTMLElement>(null);
   const [filter, setFilter] = useState('');
   const combine = (signal: AbortSignal) => AbortSignal.any([signal, session!.signal]);
   const project = useQuery({ queryKey: projectKeys.detail(session!.identity.organization.id, projectId),
@@ -43,8 +45,14 @@ function CodeWorkspace({ projectId }: { projectId: string }) {
   const selectedModel = models.data?.models.find(model => model.id === (assistant.data?.modelId ?? models.data?.defaultModelId));
   const sources = useQuery({ queryKey: ['code-sources', session!.generation, projectId, repository.data?.binding?.localPath], retry: false,
     enabled: Boolean(repository.data?.binding), queryFn: ({ signal }) => fetchRepositorySources(projectId, combine(signal)) });
-  const result = storedResult?.bindingIdentity === bindingIdentity && storedResult.value.snapshot.digest === sources.data?.digest ? storedResult.value : null;
+  const result = storedResult?.bindingIdentity === bindingIdentity
+    && storedResult.value.snapshot.digest === sources.data?.digest
+    && storedResult.value.assistantId === (assistant.data?.id ?? null)
+    && storedResult.value.assistantRevision === assistant.data?.revision
+    && storedResult.value.model.id === selectedModel?.id
+    && !sources.error && !repository.error ? storedResult.value : null;
   useEffect(() => { setSourceId(null); }, [sources.data?.digest]);
+  useEffect(() => { if (sourceId) sourcePreview.current?.scrollIntoView?.({ block: 'nearest' }); }, [sourceId]);
   const analyze = useAbortableAction(analyzeArchitecture, session!.signal);
   const snapshot = repository.data?.binding ? result?.snapshot ?? sources.data : undefined;
   const source = snapshot?.sources.find(item => item.id === sourceId);
@@ -104,10 +112,11 @@ function CodeWorkspace({ projectId }: { projectId: string }) {
           {error && <div className="code-notice code-notice-error" role="alert"><strong>本次解析未完成</strong><p>{error.message}</p><button type="button" disabled={analyze.pending} onClick={() => void refresh()}>刷新源码与配置</button></div>}
           {analyze.pending && <div className="code-analysis-progress" role="status"><span className="code-progress-bar" /><p>Agent 正在对照源码生成架构说明与文件引用…</p></div>}
           {result ? <article className="code-analysis-report"><div className="code-report-meta"><span>{result.assistantName} · {result.model.name}</span><time dateTime={result.generatedAt}>{new Date(result.generatedAt).toLocaleString('zh-CN')}</time></div>
+            {result.status === 'answered' && <ArchitectureGraph key={result.generatedAt} graph={result.graph} sources={result.snapshot.sources} onSource={setSourceId} />}
             {result.status === 'insufficient_evidence' ? <p>当前源码片段不足以确认架构，请补充入口或架构说明后重新读取。</p> : result.paragraphs.map((paragraph, index) => <section key={index}><KnowledgeText text={paragraph.text} /><div className="code-citations">{paragraph.citationIds.map(citation => { const item=result.snapshot.sources.find(file=>file.id===citation)!;return <button key={citation} type="button" aria-label={`查看引用 ${citation}：${item.path}`} onClick={() => setSourceId(citation)}><FileCode2 size={12} aria-hidden="true" />{item.path}<span>L{item.startLine}–{item.endLine}</span></button>; })}</div></section>)}
           </article> : !analyze.pending && <div className="code-analysis-empty"><Layers3 size={36} strokeWidth={1.4} aria-hidden="true" /><h3>{binding ? '先看代码，再看结论' : '从关联一个代码仓库开始'}</h3><p>{binding ? 'Agent 会解释项目如何启动、模块如何协作，以及哪些判断仍需进一步确认。左侧可预览本次发送给模型的片段。' : '支持已有本地 Git 仓库，也可以从你授权的 GitHub 仓库克隆。'}</p>{!binding && <button type="button" onClick={() => setTab('connection')}>设置仓库连接</button>}</div>}
           {snapshot && <div className="code-analysis-scope"><span>{snapshot.sources.length} 个文件片段 / {snapshot.eligibleFiles} 个候选文件{snapshot.truncated ? ' · 部分内容已截断' : ''}</span><p>点击解析会将这些片段发送给 Agent 所选模型。默认排除 .env、密钥文件、忽略文件及构建产物；本次不执行项目命令。</p></div>}
-          {source && <section className="code-source-preview" aria-label="源码引用"><header><span><FileCode2 size={15} aria-hidden="true" />{source.path}</span><button type="button" aria-label="关闭源码预览" onClick={() => setSourceId(null)}><X size={16} aria-hidden="true" /></button></header><pre>{source.content.split('\n').map((line, index) => <span className="code-source-line" key={index}><span aria-hidden="true">{index + source.startLine}</span><code>{line || ' '}</code></span>)}</pre>{(source.truncated || source.redacted) && <p>{source.truncated ? '此文件仅展示开头片段。' : ''}{source.redacted ? '识别到的凭据值已隐藏。' : ''}</p>}</section>}
+          {source && <section ref={sourcePreview} className="code-source-preview" aria-label="源码引用"><header><span><FileCode2 size={15} aria-hidden="true" />{source.path}</span><button type="button" aria-label="关闭源码预览" onClick={() => setSourceId(null)}><X size={16} aria-hidden="true" /></button></header><pre>{source.content.split('\n').map((line, index) => <span className="code-source-line" key={index}><span aria-hidden="true">{index + source.startLine}</span><code>{line || ' '}</code></span>)}</pre>{(source.truncated || source.redacted) && <p>{source.truncated ? '此文件仅展示开头片段。' : ''}{source.redacted ? '识别到的凭据值已隐藏。' : ''}</p>}</section>}
         </div>}
         <footer className="code-status-bar"><span><GitBranch size={12} aria-hidden="true" />{snapshot?.branch ?? binding?.branch ?? '未关联'}</span><span>{snapshot?.head ? snapshot.head.slice(0, 8) : '工作目录'} · {analyze.pending ? 'Agent 解析中' : tab === 'editor' ? '本地编辑 · UTF-8' : '只读分析'}</span></footer>
       </div>

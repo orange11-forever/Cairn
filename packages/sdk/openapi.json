@@ -232,6 +232,9 @@
             "title": "Generatedat",
             "type": "string"
           },
+          "graph": {
+            "$ref": "#/components/schemas/ArchitectureGraph"
+          },
           "model": {
             "$ref": "#/components/schemas/AnswerModelOption"
           },
@@ -262,9 +265,123 @@
           "model",
           "status",
           "paragraphs",
+          "graph",
           "snapshot"
         ],
         "title": "ArchitectureAnalysis",
+        "type": "object"
+      },
+      "ArchitectureEdge": {
+        "additionalProperties": false,
+        "properties": {
+          "basis": {
+            "enum": [
+              "direct",
+              "inferred"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
+          "citationIds": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 6,
+            "minItems": 1,
+            "title": "Citationids",
+            "type": "array"
+          },
+          "label": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "source": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,39}$",
+            "title": "Source",
+            "type": "string"
+          },
+          "target": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,39}$",
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "target",
+          "label",
+          "basis",
+          "citationIds"
+        ],
+        "title": "ArchitectureEdge",
+        "type": "object"
+      },
+      "ArchitectureGraph": {
+        "additionalProperties": false,
+        "properties": {
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/ArchitectureEdge"
+            },
+            "maxItems": 20,
+            "title": "Edges",
+            "type": "array"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/ArchitectureNode"
+            },
+            "maxItems": 12,
+            "title": "Nodes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "nodes",
+          "edges"
+        ],
+        "title": "ArchitectureGraph",
+        "type": "object"
+      },
+      "ArchitectureNode": {
+        "additionalProperties": false,
+        "properties": {
+          "citationIds": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 6,
+            "minItems": 1,
+            "title": "Citationids",
+            "type": "array"
+          },
+          "description": {
+            "maxLength": 400,
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,39}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "description",
+          "citationIds"
+        ],
+        "title": "ArchitectureNode",
         "type": "object"
       },
       "ArchitectureRequest": {

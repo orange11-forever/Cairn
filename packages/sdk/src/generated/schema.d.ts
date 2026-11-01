@@ -1783,6 +1783,7 @@ export interface components {
              * Format: date-time
              */
             generatedAt: string;
+            graph: components["schemas"]["ArchitectureGraph"];
             model: components["schemas"]["AnswerModelOption"];
             /** Paragraphs */
             paragraphs: components["schemas"]["KnowledgeAnswerParagraph"][];
@@ -1792,6 +1793,40 @@ export interface components {
              * @enum {string}
              */
             status: "answered" | "insufficient_evidence";
+        };
+        /** ArchitectureEdge */
+        ArchitectureEdge: {
+            /**
+             * Basis
+             * @enum {string}
+             */
+            basis: "direct" | "inferred";
+            /** Citationids */
+            citationIds: string[];
+            /** Label */
+            label: string;
+            /** Source */
+            source: string;
+            /** Target */
+            target: string;
+        };
+        /** ArchitectureGraph */
+        ArchitectureGraph: {
+            /** Edges */
+            edges: components["schemas"]["ArchitectureEdge"][];
+            /** Nodes */
+            nodes: components["schemas"]["ArchitectureNode"][];
+        };
+        /** ArchitectureNode */
+        ArchitectureNode: {
+            /** Citationids */
+            citationIds: string[];
+            /** Description */
+            description: string;
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
         };
         /** ArchitectureRequest */
         ArchitectureRequest: {
