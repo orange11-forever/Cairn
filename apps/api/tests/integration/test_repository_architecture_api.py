@@ -14,12 +14,12 @@ from cairn_api.knowledge.answer_provider import (
 from cairn_api.workspace.architecture_schemas import ProviderArchitecture
 from fastapi import FastAPI
 
-from apps.api.tests.integration.test_desktop_workspace_api import (
+from .test_desktop_workspace_api import (
     DesktopFixture,
     desktop_client,
     oauth_client,
 )
-from apps.api.tests.integration.test_oauth_api import password_login
+from .test_oauth_api import password_login
 
 __all__ = ["desktop_client", "oauth_client"]
 

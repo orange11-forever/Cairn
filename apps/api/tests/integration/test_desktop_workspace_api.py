@@ -16,8 +16,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from httpx2 import Response
 
-from apps.api.tests.integration.authorization_helpers import seed_actor
-from apps.api.tests.integration.test_oauth_api import ORIGIN, oauth_client, password_login
+from .authorization_helpers import seed_actor
+from .test_oauth_api import ORIGIN, oauth_client, password_login
 
 __all__ = ["oauth_client"]
 

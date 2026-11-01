@@ -6,13 +6,13 @@ import pytest
 from cairn_api.authorization.types import MembershipRole
 from cairn_api.db.session import Database
 
-from apps.api.tests.integration.authorization_helpers import seed_actor
-from apps.api.tests.integration.test_desktop_workspace_api import (
+from .authorization_helpers import seed_actor
+from .test_desktop_workspace_api import (
     DesktopFixture,
     desktop_client,
     oauth_client,
 )
-from apps.api.tests.integration.test_oauth_api import ORIGIN, password_login
+from .test_oauth_api import ORIGIN, password_login
 
 __all__ = ["desktop_client", "oauth_client"]
 
