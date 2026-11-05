@@ -1,0 +1,139 @@
+/* Cairn 设计变量。暗色是默认主题；亮色通过 :root[data-theme='light'] 覆盖。
+   旧语义名（mineral/jade/amber/coral 等）作为别名保留，避免一次改动所有引用。 */
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --color-canvas: #121318;
+  --color-surface: #17181f;
+  --color-surface-subtle: #1e1f27;
+  --color-surface-raised: #1b1a22;
+  --color-border: #26262f;
+  --color-border-strong: #34333f;
+  --color-ink: #e7e5ee;
+  --color-muted: #8f8da0;
+  --color-accent: #a597ff;
+  --color-accent-strong: #b9adff;
+  --color-on-accent: #15122b;
+  --color-success: #6fcf9f;
+  --color-warning: #e5b553;
+  --color-danger: #f08e88;
+  --color-focus: #c0b5ff;
+  --color-topo-line: rgb(180 167 255 / 9%);
+  --color-idle-bg: #23232c;
+  --color-loading-bg: #33301f;
+  --color-success-bg: #1c3329;
+  --color-empty-bg: #2a2742;
+  --color-danger-bg: #3a2526;
+  --color-selected-surface: #2a2742;
+  --color-scrim: rgb(0 0 0 / 45%);
+  --elevation-floating: 0 12px 32px rgb(0 0 0 / 45%);
+  --workbench-field: #1b1c23;
+  --workbench-panel: #15161c;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --color-canvas: #f6f5f1;
+  --color-surface: #ffffff;
+  --color-surface-subtle: #efede7;
+  --color-surface-raised: #ffffff;
+  --color-border: #e4e1d8;
+  --color-border-strong: #d3cfc4;
+  --color-ink: #23222f;
+  --color-muted: #6a697f;
+  --color-accent: #6356cc;
+  --color-accent-strong: #5042b5;
+  --color-on-accent: #ffffff;
+  --color-success: #237d6a;
+  --color-warning: #8b6414;
+  --color-danger: #b24540;
+  --color-focus: #7364d9;
+  --color-topo-line: rgb(99 86 204 / 8%);
+  --color-idle-bg: #eeece6;
+  --color-loading-bg: #fbf3df;
+  --color-success-bg: #e3f2ea;
+  --color-empty-bg: #ece9fb;
+  --color-danger-bg: #fbe9e7;
+  --color-selected-surface: #ece9fb;
+  --color-scrim: rgb(35 29 68 / 18%);
+  --elevation-floating: 0 12px 32px rgb(35 29 68 / 12%);
+  --workbench-field: #f1efe9;
+  --workbench-panel: #fbfaf7;
+}
+
+:root {
+  /* The interactive terminal has one fixed dark palette. */
+  --terminal-background: #151821;
+  --terminal-foreground: #e0e5ee;
+  --terminal-accent: #8de0c5;
+  --terminal-violet: #c1b3ff;
+  --terminal-muted: #a1abc0;
+  --terminal-border: #2a3043;
+  --terminal-surface: #1c202c;
+  --terminal-badge: #302940;
+  --terminal-danger: #ff9cae;
+  --terminal-hover: #2c3145;
+  --terminal-bright: #f5f7ff;
+  --terminal-border-strong: #41485d;
+  --terminal-danger-hover: #41242e;
+  --terminal-scrollbar: #434863;
+  --terminal-path: #1e3334;
+  --terminal-branch: #2f2843;
+  --terminal-success: #b9e58e;
+  --terminal-accent-hover: #b2edd9;
+  --terminal-shortcut: #c3cbe0;
+  --terminal-danger-border: #79515c;
+  --terminal-danger-surface: #31212b;
+  --terminal-danger-ink: #ffb2c1;
+  --terminal-selection: #383452;
+
+  --color-mineral: var(--color-accent);
+  --color-jade: var(--color-success);
+  --color-amber: var(--color-warning);
+  --color-coral: var(--color-danger);
+  --workbench-reader: var(--color-surface);
+  --workbench-border: var(--color-border);
+
+  --font-sans: "Inter", "Segoe UI", "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei",
+    "Noto Sans CJK SC", "WenQuanYi Zen Hei", system-ui, sans-serif;
+  --font-mono: "Cascadia Code", "Cascadia Mono", "JetBrains Mono", Consolas, ui-monospace, monospace;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-base: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 28px;
+  --weight-regular: 400;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  --radius-sm: 4px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --radius-stone: 58% 42% 55% 45% / 60% 52% 48% 40%;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --content-max: 1440px;
+  --shell-sidebar: 188px;
+  --shell-header: 64px;
+
+  --motion-fast: 120ms;
+  --motion-base: 200ms;
+  --motion-slow: 400ms;
+  --motion-feedback: var(--motion-base);
+  --motion-ease-out: cubic-bezier(0.25, 1, 0.5, 1);
+  --motion-ease-hop: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --z-sticky: 10;
+  --z-dropdown: 20;
+  --z-navigation: 30;
+  --z-popover: 40;
+  --z-toast: 50;
+  --z-intro: 60;
+}

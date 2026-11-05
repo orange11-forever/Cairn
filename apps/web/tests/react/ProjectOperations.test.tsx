@@ -37,6 +37,18 @@ test("field update shows original and proposed values before confirmation",async
   expect(screen.getByText("原值：已有任务")).toBeVisible();expect(screen.getByText("新值：确认生产窗口")).toBeVisible();
 });
 
+test.each(["00000000-0000-4000-8000-000000009001", null])("assignment previews identify the exact member or explicit clearing (%s)", async assigneeUserId => {
+  vi.stubGlobal("fetch", vi.fn(async () => reply({ ...preview, suggestion: {
+    status: "proposed", explanation: "调整已有任务的负责人", action: {
+      type: "assign_task", taskId: tid, assigneeUserId, assigneeName: assigneeUserId ? "林山" : null,
+    },
+  } })));
+  render(<ProjectOperations {...props()} />); await generate();
+  expect(screen.getByText(assigneeUserId ? "林山" : "未分配")).toBeVisible();
+  if (assigneeUserId) expect(screen.getByText(assigneeUserId)).toBeVisible();
+  expect(screen.getByRole("button", { name: "确认执行此操作" })).toBeEnabled();
+});
+
 test("unknown response locks new writes and recovers the committed operation by ID",async()=>{
   let operationId="",writes=0;
   vi.stubGlobal("fetch",vi.fn(async(request:Request)=>{if(request.url.endsWith("operation-preview"))return reply(preview);if(request.method==="POST"){writes++;operationId=(await request.json()).operationId;throw new TypeError("connection lost");}expect(request.url).toContain(operationId);return reply({...saved,operationId});}));
@@ -84,6 +96,20 @@ test("stale snapshot rejection shows the action and trace and allows regeneratio
 test("late suggestions are discarded when switching projects",async()=>{
   let finish!:(value:Response)=>void;let requestSignal:AbortSignal|undefined;vi.stubGlobal("fetch",vi.fn((request:Request)=>{requestSignal=request.signal;return new Promise<Response>(resolve=>{finish=resolve;});}));
   const input=props(),view=render(<ProjectOperations {...input}/>);fireEvent.change(screen.getByLabelText("你要执行的操作"),{target:{value:intent}});fireEvent.click(screen.getByRole("button",{name:"生成待确认操作"}));await waitFor(()=>expect(requestSignal).toBeDefined());view.rerender(<ProjectOperations {...input} projectId="00000000-0000-4000-8000-000000004002"/>);expect(requestSignal?.aborted).toBe(true);await act(async()=>{finish(reply(preview));});expect(screen.queryByText(preview.suggestion.explanation)).not.toBeInTheDocument();
+});
+
+test("stopping suggestion generation keeps the intent and discards a late response", async () => {
+  let finish!: (value: Response) => void;
+  let signal: AbortSignal | undefined;
+  vi.stubGlobal("fetch", vi.fn((request: Request) => { signal = request.signal; return new Promise<Response>(resolve => { finish = resolve; }); }));
+  render(<ProjectOperations {...props()} />);
+  fireEvent.change(screen.getByLabelText("你要执行的操作"), { target: { value: intent } });
+  fireEvent.click(screen.getByRole("button", { name: "生成待确认操作" }));
+  fireEvent.click(await screen.findByRole("button", { name: "停止生成" }));
+  expect(signal?.aborted).toBe(true);
+  await act(async () => finish(reply(preview)));
+  expect(screen.queryByRole("group", { name: "确认助手操作" })).toBeNull();
+  expect(screen.getByLabelText("你要执行的操作")).toHaveValue(intent);
 });
 
 test("removed dependency history identifies both task endpoints after the edge is gone",async()=>{

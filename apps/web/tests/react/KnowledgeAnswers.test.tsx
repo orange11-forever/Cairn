@@ -76,7 +76,7 @@ test.each([
   const input = screen.getByLabelText("向项目知识提问");
   await user.type(input, "第一轮问题");
   await user.click(screen.getByRole("button", { name: "生成回答" }));
-  await screen.findByText("正在查找资料并生成回答…");
+  expect((await screen.findByText("正在查找资料并生成回答…")).closest(".thinking-stones")).not.toBeNull();
   await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
   if (editPending) {
     await user.clear(input);

@@ -1,88 +1,75 @@
-/* Startup and desktop controls share Cairn's existing light/dark palette. */
-.login-page {
-  --auth-ink: #182b42;
-  --auth-muted: #5c6a7a;
-  --auth-surface: #fcfcfd;
-  --auth-field: #fff;
-  --auth-line: #d6dfe8;
-  --auth-accent: #285b9f;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  min-height: 100dvh;
-  padding: 24px 40px 32px;
-  background: var(--auth-surface);
-  color: var(--auth-ink);
-  font-family: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
-  font-size: 15px;
-  -webkit-font-smoothing: antialiased;
-}
-:root[data-theme='dark'] .login-page {
-  --auth-ink: #e6edf5;
-  --auth-muted: #a6b4c4;
-  --auth-surface: #17202b;
-  --auth-field: #1e2a38;
-  --auth-line: #3c4e63;
-  --auth-accent: #91bcf4;
-}
-.auth-header { display: flex; justify-content: space-between; align-items: center; flex: none; width: min(100%, 1120px); min-height: 44px; margin-inline: auto; }
-.auth-header .cairn-brand-mark { --brand-ink: var(--auth-ink); font-size: 24px; letter-spacing: -0.025em; }
-.auth-header .cairn-brand-mark svg { width: 30px; height: 30px; }
-.login-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 380px); align-items: center; gap: 80px; width: min(100%, 920px); min-height: 0; flex: 1; margin: 32px auto; }
-.login-brand-scene { display: grid; align-content: center; justify-items: center; padding: 0; overflow: visible; background: transparent; color-scheme: inherit; }
-.login-brand-scene::before, .login-brand-scene::after { content: none; }
-.login-brand-scene .mascot-figure { gap: 24px; width: 100%; }
+/* 登录、注册、会话状态页共用"山路全景"：等高线地图 + 小路 + 岑宁 + 路牌卡片。 */
+.login-page,
+.session-status-page { position: relative; min-height: 100dvh; overflow: hidden; background: var(--color-canvas); color: var(--color-ink); }
+.login-page { display: flex; flex-direction: column; padding: var(--space-5) 40px var(--space-6); }
+.login-page > .topo-background,
+.session-status-page > .topo-background { z-index: 0; }
+.auth-header,
+.login-layout,
+.session-restore-error { position: relative; z-index: 1; }
+.auth-header { display: flex; align-items: center; flex: none; width: min(100%, 1120px); min-height: 44px; margin-inline: auto; }
+.auth-header .cairn-brand-mark { --brand-ink: var(--color-ink); font-size: var(--text-xl); }
+.auth-header .cairn-brand-mark svg { width: 28px; height: 28px; }
+.login-layout { display: grid; flex: 1; grid-template-columns: minmax(0, 1fr) minmax(0, 380px); align-items: center; gap: 64px; width: min(100%, 1120px); margin: var(--space-5) auto; }
+.login-brand-scene { position: relative; display: grid; place-items: end center; min-height: min(560px, 72vh); padding: 0; background: transparent; }
+.login-brand-scene::before,
+.login-brand-scene::after { content: none; }
+.login-trail { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.login-trail path { fill: none; stroke: var(--color-accent); stroke-opacity: 0.55; stroke-width: 1.6; stroke-dasharray: 5 6; animation: login-trail-march 3s linear infinite; }
+@keyframes login-trail-march { to { stroke-dashoffset: -44; } }
+.login-cairn { position: absolute; left: 8%; bottom: 8%; display: flex; flex-direction: column-reverse; align-items: center; gap: 2px; }
+.login-cairn .stone { height: 13px; background: var(--color-border-strong); }
+.login-cairn .stone:nth-child(1) { width: 46px; }
+.login-cairn .stone:nth-child(2) { width: 36px; }
+.login-cairn .stone:nth-child(3) { width: 26px; }
+.login-cairn .stone:nth-child(4) { width: 16px; height: 11px; background: var(--color-accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 15%, transparent); }
+.login-brand-scene .mascot-figure { position: relative; display: grid; justify-items: center; gap: var(--space-3); width: auto; }
 .login-brand-scene .mascot-figure[data-variant='full'] .mascot-art > img,
 .login-brand-scene .mascot-figure[data-variant='full'] .mascot-image-fallback {
   width: 280px;
-  height: min(430px, 55vh);
+  height: min(460px, 58vh);
   padding: 0;
   border: 0;
   border-radius: 0;
   background: transparent;
   object-fit: contain;
-  object-position: center;
-  filter: drop-shadow(0 12px 14px rgb(16 37 65 / 10%));
+  filter: drop-shadow(0 18px 30px var(--color-scrim));
   box-shadow: none;
   transform: none;
 }
-.login-brand-scene .mascot-state { color: var(--auth-muted); font-size: 13px; letter-spacing: 0.025em; }
-.login-card { display: block; padding: 0; border: 0; border-radius: 0; overflow: visible; background: transparent; }
+.login-brand-scene .mascot-state { color: var(--color-muted); font-size: var(--text-sm); }
+.login-card,
+.session-restore-error { padding: 28px 30px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); box-shadow: var(--elevation-floating); }
 .login-card::before { content: none; }
-.login-card h1 { margin: 0 0 12px; font-size: 30px; font-weight: 650; line-height: 1.35; letter-spacing: -0.025em; }
-.login-card > p:first-of-type { margin: 0 0 32px; color: var(--auth-muted); font-size: 14px; line-height: 1.7; }
-.login-form { display: grid; gap: 20px; }
-.login-form .form-field { margin: 0; gap: 8px; }
-.login-form label { font-size: 14px; font-weight: 550; }
-.login-form input { min-height: 48px; padding: 12px 14px; border: 1px solid var(--auth-line); border-radius: 8px; background: var(--auth-field); color: var(--auth-ink); font: inherit; caret-color: var(--auth-accent); transition: border-color 160ms ease; }
-.login-form input::placeholder { color: var(--auth-muted); opacity: 1; }
-.login-form input:focus-visible { border-color: var(--auth-accent); outline: 2px solid var(--auth-accent); outline-offset: 3px; }
-.login-form .field-hint { color: var(--auth-muted); font-size: 12px; }
-.login-form .login-submit { min-height: 48px; margin: 4px 0 0; border-radius: 8px; font: inherit; font-weight: 600; }
-.login-page .oauth-login { margin-top: 28px; padding-top: 24px; border-color: var(--auth-line); }
-.login-page .oauth-login-label { margin: 0 0 16px; color: var(--auth-muted); text-align: center; font-size: 12px; }
-.login-page .oauth-login > p:not(.oauth-login-label):not(.form-error) { margin: 0 0 16px; font-size: 12px; line-height: 1.6; color: var(--auth-muted); }
-.login-page .oauth-login-actions { gap: 12px; }
-.login-page .oauth-login-actions button { background: transparent; color: var(--auth-ink); border-color: var(--auth-line); border-radius: 8px; font: inherit; font-size: 13px; }
-.login-page .registration-login-link { display: flex; width: fit-content; margin: 20px auto 0; font-size: 13px; color: var(--auth-accent); }
-.login-page ::selection { background: var(--color-selected-surface); color: var(--auth-ink); }
+.login-kicker { display: block; margin-bottom: var(--space-2); color: var(--color-accent); font-family: var(--font-mono); font-size: var(--text-xs); letter-spacing: 0.12em; }
+.login-card h1 { margin: 0 0 var(--space-2); font-size: var(--text-2xl); font-weight: var(--weight-bold); line-height: 1.3; }
+.login-card > p:first-of-type { margin: 0 0 var(--space-5); color: var(--color-muted); }
+.login-form { display: grid; gap: var(--space-4); }
+.login-form .form-field { margin: 0; gap: var(--space-2); }
+.login-form label { font-size: var(--text-md); font-weight: var(--weight-semibold); }
+.login-form input { min-height: 44px; padding: 10px 12px; background: var(--color-canvas); }
+.login-form .field-hint { color: var(--color-muted); font-size: var(--text-sm); }
+.login-form .login-submit { min-height: 44px; margin: var(--space-1) 0 0; font-weight: var(--weight-bold); }
+.login-page .oauth-login { margin-top: var(--space-5); padding-top: var(--space-4); border-top: 1px dashed var(--color-border-strong); }
+.login-page .oauth-login-label { margin: 0 0 var(--space-3); color: var(--color-muted); text-align: center; font-size: var(--text-sm); }
+.login-page .oauth-login > p:not(.oauth-login-label):not(.form-error) { margin: 0 0 var(--space-3); color: var(--color-muted); font-size: var(--text-sm); line-height: 1.6; }
+.login-page .oauth-login-actions { gap: var(--space-2); }
+.login-page .oauth-login-actions button { background: transparent; border-color: var(--color-border-strong); color: var(--color-ink); font-size: var(--text-md); }
+.login-page .registration-login-link { display: flex; width: fit-content; margin: var(--space-4) auto 0; color: var(--color-accent-strong); font-size: var(--text-md); }
+.session-status-page { display: grid; place-items: center; padding: var(--space-5); }
+.session-restore-error { display: grid; gap: var(--space-3); width: min(100%, 420px); }
+.login-page ::selection { background: var(--color-selected-surface); color: var(--color-ink); }
+@media (prefers-reduced-motion: reduce) { .login-trail path { animation: none; } }
 
-.desktop-model-settings { flex: none; min-height: 44px; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 8px; background: transparent; color: var(--color-ink); font: inherit; font-size: 13px; cursor: pointer; }
-.desktop-model-settings:hover { background: var(--color-surface-subtle); }
-.desktop-model-settings:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 3px; }
-@media (max-width: 900px) {
-  .product-header:has(.desktop-model-settings) { grid-template-columns: auto minmax(0, 1fr) auto; }
-}
-
-.desktop-settings { position: relative; flex: none; color: var(--color-muted); font-family: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif; font-size: 13px; z-index: var(--z-popover); }
-.desktop-settings summary { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; min-width: 44px; padding: 8px 12px; border-radius: 8px; cursor: pointer; list-style: none; }
+.desktop-settings { position: relative; flex: none; color: var(--color-muted); font-family: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif; font-size: var(--text-md); z-index: var(--z-popover); }
+.desktop-settings summary { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; min-width: 44px; padding: 8px 12px; border-radius: var(--radius); cursor: pointer; list-style: none; }
 .desktop-settings summary::-webkit-details-marker { display: none; }
 .desktop-settings summary:hover, .desktop-settings[open] > summary { background: var(--color-surface-subtle); color: var(--color-ink); }
 .desktop-settings summary:focus-visible, .desktop-settings button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 3px; }
-.desktop-settings-panel { position: absolute; right: 0; top: calc(100% + 8px); width: min(256px, calc(100vw - 32px)); padding: 12px; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-surface); color: var(--color-ink); }
+.desktop-settings-panel { position: absolute; right: 0; top: calc(100% + 8px); width: min(256px, calc(100vw - 32px)); padding: 12px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); color: var(--color-ink); }
 .desktop-settings-panel section + section { border-top: 1px solid var(--color-border); margin-top: 8px; padding-top: 8px; }
-.desktop-settings-panel h2 { margin: 8px 12px 4px; font-size: 12px; font-weight: 500; color: var(--color-muted); }
-.desktop-settings-panel button { display: block; width: 100%; min-height: 40px; padding: 8px 12px; border: 0; border-radius: 6px; background: transparent; color: inherit; text-align: left; font: inherit; cursor: pointer; }
+.desktop-settings-panel h2 { margin: 8px 12px 4px; font-size: var(--text-sm); font-weight: var(--weight-regular); color: var(--color-muted); }
+.desktop-settings-panel button { display: block; width: 100%; min-height: 40px; padding: 8px 12px; border: 0; border-radius: var(--radius); background: transparent; color: inherit; text-align: left; font: inherit; cursor: pointer; }
 .desktop-settings-panel button:hover { background: var(--color-surface-subtle); }
 .account-menu-panel .desktop-settings summary { justify-content: flex-start; padding-inline: 0; }
 .account-menu-panel .desktop-settings-panel { position: static; width: 100%; padding: 8px 0; border: 0; border-radius: 0; }
@@ -90,16 +77,17 @@
 @media (max-width: 850px) {
   .login-page { padding: 20px 28px 24px; }
   .login-layout { gap: 32px; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr); }
+  .login-trail,
+  .login-cairn { display: none; }
   .login-brand-scene .mascot-figure[data-variant='full'] .mascot-art > img,
   .login-brand-scene .mascot-figure[data-variant='full'] .mascot-image-fallback { width: min(230px, 100%); height: 360px; }
 }
-@media (max-width: 599px) {
-  .login-page { padding: 16px 24px 32px; }
-  .login-layout { display: flex; flex-direction: column; align-items: stretch; gap: 24px; width: min(100%, 380px); margin: 20px auto; }
-  .login-brand-scene { grid-template-columns: 1fr; min-height: 0; }
-  .login-brand-scene .mascot-figure { display: flex; align-items: center; justify-content: center; gap: 12px; }
+@media (max-width: 767px) {
+  .login-page { padding: var(--space-4) 20px 28px; }
+  .login-layout { display: flex; flex-direction: column; align-items: stretch; gap: 20px; width: min(100%, 400px); margin: var(--space-4) auto; }
+  .login-brand-scene { min-height: 0; place-items: center; }
+  .login-brand-scene .mascot-figure { display: flex; align-items: center; justify-content: center; gap: var(--space-3); }
   .login-brand-scene .mascot-figure[data-variant='full'] .mascot-art > img,
   .login-brand-scene .mascot-figure[data-variant='full'] .mascot-image-fallback { width: 64px; height: 64px; filter: none; }
-  .login-card h1 { font-size: 27px; }
-  .login-card > p:first-of-type { margin-bottom: 24px; }
+  .login-card { padding: 22px 20px; }
 }

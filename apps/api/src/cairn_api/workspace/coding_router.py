@@ -14,6 +14,7 @@ from cairn_api.errors import ApiProblem
 from cairn_api.knowledge import assistant_repository
 from cairn_api.knowledge.answer_models import selected_answer_model
 from cairn_api.knowledge.dependencies import AnswerModelsDependency
+from cairn_api.projects import repository as project_repository
 from cairn_api.workspace.coding import ACTIVE, CodingProvider, CodingRunner
 from cairn_api.workspace.coding_schemas import (
     CodingConcurrency,
@@ -94,6 +95,14 @@ def get_run(project_id: UUID, run_id: UUID, identity: CurrentIdentity, session: 
 def start_run(project_id: UUID, payload: CodingStart, request: Request, identity: CurrentIdentity,
               session: Db, workspace: Workspace, models: AnswerModelsDependency) -> CodingRun:
     AuthorizationPolicy(session).require_project(identity, project_id, ProjectPermission.WRITE)
+    if payload.source_task is not None:
+        task = project_repository.get_task(session, org_id=identity.organization.id,
+                                           task_id=payload.source_task.task_id, for_update=True)
+        if task is None or task.project_id != project_id:
+            raise ApiProblem(status_code=404, code='not_found', message='项目任务不存在或不可访问')
+        if task.revision != payload.source_task.revision:
+            raise ApiProblem(status_code=409, code='coding_task_changed',
+                             message='任务在生成派发建议后已变化，请回到助手重新生成建议')
     assistant, guidance = assistant_repository.guidance(session, identity.organization.id,
         project_id, identity.user.id, payload.assistant_revision, payload.skill_id)
     if assistant.id != payload.assistant_id:

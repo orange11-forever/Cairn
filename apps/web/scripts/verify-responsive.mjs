@@ -371,6 +371,7 @@ function assertUniformFullBoundary(boundary, expect, context) {
 }
 
 async function readLayout(page) {
+  await page.locator(".startup-intro").waitFor({ state: "hidden" });
   return page.evaluate(() => {
     const nav = document.querySelector(".primary-nav");
     const workspace = document.querySelector("main.workspace");
@@ -1174,68 +1175,30 @@ async function checkProjectsLayout({
 }) {
   setScenario("populated");
   await page.goto(`${new URL(page.url()).origin}/projects`, { waitUntil: "networkidle" });
+  await page.waitForURL(new RegExp(`/projects/${KNOWLEDGE_PROJECT_ID}/tasks$`));
   await page.waitForSelector(".task-workspace");
 
   const populatedLayout = await readLayout(page);
   const populated = await page.evaluate((firstId) => {
     const region = document.querySelector(".task-workspace");
-    const heading = region?.querySelector("h2");
-    const selectedButton = document.querySelector('.project-rail button[aria-pressed="true"]');
-    const secondButton = [...document.querySelectorAll(".project-rail button")].find(
-      (button) => button.textContent.includes("搜索体验升级"),
-    );
-    const switcher = document.querySelector("#project-switcher");
-    const rail = document.querySelector(".project-rail");
-    const mobileSwitcher = document.querySelector(".project-mobile-switcher");
+    const heading = region?.querySelector("h1");
     const acceptance = document.querySelector(".task-acceptance");
-    const selectedStyle = selectedButton === null ? null : getComputedStyle(selectedButton);
-    const railStyle = rail === null ? null : getComputedStyle(rail);
-    const acceptanceStyle = acceptance === null ? null : getComputedStyle(acceptance);
-    const readBoundary = (style) => style === null
-      ? { widths: [], styles: [], colors: [] }
-      : {
-          widths: [
-            style.borderTopWidth,
-            style.borderRightWidth,
-            style.borderBottomWidth,
-            style.borderLeftWidth,
-          ].map(Number.parseFloat),
-          styles: [
-            style.borderTopStyle,
-            style.borderRightStyle,
-            style.borderBottomStyle,
-            style.borderLeftStyle,
-          ],
-          colors: [
-            style.borderTopColor,
-            style.borderRightColor,
-            style.borderBottomColor,
-            style.borderLeftColor,
-          ],
-        };
     return {
       expectedFirstRegionId: `project-task-workspace-${firstId}`,
       regionId: region?.id ?? null,
       labelledBy: region?.getAttribute("aria-labelledby") ?? null,
       headingId: heading?.id ?? null,
-      selectedControls: selectedButton?.getAttribute("aria-controls") ?? null,
-      secondControls: secondButton?.getAttribute("aria-controls") ?? null,
-      switcherControls: switcher?.getAttribute("aria-controls") ?? null,
-      railVisible: rail?.checkVisibility() ?? false,
-      switcherVisible: mobileSwitcher?.checkVisibility() ?? false,
-      selectedBackground: selectedStyle?.backgroundColor ?? null,
-      railBackground: railStyle?.backgroundColor ?? null,
-      selectedBoxShadow: selectedStyle?.boxShadow ?? null,
-      selectedBoundary: readBoundary(selectedStyle),
-      acceptanceBoundary: readBoundary(acceptanceStyle),
-      emptyMascots: document.querySelectorAll(".project-empty-state .mascot-figure").length,
+      acceptanceText: acceptance?.textContent ?? "",
+      acceptanceFits: acceptance !== null && acceptance.checkVisibility()
+        && acceptance.scrollWidth <= acceptance.clientWidth,
+      emptyMascots: document.querySelectorAll(".projects-page .trail-empty .mascot-figure").length,
       taskMascots: document.querySelectorAll(".task-workspace .mascot-figure").length,
     };
   }, KNOWLEDGE_PROJECT_ID);
 
   expect(populatedLayout.overflow <= 0, `${viewport.name} 项目页横向溢出`);
   expect(populatedLayout.panelInsideViewport, `${viewport.name} 项目页超出视口`);
-  expect(populatedLayout.activeLabel?.includes("项目"), `${viewport.name} 项目导航未激活`);
+  expect(populatedLayout.activeLabel?.includes("任务"), `${viewport.name} 任务导航未激活`);
   expect(
     populatedLayout.undersizedTargets.length === 0,
     `${viewport.name} 项目页存在小于 44px 的交互目标：${populatedLayout.undersizedTargets.join(" / ")}`,
@@ -1246,24 +1209,8 @@ async function checkProjectsLayout({
       populated.headingId === `${populated.expectedFirstRegionId}-heading`,
     `${viewport.name} 当前任务区域缺少稳定 id/标题关联`,
   );
-  expect(
-    populated.selectedControls === populated.regionId &&
-      populated.secondControls === populated.regionId &&
-      populated.switcherControls === populated.regionId,
-    `${viewport.name} 项目选择控件未指向当前任务区域`,
-  );
-  expect(
-    populated.railVisible === (viewport.width >= 768) &&
-      populated.switcherVisible === (viewport.width < 768),
-    `${viewport.name} 项目轨道/选择器断点错误`,
-  );
-  expect(
-    populated.selectedBackground !== populated.railBackground &&
-      populated.selectedBoxShadow?.includes("inset"),
-    `${viewport.name} 选中项目缺少完整表面与稳定内边界`,
-  );
-  assertUniformFullBoundary(populated.selectedBoundary, expect, `${viewport.name} 选中项目`);
-  assertUniformFullBoundary(populated.acceptanceBoundary, expect, `${viewport.name} 验收标准`);
+  expect(populated.acceptanceFits && populated.acceptanceText.includes(RESPONSIVE_TASKS[KNOWLEDGE_PROJECT_ID][0].acceptanceCriteria),
+    `${viewport.name} 验收标准必须完整显示且不溢出`);
   expect(
     populated.emptyMascots === 0 && populated.taskMascots === 0,
     `${viewport.name} 非顶层空态不应渲染额外岑宁形象`,
@@ -1299,17 +1246,10 @@ async function checkProjectsLayout({
     const action = [...document.querySelectorAll(".task-actions button")].find(
       (button) => button.textContent.includes("开始任务"),
     );
-    const selectedProject = document.querySelector(
-      '.project-rail button[aria-pressed="true"]',
-    );
-    const switcher = document.querySelector("#project-switcher");
     return {
       messageVisible: error?.textContent.trim() === expectedMessage,
       boundary,
       actionEnabled: action instanceof HTMLButtonElement && !action.disabled,
-      selectedProjectEnabled:
-        selectedProject instanceof HTMLButtonElement && !selectedProject.disabled,
-      switcherEnabled: switcher instanceof HTMLSelectElement && !switcher.disabled,
       workspacePresent: document.querySelector(".task-workspace") !== null,
     };
   }, TASK_TRANSITION_ERROR_MESSAGE);
@@ -1324,8 +1264,6 @@ async function checkProjectsLayout({
   // Each mutation fails here even when the earlier static rule still matches the CSS contract.
   expect(
     failedTransition.actionEnabled &&
-      failedTransition.selectedProjectEnabled &&
-      failedTransition.switcherEnabled &&
       failedTransition.workspacePresent,
     `${viewport.name} 任务更新失败后项目或任务控件不可继续使用`,
   );
@@ -1339,33 +1277,16 @@ async function checkProjectsLayout({
   expect(await page.getByRole("button", { name: "完成任务", exact: true }).isEnabled(),
     `${viewport.name} 最新状态应显示可用后续操作`);
 
-  if (viewport.width < 768) {
-    await page.selectOption("#project-switcher", RESPONSIVE_PROJECT_B_ID);
-  } else {
-    await page.getByRole("button", { name: /搜索体验升级/ }).click();
-  }
+  await page.locator(".project-switcher-trigger").click();
+  await page.getByRole("button", { name: "搜索体验升级" }).click();
+  await page.waitForURL(new RegExp(`/projects/${RESPONSIVE_PROJECT_B_ID}/tasks$`));
   await page.waitForSelector(`#project-task-workspace-${RESPONSIVE_PROJECT_B_ID}`);
-  const switched = await page.evaluate((projectId) => {
-    const regionId = `project-task-workspace-${projectId}`;
-    return {
-      regionPresent: document.getElementById(regionId) !== null,
-      selectedControls: document.querySelector('.project-rail button[aria-pressed="true"]')
-        ?.getAttribute("aria-controls") ?? null,
-      switcherControls: document.querySelector("#project-switcher")
-        ?.getAttribute("aria-controls") ?? null,
-      announcement: document.querySelector(".project-selection-announcement")?.textContent ?? null,
-    };
-  }, RESPONSIVE_PROJECT_B_ID);
-  expect(switched.regionPresent, `${viewport.name} 选择项目后未切换受控区域`);
-  expect(
-    switched.selectedControls === `project-task-workspace-${RESPONSIVE_PROJECT_B_ID}` &&
-      switched.switcherControls === `project-task-workspace-${RESPONSIVE_PROJECT_B_ID}`,
-    `${viewport.name} 选择项目后 aria-controls 未更新`,
-  );
-  expect(
-    switched.announcement === "已选择项目：搜索体验升级",
-    `${viewport.name} 项目选择播报错误：${switched.announcement}`,
-  );
+  const switched = await page.evaluate((projectId) => ({
+    regionPresent: document.getElementById(`project-task-workspace-${projectId}`) !== null,
+    currentNav: document.querySelector('.primary-nav a[aria-current="page"]')?.getAttribute("aria-label") ?? null,
+  }), RESPONSIVE_PROJECT_B_ID);
+  expect(switched.regionPresent, `${viewport.name} 切换项目后未进入新项目任务页`);
+  expect(switched.currentNav === "任务", `${viewport.name} 切换项目后侧栏应停留在「任务」`);
 
   const populatedImages = await readImageHealth(page);
   expectHealthyImages(populatedImages, expect, `${viewport.name} 项目页`);
@@ -1376,100 +1297,27 @@ async function checkProjectsLayout({
   });
 
   setScenario("empty");
-  await page.reload({ waitUntil: "networkidle" });
-  await page.waitForSelector(".project-empty-state");
-  await page.waitForFunction(() => {
-    const image = document.querySelector(".project-empty-state .mascot-figure img");
-    return image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0;
+  await page.goto(`${new URL(page.url()).origin}/projects`, { waitUntil: "networkidle" });
+  const emptyPanel = page.locator(".projects-page .trail-empty");
+  await emptyPanel.waitFor();
+  await emptyPanel.locator(".trail-empty-copy").evaluate(async element => {
+    await Promise.all(element.getAnimations().map(animation => animation.finished));
   });
   const emptyLayout = await readLayout(page);
-  const empty = await page.evaluate(() => {
-    const mascot = document.querySelector(".project-empty-state .mascot-figure img");
-    const heading = document.querySelector(".project-empty-state h2");
-    const mascotStyle = mascot === null ? null : getComputedStyle(mascot);
-    const mascotRect = mascot?.getBoundingClientRect();
-    const headingRect = heading?.getBoundingClientRect();
-    const headingStyle = heading === null ? null : getComputedStyle(heading);
-    const cssPixels = (values) => values.map(Number.parseFloat);
-    const radius = mascotStyle?.borderTopLeftRadius ?? "";
-    const radiusValue = Number.parseFloat(radius);
-    const circular = mascotRect != null && Number.isFinite(radiusValue) && (
-      radius.endsWith("%")
-        ? radiusValue >= 50
-        : radiusValue >= Math.min(mascotRect.width, mascotRect.height) / 2
-    );
-    return {
-      emptyMascots: document.querySelectorAll(".project-empty-state .mascot-figure").length,
-      taskWorkspacePresent: document.querySelector(".task-workspace") !== null,
-      alt: mascot?.getAttribute("alt") ?? null,
-      currentSrc: mascot instanceof HTMLImageElement ? mascot.currentSrc : null,
-      naturalWidth: mascot instanceof HTMLImageElement ? mascot.naturalWidth : null,
-      naturalHeight: mascot instanceof HTMLImageElement ? mascot.naturalHeight : null,
-      transparentBackground:
-        mascotStyle?.backgroundColor === "transparent" ||
-        /^rgba\(.+,\s*0(?:\.0+)?\)$/.test(mascotStyle?.backgroundColor ?? ""),
-      borderWidths: mascotStyle === null ? [] : cssPixels([
-        mascotStyle.borderTopWidth,
-        mascotStyle.borderRightWidth,
-        mascotStyle.borderBottomWidth,
-        mascotStyle.borderLeftWidth,
-      ]),
-      paddings: mascotStyle === null ? [] : cssPixels([
-        mascotStyle.paddingTop,
-        mascotStyle.paddingRight,
-        mascotStyle.paddingBottom,
-        mascotStyle.paddingLeft,
-      ]),
-      renderedWidth: mascotRect?.width ?? null,
-      renderedHeight: mascotRect?.height ?? null,
-      circular,
-      headingWidth: headingRect?.width ?? null,
-      headingFontSize: headingStyle === null ? null : Number.parseFloat(headingStyle.fontSize),
-    };
-  });
-  expect(emptyLayout.overflow <= 0, `${viewport.name} 项目顶层空态横向溢出`);
-  expect(emptyLayout.panelInsideViewport, `${viewport.name} 项目顶层空态超出视口`);
-  expect(emptyLayout.activeLabel?.includes("项目"), `${viewport.name} 空态项目导航未激活`);
-  expect(
-    emptyLayout.undersizedTargets.length === 0,
-    `${viewport.name} 项目空态存在小于 44px 的交互目标：${emptyLayout.undersizedTargets.join(" / ")}`,
-  );
-  expect(
-    empty.emptyMascots === 1 && !empty.taskWorkspacePresent && empty.alt?.includes("岑宁"),
-    `${viewport.name} 岑宁应只出现在项目顶层空态`,
-  );
-  expect(
-    empty.transparentBackground &&
-      empty.borderWidths.length === 4 && empty.borderWidths.every((width) => width === 0) &&
-      empty.paddings.length === 4 && empty.paddings.every((padding) => padding === 0),
-    `${viewport.name} 项目空态岑宁不应有矩形框：border ${empty.borderWidths.join("/")}px、padding ${empty.paddings.join("/")}px`,
-  );
-  const expectedEmptyAsset = viewport.width < 600
-    ? "/cairn-mascot-chibi.png"
-    : "/cenning-full-v2-20260928.png";
-  const expectedEmptyDimensions = viewport.width < 600 ? [512, 512] : [1024, 1536];
-  expect(
-    empty.currentSrc?.endsWith(expectedEmptyAsset) &&
-      empty.naturalWidth === expectedEmptyDimensions[0] &&
-      empty.naturalHeight === expectedEmptyDimensions[1],
-    `${viewport.name} 项目空态岑宁素材异常：${empty.currentSrc} (${empty.naturalWidth}x${empty.naturalHeight})`,
-  );
-  if (viewport.width < 600) {
-    expect(
-      Number.isFinite(empty.renderedWidth) &&
-        Number.isFinite(empty.renderedHeight) &&
-        empty.renderedWidth >= 112 && empty.renderedWidth <= 128 &&
-        Math.abs(empty.renderedWidth - empty.renderedHeight) < 1 &&
-        empty.circular,
-      `${viewport.name} 项目空态头像应为 112–128px 的正圆，实际 ${empty.renderedWidth}x${empty.renderedHeight}`,
-    );
-    expect(
-      Number.isFinite(empty.headingWidth) &&
-        Number.isFinite(empty.headingFontSize) &&
-        empty.headingWidth >= empty.headingFontSize * 3,
-      `${viewport.name} 项目空态标题过窄：${empty.headingWidth}px / 字号 ${empty.headingFontSize}px`,
-    );
-  }
+  expect(emptyLayout.overflow <= 0 && emptyLayout.panelInsideViewport,
+    `${viewport.name} 项目顶层空态超出视口`);
+  expect(emptyLayout.activeLabel === null && await page.locator('.primary-nav [aria-disabled="true"]').count() === 2,
+    `${viewport.name} 无项目时任务和知识导航应保持禁用`);
+  expect(emptyLayout.undersizedTargets.length === 0,
+    `${viewport.name} 项目空态存在小于44px的目标：${emptyLayout.undersizedTargets.join(" / ")}`);
+  expect(await page.locator(".task-workspace").count() === 0 && await emptyPanel.locator(".mascot-figure").count() === 1,
+    `${viewport.name} 项目空态应显示引导并清除旧任务区域`);
+  const createLink = emptyPanel.getByRole("link", { name: "创建第一个项目", exact: true });
+  expect(await createLink.isVisible() && await createLink.getAttribute("href") === "/projects/new",
+    `${viewport.name} 项目空态应提供真实创建入口`);
+  const emptyImages = await readImageHealth(page);
+  expectHealthyImages(emptyImages, expect, `${viewport.name} 项目空态`);
+  expectThumbnailMascots(emptyImages, expect, `${viewport.name} 项目空态`);
   await page.screenshot({
     path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-projects-empty.png`),
     fullPage: true,
@@ -1644,25 +1492,6 @@ export async function readLoginBrandScene(page) {
   });
 }
 
-async function readAssistantContentLayout(page) {
-  return page.evaluate(() => {
-    const image = document.querySelector(
-      ".mascot-assistant-body .mascot-art > img, .mascot-assistant-body .mascot-image-fallback",
-    );
-    const copy = document.querySelector(".mascot-assistant-body > p");
-    const imageRect = image?.getBoundingClientRect();
-    const copyRect = copy?.getBoundingClientRect();
-    return {
-      currentSrc: image instanceof HTMLImageElement ? image.currentSrc : null,
-      imageRight: imageRect?.right ?? null,
-      naturalHeight: image instanceof HTMLImageElement ? image.naturalHeight : null,
-      naturalWidth: image instanceof HTMLImageElement ? image.naturalWidth : null,
-      copyLeft: copyRect?.left ?? null,
-      renderedHeight: imageRect?.height ?? null,
-      renderedWidth: imageRect?.width ?? null,
-    };
-  });
-}
 
 function expectHealthyImages(images, expect, context) {
   expect(images.length > 0, `${context} 应渲染品牌或看板娘图片`);
@@ -1799,6 +1628,10 @@ export async function checkResponsiveFoundation({
     const projectId = new URL(route.request().url()).pathname.split("/").at(-1);
     const project = RESPONSIVE_PROJECTS.find((item) => item.id === projectId);
     expect(project !== undefined, `项目详情请求不得读取其他项目：${projectId}`);
+    if (projectsScenario === "empty") {
+      await route.fulfill({ status: 404, json: { message: "资源不存在", code: "not_found", traceId: "responsive-empty-project" } });
+      return;
+    }
     await route.fulfill({ status: 200, json: project });
   });
   await page.route(/\/api\/v1\/tasks\/[^/]+\/status$/, async (route) => {
@@ -1994,7 +1827,7 @@ export async function checkResponsiveFoundation({
     ]) {
       await chooseTheme(page, themeLabel);
       await page.goto(`${new URL(page.url()).origin}/projects`, { waitUntil: "networkidle" });
-      await page.waitForSelector(".projects-page");
+      await waitForAuthenticated();
 
       const projectsLayout = await readLayout(page);
       expect(projectsLayout.theme === themeValue, `${viewport.name} 应使用 ${themeValue} 主题`);
@@ -2004,7 +1837,7 @@ export async function checkResponsiveFoundation({
         projectsLayout.workspaceOverflowX !== "scroll",
         `${viewport.name} 项目工作区不应强制横向滚动`,
       );
-      expect(projectsLayout.activeLabel?.includes("项目"), `${viewport.name} 项目导航未激活`);
+      expect(projectsLayout.activeLabel?.includes("任务"), `${viewport.name} 任务导航未激活`);
       expect(
         Number.isFinite(projectsLayout.brandImageWidth) &&
           Number.isFinite(projectsLayout.brandImageHeight) &&
@@ -2045,33 +1878,17 @@ export async function checkResponsiveFoundation({
         await page.getByRole("dialog", { name: "岑宁助手" }).isVisible(),
         `${viewport.name} 看板娘助手面板未打开`,
       );
-      await page.waitForFunction(() => {
-        const image = document.querySelector(
-          ".mascot-assistant-body .mascot-art > img, .mascot-assistant-body .mascot-image-fallback",
-        );
-        return image instanceof HTMLImageElement &&
-          image.complete && image.naturalWidth > 0 && image.naturalHeight > 0;
-      });
-      const assistantLayout = await readAssistantContentLayout(page);
-      expect(
-        assistantLayout.currentSrc?.endsWith("/cairn-mascot-chibi.png") &&
-          assistantLayout.naturalWidth === 512 &&
-          assistantLayout.naturalHeight === 512,
-        `${viewport.name} 助手面板应使用 512px Q 版头像，实际为 ${assistantLayout.currentSrc} (${assistantLayout.naturalWidth}x${assistantLayout.naturalHeight})`,
-      );
-      expect(
-        assistantLayout.renderedWidth !== null &&
-          assistantLayout.renderedHeight !== null &&
-          Math.abs(assistantLayout.renderedWidth - 92) < 1 &&
-          Math.abs(assistantLayout.renderedHeight - 92) < 1,
-        `${viewport.name} 助手面板头像应渲染为 92px 正圆，实际为 ${assistantLayout.renderedWidth}x${assistantLayout.renderedHeight}`,
-      );
-      expect(
-        assistantLayout.imageRight !== null &&
-          assistantLayout.copyLeft !== null &&
-          assistantLayout.imageRight <= assistantLayout.copyLeft,
-        `${viewport.name} 看板娘图片与助手说明发生重叠：图片右侧 ${assistantLayout.imageRight}px，文字左侧 ${assistantLayout.copyLeft}px`,
-      );
+      const commandPanel = page.getByRole("dialog", { name: "岑宁助手" });
+      await commandPanel.getByRole("textbox", { name: "你要执行的操作", exact: true }).waitFor();
+      for (const name of ["项目操作", "拆分任务", "创建项目"]) {
+        expect(await commandPanel.getByRole("tab", { name, exact: true }).isVisible(),
+          `${viewport.name} 统一助手缺少${name}入口`);
+      }
+      expect(await commandPanel.getByRole("link", { name: "查看项目任务" }).getAttribute("href") === new URL(page.url()).pathname,
+        `${viewport.name} 助手目标必须与当前项目任务页一致`);
+      const commandLayout = await readLayout(page);
+      expect(commandLayout.overflow <= 0 && commandLayout.undersizedTargets.length === 0,
+        `${viewport.name} 统一助手溢出或操作目标不足44px：${commandLayout.undersizedTargets.join(" / ")}`);
       await page.screenshot({
         path: join(screenshotDir, `responsive-${viewport.name}-${themeValue}-assistant.png`),
         fullPage: true,
@@ -2232,12 +2049,12 @@ export async function checkResponsiveFoundation({
   }
 
   await logout();
-  await page.emulateMedia({ colorScheme: "dark" });
+  await page.emulateMedia({ colorScheme: "light" });
   await page.evaluate(() => localStorage.removeItem("cairn-theme"));
   await page.reload({ waitUntil: "networkidle" });
   expect(
     (await page.locator("html").getAttribute("data-theme")) === "dark",
-    "无手动偏好时应跟随系统夜间主题",
+    "无手动偏好时默认夜间主题",
   );
   await login();
 
@@ -2251,8 +2068,8 @@ export async function checkResponsiveFoundation({
 
   await chooseTheme(page, "跟随系统");
   expect(
-    (await page.evaluate(() => localStorage.getItem("cairn-theme"))) === null,
-    "跟随系统应清除本地覆盖",
+    (await page.evaluate(() => localStorage.getItem("cairn-theme"))) === "system",
+    "跟随系统应明确保存",
   );
   await page.emulateMedia({ colorScheme: "light" });
   await page.waitForFunction(() => document.documentElement.dataset.theme === "light");

@@ -13,7 +13,7 @@ const assistant = { id: null, name: '岑宁', instructions: '', enabledSkillIds:
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
-function mount(dirty = false, additional: CodingRun[] = [], selectedId?: string) {
+function mount(dirty = false, additional: CodingRun[] = [], selectedId?: string, state?: unknown) {
   let current: CodingRun | null = null;
   const requests: { path: string; body: unknown }[] = [];
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
@@ -35,9 +35,54 @@ function mount(dirty = false, additional: CodingRun[] = [], selectedId?: string)
     return json(current);
   }));
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(<MemoryRouter initialEntries={[selectedId ? '/?run=' + selectedId : '/']}><QueryClientProvider client={client}><SessionProvider restoredIdentity={identity}><CodingPanel projectId={project} workspaceId={'a'.repeat(64)} localPath="/test/repo" assistant={assistant} modelName="测试模型" dirty={dirty} onCompare={() => {}} /></SessionProvider></QueryClientProvider></MemoryRouter>);
+  render(<MemoryRouter initialEntries={[{ pathname: '/', search: selectedId ? '?run=' + selectedId : '', state }]}><QueryClientProvider client={client}><SessionProvider restoredIdentity={identity}><CodingPanel projectId={project} workspaceId={'a'.repeat(64)} localPath="/test/repo" assistant={assistant} modelName="测试模型" dirty={dirty} onCompare={() => {}} /></SessionProvider></QueryClientProvider></MemoryRouter>);
   return { requests, client };
 }
+
+test('a dispatched task fills the coding form but still requires consent and sends its source revision', async () => {
+  const sourceTask = { taskId: '00000000-0000-4000-8000-000000005100', revision: 3 };
+  const fixture = mount(false, [], undefined, { codingDispatch: { projectId: project, sourceTask,
+    ownerId: identity.user.id, assistantId: null, assistantName: '岑宁', task: '修复加法并测试' } });
+  expect(screen.getByLabelText('交给 Agent 的任务')).toHaveValue('修复加法并测试');
+  expect(screen.getByRole('button', { name: '开始任务' })).toBeDisabled();
+  expect(fixture.requests).toHaveLength(0);
+  await userEvent.click(screen.getByLabelText(/允许此 Agent 将读取的源码/));
+  await waitFor(() => expect(screen.getByRole('button', { name: '开始任务' })).toBeEnabled());
+  await userEvent.click(screen.getByRole('button', { name: '开始任务' }));
+  expect(await screen.findByText(/python/)).toHaveTextContent('unittest');
+  expect(fixture.requests[0]?.body).toMatchObject({ sourceTask, assistantId: null, allowWrites: true });
+  fixture.client.clear();
+});
+
+test('a dispatch for another project is never loaded', () => {
+  const fixture = mount(false, [], undefined, { codingDispatch: {
+    projectId: '00000000-0000-4000-8000-000000004099', sourceTask: { taskId: '00000000-0000-4000-8000-000000005100', revision: 3 },
+    ownerId: identity.user.id, assistantId: null, assistantName: '岑宁', task: '其他项目的内容' } });
+  expect(screen.getByLabelText('交给 Agent 的任务')).toHaveValue('');
+  fixture.client.clear();
+});
+
+test('a named dispatch cannot start under a different selected agent', async () => {
+  const fixture = mount(false, [], undefined, { codingDispatch: { projectId: project,
+    ownerId: identity.user.id,
+    sourceTask: { taskId: '00000000-0000-4000-8000-000000005100', revision: 3 },
+    assistantId: '00000000-0000-4000-8000-000000006100', assistantName: '开发助手', task: '修复加法并测试' } });
+  await userEvent.click(screen.getByLabelText(/允许此 Agent 将读取的源码/));
+  expect(screen.getByRole('button', { name: '开始任务' })).toBeDisabled();
+  expect(fixture.requests).toHaveLength(0);
+  expect(screen.getByText(/切换到.*开发助手/)).toBeInTheDocument();
+  fixture.client.clear();
+});
+
+test('browser history cannot load another users private dispatch after login changes', () => {
+  const fixture = mount(false, [], undefined, { codingDispatch: { projectId: project,
+    ownerId: '00000000-0000-4000-8000-000000001099',
+    sourceTask: { taskId: '00000000-0000-4000-8000-000000005100', revision: 3 },
+    assistantId: null, assistantName: '私人助手', task: '其他用户的私有指令' } });
+  expect(screen.getByLabelText('交给 Agent 的任务')).toHaveValue('');
+  expect(screen.queryByText(/私人助手/)).toBeNull();
+  fixture.client.clear();
+});
 
 test('drafts stay in the main editor while tasks start from committed code', async () => {
   const fixture = mount(true);
@@ -61,6 +106,7 @@ test('shows the exact command before approval and preserves a cancelled run', as
   await userEvent.click(screen.getByLabelText('我确认此命令可以验证本次任务的结果。'));
   await userEvent.click(screen.getByRole('button', { name: '批准此命令' }));
   expect(fixture.requests.at(-1)?.body).toEqual({ eventId: 1, approved: true, verify: true });
+  expect((await screen.findByText('正在执行', { selector: 'strong span span' })).closest('.thinking-stones')).not.toBeNull();
   await userEvent.click(screen.getByRole('button', { name: '停止执行' }));
   expect(await screen.findByText('已停止，修改已保留')).toBeVisible();
   fixture.client.clear();

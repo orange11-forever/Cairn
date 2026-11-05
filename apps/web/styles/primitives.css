@@ -1,0 +1,325 @@
+/* ===== 通用：等宽、石头形状 ===== */
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.stone { display: inline-block; border-radius: var(--radius-stone); }
+
+/* ===== 按钮 ===== */
+button {
+  transition:
+    background-color var(--motion-fast) var(--motion-ease-out),
+    border-color var(--motion-fast) var(--motion-ease-out),
+    color var(--motion-fast) var(--motion-ease-out),
+    transform var(--motion-fast) var(--motion-ease-out);
+}
+button:active:not(:disabled) { transform: translateY(1px) scale(0.98); }
+.btn-primary { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-on-accent); font-weight: var(--weight-semibold); }
+.btn-primary:hover:not(:disabled) { background: var(--color-accent-strong); }
+.btn-secondary { background: var(--color-surface); border-color: var(--color-border-strong); color: var(--color-ink); }
+.btn-secondary:hover:not(:disabled) { background: var(--color-surface-subtle); }
+.btn-danger { background: transparent; border-color: transparent; color: var(--color-danger); }
+.btn-danger:hover:not(:disabled) { background: var(--color-danger-bg); }
+.btn-ghost { background: transparent; border-color: transparent; color: var(--color-muted); }
+.btn-ghost:hover:not(:disabled) { background: var(--color-surface-subtle); color: var(--color-ink); }
+/* 未加类名的按钮沿用主要样式；禁用时改为中性灰，不再是容易与"选中"混淆的浅紫。 */
+button:not([class]):disabled,
+.btn-primary:disabled,
+.login-submit:disabled {
+  background: var(--color-surface-subtle);
+  border-color: var(--color-border);
+  color: var(--color-muted);
+  opacity: 1;
+}
+button[aria-busy='true'] { cursor: progress; }
+
+/* ===== 输入框与下拉框 ===== */
+input:not([type='radio']):not([type='checkbox']),
+textarea,
+select {
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius);
+  background-color: var(--color-surface);
+  color: var(--color-ink);
+  transition: border-color var(--motion-fast) var(--motion-ease-out), box-shadow var(--motion-fast) var(--motion-ease-out);
+}
+input:not([type='radio']):not([type='checkbox']):focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+/* 只换外观，保留原生 <select> 的键盘、读屏与手机选择器行为。 */
+select {
+  appearance: none;
+  padding-right: 32px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--color-muted) 50%),
+    linear-gradient(135deg, var(--color-muted) 50%, transparent 50%);
+  background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+
+/* ===== 任务状态石 ===== */
+.status-stone { position: relative; display: inline-flex; flex: none; width: 14px; height: 11px; }
+.status-stone .stone { width: 100%; height: 100%; }
+.status-stone[data-status='backlog'] .stone { border: 1.5px dashed var(--color-muted); }
+.status-stone[data-status='todo'] .stone { border: 1.5px solid var(--color-muted); }
+.status-stone[data-status='in_progress'] .stone { background: var(--color-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent); }
+.status-stone[data-status='blocked'] .stone { background: var(--color-warning); }
+.status-stone[data-status='done'] .stone { background: var(--color-success); }
+.status-stone[data-status='cancelled'] .stone { background: var(--color-muted); opacity: 0.4; }
+.status-stone-dust { position: absolute; bottom: 0; width: 3px; height: 3px; border-radius: 50%; background: var(--color-success); opacity: 0; }
+.status-stone-dust:nth-of-type(2) { left: -3px; }
+.status-stone-dust:nth-of-type(3) { right: -3px; }
+.status-stone[data-settling='true'] .stone { animation: stone-settle 600ms var(--motion-ease-hop); }
+.status-stone[data-settling='true'] .status-stone-dust:nth-of-type(2) { animation: stone-dust-left 600ms var(--motion-ease-out); }
+.status-stone[data-settling='true'] .status-stone-dust:nth-of-type(3) { animation: stone-dust-right 600ms var(--motion-ease-out); }
+@keyframes stone-settle {
+  0% { background: var(--color-accent); transform: none; }
+  35% { background: var(--color-accent); transform: translateY(-9px) rotate(-12deg); }
+  65% { background: var(--color-success); transform: translateY(1px) scale(1.3, 0.72); }
+  100% { background: var(--color-success); transform: none; }
+}
+@keyframes stone-dust-left { 0%, 55% { opacity: 0; transform: none; } 65% { opacity: 1; } 100% { opacity: 0; transform: translate(-7px, -4px); } }
+@keyframes stone-dust-right { 0%, 55% { opacity: 0; transform: none; } 65% { opacity: 1; } 100% { opacity: 0; transform: translate(7px, -4px); } }
+
+/* ===== 垒石加载 ===== */
+.cairn-loader { display: inline-flex; align-items: center; gap: var(--space-3); color: var(--color-muted); font-size: var(--text-md); }
+.cairn-stack { position: relative; display: inline-block; flex: none; width: 34px; height: 30px; }
+.cairn-stack[data-size='sm'] { width: 16px; height: 14px; }
+.cairn-stack .stone { position: absolute; left: 50%; background: var(--color-accent); opacity: 0; animation: cairn-drop 2.4s infinite; }
+.cairn-stack .stone:nth-child(1) { bottom: 0; width: 100%; height: 34%; }
+.cairn-stack .stone:nth-child(2) { bottom: 33%; width: 70%; height: 31%; animation-delay: 0.35s; }
+.cairn-stack .stone:nth-child(3) { bottom: 63%; width: 42%; height: 28%; animation-delay: 0.7s; }
+@keyframes cairn-drop {
+  0% { opacity: 0; transform: translate(-50%, -12px); }
+  12% { opacity: 1; transform: translate(-50%, 1px) scale(1.1, 0.88); }
+  18% { transform: translate(-50%, 0) scale(1); }
+  80% { opacity: 1; transform: translate(-50%, 0); }
+  100% { opacity: 0; transform: translate(-50%, 0); }
+}
+
+/* ===== 岑宁思考三石 ===== */
+.thinking-stones { display: inline-flex; align-items: center; gap: var(--space-2); }
+.thinking-stones-dots { display: inline-flex; align-items: flex-end; gap: 3px; }
+.thinking-stones-dots .stone { width: 8px; height: 6px; background: var(--color-accent); opacity: 0.25; animation: thinking-hop 1.4s infinite; }
+.thinking-stones-dots .stone:nth-child(2) { animation-delay: 0.2s; }
+.thinking-stones-dots .stone:nth-child(3) { animation-delay: 0.4s; }
+@keyframes thinking-hop { 0%, 100% { opacity: 0.25; transform: none; } 35% { opacity: 1; transform: translateY(-3px); } }
+
+/* ===== 里程表数字 ===== */
+.odometer-digits { display: inline-flex; }
+.odometer-digit { display: inline-block; height: 1em; line-height: 1; overflow: hidden; }
+.odometer-reel { display: block; transition: transform 300ms var(--motion-ease-out); }
+.odometer-reel::before { content: "0\A 1\A 2\A 3\A 4\A 5\A 6\A 7\A 8\A 9"; display: block; line-height: 1; white-space: pre; }
+.odometer-digit[data-digit='1'] .odometer-reel { transform: translateY(-1em); }
+.odometer-digit[data-digit='2'] .odometer-reel { transform: translateY(-2em); }
+.odometer-digit[data-digit='3'] .odometer-reel { transform: translateY(-3em); }
+.odometer-digit[data-digit='4'] .odometer-reel { transform: translateY(-4em); }
+.odometer-digit[data-digit='5'] .odometer-reel { transform: translateY(-5em); }
+.odometer-digit[data-digit='6'] .odometer-reel { transform: translateY(-6em); }
+.odometer-digit[data-digit='7'] .odometer-reel { transform: translateY(-7em); }
+.odometer-digit[data-digit='8'] .odometer-reel { transform: translateY(-8em); }
+.odometer-digit[data-digit='9'] .odometer-reel { transform: translateY(-9em); }
+
+/* ===== 等高线背景 ===== */
+.topo-background { position: absolute; inset: 0; width: 100%; height: 100%; color: var(--color-topo-line); pointer-events: none; }
+.topo-elevations { font-family: var(--font-mono); font-size: var(--text-xs); }
+.topo-background[data-draw='true'] ellipse,
+.topo-background[data-draw='true'] path { stroke-dasharray: 1; stroke-dashoffset: 1; animation: topo-draw 600ms var(--motion-ease-out) forwards; }
+.topo-background[data-draw='true'] ellipse:nth-of-type(2) { animation-delay: 0.1s; }
+.topo-background[data-draw='true'] ellipse:nth-of-type(3) { animation-delay: 0.2s; }
+.topo-background[data-draw='true'] ellipse:nth-of-type(4) { animation-delay: 0.3s; }
+.topo-background[data-draw='true'] ellipse:nth-of-type(5) { animation-delay: 0.4s; }
+.topo-background[data-draw='true'] ellipse:nth-of-type(6) { animation-delay: 0.5s; }
+.topo-background[data-draw='true'] ellipse:nth-of-type(7) { animation-delay: 0.6s; }
+@keyframes topo-draw { to { stroke-dashoffset: 0; } }
+
+/* ===== 小路面包屑 ===== */
+.trail-breadcrumb ol { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-2); padding: 0; list-style: none; color: var(--color-muted); font-size: var(--text-sm); }
+.trail-breadcrumb li { display: inline-flex; align-items: center; gap: var(--space-2); animation: trail-stop-in var(--motion-base) var(--motion-ease-out) both; }
+.trail-breadcrumb li:nth-child(2) { animation-delay: 80ms; }
+.trail-breadcrumb li:nth-child(3) { animation-delay: 160ms; }
+.trail-breadcrumb a { color: var(--color-muted); }
+.trail-breadcrumb a:hover { color: var(--color-ink); }
+.trail-breadcrumb [aria-current='page'] { color: var(--color-ink); font-weight: var(--weight-semibold); }
+.trail-path { width: 22px; border-top: 1.5px dashed var(--color-border-strong); animation: trail-draw var(--motion-slow) var(--motion-ease-out) both; }
+@keyframes trail-draw { from { width: 0; } to { width: 22px; } }
+@keyframes trail-stop-in { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: none; } }
+
+/* ===== 空白页 ===== */
+.trail-empty { position: relative; display: grid; place-items: center; min-height: 280px; padding: var(--space-6) var(--space-5); overflow: hidden; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); }
+.trail-empty-copy { position: relative; display: flex; align-items: center; gap: var(--space-4); max-width: 520px; }
+.trail-empty-copy h2 { margin: 0 0 var(--space-1); font-size: var(--text-lg); font-weight: var(--weight-bold); }
+.trail-empty-copy p { margin: 0 0 var(--space-3); color: var(--color-muted); }
+.trail-empty[data-draw='true'] .trail-empty-copy { animation: trail-empty-in 600ms var(--motion-ease-out) 700ms both; }
+@keyframes trail-empty-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* ===== 岑宁报信 ===== */
+.toast-region { position: fixed; right: var(--space-5); bottom: var(--space-5); z-index: var(--z-toast); display: grid; gap: var(--space-2); width: min(320px, calc(100vw - 2 * var(--space-4))); }
+.toast { position: relative; display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-2) var(--space-3) var(--space-3); overflow: hidden; border: 1px solid var(--color-border-strong); border-radius: var(--radius-lg); background: var(--color-surface-raised); box-shadow: var(--elevation-floating); animation: toast-in var(--motion-base) var(--motion-ease-out); }
+.toast .mascot-art > img { width: 32px; height: 32px; animation: toast-nod 600ms var(--motion-ease-out) 200ms; transform-origin: 50% 80%; }
+.toast-copy { display: grid; flex: 1; min-width: 0; font-size: var(--text-sm); }
+.toast-copy strong { color: var(--color-success); font-weight: var(--weight-bold); }
+.toast-copy span { color: var(--color-muted); overflow-wrap: anywhere; }
+.toast .mascot-state,
+.trail-empty .mascot-state { display: none; }
+.toast-close { min-width: 44px; min-height: 44px; padding: 0; }
+.toast-trail { position: absolute; left: 0; bottom: 0; width: 100%; height: 2px; background: repeating-linear-gradient(90deg, var(--color-success) 0 5px, transparent 5px 9px); transform-origin: left; animation: toast-trail 4000ms linear forwards; }
+.toast[data-paused='true'] .toast-trail { animation-play-state: paused; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes toast-nod { 0%, 100% { transform: none; } 30% { transform: rotate(-10deg); } 60% { transform: rotate(6deg); } }
+@keyframes toast-trail { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+@media (max-width: 599px) {
+  .toast-region { right: var(--space-3); bottom: calc(66px + env(safe-area-inset-bottom)); }
+}
+
+/* ===== 任务行上的新部件 ===== */
+.task-status { display: inline-flex; align-items: center; gap: 6px; }
+.priority-code { font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+.task-actions button { display: inline-flex; align-items: center; gap: var(--space-2); }
+.task-actions .btn-primary { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-on-accent); }
+.task-actions .btn-primary:hover:not(:disabled) { background: var(--color-accent-strong); }
+.task-workspace .btn-primary:disabled { background: var(--color-surface-subtle); border-color: var(--color-border); color: var(--color-muted); opacity: 1; }
+.task-workspace .task-actions .btn-danger { background: transparent; border-color: transparent; color: var(--color-danger); }
+.task-workspace .task-actions .btn-danger:hover:not(:disabled) { background: var(--color-danger-bg); border-color: transparent; color: var(--color-danger); }
+.task-row .task-status { padding: 0; background: transparent; color: var(--color-muted); font-weight: var(--weight-regular); }
+.task-row .task-status[data-status='in_progress'] { color: var(--color-accent); }
+.task-row .task-status[data-status='blocked'] { color: var(--color-warning); }
+.task-row .task-status[data-status='done'] { color: var(--color-success); }
+.task-row[data-status='cancelled'] h3 { color: var(--color-muted); text-decoration: line-through; }
+.task-workspace-heading h1 { margin: 0 0 var(--space-2); font-size: var(--text-2xl); }
+
+/* 任务进度：石堆按完成比例点亮，数字保留精确数量。 */
+.progress-cairn { display: flex; align-items: center; gap: var(--space-3); flex: none; }
+.progress-cairn-stack { display: flex; flex-direction: column-reverse; align-items: center; justify-content: flex-start; gap: 3px; width: 74px; min-height: 75px; padding-top: 4px; }
+.progress-cairn-stack .stone { flex: none; height: 9px; background: var(--color-border-strong); }
+.progress-cairn-stack .stone[data-filled='true'] { background: var(--color-accent); }
+.progress-cairn[data-adding='true'] .stone[data-cap='true'] { animation: progress-stone-drop 600ms var(--motion-ease-hop); }
+.progress-cairn-copy { font-size: var(--text-sm); white-space: nowrap; }
+.progress-cairn-copy > span { color: var(--color-muted); }
+.progress-cairn-copy p { margin: 4px 0 0; color: var(--color-ink); }
+@keyframes progress-stone-drop { 0% { opacity: 0; transform: translateY(-18px) rotate(-12deg); } 55% { opacity: 1; transform: translateY(1px) scale(1.12, 0.8); } 100% { opacity: 1; transform: none; } }
+@media (max-width: 600px) {
+  .task-workspace { padding: var(--space-3) var(--space-1); }
+  .task-workspace-tools { justify-content: space-between; }
+  .progress-cairn-stack { min-height: 54px; width: 60px; transform: scaleX(0.8); transform-origin: left center; margin-right: -10px; }
+}
+
+/* ===== 页面内工具链接（知识页工具栏等） ===== */
+.knowledge-workspace-bar .trail-breadcrumb ol { margin: 0; }
+.knowledge-workspace-links { display: flex; align-items: center; gap: var(--space-1); margin-left: auto; margin-right: var(--space-3); }
+.knowledge-workspace-links a { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 var(--space-3); border-radius: var(--radius); color: var(--color-muted); font-size: var(--text-md); }
+.knowledge-workspace-links a:hover { background: var(--color-surface-subtle); color: var(--color-ink); text-decoration: none; }
+.knowledge-workspace-links a[aria-current='page'] { background: var(--color-selected-surface); color: var(--color-ink); }
+
+/* ===== 出错摇一摇 ===== */
+[aria-invalid='true'] { border-color: var(--color-danger); animation: field-shake 300ms var(--motion-ease-out); }
+.form-field[data-invalid='true'] input,
+.form-field input[aria-invalid='true']:focus-visible { border-color: var(--color-danger); }
+.form-error { animation: field-shake 300ms var(--motion-ease-out); }
+@keyframes field-shake {
+  0%, 100% { transform: none; }
+  20% { transform: translateX(-4px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-2px); }
+  80% { transform: translateX(2px); }
+}
+
+/* ===== 启动：落石 → 小路 → 字标 → 回到左上角 ===== */
+.startup-intro { position: fixed; inset: 0; z-index: var(--z-intro); display: grid; place-items: center; overflow: hidden; background: var(--color-canvas); color: var(--color-ink); }
+.startup-intro-core { position: relative; display: grid; justify-items: center; gap: var(--space-3); }
+.startup-intro-mark { width: 92px; height: 92px; overflow: visible; }
+.startup-intro-mark .piece { fill: var(--color-ink); opacity: 0; transform-box: fill-box; transform-origin: 50% 100%; animation: intro-piece 360ms var(--motion-ease-hop) forwards; }
+.startup-intro-mark .piece:nth-of-type(2) { animation-delay: 160ms; }
+.startup-intro-mark .piece:nth-of-type(3) { animation-delay: 320ms; }
+.startup-intro-mark .trail { fill: none; stroke: var(--color-accent); stroke-width: 1.3; stroke-linecap: round; stroke-dasharray: 40; stroke-dashoffset: 40; animation: intro-trail var(--motion-slow) var(--motion-ease-out) 600ms forwards; }
+.startup-intro-word { font-size: var(--text-2xl); font-weight: var(--weight-bold); opacity: 0; animation: intro-fade-up 300ms var(--motion-ease-out) 900ms forwards; }
+.startup-intro-status { color: var(--color-muted); font-size: var(--text-sm); opacity: 0; animation: intro-fade-up 300ms var(--motion-ease-out) 1000ms forwards; }
+.startup-intro[data-phase='exit'] { animation: intro-out 300ms var(--motion-ease-out) forwards; }
+.startup-intro[data-phase='exit'] .startup-intro-core { animation: intro-core-out 300ms var(--motion-ease-out) forwards; }
+.startup-content[data-revealing='true'] { animation: fade-in 300ms var(--motion-ease-out); }
+@keyframes intro-piece { 0% { opacity: 0; transform: translateY(-14px); } 60% { opacity: 1; transform: translateY(1px) scale(1.08, 0.9); } 100% { opacity: 1; transform: none; } }
+@keyframes intro-trail { to { stroke-dashoffset: 0; } }
+@keyframes intro-fade-up { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes intro-out { to { opacity: 0; } }
+@keyframes intro-core-out { to { transform: translate(calc(-50vw + 60px), calc(-50vh + 32px)) scale(0.35); } }
+.startup-intro[data-reduced='true'] .piece,
+.startup-intro[data-reduced='true'] .startup-intro-word,
+.startup-intro[data-reduced='true'] .startup-intro-status { animation: none; opacity: 1; }
+.startup-intro[data-reduced='true'] .trail { animation: none; stroke-dashoffset: 0; }
+.startup-intro[data-reduced='true'][data-phase='exit'] .startup-intro-core { animation: none; }
+
+/* 保留状态、文字和淡入，关闭位移、弹跳及无限循环。 */
+@media (prefers-reduced-motion: reduce) {
+  button:active:not(:disabled) { transform: none; }
+  .status-stone[data-settling='true'] .stone,
+  .status-stone[data-settling='true'] .status-stone-dust:nth-of-type(2),
+  .status-stone[data-settling='true'] .status-stone-dust:nth-of-type(3),
+  .progress-cairn[data-adding='true'] .stone[data-cap='true'] { animation: none; }
+  .cairn-stack .stone { animation: none; opacity: 1; transform: translateX(-50%); }
+  .thinking-stones-dots .stone { animation: none; opacity: 0.6; }
+  .odometer-reel { transition: none; }
+  .topo-background[data-draw='true'] ellipse,
+  .topo-background[data-draw='true'] path { animation: none; stroke-dashoffset: 0; }
+  .trail-path { animation: none; }
+  .trail-breadcrumb li,
+  .trail-empty[data-draw='true'] .trail-empty-copy,
+  .toast { animation: fade-in var(--motion-base) both; }
+  .toast .mascot-art > img,
+  .toast-trail,
+  [aria-invalid='true'],
+  .form-error { animation: none; }
+  .startup-intro .piece,
+  .startup-intro .startup-intro-word,
+  .startup-intro .startup-intro-status { animation: none; opacity: 1; }
+  .startup-intro .trail { animation: none; stroke-dashoffset: 0; }
+  .startup-intro[data-phase='exit'] .startup-intro-core { animation: none; }
+}
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* 岑宁统一操作入口，沿用项目操作与规划的确认、恢复流程。 */
+.mascot-assistant-panel[data-workspace='true'] { width: min(560px, calc(100vw - 2 * var(--space-4))); max-height: calc(100dvh - 96px); overflow-y: auto; overscroll-behavior: contain; }
+.project-command-panel { min-width: 0; margin-top: var(--space-4); }
+.project-command-panel button { background: var(--color-surface); border-color: var(--color-border-strong); color: var(--color-ink); }
+.project-command-panel button:hover:not(:disabled) { background: var(--color-surface-subtle); }
+.project-command-panel button.btn-primary { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-on-accent); }
+.project-command-panel button.btn-primary:hover:not(:disabled) { background: var(--color-accent-strong); }
+.project-command-panel a.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius);
+  color: var(--color-on-accent);
+  text-decoration: none;
+}
+.project-command-panel .btn-primary:disabled { background: var(--color-surface-subtle); border-color: var(--color-border); color: var(--color-muted); }
+.project-command-links { display: flex; justify-content: space-between; gap: var(--space-3); padding-bottom: var(--space-3); font-size: var(--text-md); }
+.project-command-tabs { display: flex; gap: var(--space-2); padding: var(--space-2) 0; border-block: 1px solid var(--color-border); }
+.project-command-tabs button { min-height: 44px; padding: var(--space-2) var(--space-3); border: 0; background: transparent; color: var(--color-muted); font-size: var(--text-md); }
+.project-command-tabs button[aria-selected='true'] { background: var(--color-selected-surface); color: var(--color-accent-strong); }
+.project-command-tabs button:disabled { opacity: 0.5; cursor: not-allowed; }
+.project-command-panel .project-analysis { padding: var(--space-4) 0 0; border: 0; margin: 0; }
+.project-command-panel .project-operations > header h3 { display: none; }
+.project-command-panel .project-analysis > header p { margin-top: 0; }
+.project-command-panel .operation-intent { margin-top: var(--space-4); }
+.project-command-panel .operation-intent textarea { min-height: 96px; }
+.project-command-target { color: var(--color-accent-strong); font-weight: var(--weight-semibold); }
+.operation-assignee-id { display: block; margin-top: var(--space-1); color: var(--color-muted); font-size: var(--text-xs); overflow-wrap: anywhere; }
+.resize-handle { position: relative; z-index: 1; display: block; flex: none; touch-action: none; user-select: none; background: var(--color-surface-subtle); }
+.resize-handle[hidden] { display: none; }
+.resize-handle::before { content: ""; position: absolute; background: var(--color-border-strong); transition: background-color var(--motion-fast); }
+.resize-handle[data-axis='x'] { cursor: col-resize; }
+.resize-handle[data-axis='x']::before { top: 0; bottom: 0; left: 3px; width: 2px; }
+.resize-handle[data-axis='y'] { cursor: row-resize; }
+.resize-handle[data-axis='y']::before { left: 0; right: 0; top: 3px; height: 2px; }
+.resize-handle:hover::before,
+.resize-handle:focus-visible::before,
+.resize-handle[data-dragging='true']::before { background: var(--color-accent); }
+.resize-handle:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
+html[data-panel-resize-axis] * { user-select: none; }
+html[data-panel-resize-axis='x'] * { cursor: col-resize; }
+html[data-panel-resize-axis='y'] * { cursor: row-resize; }
+@media (max-width: 600px) {
+  .mascot-assistant-panel[data-workspace='true'] { position: fixed; top: 72px; left: var(--space-3); right: var(--space-3); width: auto; max-height: calc(100dvh - 148px - env(safe-area-inset-bottom)); }
+}

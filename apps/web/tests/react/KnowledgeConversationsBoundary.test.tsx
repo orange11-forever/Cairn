@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Link, MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, expect, test, vi } from "vitest";
@@ -67,24 +67,23 @@ test.each(["network", "503", "contract", "404", "cancel"])("manual reread hides 
   await screen.findByText("私有历史回答");
 });
 
-test.each(["list", "model"] as const)("project %s404 clears private sidebar/selector titles and detail", async target => {
+test.each(["list", "model"] as const)("project %s404 clears private selector titles and detail", async target => {
   const api = fixture(); const { client } = mount();
   await screen.findByText("私有历史回答");
-  const sidebar = screen.getByRole("region", { name: "项目对话历史" });
-  expect(await within(sidebar).findByText("私有历史标题")).toBeInTheDocument();
+  await waitFor(() => expect(screen.getByRole("option", { name: "私有历史标题" })).toBeInTheDocument());
   api.deny(target);
   await act(async () => { await client.invalidateQueries({ predicate: query => query.queryKey.includes(target) }); });
-  await waitFor(() => expect(within(sidebar).queryByText("私有历史标题")).toBeNull());
+  await waitFor(() => expect(screen.queryByRole("option", { name: "私有历史标题" })).toBeNull());
   expect(screen.queryByText("私有历史回答")).toBeNull();
   expect(screen.queryByText("私有历史标题", { selector: "option" })).toBeNull();
 });
 
-test("conversation-only404 keeps authorized project titles in shell history", async () => {
+test("conversation-only404 keeps authorized project titles in the conversation selector", async () => {
   const api = fixture(); const { user } = mount();
   await screen.findByText("私有历史回答"); api.deny("detail");
   await user.click(screen.getByRole("button", { name: "重新读取会话" }));
   await screen.findByText("重新读取失败，请保留草稿并再次读取会话。");
-  expect(within(screen.getByRole("region", { name: "项目对话历史" })).getByText("私有历史标题")).toBeInTheDocument();
+  expect(screen.getByRole("option", { name: "私有历史标题" })).toBeInTheDocument();
 });
 
 test.each([false, true])("explorer source roundtrip preserves selected draft and recovery=%s", async recovery => {
@@ -114,7 +113,7 @@ test("append404 keeps loaded history unverified through explicit reread retry", 
   await screen.findByText(/发送结果尚未确认，请重新读取会话/);
   expect(screen.queryByText("私有历史回答")).toBeNull(); expect(screen.queryByText("私有证据摘录")).toBeNull();
   expect(screen.getByLabelText("向项目知识提问")).toHaveValue("新增问题保留草稿");
-  expect(within(screen.getByRole("region", { name: "项目对话历史" })).getByText("私有历史标题")).toBeInTheDocument();
+  expect(screen.getByRole("option", { name: "私有历史标题" })).toBeInTheDocument();
   api.hold();
   await user.click(screen.getByRole("button", { name: "重新读取会话" }));
   expect(screen.queryByText("私有历史回答")).toBeNull(); expect(screen.queryByText("私有证据摘录")).toBeNull();

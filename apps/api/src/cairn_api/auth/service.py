@@ -319,7 +319,7 @@ class AuthService:
         self,
         *,
         session_token: str | None,
-        audit: RequestAuditContext,
+        audit: RequestAuditContext | None,
     ) -> IdentityContextResponse:
         if not session_token:
             raise _invalid_session()
@@ -334,20 +334,20 @@ class AuthService:
                 if not self.record_is_valid(record, csrf_token=csrf_token):
                     raise _invalid_session()
                 assert record is not None
-                now = datetime.now(UTC)
-                record.auth_session.last_seen_at = now
-                add_audit_log(
-                    self._session,
-                    org_id=record.organization.id,
-                    actor_type="user",
-                    actor_id=record.user.id,
-                    action="auth.session_restored",
-                    resource_type="session",
-                    resource_id=record.auth_session.id,
-                    trace_id=audit.trace_id,
-                    ip=audit.ip,
-                    user_agent=audit.user_agent,
-                )
+                if audit is not None:
+                    record.auth_session.last_seen_at = datetime.now(UTC)
+                    add_audit_log(
+                        self._session,
+                        org_id=record.organization.id,
+                        actor_type="user",
+                        actor_id=record.user.id,
+                        action="auth.session_restored",
+                        resource_type="session",
+                        resource_id=record.auth_session.id,
+                        trace_id=audit.trace_id,
+                        ip=audit.ip,
+                        user_agent=audit.user_agent,
+                    )
                 identity = identity_context(record, user=record.user, csrf_token=csrf_token)
             return identity
         except SQLAlchemyError as exc:

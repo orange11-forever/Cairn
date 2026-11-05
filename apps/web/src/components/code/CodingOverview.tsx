@@ -1,3 +1,4 @@
+import { Odometer } from "../trail/Odometer.tsx";
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bot, ExternalLink } from 'lucide-react';
 import { useRef, useState } from 'react';
@@ -26,6 +27,7 @@ function Overview() {
     queryFn: ({ signal }) => fetchCodingOverview(AbortSignal.any([signal, session!.signal])),
     refetchInterval: query => query.state.error ? false : 2000 });
   const items = query.data?.items ?? [];
+  const active = items.filter(running).length;
   const canConfigure = ['owner', 'admin'].includes(session!.identity.membership.role);
   async function changeLimit(limit: number) {
     setPending(true); setError(null);
@@ -39,7 +41,7 @@ function Overview() {
   return <details className="coding-overview" ref={details} onKeyDown={event => {
     if (event.key === 'Escape' && details.current) { details.current.open = false; details.current.querySelector('summary')?.focus(); }
   }}>
-    <summary><Bot size={16} aria-hidden="true" /><span>Agent 运行</span><span className="coding-overview-count">{items.filter(running).length}</span></summary>
+    <summary aria-label={`Agent 运行 ${active}`}><Bot size={16} aria-hidden="true" /><span>Agent 运行</span><span className="coding-overview-count" data-active={active > 0 ? "true" : undefined}><Odometer value={active} /></span></summary>
     <section className="coding-overview-body" aria-label="跨项目 Agent 运行">
       <header><h2>Agent 运行</h2><span>当前账号 · 全部项目</span></header>
       <div className="coding-concurrency"><label>本机同时运行<select aria-label="本机同时运行" value={query.data?.concurrency ?? 2} disabled={!query.data || pending || !canConfigure} onChange={event => void changeLimit(Number(event.target.value))}>{[1, 2, 3, 4].map(limit => <option value={limit} key={limit}>{limit} 个任务</option>)}</select></label><p>本次应用会话生效。等待命令确认也占用名额；降低上限后，已运行任务继续完成。</p></div>

@@ -304,6 +304,8 @@ def bind_repository(
     with workspace.lock:
         if workspace.coding:
             workspace.coding.require_idle(identity.user.id, project_id)
+        if workspace.terminals:
+            workspace.terminals.require_idle(identity.user.id, project_id)
         remote = None
         credential = None
         if payload.repository_id is not None:
@@ -348,6 +350,8 @@ def unbind_repository(
     with workspace.lock:
         if workspace.coding:
             workspace.coding.require_idle(identity.user.id, project_id)
+        if workspace.terminals:
+            workspace.terminals.require_idle(identity.user.id, project_id)
         workspace.unbind(identity.user.id, project_id)
     response = Response(status_code=204)
     no_store(response)

@@ -1,10 +1,14 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { ApiError } from "../../api/errors.ts";
 import { applyProjectOperation, fetchProjectOperation, fetchProjectOperations, previewProjectOperation, type OperationPage, type OperationPreview, type OperationRequest, type ProjectAction, type ProjectOperation } from "../../api/projectOperations.ts";
 import { useAbortableAction } from "../../hooks/useAbortableAction.ts";
+import { ThinkingStones } from "../trail/ThinkingStones.tsx";
+import { codingDispatch } from "../code/codingDispatch.ts";
+import { projectPath } from "../../app/projectRoutes.ts";
 
 interface Props {projectId:string;ownerId:string;csrfToken:string;signal:AbortSignal;disabled?:boolean;onApplied:()=>Promise<void>;onBusy?:(busy:boolean)=>void;onOpenTask?:(id:string)=>void}
-const TYPES={create_task:"创建任务",update_task:"调整任务字段",change_status:"变更任务状态",add_dependency:"添加依赖",remove_dependency:"移除依赖"};
+const TYPES={create_project:"创建项目",dispatch_task:"派发编程任务",create_task:"创建任务",update_task:"调整任务字段",assign_task:"调整负责人",change_status:"变更任务状态",add_dependency:"添加依赖",remove_dependency:"移除依赖"};
 const PRIORITY={low:"低",medium:"中",high:"高",critical:"紧急"};
 const STATUS={backlog:"待规划",todo:"待处理",in_progress:"进行中",blocked:"已阻塞",done:"已完成",cancelled:"已取消"};
 const FIELDS={title:"标题",description:"描述",priority:"优先级",acceptanceCriteria:"验收标准"};
@@ -12,6 +16,8 @@ const FIELDS={title:"标题",description:"描述",priority:"优先级",acceptanc
 export function OperationDetails({action,snapshot,removedPredecessorId,taskNames}:{action:ProjectAction;snapshot?:OperationPreview["snapshot"];removedPredecessorId?:string;taskNames?:Record<string,string>}) {
   const task=(id:string)=>{const title=snapshot?.tasks.find(item=>item.id===id)?.title??taskNames?.[id];return title?`${title}（${id}）`:id;};
   const value=(field:string,input:unknown)=> input===null || input==="" || input===undefined ? "未填写" : field==="priority" ? PRIORITY[input as keyof typeof PRIORITY] : String(input);
+  if(action.type==="create_project")return <dl className="operation-details"><dt>项目名称</dt><dd>{action.name}</dd><dt>描述</dt><dd>{action.description??"未填写"}</dd></dl>;
+  if(action.type==="dispatch_task")return <dl className="operation-details"><dt>任务</dt><dd>{task(action.taskId)}</dd><dt>编程 Agent</dt><dd>{action.assistantName??action.assistantId??"默认助手"}</dd></dl>;
   if(action.type==="create_task")return <dl className="operation-details"><dt>标题</dt><dd>{action.title}</dd><dt>描述</dt><dd>{action.description??"未填写"}</dd><dt>优先级</dt><dd>{PRIORITY[action.priority??"medium"]}</dd><dt>验收标准</dt><dd>{action.acceptanceCriteria??"未填写"}</dd><dt>阶段 / 里程碑</dt><dd>{snapshot?.stages.find(s=>s.id===action.stageId)?.name??action.stageId??"未关联"} / {snapshot?.milestones.find(m=>m.id===action.milestoneId)?.name??action.milestoneId??"未关联"}</dd><dt>初始状态</dt><dd>待规划</dd></dl>;
   if(action.type==="update_task") {
     const before=snapshot?.tasks.find(item=>item.id===action.taskId);
@@ -21,6 +27,7 @@ export function OperationDetails({action,snapshot,removedPredecessorId,taskNames
     const before=snapshot?.tasks.find(item=>item.id===action.taskId);
     return <dl className="operation-details"><dt>任务</dt><dd>{task(action.taskId)}</dd><dt>状态变更</dt><dd>{before?`${STATUS[before.status]} → `:""}{STATUS[action.status]}</dd></dl>;
   }
+  if(action.type==="assign_task")return <dl className="operation-details"><dt>任务</dt><dd>{task(action.taskId)}</dd><dt>新负责人</dt><dd>{action.assigneeUserId===null?"未分配":<><span>{action.assigneeName??action.assigneeUserId}</span><small className="operation-assignee-id mono">{action.assigneeUserId}</small></>}</dd></dl>;
   if(action.type==="add_dependency")return <dl className="operation-details"><dt>前置任务</dt><dd>{task(action.predecessorTaskId)}</dd><dt>后续任务</dt><dd>{task(action.successorTaskId)}</dd></dl>;
   const edge=snapshot?.dependencies.find(item=>item.id===action.dependencyId);
   const predecessor=edge?.predecessorTaskId??removedPredecessorId;
@@ -28,7 +35,7 @@ export function OperationDetails({action,snapshot,removedPredecessorId,taskNames
 }
 
 function SavedOperation({value,onOpenTask}:{value:ProjectOperation;onOpenTask?:Props["onOpenTask"]}) {
-  const taskId=value.action.type==="create_task" ? value.result.id : value.action.type==="add_dependency" ? value.action.successorTaskId : value.action.taskId;
+  const taskId=value.action.type==="create_project" ? undefined : value.action.type==="create_task" ? value.result.id : value.action.type==="add_dependency" ? value.action.successorTaskId : value.action.taskId;
   const taskNames:Record<string,string>={};
   if(typeof taskId==="string" && typeof value.result.title==="string")taskNames[taskId]=value.result.title;
   if(typeof value.result.predecessorTaskId==="string" && typeof value.result.predecessorTitle==="string")taskNames[value.result.predecessorTaskId]=value.result.predecessorTitle;
@@ -113,11 +120,13 @@ function OperationsPanel({projectId,ownerId,csrfToken,signal,disabled=false,onAp
     const page=await records.run(more?history?.nextCursor??null:null);
     if(page && current())setHistory({items:more?[...(history?.items??[]),...page.items]:page.items,nextCursor:page.nextCursor});
   }
+  const dispatch = preview ? codingDispatch(preview, ownerId) : null;
   return <section className="project-analysis project-operations" aria-labelledby={heading}>
-    <header><div><h3 id={heading}>助手项目操作</h3><p>描述一个具体操作，核对建议后确认执行。支持创建任务、调整标题/描述/优先级/验收标准、更新状态及维护依赖。</p></div></header>
+    <header><div><h3 id={heading}>助手项目操作</h3><p>描述一个具体操作，核对建议后确认执行。支持创建任务、分配团队成员、派发编程 Agent、调整任务及维护依赖。</p></div></header>
     <form className="operation-intent" onSubmit={event=>{event.preventDefault();void generate();}}>
       <label htmlFor={inputId}>你要执行的操作</label><textarea id={inputId} value={intent} maxLength={2000} rows={3} disabled={locked || generation.pending} onChange={event=>{setIntent(event.target.value);setPreview(null);}} placeholder="例如：创建一个名为“确认发布窗口”的高优先级任务"/>
-      <button type="submit" disabled={locked || generation.pending || !intent.trim()}>{generation.pending?"正在生成建议…":"生成待确认操作"}</button>
+      <button className="btn-primary" type="submit" disabled={locked || generation.pending || !intent.trim()}>{generation.pending?<ThinkingStones>正在生成建议…</ThinkingStones>:"生成待确认操作"}</button>
+      {generation.pending && <button type="button" onClick={generation.cancel}>停止生成</button>}
     </form>
     {[generation,apply,lookup,records].map((item,index)=>item.state.phase==="error" && <div className="project-analysis-error" role="alert" key={index}><p>{index===1 && preview?.suggestion.action?`${TYPES[preview.suggestion.action.type]}：`:""}{item.state.error.message}</p>{item.state.error.traceId && <small>请求编号：{item.state.error.traceId}</small>}</div>)}
     {storageError && <p role="alert">{storageError}</p>}
@@ -126,8 +135,14 @@ function OperationsPanel({projectId,ownerId,csrfToken,signal,disabled=false,onAp
     {pendingId && <div className="project-structure-actions"><button type="button" disabled={busy || signal.aborted} onClick={()=>void query()}>{lookup.pending?"正在查询…":"查询操作结果"}</button>{submission && !uncertain && <button type="button" disabled={disabled || busy || signal.aborted} onClick={()=>void confirm()}>重新提交同一操作</button>}</div>}
     {refreshFailed && <button type="button" disabled={refreshing || signal.aborted} onClick={()=>void refresh()}>重新读取项目</button>}
     {preview && !signal.aborted && <div className="plan-confirmation" role="group" aria-label="确认助手操作">
+      <p className="project-command-target">项目：{preview.snapshot.project.name}</p>
       <h4>{preview.suggestion.action?TYPES[preview.suggestion.action.type]:"需要补充说明"}</h4><p>{preview.suggestion.explanation}</p>
-      {preview.suggestion.action && <><OperationDetails action={preview.suggestion.action} snapshot={preview.snapshot}/><p className="project-analysis-scope">以上是待确认变更，尚未执行。操作记录仅你可见，实际任务按项目权限共享。</p>{preview.canExecute?<button type="button" disabled={locked || Boolean(storageError)} onClick={()=>void confirm()}>{apply.pending?"正在执行…":"确认执行此操作"}</button>:<p>当前为只读访问，执行需要项目写入权限。</p>}</>}
+      {preview.suggestion.action && <><OperationDetails action={preview.suggestion.action} snapshot={preview.snapshot}/>
+        <p className="project-analysis-scope">{dispatch ? "尚未启动。到代码工作区核对仓库、模型和任务内容，授权后开始；命令仍需逐条确认。" : "以上是待确认变更，尚未执行。操作记录仅你可见，实际任务按项目权限共享。"}</p>
+        {preview.canExecute ? dispatch
+          ? !locked && <Link className="btn-primary" to={projectPath(projectId,"code")} state={{codingDispatch:dispatch}}>前往代码工作区确认派发</Link>
+          : <button className="btn-primary" type="button" disabled={locked || Boolean(storageError)} onClick={()=>void confirm()}>{apply.pending?"正在执行…":"确认执行此操作"}</button>
+          : <p>当前为只读访问，执行需要项目写入权限。</p>}</>}
     </div>}
     {saved && !signal.aborted && <SavedOperation value={saved} onOpenTask={onOpenTask}/>}
     <div className="plan-history"><button type="button" disabled={records.pending || signal.aborted} onClick={()=>void loadHistory()}>{records.pending?"正在读取记录…":"查看我的操作记录"}</button>{history && !signal.aborted && <div><h4>我已确认的操作</h4>{history.items.length===0 && <p>还没有已执行的操作。</p>}{history.items.filter(item=>item.operationId!==saved?.operationId).map(item=><SavedOperation key={item.operationId} value={item} onOpenTask={onOpenTask}/>)}{history.nextCursor && <button type="button" disabled={records.pending} onClick={()=>void loadHistory(true)}>加载更多操作</button>}</div>}</div>

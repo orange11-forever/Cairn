@@ -1,10 +1,11 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronRight, FileCode2, FilePlus2, Folder, GitBranch, GitCompareArrows, RefreshCw, Save, X } from 'lucide-react';
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { fetchFileDiff, fetchFileTree, fetchWorkspaceChanges, readWorkspaceFile, saveWorkspaceFile, type FileDocument } from '../../api/workspace.ts';
 import { useSession } from '../../session/SessionContext.tsx';
 import { isDirty, useEditorSession, type EditorDraft } from './editorSession.ts';
 import type { AgentComparison } from './CodingPanel.tsx';
+import { ResizeHandle } from '../ResizeHandle.tsx';
 const MonacoEditor = lazy(() => import('./MonacoEditor.tsx'));
 
 type Comparison = { kind: 'git' | 'conflict' | 'agent'; path: string; original: string; modified: string; draftId?: string; disk?: FileDocument; label?: string };
@@ -30,6 +31,9 @@ export function RepositoryEditorPanel({ projectId, localPath, onConnection, lock
   const [comparison, setComparison] = useState<Comparison | null>(null);
   const [sidebar, setSidebar] = useState<'files' | 'changes'>('files');
   const [closeId, setCloseId] = useState<string | null>(null);
+  const layout = useRef<HTMLDivElement>(null);
+  const explorer = useRef<HTMLElement>(null);
+  const [explorerWidth, setExplorerWidth] = useState<number | null>(null);
   const writable = session!.identity.membership.role !== 'viewer' && !locked;
   useEffect(() => {
     if (agentComparison) setComparison({ kind: 'agent', path: agentComparison.path, original: agentComparison.before, modified: agentComparison.after, label: agentComparison.label });
@@ -130,8 +134,8 @@ export function RepositoryEditorPanel({ projectId, localPath, onConnection, lock
     setCloseId(null); setComparison(null);
   }
   const visiblePaths = tree.data?.paths.filter(path => path.toLowerCase().includes(filter.toLowerCase())) ?? [];
-  return <div className="code-editor-layout">
-    <aside className="code-editor-explorer" aria-label="项目文件">
+  return <div className="code-editor-layout" ref={layout} style={{ '--code-files-width': explorerWidth === null ? undefined : `${explorerWidth}px` } as CSSProperties}>
+    <aside className="code-editor-explorer" aria-label="项目文件" ref={explorer}>
       <div className="code-explorer-heading"><span>资源管理器</span><div><button type="button" aria-label="新建文件" disabled={!writable || !tree.data || pending} onClick={() => setNewPath('')}><FilePlus2 size={15} /></button><button type="button" aria-label="刷新文件与差异" disabled={pending || tree.isFetching} onClick={() => void action(refresh)}><RefreshCw size={15} /></button></div></div>
       <div className="code-repository-info"><span><GitBranch size={14} />{tree.data?.branch ?? '工作目录'}</span><code title={localPath}>{localPath}</code><button type="button" onClick={onConnection}>管理仓库关联</button></div>
       <div className="code-explorer-switch" aria-label="文件列表视图"><button type="button" aria-pressed={sidebar === 'files'} onClick={() => setSidebar('files')}>文件</button><button type="button" aria-pressed={sidebar === 'changes'} onClick={() => setSidebar('changes')}>变更 {changes.data?.files.length ?? ''}</button></div>
@@ -139,6 +143,7 @@ export function RepositoryEditorPanel({ projectId, localPath, onConnection, lock
       {sidebar === 'files' ? <><label className="code-file-filter"><span className="workbench-sr-only">搜索项目文件</span><input placeholder="搜索文件…" value={filter} onChange={event => setFilter(event.target.value)} /></label><div className="code-tree-scroll">{filter ? <ul className="code-tree">{visiblePaths.map(path => <li key={path}><button type="button" title={path} onClick={() => open(path)}><FileCode2 size={14} /><span>{path}</span></button></li>)}</ul> : <FileTree paths={visiblePaths} selected={draft?.document.path} open={open} />}</div>{tree.isPending ? <p className="code-explorer-empty" role="status">正在读取文件…</p> : !visiblePaths.length && <p className="code-explorer-empty">没有匹配的文件</p>}</> : <div className="code-tree-scroll"><p className="code-explorer-empty">点击文件，对照 HEAD 查看差异。来源未记录的改动显示为工作目录变更。</p><ul className="code-tree">{changes.data?.files.map(file => <li key={file.path}><button type="button" onClick={() => showDiff(file.path)} title={file.path}><code>{file.status.trim()}</code><span>{file.path}</span></button></li>)}</ul>{changes.data?.files.length === 0 && <p className="code-explorer-empty">工作目录没有变更</p>}</div>}
       {(tree.error || changes.error) && <p className="code-notice code-notice-error" role="alert">{(tree.error ?? changes.error)?.message}</p>}
     </aside>
+    <ResizeHandle axis="x" className="code-files-resizer" label="调整文件列表宽度" pane={explorer} min={160} max={() => (layout.current?.clientWidth ?? 0) - 288} onResize={setExplorerWidth} onReset={() => setExplorerWidth(null)} />
     <div className="code-editor-main">
       {locked && <p className="code-operation-status" role="status">Agent 正在运行，编辑暂时锁定；可以查看源码与差异，停止或结束后继续编辑。</p>}
       <div className="code-document-tabs" role="tablist" aria-label="打开的文件">{state.tabs.map(item => <div key={item.id} className={state.active === item.id && !comparison ? 'is-active' : ''}><button type="button" role="tab" id={`file-tab-${state.tabs.indexOf(item)}`} aria-controls="code-document-panel" aria-selected={state.active === item.id && !comparison} tabIndex={state.active === item.id ? 0 : -1} title={item.document.path} onClick={() => select(item.id)} onKeyDown={event => { if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) { event.preventDefault(); const index = event.key === 'Home' ? 0 : event.key === 'End' ? state.tabs.length - 1 : (state.tabs.indexOf(item) + (event.key === 'ArrowLeft' ? -1 : 1) + state.tabs.length) % state.tabs.length; select(state.tabs[index]!.id); document.getElementById(`file-tab-${index}`)?.focus(); } }}><FileCode2 size={14} />{item.document.path.split('/').pop()}{isDirty(item) && <span className="code-dirty" aria-label="未保存" />}</button><button type="button" aria-label={`关闭 ${item.document.path}`} disabled={pending} onClick={() => close(item.id)}><X size={13} /></button></div>)}</div>

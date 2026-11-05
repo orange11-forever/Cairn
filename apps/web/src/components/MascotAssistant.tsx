@@ -1,11 +1,12 @@
 import { CircleHelp, X } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useLocation } from "react-router-dom";
 
 import { MascotFigure } from "./MascotFigure.tsx";
 import type { MascotState } from "./MascotFigure.tsx";
 
 const PAGE_COPY = {
-  projects: {
+  tasks: {
     title: "项目任务助手",
     description: "我会陪你查看项目任务，并提示当前状态可以执行的下一步操作。",
   },
@@ -13,20 +14,29 @@ const PAGE_COPY = {
     title: "项目知识助手",
     description: "我会陪你查看当前项目的资料状态，并提示摄取或检索的下一步操作。",
   },
+  code: {
+    title: "代码与架构助手",
+    description: "我会陪你查看仓库关联、架构解析和编程 Agent 的运行状态。",
+  },
 } as const;
 
 export function MascotAssistant({
   page,
   defaultState = "idle",
+  children,
 }: {
-  page: "projects" | "knowledge";
+  page: keyof typeof PAGE_COPY;
   defaultState?: MascotState;
+  children?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const [hasOpened, setHasOpened] = useState(false);
   const panelId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const copy = PAGE_COPY[page];
+  const { pathname } = useLocation();
+  useEffect(() => { setOpen(false); }, [pathname]);
 
   useEffect(() => {
     if (!open) return;
@@ -60,19 +70,22 @@ export function MascotAssistant({
         aria-expanded={open}
         aria-label="打开岑宁助手"
         className="mascot-assistant-trigger"
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => { setHasOpened(true); setOpen((current) => !current); }}
         ref={triggerRef}
         type="button"
       >
         <MascotFigure label="岑宁，Cairn 知识向导" state={defaultState} />
       </button>
 
-      {open ? (
+      {hasOpened ? (
         <section
+          hidden={!open}
           aria-label="岑宁助手"
           className="mascot-assistant-panel"
+          data-workspace={children ? "true" : undefined}
           id={panelId}
           role="dialog"
+          onClick={event => { if ((event.target as Element).closest("a[href]")) closePanel(); }}
         >
           <div className="mascot-assistant-heading">
             <span aria-hidden="true" className="mascot-assistant-icon">
@@ -88,10 +101,10 @@ export function MascotAssistant({
               <X aria-hidden="true" size={18} strokeWidth={1.8} />
             </button>
           </div>
-          <div className="mascot-assistant-body">
+          {children ?? <div className="mascot-assistant-body">
             <MascotFigure label="岑宁，Cairn 助手" state={defaultState} variant="half" />
             <p>{copy.description}</p>
-          </div>
+          </div>}
         </section>
       ) : null}
     </div>

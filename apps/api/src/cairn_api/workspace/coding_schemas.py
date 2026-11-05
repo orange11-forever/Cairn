@@ -62,6 +62,11 @@ class CodingStep(WorkspaceModel):
     action: CodingAction
 
 
+class CodingTaskSource(WorkspaceModel):
+    task_id: UUID
+    revision: int = Field(ge=1, strict=True)
+
+
 class CodingStart(WorkspaceModel):
     workspace_id: str = Field(pattern=r'^[0-9a-f]{64}$')
     task: str = Field(min_length=1, max_length=6000)
@@ -70,6 +75,7 @@ class CodingStart(WorkspaceModel):
     skill_id: str | None = Field(default=None, max_length=100)
     allow_writes: Literal[True]
     depends_on: UUID | None = None
+    source_task: CodingTaskSource | None = None
 
     @field_validator('task')
     @classmethod
@@ -145,6 +151,7 @@ class CodingRun(WorkspaceModel):
     depends_on: UUID | None = None
     overlaps: list[CodingOverlap] = Field(default_factory=list[CodingOverlap])
     delivery: CodingDeliveryState | None = None
+    source_task: CodingTaskSource | None = None
 
 
 class CodingConcurrency(WorkspaceModel):

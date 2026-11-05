@@ -3,13 +3,6 @@ import { Settings2 } from "lucide-react";
 
 type DesktopHost = { postMessage(message: string): void };
 
-export function DesktopModelSettings() {
-  const host = (window as Window & { chrome?: { webview?: DesktopHost } }).chrome?.webview;
-  if (!host) return null;
-  return <button type="button" className="desktop-model-settings"
-    onClick={() => host.postMessage("cairn:settings:models")}>AI / API 配置</button>;
-}
-
 export function DesktopSettings() {
   const panel = useRef<HTMLDetailsElement>(null);
   const trigger = useRef<HTMLElement>(null);

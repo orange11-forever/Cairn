@@ -16,6 +16,9 @@ dependencies = [
   "PyYAML==6.0.3",
   "pwdlib[argon2]>=0.2,<1",
   "psycopg[binary]>=3.2,<4",
+  "psutil>=7,<8",
+  "ptyprocess==0.7.0; sys_platform != 'win32'",
+  "pywinpty==3.0.3; sys_platform == 'win32'",
   "sqlalchemy>=2.0,<3",
   "uvicorn[standard]>=0.34,<1",
 ]
@@ -26,6 +29,7 @@ dev = [
   "httpx2>=2,<3",
   "pyright>=1.1.390,<2",
   "pytest>=8.3,<9",
+  "types-psutil>=7,<8",
   "ruff>=0.9,<1",
 ]
 

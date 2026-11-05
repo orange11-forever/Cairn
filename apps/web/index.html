@@ -16,13 +16,18 @@
         }
         const theme = stored === "light" || stored === "dark"
           ? stored
-          : matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+          : stored === "system"
+            ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+            : "dark";
         document.documentElement.dataset.theme = theme;
       })();
     </script>
+    <link rel="stylesheet" href="styles/tokens.css">
     <link rel="stylesheet" href="styles/main.css">
     <link rel="stylesheet" href="styles/workbench.css">
     <link rel="stylesheet" href="styles/auth.css">
+    <link rel="stylesheet" href="styles/primitives.css">
+    <link rel="stylesheet" href="styles/shell.css">
   </head>
   <body>
     <!--

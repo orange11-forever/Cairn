@@ -74,8 +74,13 @@ function expect(condition, message) {
   failed = true;
 }
 
-async function login() {
+async function waitForLogin() {
   await page.waitForSelector(".login-card");
+  await page.locator(".startup-intro").waitFor({ state: "hidden" });
+}
+
+async function login() {
+  await waitForLogin();
   await page.fill("#login-email", "demo@cairn.dev");
   await page.fill("#login-password", "cairn-demo-2026");
   await page.click(".login-submit");
@@ -89,8 +94,9 @@ async function logout() {
 }
 
 async function waitForAuthenticated() {
-  await page.waitForURL((url) => url.pathname === "/projects");
-  await page.waitForSelector(".projects-page");
+  await page.waitForURL((url) => url.pathname === "/projects" || /^\/projects\/[^/]+\/tasks$/.test(url.pathname));
+  await page.waitForSelector(".task-workspace, .projects-page .trail-empty");
+  await page.locator(".startup-intro").waitFor({ state: "hidden" });
 }
 
 async function checkDirectRegistration() {
@@ -109,6 +115,7 @@ async function checkDirectRegistration() {
   await page.getByRole("heading", { name: "注册成功" }).waitFor();
   expect(!(await page.context().cookies()).some(cookie => cookie.name === "cairn_session"), "注册不应自动创建登录会话");
   await page.getByRole("link", { name: "前往登录" }).click();
+  await waitForLogin();
   await page.locator("#login-email").fill(email);
   await page.locator("#login-password").fill(password);
   await page.locator(".login-submit").click();
@@ -130,6 +137,7 @@ async function checkDirectRegistration() {
 }
 
 async function checkLoginBoundary() {
+  await waitForLogin();
   expect(await page.isVisible(".login-card"), "匿名访问应显示登录页");
   await page.click(".login-submit");
   const errors = await page.$$eval('[role="alert"]', (elements) =>
@@ -146,18 +154,19 @@ async function checkLoginBoundary() {
 }
 
 async function checkAuthenticatedShell() {
-  expect(new URL(page.url()).pathname === "/projects", "成功登录应进入 /projects");
+  const taskPath = new URL(page.url()).pathname;
+  expect(/^\/projects\/[^/]+\/tasks$/.test(taskPath), "成功登录应进入可访问项目的任务页");
   expect(
-    (await page.getByRole("link", { name: "Cairn" }).getAttribute("href")) === "/projects",
+    (await page.getByRole("link", { name: "Cairn" }).getAttribute("href")) === taskPath,
     "Cairn wordmark 应返回项目工作台",
   );
   expect(
-    await page.getByRole("link", { name: "项目任务" }).isVisible(),
+    await page.getByRole("link", { name: "任务" }).isVisible(),
     "主导航应暴露真实项目工作台",
   );
   expect(
-    (await page.getByRole("navigation", { name: "主导航" }).getByRole("link").count()) === 1,
-    "主导航不应保留通用文档或生成式问答入口",
+    (await page.getByRole("navigation", { name: "主导航" }).getByRole("link").evaluateAll(links => links.map(link => link.getAttribute("href")))).join("|") === `${taskPath}|${taskPath.replace(/tasks$/, "knowledge")}`,
+    "主导航应指向当前项目的任务和知识页面",
   );
   await page.locator(".account-menu summary").click();
   expect(await page.getByText("Cairn Demo").isVisible(), "账户菜单应显示当前组织");
@@ -168,7 +177,7 @@ async function checkCompatibilityRoutes() {
   for (const path of ["/documents", "/ask", "/unknown"]) {
     await page.goto(`${WEB}${path}`, { waitUntil: "networkidle" });
     await waitForAuthenticated();
-    expect(new URL(page.url()).pathname === "/projects", `${path} 应 replace 到 /projects`);
+    expect(/^\/projects\/[^/]+\/tasks$/.test(new URL(page.url()).pathname), `${path} 应进入当前项目的任务页`);
   }
 }
 
@@ -527,7 +536,8 @@ try {
   await page.screenshot({ path: join(SHOT_DIR, "task19-projects-final.png"), fullPage: true });
   console.log(failed ? "\n✗ Task 19 Web 验证未通过" : "\n✓ Task 19 Web 验证通过");
 } catch (error) {
-  console.error("验证异常：", error instanceof Error ? error.message : String(error));
+  console.error("验证异常：", error instanceof Error ? error.stack : String(error));
+  if (page !== null && !page.isClosed()) console.error("失败页面：", page.url());
   failed = true;
 } finally {
   const cleanupFailures = await settleCleanupTasks([

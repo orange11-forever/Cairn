@@ -34,7 +34,7 @@ describe("MascotFigure", () => {
   test("art-directs the full variant to the thumbnail on mobile", () => {
     const { container } = render(<MascotFigure label="看板娘" variant="full" />);
 
-    expect(container.querySelector("source")).toHaveAttribute("media", "(max-width: 599px)");
+    expect(container.querySelector("source")).toHaveAttribute("media", "(max-width: 767px)");
     expect(container.querySelector("source")).toHaveAttribute(
       "srcset",
       "/assets/brand/mascot/cairn-mascot-chibi.png",

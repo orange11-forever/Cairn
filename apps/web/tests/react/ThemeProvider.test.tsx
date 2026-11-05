@@ -47,18 +47,33 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-test("system preference is the default and applies dark before manual selection", () => {
-  installMatchMedia(true);
+test("dark is the default before any manual selection, regardless of system light", () => {
+  installMatchMedia(false);
   render(
     <ThemeProvider>
       <Probe />
     </ThemeProvider>,
   );
-  expect(screen.getByText("system:dark")).toBeInTheDocument();
+  expect(screen.getByText("dark:dark")).toBeInTheDocument();
   expect(document.documentElement).toHaveAttribute("data-theme", "dark");
 });
 
 test("manual theme persists and ignores later system changes", async () => {
+  installMatchMedia(true);
+  const user = userEvent.setup();
+  render(
+    <ThemeProvider>
+      <ThemeControl />
+      <Probe />
+    </ThemeProvider>,
+  );
+  await user.click(screen.getByRole("radio", { name: "日间" }));
+  expect(screen.getByText("light:light")).toBeInTheDocument();
+  expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("light");
+});
+
+test("system selection is stored explicitly and follows the system scheme", async () => {
+  localStorage.setItem(THEME_STORAGE_KEY, "light");
   installMatchMedia(false);
   const user = userEvent.setup();
   render(
@@ -67,22 +82,18 @@ test("manual theme persists and ignores later system changes", async () => {
       <Probe />
     </ThemeProvider>,
   );
-  await user.click(screen.getByRole("radio", { name: "夜间" }));
-  expect(screen.getByText("dark:dark")).toBeInTheDocument();
-  expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("dark");
+  await user.click(screen.getByRole("radio", { name: "跟随系统" }));
+  expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("system");
+  expect(screen.getByText("system:light")).toBeInTheDocument();
 });
 
-test("system selection clears the stored override", async () => {
-  localStorage.setItem(THEME_STORAGE_KEY, "light");
+test("a stored system preference survives a reload", () => {
+  localStorage.setItem(THEME_STORAGE_KEY, "system");
   installMatchMedia(true);
-  const user = userEvent.setup();
   render(
     <ThemeProvider>
-      <ThemeControl />
       <Probe />
     </ThemeProvider>,
   );
-  await user.click(screen.getByRole("radio", { name: "跟随系统" }));
-  expect(localStorage.getItem(THEME_STORAGE_KEY)).toBeNull();
   expect(screen.getByText("system:dark")).toBeInTheDocument();
 });

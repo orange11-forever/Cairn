@@ -125,6 +125,9 @@ class KnowledgeConversationService:
         self._policy.require_project(
             self._identity, project_id, ProjectPermission.READ, for_update=True
         )
+        return self._authorize_identity()
+
+    def _authorize_identity(self) -> IdentityContextResponse:
         if self._session_token is None:
             raise ApiProblem(status_code=401, code="session_invalid", message="会话无效或已过期")
         digest = digest_token(self._session_token)

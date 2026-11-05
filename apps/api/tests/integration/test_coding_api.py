@@ -52,13 +52,30 @@ def test_coding_api_csrf_owner_approval_and_isolated_editor(oauth_client: TestCl
     base = f'/api/v1/desktop/projects/{project}'
     assert client.put(base + '/repository', json={'localPath': str(root)}, headers=headers).status_code == 200
     tree = client.get(base + '/files').json()
-    body = {'workspaceId': tree['workspaceId'], 'task': 'Check arithmetic', 'assistantRevision': 0, 'allowWrites': True}
+    task_response = client.post(f'/api/v1/projects/{project}/tasks', json={
+        'title': 'Check arithmetic', 'expectedProjectRevision': 1}, headers=headers)
+    assert task_response.status_code == 201, task_response.text
+    task = task_response.json()
+    source = {'taskId': task['id'], 'revision': task['revision']}
+    body = {'workspaceId': tree['workspaceId'], 'task': 'Check arithmetic', 'assistantRevision': 0,
+            'allowWrites': True, 'sourceTask': source}
+    stale = client.post(base + '/coding-runs', json={**body, 'sourceTask': {**source, 'revision': source['revision'] + 1}}, headers=headers)
+    assert stale.status_code == 409, stale.text
+    assert stale.json()['code'] == 'coding_task_changed'
+    other_project = client.post('/api/v1/projects', json={'name': 'Other project'}, headers=headers).json()['id']
+    other_task = client.post(f'/api/v1/projects/{other_project}/tasks', json={
+        'title': 'Unrelated task', 'expectedProjectRevision': 1}, headers=headers).json()
+    outside = client.post(base + '/coding-runs', json={**body, 'sourceTask': {
+        'taskId': other_task['id'], 'revision': other_task['revision']}}, headers=headers)
+    assert outside.status_code == 404, outside.text
+    assert client.get(base + '/coding-runs').json()['items'] == []
     assert client.post(base + '/coding-runs', json=body, headers={'Origin': headers['Origin']}).status_code == 403
     response = client.post(base + '/coding-runs', json=body, headers=headers)
     assert response.status_code == 202, response.text
     assert response.headers['Cache-Control'] == 'no-store'
     assert response.headers['Referrer-Policy'] == 'no-referrer'
     assert response.headers['X-Request-ID']
+    assert response.json()['sourceTask'] == source
     run_id = response.json()['id']
     route = base + '/coding-runs/' + run_id
     try:

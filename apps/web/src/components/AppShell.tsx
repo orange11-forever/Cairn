@@ -2,50 +2,67 @@ import type { IdentityContext } from "../api/auth.ts";
 import type { ApiError } from "../api/errors.ts";
 import { Link, Outlet, useLocation } from "react-router-dom";
 
+import { projectIdFromPath, projectModuleFromPath, projectPath } from "../app/projectRoutes.ts";
 import { useSession } from "../session/SessionContext.tsx";
-import { ProjectSwitcher } from "./ProjectSwitcher.tsx";
 import { AccountMenu } from "./AccountMenu.tsx";
-import { DesktopModelSettings } from "./DesktopSettings.tsx";
 import { BrandMark } from "./BrandMark.tsx";
+import { CodingOverview } from "./code/CodingOverview.tsx";
+import { ProjectConversationsProvider } from "./knowledge/ProjectConversationsContext.tsx";
 import { MascotAssistant } from "./MascotAssistant.tsx";
 import { PrimaryNavigation } from "./PrimaryNavigation.tsx";
+import { ProjectSwitcher } from "./ProjectSwitcher.tsx";
+import { ProjectCommandPanel } from "./projects/ProjectCommandPanel.tsx";
 import { ThemeControl } from "./ThemeControl.tsx";
-import { ProjectConversationsProvider } from "./knowledge/ProjectConversationsContext.tsx";
-import { CodingOverview } from "./code/CodingOverview.tsx";
+import { ToastProvider } from "./toast/ToastContext.tsx";
+
+const CREATE_ROLES = ["owner", "admin", "member"];
 
 export function AppShell({ identity, onLogout, logoutError }: { identity: IdentityContext; onLogout: () => Promise<void>; logoutError: ApiError | null }) {
   const { pathname } = useLocation();
   const { session } = useSession();
-  const projectId = pathname.match(/^\/projects\/([^/]+)/)?.[1] ?? null;
-  const normalizedPathname = pathname.replace(/\/+$/, "") || "/";
-  const knowledgePath = normalizedPathname.match(/^(\/projects\/[^/]+\/knowledge)(?:\/sources)?$/)?.[1] ?? null;
-  const page = knowledgePath !== null
-      ? "knowledge"
-      : "projects";
-  const layout = <div className="app-layout">
-    <PrimaryNavigation currentKnowledgePath={knowledgePath} />
-    <main className="workspace"><Outlet /></main>
-  </div>;
+  const projectId = projectIdFromPath(pathname);
+  const module = projectModuleFromPath(pathname);
+  const layout = (
+    <div className="app-layout">
+      <PrimaryNavigation projectId={projectId} />
+      <main className="workspace"><Outlet /></main>
+    </div>
+  );
 
   return (
-    <div className="app-shell">
-      <header className="product-header">
-        <Link className="product-brand" to="/projects" aria-label="Cairn">
-          <BrandMark />
-        </Link>
-        {session === null ? <div /> : <ProjectSwitcher key={session.generation} organizationId={identity.organization.id} projectId={projectId} sessionSignal={session.signal} />}
-        <div className="header-utilities">
-          <CodingOverview />
-          <DesktopModelSettings />
-          {page === "knowledge" ? null : <MascotAssistant page={page} />}
-          <AccountMenu identity={identity} onLogout={onLogout} logoutError={logoutError} appearance={<ThemeControl />} />
-        </div>
-      </header>
-      {knowledgePath !== null && projectId !== null && session !== null ? <ProjectConversationsProvider
-        key={`${session.generation}:${identity.user.id}:${identity.organization.id}:${projectId}`}
-        generation={session.generation} userId={identity.user.id} organizationId={identity.organization.id}
-        projectId={projectId} csrfToken={identity.csrfToken} sessionSignal={session.signal}
-      >{layout}</ProjectConversationsProvider> : layout}
-    </div>
+    <ToastProvider>
+      <div className="app-shell">
+        <header className="product-header">
+          <Link aria-label="Cairn" className="product-brand" to={projectId === null ? "/projects" : projectPath(projectId, "tasks")}>
+            <BrandMark />
+          </Link>
+          {session === null ? <div /> : (
+            <ProjectSwitcher
+              canCreateProject={CREATE_ROLES.includes(identity.membership.role)}
+              key={session.generation}
+              organizationId={identity.organization.id}
+              projectId={projectId}
+              sessionSignal={session.signal}
+            />
+          )}
+          <div className="header-utilities">
+            <CodingOverview />
+            <MascotAssistant page={module ?? "tasks"}><ProjectCommandPanel projectId={projectId} /></MascotAssistant>
+            <AccountMenu appearance={<ThemeControl />} identity={identity} logoutError={logoutError} onLogout={onLogout} />
+          </div>
+        </header>
+        {module === "knowledge" && projectId !== null && session !== null ? (
+          <ProjectConversationsProvider
+            csrfToken={identity.csrfToken}
+            generation={session.generation}
+            key={`${session.generation}:${identity.user.id}:${identity.organization.id}:${projectId}`}
+            organizationId={identity.organization.id}
+            projectId={projectId}
+            sessionSignal={session.signal}
+            userId={identity.user.id}
+          >{layout}</ProjectConversationsProvider>
+        ) : layout}
+      </div>
+    </ToastProvider>
   );
 }

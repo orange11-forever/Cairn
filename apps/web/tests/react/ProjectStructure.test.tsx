@@ -1,10 +1,13 @@
+import type { ReactNode } from "react";
+import { ProjectSwitcher } from "../../src/components/ProjectSwitcher.tsx";
+import { ToastProvider } from "../../src/components/toast/ToastContext.tsx";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
-import { ProjectsPage } from "../../src/pages/ProjectsPage.tsx";
+import { ProjectTasksPage } from "../../src/pages/ProjectsPage.tsx";
 import { TaskEditor } from "../../src/components/projects/TaskEditor.tsx";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { MemoryRouter, Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
 import { SessionProvider, useSession } from "../../src/session/SessionContext.tsx";
 import { LoginForm } from "../../src/components/LoginForm.tsx";
 const org = "00000000-0000-4000-8000-000000002001";
@@ -77,12 +80,19 @@ function setup(handler: (request: Request) => Promise<Response>) {
   });
   return client;
 }
-function page(client: QueryClient) {
-  return render(<QueryClientProvider client={client}><MemoryRouter><SessionProvider restoredIdentity={identity} sessionApi={{
-        restore: async () => identity,
-        logout: async () => undefined
-      }}><ProjectsPage /></SessionProvider></MemoryRouter></QueryClientProvider>);
+function WorkspaceRoute() {
+  const { status, session } = useSession();
+  const { projectId } = useParams();
+  if (status === "anonymous") return <Navigate to="/login" replace />;
+  if (!session) return null;
+  return <><ProjectSwitcher organizationId={org} projectId={projectId ?? null} sessionSignal={session.signal} canCreateProject={session.identity.membership.role !== "viewer"} /><ProjectTasksPage /></>;
 }
+async function page(client: QueryClient, account = identity, probe?: ReactNode) {
+  const view = render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[`/projects/${project.id}/tasks`]}><SessionProvider restoredIdentity={account} sessionApi={{ restore: async () => account, logout: async () => undefined }}><ToastProvider>{probe}<Routes><Route path="/projects/:projectId/tasks" element={<WorkspaceRoute />} /><Route path="/login" element={<LoginForm onSuccess={() => undefined} />} /></Routes></ToastProvider></SessionProvider></MemoryRouter></QueryClientProvider>);
+  await userEvent.click(await screen.findByText("规划与项目工具"));
+  return view;
+}
+
 test.each([false, true])("task create409 retains grouping and protects siblings; explicit reread recovers (failed first read=%s)", async failFirstRead => {
   let version = 1;
   let failRead = false;
@@ -159,7 +169,7 @@ test.each([false, true])("task create409 retains grouping and protects siblings;
       revision: version
     });
   });
-  page(client);
+  await page(client);
   await userEvent.click(await screen.findByRole("button", {
     name: "创建任务"
   }));
@@ -295,10 +305,7 @@ test.each(["stage create", "stage edit", "milestone create", "milestone edit", "
     if (session) observed.signal = session.signal;
     return <><output data-testid="expiry-status">{status}</output><output data-testid="expiry-path">{location.pathname}</output></>;
   }
-  render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/projects"]}><SessionProvider restoredIdentity={identity} sessionApi={{
-        restore: async () => identity,
-        logout: async () => undefined
-      }}><Probe /><Routes><Route path="/projects" element={<ProjectsPage />} /><Route path="/login" element={<LoginForm onSuccess={() => undefined} />} /></Routes></SessionProvider></MemoryRouter></QueryClientProvider>);
+  await page(client, identity, <Probe />);
   if (operation === "stage archive") {
     await userEvent.click(await screen.findByRole("button", {name: "归档阶段：Design"}));
     await userEvent.click(screen.getByRole("button", {name: "确认归档"}));
@@ -372,7 +379,7 @@ test("stage create sends displayed project revision; conflict keeps input until 
     });
     return response(project);
   });
-  page(client);
+  await page(client);
   await userEvent.click(await screen.findByRole("button", {
     name: "创建阶段"
   }));
@@ -465,7 +472,7 @@ test("a structure conflict stays blocked after cancelling its form until explici
     });
     return response(project);
   });
-  page(client);
+  await page(client);
   await userEvent.click(await screen.findByRole("button", {
     name: "创建阶段"
   }));
@@ -532,7 +539,7 @@ test("milestone name-only edit preserves untouched empty strings and due precisi
       revision: bodies.length ? 2 : 1
     });
   });
-  page(client);
+  await page(client);
   await userEvent.click(await screen.findByRole("button", {
     name: "编辑里程碑：Review"
   }));
@@ -580,7 +587,7 @@ test("committed structure create with failed refresh blocks duplicate and other 
       revision: writes ? 2 : 1
     });
   });
-  page(client);
+  await page(client);
   await userEvent.click(await screen.findByRole("button", {
     name: "创建阶段"
   }));
@@ -634,7 +641,7 @@ test("committed task creation treats a missing refreshed project revision as ref
       revision: writes ? null : 1
     });
   });
-  page(client);
+  await page(client);
   await userEvent.click(await screen.findByRole("button", {
     name: "创建任务"
   }));
@@ -733,7 +740,7 @@ test.each([201, 401])("switching project cancels a pending structure write and i
     });
     return response(path.includes(secondProject.id) ? secondProject : project);
   });
-  page(client);
+  await page(client);
   await userEvent.click(await screen.findByRole("button", {
     name: "创建阶段"
   }));
@@ -742,7 +749,8 @@ test.each([201, 401])("switching project cancels a pending structure write and i
     name: "保存阶段"
   }));
   await waitFor(() => expect(pendingSignal).toBeDefined());
-  await userEvent.selectOptions(screen.getByLabelText("切换项目"), secondProject.id);
+  await userEvent.click(screen.getByRole("button", { name: /^切换项目：/ }));
+  await userEvent.click(await screen.findByRole("button", { name: secondProject.name }));
   await screen.findByRole("heading", {
     name: "Second scope"
   });
@@ -808,7 +816,7 @@ test("milestone create and stage edit submit their real fields with refreshed pr
       revision: version
     });
   });
-  page(client);
+  await page(client);
   await userEvent.click(await screen.findByRole("button", {
     name: "创建里程碑"
   }));
@@ -924,7 +932,7 @@ test("repeated task regroup, clear and regroup saves keep the current editor rev
       revision: projectRevision
     });
   });
-  page(client);
+  await page(client);
   await userEvent.click(await screen.findByRole("button", {
     name: "查看任务：Evidence"
   }));
@@ -977,7 +985,7 @@ test("archive confirmation cancels, protects drafts, filters archived objects an
     if (path.endsWith("/tasks") || path.endsWith("/milestones")) return response({items: [], nextCursor: null});
     return response({...project, revision: version});
   });
-  page(client);
+  await page(client);
   await userEvent.click(await screen.findByRole("button", {name: "编辑阶段：Design"}));
   await userEvent.type(screen.getByLabelText("阶段名称"), " draft");
   expect(screen.getByRole("button", {name: "归档阶段：Design"})).toBeDisabled();
@@ -1021,7 +1029,7 @@ test.each(["stage", "milestone"])("%s lifecycle409 retains target through failed
     if (path.endsWith("/tasks")) return response({items: [], nextCursor: null});
     return response({...project, revision: version});
   });
-  page(client);
+  await page(client);
   const label = kind === "stage" ? "阶段：Design" : "里程碑：Review";
   await userEvent.click(await screen.findByRole("button", {name: `归档${label}`}));
   await userEvent.click(screen.getByRole("button", {name: "确认归档"}));
@@ -1051,7 +1059,7 @@ test("committed lifecycle with failed refresh offers reread without repeating wr
     if (path.endsWith("/milestones") || path.endsWith("/tasks")) return response({items: [], nextCursor: null});
     return response({...project, revision: writes + 1});
   });
-  page(client);
+  await page(client);
   await userEvent.click(await screen.findByRole("button", {name: "归档阶段：Design"}));
   await userEvent.click(screen.getByRole("button", {name: "确认归档"}));
   await screen.findByText("阶段已归档，但刷新失败。请重新读取后再操作。");
@@ -1077,7 +1085,7 @@ test("archived structure remains readable to viewers and absent from assignment 
     if (path.endsWith("/tasks") || path.endsWith("/assignees")) return response({items: [], nextCursor: null});
     return response(project);
   });
-  const view = render(<QueryClientProvider client={client}><MemoryRouter><SessionProvider restoredIdentity={{...identity, membership: {...identity.membership, role: "viewer"}}} sessionApi={{restore: async () => identity, logout: async () => undefined}}><ProjectsPage /></SessionProvider></MemoryRouter></QueryClientProvider>);
+  const view = await page(client, {...identity, membership: {...identity.membership, role: "viewer" as typeof identity.membership.role}});
   await screen.findByLabelText("显示归档项");
   await userEvent.click(screen.getByLabelText("显示归档项"));
   await screen.findByText("Design · 顺序 0 · 已归档");
@@ -1103,7 +1111,7 @@ test.each(["occupied", "parent archived"])("lifecycle %s rejection can cancel to
     if (path.includes("/tasks/")) return response(task);
     return response(project);
   });
-  page(client);
+  await page(client);
   if (archived) {
     await userEvent.click(await screen.findByLabelText("显示归档项"));
     await userEvent.click(await screen.findByRole("button", {name: "恢复里程碑：Review"}));
@@ -1134,12 +1142,13 @@ test.each([200, 401])("project switch aborts lifecycle write and ignores late HT
     if (path.endsWith("/milestones") || path.endsWith("/tasks")) return response({items: [], nextCursor: null});
     return response(path.includes(second.id) ? second : project);
   });
-  page(client);
+  await page(client);
   await userEvent.click(await screen.findByRole("button", {name: "归档阶段：Design"}));
   await userEvent.click(screen.getByRole("button", {name: "确认归档"}));
   await waitFor(() => expect(requestSignal).toBeDefined());
   expect(screen.getByRole("button", {name: "正在归档"})).toBeDisabled();
-  await userEvent.selectOptions(screen.getByLabelText("切换项目"), second.id);
+  await userEvent.click(screen.getByRole("button", { name: /^切换项目：/ }));
+  await userEvent.click(await screen.findByRole("button", { name: second.name }));
   await screen.findByRole("heading", {name: second.name});
   expect(requestSignal!.aborted).toBe(true);
   release(lateStatus === 200 ? response({...stage, archived: true, revision: 2}) : response({code: "session_invalid", message: "Expired", traceId: "late"}, 401));
@@ -1204,7 +1213,7 @@ test.each(["create", "move"])("milestone %s draft retains all fields and blocks 
     if (path.includes("/tasks/")) return response(task);
     return response({...project, revision: version});
   });
-  page(client);
+  await page(client);
   await userEvent.click(await screen.findByRole("button", {name: operation === "move" ? "编辑里程碑：Review" : "创建里程碑"}));
   await userEvent.clear(screen.getByLabelText("里程碑名称"));
   await userEvent.type(screen.getByLabelText("里程碑名称"), "Keep milestone draft");

@@ -270,7 +270,7 @@ test("route reentry hides cached document and alias until fresh source authoriza
   fireEvent.click(await screen.findByRole("button", { name: /团队手册/ }));
   expect(screen.getByText("Doc123")).toBeInTheDocument();
   act(() => navigate("/projects"));
-  expect(await screen.findByRole("heading", { name: "项目任务" })).toBeInTheDocument();
+  expect(await screen.findByRole("region", { name: "项目工作区" })).toBeInTheDocument();
   act(() => navigate(SOURCE_ROUTE));
   await waitFor(() => expect(sourceReads).toBe(2));
   const staleSelection = screen.queryByRole("button", { name: /团队手册/ });

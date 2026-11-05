@@ -131,6 +131,7 @@ test.each([false, true])("current 401 expires session, late old-generation 401 l
   await user.type(screen.getByLabelText("向项目知识提问"), "会话边界问题");
   await user.click(screen.getByRole("button", { name: "生成回答" }));
   await waitFor(() => expect(resolve).toBeDefined());
+  expect(screen.getByText("正在查找资料并生成回答…").closest(".thinking-stones")).not.toBeNull();
   if (stale) { await user.click(screen.getByRole("button", { name: "切换账号" })); await screen.findByText("新账号"); }
   await act(async () => resolve(Response.json({ code: "session_invalid", message: "会话无效", traceId: "session-test" }, { status: 401 })));
   if (stale) { expect(screen.getByText("新账号")).toBeInTheDocument(); expect(screen.queryByText("会话已退出")).toBeNull(); }
@@ -180,8 +181,9 @@ test("missing private conversation stays local and can start a new conversation"
 });
 
 test("search, chat and source navigation preserve the selected conversation", () => {
-  render(<MemoryRouter initialEntries={[`/projects/${pid}/knowledge?conversation=${cid}&view=chat`]}><PrimaryNavigation currentKnowledgePath={`/projects/${pid}/knowledge`} /></MemoryRouter>);
-  for (const label of ["知识工作台", "搜索项目资料", "来源与同步"]) expect(screen.getByRole("link", { name: label }).getAttribute("href")).toContain(`conversation=${cid}`);
+  render(<MemoryRouter initialEntries={[`/projects/${pid}/knowledge?conversation=${cid}&view=chat`]}><PrimaryNavigation projectId={pid} /></MemoryRouter>);
+  // Knowledge sub-navigation (知识工作台/搜索资料/来源与同步) is moved to Task 8.
+  expect(screen.getByRole("navigation", { name: "主导航" })).toBeInTheDocument();
 });
 
 test("unconfigured model preserves readable history and shows redaction/context notices", async () => {

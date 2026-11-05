@@ -7,14 +7,14 @@ import { PlanDraftEditor } from "./PlanDraftEditor.tsx";
 import { AppliedPlanDetails } from "./AppliedPlanDetails.tsx";
 import { ApiError } from "../../api/errors.ts";
 
-interface Props {projectId: string; csrfToken: string; signal: AbortSignal; ownerId?: string; disabled?: boolean; onApplied?: () => Promise<void>; onOpenTask?: (id: string) => void}
+interface Props {projectId: string; csrfToken: string; signal: AbortSignal; ownerId?: string; disabled?: boolean; onApplied?: () => Promise<void>; onOpenTask?: (id: string) => void; onBusy?: (busy: boolean) => void}
 const PRIORITY = {low:"低",medium:"中",high:"高",critical:"紧急"};
 
 export function ProjectPlanPreview(props: Props) {
   return <PlanningPanel key={`${props.projectId}:${props.csrfToken}:${props.ownerId}`} {...props}/>;
 }
 
-function PlanningPanel({projectId,csrfToken,signal,ownerId="session",disabled=false,onApplied,onOpenTask}:Props) {
+function PlanningPanel({projectId,csrfToken,signal,ownerId="session",disabled=false,onApplied,onOpenTask,onBusy}:Props) {
   const headingId = useId();
   const resultRef = useRef<HTMLDivElement>(null);
   const [result,setResult] = useState<{value:ProjectPlanPreviewResponse;scope:AbortSignal}|null>(null);
@@ -63,6 +63,7 @@ function PlanningPanel({projectId,csrfToken,signal,ownerId="session",disabled=fa
   },signal);
   const historyAction=useAbortableAction((cursor:string|null,requestSignal:AbortSignal)=>fetchAppliedProjectPlans({projectId,cursor,signal:requestSignal}),signal);
   const locked=disabled || applyAction.pending || lookup.pending || refreshing || uncertain || submission!==null;
+  useEffect(()=>{onBusy?.(locked);return()=>onBusy?.(false);},[locked,onBusy]);
   async function refreshProject(){
     setRefreshing(true);
     try {await onApplied?.();if(current()){setRefreshFailed(false);setNotice("规划已应用，真实项目内容已更新。");}}
@@ -111,7 +112,7 @@ function PlanningPanel({projectId,csrfToken,signal,ownerId="session",disabled=fa
   }
   return <section className="project-analysis project-plan-preview" aria-labelledby={headingId}>
     <header><div><h3 id={headingId}>规划预览</h3><p>根据项目目标与已有工作，提出阶段、里程碑、任务和依赖建议。</p></div>
-      <button type="button" disabled={action.pending || locked || signal.aborted} onClick={()=>void generate()}>{action.pending ? "正在生成规划…" : preview ? "重新生成规划" : "生成规划预览"}</button></header>
+      <button className="btn-primary" type="button" disabled={action.pending || locked || signal.aborted} onClick={()=>void generate()}>{action.pending ? "正在生成规划…" : preview ? "重新生成规划" : "生成规划预览"}</button></header>
     {action.pending && <p role="status">正在读取项目依据并生成规划，请稍候。</p>}
     {action.state.phase === "error" && <div role="alert" className="project-analysis-error"><p>{action.state.error.message}</p>{action.state.error.traceId && <small>请求编号：{action.state.error.traceId}</small>}</div>}
     {[applyAction,lookup,historyAction].map((item,index)=>item.state.phase==="error" && <div role="alert" className="project-analysis-error" key={index}><p>{item.state.error.message}</p>{item.state.error.traceId && <small>请求编号：{item.state.error.traceId}</small>}</div>)}
@@ -133,13 +134,13 @@ function PlanningPanel({projectId,csrfToken,signal,ownerId="session",disabled=fa
           {editing && <PlanDraftEditor plan={preview.plan} disabled={locked || confirming} onChange={plan=>setResult({value:{...preview,plan},scope:signal})}/>}
           {!confirming && <div className="project-structure-actions">
             <button type="button" disabled={locked} onClick={()=>setEditing(value=>!value)}>{editing?"结束调整":"调整规划"}</button>
-            <button type="submit" disabled={locked || Boolean(storageError)}>检查并应用规划</button>
+            <button className="btn-primary" type="submit" disabled={locked || Boolean(storageError)}>检查并应用规划</button>
           </div>}
           {confirming && <div className="plan-confirmation" role="group" aria-label="确认应用规划">
             <h4>确认新增项目内容</h4>
             <p>新增 {preview.plan.stages.length} 个阶段、{preview.plan.milestones.length} 个里程碑、{preview.plan.tasks.length} 个任务、{preview.plan.tasks.reduce((sum,task)=>sum+task.dependsOn.length,0)} 条依赖。</p>
             <p>现有内容保持原样。新任务以“待规划”状态创建，负责人和日期留空；确认记录仅你可见，新增内容对有项目权限的成员可见。</p>
-            <div className="project-structure-actions"><button ref={confirmRef} type="button" disabled={locked} onClick={()=>void confirm()}>{applyAction.pending?"正在创建…":"确认创建"}</button><button type="button" disabled={locked} onClick={()=>setConfirming(false)}>返回调整</button></div>
+            <div className="project-structure-actions"><button className="btn-primary" ref={confirmRef} type="button" disabled={locked} onClick={()=>void confirm()}>{applyAction.pending?"正在创建…":"确认创建"}</button><button type="button" disabled={locked} onClick={()=>setConfirming(false)}>返回调整</button></div>
           </div>}
         </form> : <p className="project-analysis-scope">当前为只读访问，可以查看规划；应用规划需要项目写入权限。</p>}
         <h4>任务依赖图</h4>

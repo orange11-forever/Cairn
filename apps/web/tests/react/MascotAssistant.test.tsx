@@ -5,7 +5,7 @@ import { describe, expect, test } from "vitest";
 
 import { MascotAssistant } from "../../src/components/MascotAssistant.tsx";
 
-function renderAssistant(page: "projects" | "knowledge" = "projects") {
+function renderAssistant(page: "tasks" | "knowledge" | "code" = "tasks") {
   return render(
     <MemoryRouter>
       <MascotAssistant page={page} />
@@ -14,6 +14,17 @@ function renderAssistant(page: "projects" | "knowledge" = "projects") {
 }
 
 describe("MascotAssistant", () => {
+  test("closing the assistant preserves its command draft until it is reopened", async () => {
+    const user = userEvent.setup();
+    render(<MemoryRouter><MascotAssistant page="tasks"><label>助手草稿<textarea /></label></MascotAssistant></MemoryRouter>);
+    await user.click(screen.getByRole("button", { name: "打开岑宁助手" }));
+    await user.type(screen.getByLabelText("助手草稿"), "把发布任务分配给林山");
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "岑宁助手" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "打开岑宁助手" }));
+    expect(screen.getByLabelText("助手草稿")).toHaveValue("把发布任务分配给林山");
+  });
+
   test("opens with project context and closes with Escape", async () => {
     const user = userEvent.setup();
     renderAssistant();

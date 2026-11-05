@@ -26,6 +26,7 @@ WORKSPACE_FILE = "workspace-settings.dpapi"
 
 if TYPE_CHECKING:
     from cairn_api.workspace.coding import CodingRunner
+    from cairn_api.workspace.terminal import TerminalManager
 
 
 class Credential(BaseModel):
@@ -66,6 +67,7 @@ class DesktopWorkspace:
         self.lock = threading.RLock()
         self.devices = DeviceAuthorizations()
         self.coding: CodingRunner | None = None
+        self.terminals: TerminalManager | None = None
         self._values = WorkspaceFile()
         path = self.data / WORKSPACE_FILE
         if path.exists():
