@@ -38,6 +38,7 @@ from cairn_api.logging import configure_app_logging
 from cairn_api.middleware import ProjectErrorBoundary, RequestIdMiddleware, new_request_id
 from cairn_api.organizations.router import router as organizations_router
 from cairn_api.projects.analysis_router import router as project_analysis_router
+from cairn_api.projects.creation_router import router as project_creation_router
 from cairn_api.projects.operation_router import router as project_operation_router
 from cairn_api.projects.router import router as projects_router
 from cairn_api.projects.schedule_router import router as project_schedule_router
@@ -46,6 +47,7 @@ from cairn_api.workspace.coding_router import router as coding_router
 from cairn_api.workspace.delivery_router import router as delivery_router
 from cairn_api.workspace.local import DesktopWorkspace
 from cairn_api.workspace.router import router as workspace_router
+from cairn_api.workspace.terminal_router import router as terminal_router
 
 
 class HealthResponse(BaseModel):
@@ -175,6 +177,8 @@ def create_app(
             workspace = _application.state.desktop_workspace
             if isinstance(workspace, DesktopWorkspace) and workspace.coding is not None:
                 workspace.coding.close()
+            if isinstance(workspace, DesktopWorkspace) and workspace.terminals is not None:
+                workspace.terminals.close()
             try:
                 current_database.dispose()
             finally:
@@ -358,6 +362,7 @@ def create_app(
     application.include_router(oauth_router)
     application.include_router(workspace_router)
     application.include_router(coding_router)
+    application.include_router(terminal_router)
     application.include_router(delivery_router)
     application.include_router(registration_router)
     application.include_router(organizations_router)
@@ -365,6 +370,7 @@ def create_app(
     application.include_router(projects_router)
     application.include_router(project_analysis_router)
     application.include_router(project_operation_router)
+    application.include_router(project_creation_router)
     application.include_router(project_schedule_router)
     application.include_router(knowledge_router)
     application.include_router(knowledge_conversation_router)

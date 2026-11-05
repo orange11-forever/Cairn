@@ -1,50 +1,55 @@
-import { BookOpenText, FolderKanban, Search, RefreshCw, Code2 } from "lucide-react";
-import { Link, NavLink, useLocation } from "react-router-dom";
+import { BookOpenText, Code2, ListChecks, Settings2, type LucideIcon } from "lucide-react";
+import { NavLink, useLocation } from "react-router-dom";
 
-import { navigationItems } from "../app/navigation.ts";
-import { ConversationHistory } from "./knowledge/ConversationHistory.tsx";
+import { projectModuleFromPath, projectPath, type ProjectModule } from "../app/projectRoutes.ts";
+import { Stone } from "./trail/Stone.tsx";
 
-export function PrimaryNavigation({ currentKnowledgePath = null }: { currentKnowledgePath?: string | null }) {
-  const location = useLocation();
-  const pathname = location.pathname.replace(/\/+$/, "") || "/";
-  const projectId = pathname.match(/^\/projects\/([^/]+)\/(?:knowledge|code)/)?.[1];
-  const desktop = Boolean((window as Window & { chrome?: { webview?: unknown } }).chrome?.webview);
-  const searchActive = new URLSearchParams(location.search).get("view") === "search" && pathname === currentKnowledgePath;
-  const icons = {
-    "/projects": FolderKanban,
-  } as const;
-  const knowledgeLink = (view: "chat" | "search", sources = false) => {
-    const params = new URLSearchParams(location.search); params.set("view", view);
-    return `${currentKnowledgePath}${sources ? "/sources" : ""}?${params.toString()}`;
-  };
+type DesktopHost = { postMessage(message: string): void };
+
+const MODULES: readonly { module: ProjectModule; label: string; icon: LucideIcon; desktopOnly: boolean }[] = [
+  { module: "tasks", label: "任务", icon: ListChecks, desktopOnly: false },
+  { module: "knowledge", label: "知识", icon: BookOpenText, desktopOnly: false },
+  { module: "code", label: "代码", icon: Code2, desktopOnly: true },
+];
+
+export function PrimaryNavigation({ projectId }: { projectId: string | null }) {
+  const { pathname } = useLocation();
+  const host = (window as Window & { chrome?: { webview?: DesktopHost } }).chrome?.webview;
+  const items = MODULES.filter((item) => !item.desktopOnly || host !== undefined);
+  const currentIndex = projectId === null ? -1 : items.findIndex((item) => item.module === projectModuleFromPath(pathname));
 
   return (
-    <nav className="primary-nav" aria-label="主导航">
+    <nav aria-label="主导航" className="primary-nav">
+      {currentIndex >= 0 ? (
+        <span aria-hidden="true" className="nav-indicator" data-index={currentIndex}>
+          {/* key 让落地动画在每次换项时重播。 */}
+          <Stone key={currentIndex} />
+        </span>
+      ) : null}
       <ul>
-        {navigationItems.map((item) => {
-          const Icon = icons[item.to];
+        {items.map(({ module, label, icon: Icon }) => {
+          const content = (
+            <>
+              <Icon aria-hidden="true" size={18} strokeWidth={1.8} />
+              <span className="nav-label-full">{label}</span>
+              <span className="nav-label-short">{label}</span>
+            </>
+          );
           return (
-            <li key={item.to}>
-              <NavLink to={item.to} end aria-label={item.label}>
-                <Icon aria-hidden="true" size={18} strokeWidth={1.8} />
-                <span className="nav-label-full">{item.label}</span>
-                <span className="nav-label-short">{item.shortLabel}</span>
-              </NavLink>
+            <li key={module}>
+              {projectId === null
+                ? <span aria-disabled="true" className="nav-item-disabled">{content}</span>
+                : <NavLink aria-label={label} to={projectPath(projectId, module)}>{content}</NavLink>}
             </li>
           );
         })}
-        {desktop && projectId && <li><NavLink to={`/projects/${projectId}/code`} aria-label="代码与架构"><Code2 aria-hidden="true" size={20} strokeWidth={1.8} /><span className="nav-label-full">代码与架构</span><span className="nav-label-short">代码</span></NavLink></li>}
-        {currentKnowledgePath === null ? null : <li>
-          <Link to={knowledgeLink("chat")} aria-current={pathname === currentKnowledgePath && !searchActive ? "page" : undefined} aria-label="知识工作台">
-            <BookOpenText aria-hidden="true" size={18} strokeWidth={1.8} />
-            <span className="nav-label-full">知识工作台</span>
-            <span className="nav-label-short">工作台</span>
-          </Link>
-        </li>}
-        {currentKnowledgePath === null ? null : <li><Link aria-current={searchActive ? "page" : undefined} to={knowledgeLink("search")} aria-label="搜索项目资料"><Search aria-hidden="true" size={22} strokeWidth={1.8} /><span className="nav-label-full">搜索资料</span><span className="nav-label-short">搜索</span></Link></li>}
-        {currentKnowledgePath === null ? null : <li><NavLink to={knowledgeLink("chat", true)} aria-label="来源与同步"><RefreshCw aria-hidden="true" size={22} strokeWidth={1.8} /><span className="nav-label-full">来源与同步</span><span className="nav-label-short">来源</span></NavLink></li>}
       </ul>
-      {currentKnowledgePath === null ? null : <ConversationHistory />}
+      {host === undefined ? null : (
+        <button className="nav-settings" onClick={() => host.postMessage("cairn:settings:models")} type="button">
+          <Settings2 aria-hidden="true" size={18} strokeWidth={1.8} />
+          <span>设置</span>
+        </button>
+      )}
     </nav>
   );
 }

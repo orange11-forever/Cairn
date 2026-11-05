@@ -31,10 +31,15 @@ test('page declares language and charset before any script runs', async () => {
 
 test('stylesheet is linked statically, not injected by script', async () => {
   const document = await readPage();
-  const link = document.querySelector('link[rel="stylesheet"]');
+  const links = document.querySelectorAll('link[rel="stylesheet"]');
 
-  assert.ok(link, 'missing stylesheet link');
-  assert.equal(link.getAttribute('href'), 'styles/main.css');
+  assert.ok(links.length > 0, 'missing stylesheet link');
+  // tokens.css 必须排在第一位：其余样式表都读它定义的变量。
+  assert.equal(links[0].getAttribute('href'), 'styles/tokens.css');
+  assert.ok(
+    links.some((link) => link.getAttribute('href') === 'styles/main.css'),
+    'missing main stylesheet link',
+  );
 });
 
 test('theme initialization runs before the stylesheet is requested', async () => {

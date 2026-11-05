@@ -31,5 +31,7 @@ test('overview links each project result and changes the shared concurrency limi
   await userEvent.selectOptions(screen.getByLabelText('本机同时运行'), '1');
   await waitFor(() => expect(screen.getByLabelText('本机同时运行')).toHaveValue('1'));
   expect(screen.getByText('等待可用名额')).toBeVisible();
+  expect(document.querySelector('.coding-overview-count')).toHaveAttribute('data-active', 'true');
+  expect(document.querySelector('.coding-overview-count .odometer-digit')).toHaveAttribute('data-digit', '1');
   client.clear();
 });

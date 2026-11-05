@@ -28,7 +28,7 @@ def command_environment(git: Path) -> dict[str, str]:
     return environment
 
 
-def _windows_job(process: subprocess.Popen[bytes]) -> Callable[[], None]:
+def windows_job(pid: int, *, suspended: bool = True) -> Callable[[], None]:
     if sys.platform != 'win32':
         raise RuntimeError('Windows process containment requires Windows')
     import ctypes
@@ -59,12 +59,13 @@ def _windows_job(process: subprocess.Popen[bytes]) -> Callable[[], None]:
     resume.argtypes = [wintypes.HANDLE]
     resume.restype = wintypes.LONG
     job = kernel.CreateJobObjectW(None, None)
-    handle = kernel.OpenProcess(0x0001 | 0x0100 | 0x0800, False, process.pid)
+    handle = kernel.OpenProcess(0x0001 | 0x0100 | 0x0800, False, pid)
     limits = Limits()
     limits.Basic.Flags = 0x2000  # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
     try:
         if (not job or not handle or not kernel.SetInformationJobObject(job, 9, ctypes.byref(limits), ctypes.sizeof(limits))
-                or not kernel.AssignProcessToJobObject(job, handle) or resume(handle) != 0):
+                or not kernel.AssignProcessToJobObject(job, handle)
+                or (suspended and resume(handle) != 0)):
             raise OSError(ctypes.get_last_error(), 'Cannot contain command process tree')
     except BaseException:
         if job:
@@ -122,7 +123,7 @@ def run_command(
     started = time.monotonic()
     try:
         if os.name == 'nt':
-            close_job = _windows_job(process)
+            close_job = windows_job(process.pid)
         reader.start()
         while True:
             check()

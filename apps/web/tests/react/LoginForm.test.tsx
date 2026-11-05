@@ -75,7 +75,9 @@ test("显示 Cairn 品牌场景且不改变登录表单契约", () => {
     "data-variant",
     "full",
   );
-  expect(screen.getByRole("status")).toHaveTextContent("岑宁，知识向导");
+  expect(screen.getByRole("status")).toHaveTextContent("岑宁 · 项目向导");
+  expect(screen.getByText("沿着路标，回到你的知识空间。")).toBeInTheDocument();
+  expect(screen.getByText("TRAILHEAD · 登录")).toHaveAttribute("aria-hidden", "true");
   expect(screen.getByRole("heading", { name: "登录 Cairn" })).toBeInTheDocument();
   expect(screen.getByLabelText("邮箱")).toHaveAttribute("id", "login-email");
   expect(screen.getByLabelText("密码")).toHaveAttribute("id", "login-password");

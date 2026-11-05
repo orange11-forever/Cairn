@@ -69,9 +69,11 @@ export function useProjectQuery(
   organizationId: string,
   projectId: string,
   sessionSignal: AbortSignal,
+  enabled = true,
 ) {
   return useQuery({
     queryKey: projectKeys.detail(organizationId, projectId),
+    enabled,
     queryFn: ({ signal }) =>
       fetchProject({
         projectId,

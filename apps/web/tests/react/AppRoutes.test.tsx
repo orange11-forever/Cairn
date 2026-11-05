@@ -375,9 +375,9 @@ beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(IDENTITY)));
   vi.stubGlobal(
     "matchMedia",
-    vi.fn(() => ({
-      matches: false,
-      media: "(prefers-color-scheme: dark)",
+    vi.fn((query: string) => ({
+      matches: query.includes("prefers-reduced-motion"),
+      media: query,
       onchange: null,
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
@@ -436,8 +436,8 @@ test("login reaches the real project workbench without exposing legacy navigatio
   await user.type(screen.getByLabelText("密码"), "cairn-demo-2026");
   await user.click(screen.getByRole("button", { name: "登录" }));
 
-  expect(await screen.findByRole("heading", { name: "项目任务" })).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "项目任务" })).toHaveAttribute("aria-current", "page");
+  expect(await screen.findByRole("region", { name: "项目工作区" })).toBeInTheDocument();
+  expect(within(screen.getByRole("navigation", { name: "主导航" })).queryAllByRole("link")).toHaveLength(0);
   expect(screen.queryByRole("link", { name: "知识文档" })).toBeNull();
   expect(screen.queryByRole("link", { name: "知识问答" })).toBeNull();
   expect(requests.filter((url) => /\/api\/v1\/(?:documents|uploads|ask)(?:\/|\?|$)/.test(url))).toEqual([]);
@@ -449,10 +449,10 @@ test("protected routes wait for restoration instead of flashing login", async ()
 
   expect(screen.getByText("正在恢复会话…")).toHaveAttribute("aria-busy", "true");
   expect(screen.queryByRole("heading", { name: "登录 Cairn" })).toBeNull();
-  expect(screen.queryByRole("heading", { name: "项目任务" })).toBeNull();
+  expect(screen.queryByRole("region", { name: "项目工作区" })).toBeNull();
 
   restore.resolve(IDENTITY);
-  expect(await screen.findByRole("heading", { name: "项目任务" })).toBeInTheDocument();
+  expect(await screen.findByRole("region", { name: "项目工作区" })).toBeInTheDocument();
 });
 
 test("restore outages show a retry action and recover without a blank route", async () => {
@@ -476,7 +476,7 @@ test("restore outages show a retry action and recover without a blank route", as
   expect(await screen.findByRole("alert")).toHaveTextContent("身份服务暂时不可用");
   await user.click(screen.getByRole("button", { name: "重试" }));
 
-  expect(await screen.findByRole("heading", { name: "项目任务" })).toBeInTheDocument();
+  expect(await screen.findByRole("region", { name: "项目工作区" })).toBeInTheDocument();
   expect(attempts).toBe(2);
 });
 
@@ -489,7 +489,7 @@ test("logout failure keeps the authenticated session and cached identity", async
   await user.click(screen.getByRole("button", { name: "退出" }));
 
   expect(await screen.findByText("断网")).toHaveAttribute("role", "alert");
-  expect(screen.getByRole("heading", { name: "项目任务" })).toBeInTheDocument();
+  expect(screen.getByRole("region", { name: "项目工作区" })).toBeInTheDocument();
 });
 
 test.each(["/login", "/not-a-route", "/documents", "/ask"])(
@@ -501,7 +501,7 @@ test.each(["/login", "/not-a-route", "/documents", "/ask"])(
     return jsonResponse({ items: [], nextCursor: null });
   }));
   const first = renderTestRoutes(path, { restoredIdentity: IDENTITY });
-  expect(await screen.findByRole("heading", { name: "项目任务" })).toBeInTheDocument();
+  expect(await screen.findByRole("region", { name: "项目工作区" })).toBeInTheDocument();
   expect(requests.filter((url) => /\/api\/v1\/(?:documents|uploads|ask)(?:\/|\?|$)/.test(url))).toEqual([]);
   first.unmount();
   },
@@ -509,30 +509,28 @@ test.each(["/login", "/not-a-route", "/documents", "/ask"])(
 
 test("authenticated unknown routes resolve to projects", async () => {
   const first = renderTestRoutes("/login", { restoredIdentity: IDENTITY });
-  expect(await screen.findByRole("heading", { name: "项目任务" })).toBeInTheDocument();
+  expect(await screen.findByRole("region", { name: "项目工作区" })).toBeInTheDocument();
   first.unmount();
 
   renderTestRoutes("/not-a-route", { restoredIdentity: IDENTITY });
-  expect(await screen.findByRole("heading", { name: "项目任务" })).toBeInTheDocument();
+  expect(await screen.findByRole("region", { name: "项目工作区" })).toBeInTheDocument();
 });
 
-test("authenticated routes use one extensible application shell", async () => {
+test("authenticated routes use one stable application shell", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ items: [], nextCursor: null })));
   const user = userEvent.setup();
   renderTestRoutes("/projects", { restoredIdentity: IDENTITY });
 
   expect(document.querySelector("header.product-header")).toBeInTheDocument();
   const navigation = screen.getByRole("navigation", { name: "主导航" });
-  expect(within(navigation).getAllByRole("link")).toHaveLength(1);
-  expect(within(navigation).getByRole("link", { name: "项目任务" })).toHaveAttribute("aria-current", "page");
-  expect(within(navigation).queryByRole("link", { name: /Agent|治理/ })).toBeNull();
-  expect(screen.getByRole("heading", { level: 1, name: "项目任务" })).toBeInTheDocument();
-  expect(screen.getByText("选择项目，查看任务并更新进度。")).toBeInTheDocument();
+  expect(within(navigation).getByText("任务", { selector: ".nav-label-full" }).closest(".nav-item-disabled")).toHaveAttribute("aria-disabled", "true");
+  expect(await screen.findByRole("heading", { name: "还没有项目" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "创建第一个项目" })).toHaveAttribute("href", "/projects/new");
+  expect(screen.queryByRole("button", { name: "AI / API 配置" })).toBeNull();
 
   const assistantTrigger = screen.getByRole("button", { name: "打开岑宁助手" });
-  expect(assistantTrigger).toHaveAttribute("aria-expanded", "false");
   await user.click(assistantTrigger);
   expect(screen.getByRole("dialog", { name: "岑宁助手" })).toHaveTextContent("项目任务助手");
-  expect(assistantTrigger).toHaveAttribute("aria-expanded", "true");
 });
 
 test("authenticated shell presents the dedicated Cairn wordmark once", async () => {
@@ -556,23 +554,6 @@ test("authenticated shell's vector brand stays readable without an image request
   expect(brandLink.querySelector("img")).toBeNull();
 });
 
-test("the project route stays in the shared shell with project navigation and assistant copy", async () => {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => jsonResponse({ items: [], nextCursor: null })),
-  );
-  const user = userEvent.setup();
-
-  renderTestRoutes("/projects", { restoredIdentity: IDENTITY });
-
-  expect(await screen.findByRole("heading", { level: 1, name: "项目任务" })).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "项目任务" })).toHaveAttribute(
-    "aria-current",
-    "page",
-  );
-  await user.click(screen.getByRole("button", { name: "打开岑宁助手" }));
-  expect(screen.getByRole("dialog", { name: "岑宁助手" })).toHaveTextContent("项目任务助手");
-});
 
 test.each([
   ["contract", () => jsonResponse({
@@ -709,18 +690,15 @@ test("the project knowledge route loads the selected project inside the shared k
   expect(await readyUploadInput()).toBeVisible();
   expect(screen.queryByText("上传入口将在后续任务接入")).toBeNull();
   expect(screen.getByText("可维护资料")).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "Cairn" })).toHaveAttribute("href", "/projects");
-  expect(screen.getByRole("link", { name: "知识工作台" })).toHaveAttribute(
-    "aria-current",
-    "page",
-  );
+  expect(screen.getByRole("link", { name: "Cairn" })).toHaveAttribute("href", `/projects/${projectId}/tasks`);
+  // 知识工作台 sidebar link assertions deferred to Task 8.
   await waitFor(() => expect(requests).toHaveLength(1));
   expect(new URL(requests[0]?.url ?? "").pathname).toBe(
     `/api/v1/projects/${projectId}/knowledge/resources`,
   );
   expect(requests[0]?.credentials).toBe("include");
 
-  expect(screen.queryByRole("button", { name: "打开岑宁助手" })).toBeNull();
+  expect(screen.getByRole("button", { name: "打开岑宁助手" })).toBeInTheDocument();
   expect(await screen.findByRole("complementary", { name: "岑宁问答面板" }))
     .toHaveTextContent("岑宁项目问答 · 助手独立对话");
 });

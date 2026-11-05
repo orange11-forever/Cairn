@@ -35,6 +35,24 @@ function parse<Name extends keyof components["schemas"]>(name: Name, result: Res
   return result.data;
 }
 
+export type TerminalSnapshot = components['schemas']['TerminalSnapshot'];
+export async function fetchTerminal(projectId: string, after: number, signal: AbortSignal) {
+  const result = await perform(signal, signal => client().GET('/api/v1/desktop/projects/{project_id}/terminal', { params: { path: { project_id: projectId }, query: { after } }, signal }));
+  return result.data === null ? null : parse('TerminalSnapshot', result);
+}
+export async function startTerminal(projectId: string, body: components['schemas']['TerminalStart'], csrfToken: string, signal: AbortSignal) {
+  return parse('TerminalSnapshot', await perform(signal, signal => client().POST('/api/v1/desktop/projects/{project_id}/terminal', { params: { path: { project_id: projectId }, header: { 'X-CSRF-Token': csrfToken } }, body, signal })));
+}
+export async function writeTerminal(projectId: string, terminalId: string, data: string, csrfToken: string, signal: AbortSignal) {
+  await perform(signal, signal => client().POST('/api/v1/desktop/projects/{project_id}/terminal/{terminal_id}/input', { params: { path: { project_id: projectId, terminal_id: terminalId }, header: { 'X-CSRF-Token': csrfToken } }, body: { data }, signal }));
+}
+export async function resizeTerminal(projectId: string, terminalId: string, cols: number, rows: number, csrfToken: string, signal: AbortSignal) {
+  await perform(signal, signal => client().POST('/api/v1/desktop/projects/{project_id}/terminal/{terminal_id}/resize', { params: { path: { project_id: projectId, terminal_id: terminalId }, header: { 'X-CSRF-Token': csrfToken } }, body: { cols, rows }, signal }));
+}
+export async function closeTerminal(projectId: string, terminalId: string, csrfToken: string, signal: AbortSignal) {
+  return parse('TerminalSnapshot', await perform(signal, signal => client().POST('/api/v1/desktop/projects/{project_id}/terminal/{terminal_id}/close', { params: { path: { project_id: projectId, terminal_id: terminalId }, header: { 'X-CSRF-Token': csrfToken } }, signal })));
+}
+
 export async function startGitHubDevice({ intent, csrfToken }: { intent: "login" | "link" | "repositories"; csrfToken?: string }, signal: AbortSignal) {
   return parse("GitHubDeviceStarted", await perform(signal, signal => client().POST("/api/v1/desktop/github/device", { body: { intent }, headers: headers(csrfToken), signal })));
 }

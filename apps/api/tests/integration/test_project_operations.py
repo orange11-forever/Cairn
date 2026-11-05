@@ -1,3 +1,4 @@
+import json
 from collections.abc import Iterator
 from concurrent.futures import Future, ThreadPoolExecutor
 from copy import deepcopy
@@ -8,10 +9,13 @@ from uuid import UUID, uuid4
 import httpx2
 import pytest
 from cairn_api.audit.models import AuditLog
+from cairn_api.auth.models import User
 from cairn_api.authorization.models import ResourceAclEntry
 from cairn_api.authorization.types import MembershipRole
 from cairn_api.db.session import Database
 from cairn_api.knowledge.answer_provider import AnswerGuidance
+from cairn_api.knowledge.assistant_models import KnowledgeAssistantSettings
+from cairn_api.organizations.models import Membership
 from cairn_api.projects.models import OutboxEvent, Task, TaskDependency
 from cairn_api.projects.operation_models import ProjectOperation
 from cairn_api.projects.operation_schemas import ProjectOperationSuggestion
@@ -82,6 +86,102 @@ def preview_payload(operations: OperationsFixture) -> dict[str, Any]:
     )
     assert response.status_code == 200, response.text
     return {"operationId": str(uuid4()), "confirmed": True, "preview": response.json()}
+
+
+@pytest.mark.integration
+def test_dispatch_suggestion_uses_private_agents_and_cannot_execute_as_a_member_operation(
+    database: Database, operations: OperationsFixture,
+) -> None:
+    client, actor, pid, tid, provider = operations
+    agent_id = uuid4()
+    with database.session_factory.begin() as session:
+        session.add(KnowledgeAssistantSettings(
+            id=agent_id, org_id=actor.organization_id, project_id=pid, owner_id=actor.user_id,
+            name="开发助手", instructions="", enabled_skill_ids=[], revision=1, is_active=True,
+        ))
+    provider.action = {"type": "dispatch_task", "taskId": str(tid), "assistantId": str(agent_id),
+                       "assistantName": "伪造名称"}
+    payload = preview_payload(operations)
+    assert payload["preview"]["suggestion"]["action"]["assistantName"] == "开发助手"
+    assert json.loads(provider.requests[-1][1])["codingAssistants"] == [
+        {"assistantId": str(agent_id), "name": "开发助手"}]
+    assert client.post(f"/api/v1/projects/{pid}/operations", json=payload).status_code == 422
+    with database.session_factory() as session:
+        task = session.get(Task, tid)
+        assert task is not None and task.assignee_user_id is None
+        assert session.scalar(select(func.count()).select_from(ProjectOperation)) == 0
+    provider.action["assistantId"] = str(uuid4())
+    assert_error(client.post(f"/api/v1/projects/{pid}/operation-preview", json={"intent": "交给其他 Agent"}),
+                 503, "answer_unavailable")
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("clear", [False, True])
+def test_member_assignment_is_explicit_canonical_and_replayable(
+    database: Database, operations: OperationsFixture, clear: bool,
+) -> None:
+    client, actor, pid, tid, provider = operations
+    target = seed_actor(database, MembershipRole.OWNER, actor.organization_id)
+    with database.session_factory.begin() as session:
+        session.execute(update(Task).where(Task.id == tid).values(assignee_user_id=actor.user_id))
+    provider.action = {"type": "assign_task", "taskId": str(tid),
+                       "assigneeUserId": None if clear else str(target.user_id),
+                       "assigneeName": "模型编造的姓名"}
+    payload = preview_payload(operations)
+    candidates = json.loads(provider.requests[-1][1])["assignees"]
+    assert str(target.user_id) in {item["userId"] for item in candidates}
+    assert payload["preview"]["suggestion"]["action"]["assigneeName"] == (None if clear else "Test owner")
+    with database.session_factory() as session:
+        task = session.get(Task, tid)
+        assert task is not None and task.assignee_user_id == actor.user_id
+    # Labels are display data, never authority for the selected user ID.
+    payload["preview"]["suggestion"]["action"]["assigneeName"] = "客户端伪造姓名"
+    path = f"/api/v1/projects/{pid}/operations"
+    response = client.post(path, json=payload)
+    assert response.status_code == 201, response.text
+    assert response.headers["x-request-id"]
+    assert response.json()["action"]["assigneeName"] == (None if clear else "Test owner")
+    assert response.json()["result"]["assigneeUserId"] == (None if clear else str(target.user_id))
+    assert client.post(path, json=payload).json() == response.json()
+    with database.session_factory() as session:
+        task = session.get(Task, tid)
+        assert task is not None and task.assignee_user_id == (None if clear else target.user_id)
+        assert session.scalar(select(func.count()).select_from(ProjectOperation)) == 1
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("change", ["inactive", "no_project_access"])
+def test_assignment_rechecks_the_target_member_when_confirmed(
+    database: Database, operations: OperationsFixture, change: str,
+) -> None:
+    client, actor, pid, tid, provider = operations
+    target = seed_actor(database, MembershipRole.OWNER, actor.organization_id)
+    provider.action = {"type": "assign_task", "taskId": str(tid), "assigneeUserId": str(target.user_id)}
+    payload = preview_payload(operations)
+    with database.session_factory.begin() as session:
+        if change == "inactive":
+            session.execute(update(User).where(User.id == target.user_id).values(is_active=False))
+        else:
+            session.execute(update(Membership).where(Membership.id == target.membership_id).values(role="viewer"))
+    response = client.post(f"/api/v1/projects/{pid}/operations", json=payload)
+    assert_error(response, 422, "invalid_assignee")
+    with database.session_factory() as session:
+        task = session.get(Task, tid)
+        assert task is not None and task.assignee_user_id is None
+        assert session.scalar(select(func.count()).select_from(ProjectOperation)) == 0
+
+
+@pytest.mark.integration
+def test_assignment_suggestions_cannot_target_another_organizations_member(
+    database: Database, operations: OperationsFixture,
+) -> None:
+    client, _, pid, tid, provider = operations
+    outside = seed_actor(database, MembershipRole.OWNER)
+    provider.action = {"type": "assign_task", "taskId": str(tid), "assigneeUserId": str(outside.user_id)}
+    response = client.post(f"/api/v1/projects/{pid}/operation-preview", json={"intent": "将任务分配给外部成员"})
+    assert_error(response, 503, "answer_unavailable")
+    candidates = json.loads(provider.requests[-1][1])["assignees"]
+    assert str(outside.user_id) not in {item["userId"] for item in candidates}
 
 
 @pytest.mark.integration

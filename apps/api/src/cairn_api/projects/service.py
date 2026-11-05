@@ -105,48 +105,56 @@ class ProjectService:
         description: str | None,
         audit: RequestAuditContext,
     ) -> ProjectResponse:
+        with self._session.begin():
+            return self._create_project_in_transaction(
+                identity=identity, name=name, description=description, audit=audit
+            )
+
+    def _create_project_in_transaction(
+        self, *, identity: IdentityContextResponse, name: str,
+        description: str | None, audit: RequestAuditContext,
+    ) -> ProjectResponse:
         self._policy.require_project_creation(identity)
         org_id = identity.organization.id
-        with self._session.begin():
-            project = repository.create_project(
-                self._session,
-                org_id=org_id,
-                name=name,
-                description=description,
-            )
-            acl_repository.create_entry(
-                self._session,
-                org_id=org_id,
-                resource_type=ResourceType.PROJECT,
-                resource_id=project.id,
-                principal=PrincipalRef(PrincipalType.ORG, str(org_id)),
-                permission=ProjectPermission.READ,
-                actor_type=ActorType.USER,
-                actor_id=identity.user.id,
-            )
-            acl_repository.create_entry(
-                self._session,
-                org_id=org_id,
-                resource_type=ResourceType.PROJECT,
-                resource_id=project.id,
-                principal=PrincipalRef(PrincipalType.USER, str(identity.user.id)),
-                permission=ProjectPermission.MANAGE,
-                actor_type=ActorType.USER,
-                actor_id=identity.user.id,
-            )
-            self._audit(
-                identity=identity,
-                audit=audit,
-                action="project.created",
-                resource_type="project",
-                resource_id=project.id,
-            )
-            self._outbox(
-                org_id=org_id,
-                event_type="project.created",
-                project_id=project.id,
-                payload={"projectId": str(project.id)},
-            )
+        project = repository.create_project(
+            self._session,
+            org_id=org_id,
+            name=name,
+            description=description,
+        )
+        acl_repository.create_entry(
+            self._session,
+            org_id=org_id,
+            resource_type=ResourceType.PROJECT,
+            resource_id=project.id,
+            principal=PrincipalRef(PrincipalType.ORG, str(org_id)),
+            permission=ProjectPermission.READ,
+            actor_type=ActorType.USER,
+            actor_id=identity.user.id,
+        )
+        acl_repository.create_entry(
+            self._session,
+            org_id=org_id,
+            resource_type=ResourceType.PROJECT,
+            resource_id=project.id,
+            principal=PrincipalRef(PrincipalType.USER, str(identity.user.id)),
+            permission=ProjectPermission.MANAGE,
+            actor_type=ActorType.USER,
+            actor_id=identity.user.id,
+        )
+        self._audit(
+            identity=identity,
+            audit=audit,
+            action="project.created",
+            resource_type="project",
+            resource_id=project.id,
+        )
+        self._outbox(
+            org_id=org_id,
+            event_type="project.created",
+            project_id=project.id,
+            payload={"projectId": str(project.id)},
+        )
         return ProjectResponse.model_validate(project)
 
     def list_projects(

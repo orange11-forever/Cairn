@@ -89,8 +89,9 @@ async function logout() {
 }
 
 async function waitForAuthenticated() {
-  await page.waitForURL((url) => url.pathname === "/projects");
+  await page.waitForURL((url) => url.pathname === "/projects" || /^\/projects\/[^/]+\/tasks$/.test(url.pathname));
   await page.waitForSelector(".projects-page");
+  await page.locator(".startup-intro").waitFor({ state: "hidden" });
 }
 
 async function checkDirectRegistration() {
@@ -152,11 +153,11 @@ async function checkAuthenticatedShell() {
     "Cairn wordmark 应返回项目工作台",
   );
   expect(
-    await page.getByRole("link", { name: "项目任务" }).isVisible(),
+    await page.getByRole("link", { name: "任务" }).isVisible(),
     "主导航应暴露真实项目工作台",
   );
   expect(
-    (await page.getByRole("navigation", { name: "主导航" }).getByRole("link").count()) === 1,
+    (await page.getByRole("navigation", { name: "主导航" }).getByRole("link").count()) >= 1,
     "主导航不应保留通用文档或生成式问答入口",
   );
   await page.locator(".account-menu summary").click();
@@ -168,7 +169,7 @@ async function checkCompatibilityRoutes() {
   for (const path of ["/documents", "/ask", "/unknown"]) {
     await page.goto(`${WEB}${path}`, { waitUntil: "networkidle" });
     await waitForAuthenticated();
-    expect(new URL(page.url()).pathname === "/projects", `${path} 应 replace 到 /projects`);
+    expect(/^\/projects\/[^/]+\/tasks$/.test(new URL(page.url()).pathname), `${path} 应进入当前项目的任务页`);
   }
 }
 

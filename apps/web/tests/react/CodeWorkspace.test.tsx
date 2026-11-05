@@ -5,6 +5,9 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, expect, test, vi } from 'vitest';
 import { SessionProvider } from '../../src/session/SessionContext.tsx';
 import { CodeWorkspacePage } from '../../src/pages/CodeWorkspacePage.tsx';
+// Architecture behavior does not depend on xterm's canvas/media APIs. The real
+// terminal is exercised in the browser; JSDOM cannot render its viewport.
+vi.mock('../../src/components/code/TerminalPanel.tsx', () => ({ TerminalPanel: () => <section aria-label="项目交互终端" /> }));
 const projectId='00000000-0000-4000-8000-000000004001';
 const identity={user:{id:'00000000-0000-4000-8000-000000001001',email:'demo@cairn.dev',displayName:'用户'},organization:{id:'00000000-0000-4000-8000-000000002001',name:'Cairn',slug:'cairn'},membership:{id:'00000000-0000-4000-8000-000000003001',role:'owner' as const},csrfToken:'csrf'};
 const project={id:projectId,name:'mikuOJ',description:'Online judge',revision:1,createdAt:'2026-10-31T00:00:00Z',updatedAt:'2026-10-31T00:00:00Z'};

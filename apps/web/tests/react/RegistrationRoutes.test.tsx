@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { AppRoutes } from "../../src/app/AppRoutes.tsx";
 import { SessionProvider, useSession } from "../../src/session/SessionContext.tsx";
 
@@ -14,6 +14,7 @@ function mount(route: string) {
     <SessionProvider><StateProbe /><AppRoutes /></SessionProvider>
   </MemoryRouter></QueryClientProvider>);
 }
+beforeEach(() => { vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("prefers-reduced-motion"), media: query })); });
 afterEach(() => { vi.unstubAllGlobals(); window.history.replaceState(null, "", "/"); });
 const unavailable = () => Response.json({ code: "database_unavailable", message: "temporarily unavailable", traceId: "synthetic-trace" }, { status: 503 });
 const invalidSession = () => Response.json({ code: "session_invalid", message: "anonymous", traceId: "synthetic-trace" }, { status: 401 });

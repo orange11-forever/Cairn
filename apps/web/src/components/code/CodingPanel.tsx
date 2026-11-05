@@ -1,11 +1,15 @@
+import { ThinkingStones } from "../trail/ThinkingStones.tsx";
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bot, Check, FileDiff, Play, RefreshCw, Square, Terminal } from 'lucide-react';
+import { AssistantAvatar } from '../knowledge/AssistantAvatar.tsx';
 import { useEffect, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { fetchAssistants, fetchSkillCatalog, selectAssistant, type AssistantSettings } from '../../api/assistantSkills.ts';
 import { cancelCodingRun, decideCodingCommand, fetchCodingRun, fetchCodingRuns, startCodingRun, type CodingChange, type CodingRun } from '../../api/workspace.ts';
 import { useSession } from '../../session/SessionContext.tsx';
 import { CodingDeliveryPanel } from './CodingDeliveryPanel.tsx';
+import { readCodingDispatch } from './codingDispatch.ts';
+import { projectPath } from '../../app/projectRoutes.ts';
 
 export const running = (run: Pick<CodingRun, 'status'>) => ['queued', 'running', 'awaiting_approval', 'cancelling'].includes(run.status);
 export const statuses: Record<CodingRun['status'], string> = { queued: '排队中', blocked: '前置任务未成功', running: '正在执行', awaiting_approval: '等待命令确认', cancelling: '正在停止', cancelled: '已停止', succeeded: '已完成 · 已确认检查退出码 0', failed: '执行失败', interrupted: '运行已中断' };
@@ -20,10 +24,15 @@ export function CodingPanel({ projectId, workspaceId, localPath, assistant, mode
   const { session } = useSession();
   const client = useQueryClient();
   const [search] = useSearchParams();
+  const location = useLocation(), navigate = useNavigate();
+  const incoming = readCodingDispatch(location.state, projectId, session!.identity.user.id);
+  const [dispatch, setDispatch] = useState(incoming);
+  const [loadedKey, setLoadedKey] = useState(location.key);
   const [dependsOn, setDependsOn] = useState('');
   const [selecting, setSelecting] = useState(false);
-  const [task, setTask] = useState('');
+  const [task, setTask] = useState(incoming?.task ?? '');
   const [consent, setConsent] = useState(false);
+  useEffect(() => { setConsent(false); }, [assistant?.id, assistant?.revision, modelName, workspaceId]);
   const [skillId, setSkillId] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(search.get('run'));
   useEffect(() => { setSelectedId(search.get('run')); }, [search]);
@@ -32,6 +41,7 @@ export function CodingPanel({ projectId, workspaceId, localPath, assistant, mode
   const [view, setView] = useState<'steps' | 'output'>('steps');
   const [verifiedEvent, setVerifiedEvent] = useState<string | null>(null);
   const observed = useRef<string | null>(null);
+  const sending = useRef(false);
   const key = ['coding-runs', session!.generation, projectId];
   const runs = useQuery({ queryKey: key, retry: false, gcTime: 0,
     queryFn: ({ signal }) => fetchCodingRuns(projectId, AbortSignal.any([signal, session!.signal])),
@@ -57,8 +67,9 @@ export function CodingPanel({ projectId, workspaceId, localPath, assistant, mode
       void client.invalidateQueries({ queryKey: ['code-sources', session!.generation, projectId] });
     }
   }, [run, client, projectId, session, onFinished]);
-  async function action(operation: () => Promise<CodingRun>) {
-    if (pending) return;
+  async function action(operation: () => Promise<CodingRun>, starting = false) {
+    if (sending.current) return;
+    sending.current = true;
     setPending(true); setError(null);
     try {
       const updated = await operation();
@@ -66,9 +77,13 @@ export function CodingPanel({ projectId, workspaceId, localPath, assistant, mode
       setSelectedId(updated.id);
       client.setQueryData(key, (previous: { items: CodingRun[] } | undefined) => ({ items: [updated, ...(previous?.items ?? []).filter(item => item.id !== updated.id)] }));
       void client.invalidateQueries({ queryKey: ['coding-overview', session!.generation] });
+      if (starting && dispatch) {
+        setTask(''); setConsent(false); setDispatch(null);
+        navigate({ pathname: location.pathname, search: `?run=${updated.id}` }, { replace: true, state: null });
+      }
     } catch (failure) {
       if (!session!.signal.aborted) setError(failure instanceof Error ? failure.message : '执行请求失败，请刷新运行记录');
-    } finally { setPending(false); }
+    } finally { sending.current = false; setPending(false); }
   }
   async function chooseAgent(id: string) {
     if (!assistant || !id || id === assistant.id || selecting) return;
@@ -79,19 +94,37 @@ export function CodingPanel({ projectId, workspaceId, localPath, assistant, mode
       if (!session!.signal.aborted) {
         client.setQueryData(['code-assistant', session!.generation, projectId], updated);
         setSkillId('');
+        setConsent(false);
       }
     } catch (failure) {
       if (!session!.signal.aborted) setError(failure instanceof Error ? failure.message : '切换 Agent 失败');
     } finally { setSelecting(false); }
   }
   const command = run?.pendingCommand;
-  const startDisabled = busy || !canWrite || !workspaceId || !assistant || !modelName || !consent || !task.trim() || runs.isPending || Boolean(runs.error);
+  const wrongAgent = Boolean(dispatch && (!assistant || dispatch.assistantId !== (assistant.id ?? null)));
+  const offered = incoming && loadedKey !== location.key;
+  const startDisabled = busy || !canWrite || !workspaceId || !assistant || !modelName || !consent || !task.trim() || task.trim().length > 6000 || wrongAgent || Boolean(offered) || runs.isPending || Boolean(runs.error);
   return <aside className="coding-panel" aria-label="编程 Agent">
-    <header className="coding-heading"><h2><Bot size={18} aria-hidden="true" />编程 Agent</h2><button type="button" aria-label="刷新运行记录" disabled={runs.isFetching} onClick={() => void runs.refetch()}><RefreshCw size={15} aria-hidden="true" /></button></header>
+    <header className="coding-heading"><h2><span className="coding-agent-portrait" aria-hidden="true">{assistant ? <AssistantAvatar name={assistant.name} avatarDataUrl={assistant.avatarDataUrl} /> : <Bot size={18} />}</span>编程 Agent</h2><button type="button" aria-label="刷新运行记录" disabled={runs.isFetching} onClick={() => void runs.refetch()}><RefreshCw size={15} aria-hidden="true" /></button></header>
     <div className="coding-agent"><label>分配给 Agent<select aria-label="分配给 Agent" value={assistant?.id ?? ''} disabled={busy || !assistant || !canWrite} onChange={event => void chooseAgent(event.target.value)}>{!assistant?.id && <option value="">{assistant?.name ?? '正在读取 Agent…'}</option>}{agents.data?.items.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><span>{modelName ?? '尚未配置模型'}</span><Link to={`/projects/${projectId}/knowledge`}>配置 Agent 与模型</Link></div>
-    <form className="coding-task" onSubmit={event => { event.preventDefault(); if (!startDisabled) void action(() => startCodingRun(projectId, { workspaceId: workspaceId!, task: task.trim(), assistantId: assistant!.id ?? null, assistantRevision: assistant!.revision, skillId: skillId || null, dependsOn: dependsOn || null, allowWrites: true }, session!.identity.csrfToken, session!.signal)); }}>
+    {offered && <div className="code-notice" role="status"><p>收到新的待派发任务。载入后会替换当前任务草稿。</p><button type="button" disabled={busy} onClick={() => {
+      setTask(incoming.task); setDispatch(incoming); setConsent(false); setSkillId(''); setDependsOn(''); setLoadedKey(location.key);
+    }}>载入待派发任务</button></div>}
+    {dispatch && <div className="code-notice"><p>来自项目任务 · 拟交给 {dispatch.assistantName}</p><Link to={projectPath(projectId, 'tasks')}>查看项目任务</Link>
+      {wrongAgent && <p role="status">请先切换到「{dispatch.assistantName}」再确认开始。
+        {dispatch.assistantId && agents.data?.items.some(item => item.id === dispatch.assistantId) && <button type="button" disabled={busy || !canWrite} onClick={() => void chooseAgent(dispatch.assistantId!)}>切换到建议的 Agent</button>}
+      </p>}
+      <button type="button" disabled={busy} onClick={() => {
+        setDispatch(null); setTask(''); setConsent(false);
+        navigate({ pathname: location.pathname, search: location.search }, { replace: true, state: null });
+      }}>取消这次派发</button>
+    </div>}
+    <form className="coding-task" onSubmit={event => { event.preventDefault(); if (!startDisabled) void action(() => startCodingRun(projectId, { workspaceId: workspaceId!, task: task.trim(), assistantId: assistant!.id ?? null, assistantRevision: assistant!.revision, skillId: skillId || null, dependsOn: dependsOn || null, allowWrites: true,
+      ...(dispatch ? { sourceTask: dispatch.sourceTask } : {}),
+    }, session!.identity.csrfToken, session!.signal), true); }}>
       <label htmlFor="coding-task">交给 Agent 的任务</label>
       <textarea id="coding-task" rows={3} maxLength={6000} placeholder="描述一个具体修改，以及怎样验证它…" value={task} onChange={event => setTask(event.target.value)} disabled={busy || !canWrite} />
+      {task.trim().length > 6000 && <p role="alert">任务内容超过 6000 字，请精简后再开始。原任务内容仍保留在项目中。</p>}
       {assistant?.enabledSkillIds.length ? <label>本次 Skill<select value={skillId} disabled={busy} onChange={event => setSkillId(event.target.value)}><option value="">不使用 Skill</option>{skills.data?.items.filter(skill => skill.runnable && assistant.enabledSkillIds.includes(skill.id)).map(skill => <option key={skill.id} value={skill.id}>{skill.name}</option>)}</select></label> : null}
       <label className="coding-consent"><input type="checkbox" checked={consent} disabled={busy || !canWrite} onChange={event => setConsent(event.target.checked)} /><span>允许此 Agent 将读取的源码和命令输出发送给所选模型，并修改本次独立工作区中的文件。命令另行逐条确认。</span></label>
       <label>前置任务<select aria-label="前置任务" value={dependsOn} disabled={busy} onChange={event => setDependsOn(event.target.value)}><option value="">无 · 独立推进</option>{runs.data?.items.filter(item => running(item) || item.status === 'succeeded').map(item => <option key={item.id} value={item.id}>{item.assistantName} · {item.task.slice(0, 32)}</option>)}</select></label>
@@ -104,8 +137,9 @@ export function CodingPanel({ projectId, workspaceId, localPath, assistant, mode
     {currentRuns.length > 0 && <p className="coding-hint" role="status">此项目 {currentRuns.filter(item => item.status !== 'queued').length} 个运行中 · {currentRuns.filter(item => item.status === 'queued').length} 个排队中</p>}
     {(runs.data?.items.length ?? 0) > 0 && <label className="coding-history">选择运行记录<select aria-label="选择运行记录" value={selectedId ?? run?.id ?? ''} onChange={event => { setSelectedId(event.target.value); setVerifiedEvent(null); }}>{selectedId && !runs.data?.items.some(item => item.id === selectedId) && <option value={selectedId}>{selectedRun.data ? `${selectedRun.data.assistantName} · ${selectedRun.data.task.slice(0, 32)}` : selectedRun.error ? '所选记录读取失败' : '正在读取所选记录…'}</option>}{runs.data?.items.map(item => <option key={item.id} value={item.id}>{statuses[item.status]} · {item.assistantName} · {item.task.slice(0, 32)}</option>)}</select></label>}
     {run ? <section className="coding-run" aria-label="运行详情">
-      <div className="coding-run-heading"><strong role="status">{statuses[run.status]}</strong>{running(run) && <button type="button" disabled={pending || run.status === 'cancelling'} onClick={() => void action(() => cancelCodingRun(projectId, run.id, session!.identity.csrfToken, session!.signal))}><Square size={13} aria-hidden="true" />{run.status === 'queued' ? '取消排队' : '停止执行'}</button>}</div>
+      <div className="coding-run-heading"><strong role="status">{running(run) ? <ThinkingStones>{statuses[run.status]}</ThinkingStones> : statuses[run.status]}</strong>{running(run) && <button type="button" disabled={pending || run.status === 'cancelling'} onClick={() => void action(() => cancelCodingRun(projectId, run.id, session!.identity.csrfToken, session!.signal))}><Square size={13} aria-hidden="true" />{run.status === 'queued' ? '取消排队' : '停止执行'}</button>}</div>
       <p className="coding-run-task">{run.task}</p><p className="coding-meta">{run.assistantName} · {run.model.name} · {new Date(run.createdAt).toLocaleString('zh-CN')}</p>
+      {run.sourceTask && <p className="coding-hint"><Link to={projectPath(projectId, 'tasks')}>查看来源任务</Link> · 派发时版本 {run.sourceTask.revision} · {run.sourceTask.taskId}</p>}
       {run.branch && <div className="coding-location"><span>独立分支 <code>{run.branch}</code></span><span>基于提交 <code>{run.baseHead?.slice(0, 8)}</code> · 配置版本 {run.assistantRevision}</span><code>{run.localPath}</code><span>成果保留在此目录，尚未集成到项目分支。</span></div>}
       {run.dependsOn && <p className="coding-hint">前置任务：<button type="button" onClick={() => setSelectedId(run.dependsOn!)}>查看前置任务结果</button></p>}
       {(run.overlaps?.length ?? 0) > 0 && <div className="coding-overlaps" role="status"><strong>文件修改重叠，可能产生合并冲突</strong><p>各自成果已保留，请分别审阅后再集成。</p>{run.overlaps?.map(other => <button key={other.runId} type="button" onClick={() => setSelectedId(other.runId)}>{other.assistantName} · {other.paths.join('、')}</button>)}</div>}

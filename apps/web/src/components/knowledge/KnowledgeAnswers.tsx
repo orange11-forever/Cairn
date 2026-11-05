@@ -1,3 +1,4 @@
+import { ThinkingStones } from "../trail/ThinkingStones.tsx";
 import { useMutation } from "@tanstack/react-query";
 import { Sparkles, X, RotateCcw, UserRound, Send, FileText } from "lucide-react";
 import { type FormEvent, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
@@ -227,7 +228,7 @@ export function KnowledgeAnswers({
             <p className="knowledge-answer-welcome-hint">可以从项目目标、关键决策或待办事项问起。</p>
           </div>
         ) : null}
-        {mutation.isPending ? <p role="status" aria-live="polite">正在查找资料并生成回答…</p> : null}
+        {mutation.isPending ? <p role="status" aria-live="polite"><ThinkingStones>正在查找资料并生成回答…</ThinkingStones></p> : null}
         {notice === null ? null : <p role="status" aria-live="polite">{notice}</p>}
         {error === null ? null : <p role="alert">{error}</p>}
         {docked && answer !== null ? <div className="knowledge-answer-author"><MascotFigure variant="avatar" label="岑宁" /><strong>岑宁</strong></div> : null}

@@ -68,6 +68,26 @@ def test_operation_provider_separates_explicit_intent_and_returns_typed_suggesti
     assert result.action is not None and result.action.type == "update_task"
 
 
+@pytest.mark.parametrize("action", [
+    {"type": "create_project", "name": "发布工作区", "description": "安排发布验收"},
+    {"type": "dispatch_task", "taskId": "00000000-0000-4000-8000-000000000001",
+     "assistantId": "00000000-0000-4000-8000-000000000002"},
+])
+def test_provider_can_propose_project_creation_and_coding_dispatch(action: dict[str, Any]):
+    result = suggest({"status": "proposed", "explanation": "待用户确认", "action": action})
+    assert result.action is not None
+    assert result.action.type == action["type"]
+
+
+@pytest.mark.parametrize("assignee", [None, "00000000-0000-4000-8000-000000000002"])
+def test_operation_provider_accepts_a_separate_member_assignment_action(assignee: str | None):
+    result = suggest({"status": "proposed", "explanation": "调整任务负责人", "action": {
+        "type": "assign_task", "taskId": "00000000-0000-4000-8000-000000000001",
+        "assigneeUserId": assignee,
+    }})
+    assert result.action is not None and result.action.type == "assign_task"
+
+
 @pytest.mark.parametrize(
     "action",
     [

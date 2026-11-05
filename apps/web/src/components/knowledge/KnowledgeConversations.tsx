@@ -1,3 +1,4 @@
+import { ThinkingStones } from "../trail/ThinkingStones.tsx";
 import { FileText, Plus, Send, UserRound, X } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useRef } from "react";
 import { ApiError } from "../../api/errors.ts";
@@ -53,11 +54,11 @@ export function KnowledgeConversations({ organizationId, projectId, sessionSigna
       </section>)}
       {state.preview.length > 0 ? <section className="conversation-turn conversation-preview" aria-label="正在生成的回答">
         <div className="knowledge-answer-author"><AssistantAvatar name={state.assistant.data?.name ?? "岑宁"} avatarDataUrl={state.assistant.data?.avatarDataUrl} /><strong>{state.assistant.data?.name ?? "岑宁"}</strong></div>
-        <p className="conversation-turn-notice" role="status">正在生成 · 尚未保存；完成后可核对引用。</p>
+        <p className="conversation-turn-notice" role="status"><ThinkingStones>正在生成 · 尚未保存；完成后可核对引用。</ThinkingStones></p>
         {state.preview.map((paragraph, index) => <p className="knowledge-answer-paragraph" key={index}>{paragraph.text}</p>)}
       </section> : null}
       {!state.online ? <p role="status">当前离线，联网后可重新读取会话。</p> : null}
-      {state.busy && state.preview.length === 0 ? <p role="status">{state.activity === "read" ? "正在重新读取会话…" : "正在查找资料并生成回答…"}</p> : null}
+      {state.busy && state.preview.length === 0 ? <p role="status">{state.activity === "read" ? "正在重新读取会话…" : <ThinkingStones>正在查找资料并生成回答…</ThinkingStones>}</p> : null}
       {message === null ? null : <p role="alert">{message}</p>}
       {state.notice === null ? null : <p role="status">{state.notice}</p>}
       {state.selectedId !== null && !invalidId && !state.busy ? <button className="conversation-reread" type="button" disabled={state.busy || !state.online} onClick={() => void state.reread()}>重新读取会话</button> : null}

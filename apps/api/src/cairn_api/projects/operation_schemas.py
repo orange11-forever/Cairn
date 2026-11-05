@@ -12,6 +12,19 @@ class OperationModel(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True, str_strip_whitespace=True)
 
 
+class CreateProjectAction(OperationModel):
+    type: Literal["create_project"]
+    name: str = Field(min_length=1, max_length=160)
+    description: str | None = Field(default=None, max_length=4000)
+
+
+class DispatchTaskAction(OperationModel):
+    type: Literal["dispatch_task"]
+    task_id: UUID = Field(alias="taskId")
+    assistant_id: UUID | None = Field(alias="assistantId")
+    assistant_name: str | None = Field(default=None, alias="assistantName", max_length=240)
+
+
 class CreateTaskAction(OperationModel):
     type: Literal["create_task"]
     title: str = Field(min_length=1, max_length=240)
@@ -45,6 +58,14 @@ class ChangeStatusAction(OperationModel):
     status: TaskStatus
 
 
+class AssignTaskAction(OperationModel):
+    type: Literal["assign_task"]
+    task_id: UUID = Field(alias="taskId")
+    assignee_user_id: UUID | None = Field(alias="assigneeUserId")
+    # The service fills this label from the authorized member record.
+    assignee_name: str | None = Field(default=None, alias="assigneeName", max_length=240)
+
+
 class AddDependencyAction(OperationModel):
     type: Literal["add_dependency"]
     predecessor_task_id: UUID = Field(alias="predecessorTaskId")
@@ -58,9 +79,12 @@ class RemoveDependencyAction(OperationModel):
 
 
 ProjectAction = Annotated[
-    CreateTaskAction
+    CreateProjectAction
+    | DispatchTaskAction
+    | CreateTaskAction
     | UpdateTaskAction
     | ChangeStatusAction
+    | AssignTaskAction
     | AddDependencyAction
     | RemoveDependencyAction,
     Field(discriminator="type"),
@@ -98,9 +122,11 @@ class ProjectOperationPreviewResponse(OperationModel):
         if self.snapshot.project.id != self.project_id:
             raise ValueError("snapshot project mismatch")
         action = self.suggestion.action
+        if isinstance(action, CreateProjectAction):
+            raise ValueError("project creation requires its own preview")  # noqa: TRY004 - Pydantic validation
         task_ids = {task.id for task in self.snapshot.tasks}
         if (
-            isinstance(action, (UpdateTaskAction, ChangeStatusAction, RemoveDependencyAction))
+            isinstance(action, (UpdateTaskAction, ChangeStatusAction, AssignTaskAction, RemoveDependencyAction, DispatchTaskAction))
             and action.task_id not in task_ids
         ):
             raise ValueError("unknown task")
@@ -135,6 +161,34 @@ class ProjectOperationApplyRequest(OperationModel):
     def require_proposed(self) -> "ProjectOperationApplyRequest":
         if self.preview.suggestion.status != "proposed":
             raise ValueError("only a proposed action can be confirmed")
+        if isinstance(self.preview.suggestion.action, DispatchTaskAction):
+            raise ValueError("coding tasks must be confirmed in the coding workspace")  # noqa: TRY004
+        return self
+
+
+class ProjectCreationPreviewResponse(OperationModel):
+    organization_id: UUID = Field(alias="organizationId")
+    intent: str = Field(min_length=1, max_length=2000)
+    generated_at: AwareDatetime = Field(alias="generatedAt")
+    model: AnswerModelOption
+    suggestion: ProjectOperationSuggestion
+
+    @model_validator(mode="after")
+    def creation_only(self) -> "ProjectCreationPreviewResponse":
+        if self.suggestion.action is not None and not isinstance(self.suggestion.action, CreateProjectAction):
+            raise ValueError("only project creation is supported")
+        return self
+
+
+class ProjectCreationApplyRequest(OperationModel):
+    operation_id: UUID = Field(alias="operationId")
+    confirmed: Literal[True]
+    preview: ProjectCreationPreviewResponse
+
+    @model_validator(mode="after")
+    def require_creation(self) -> "ProjectCreationApplyRequest":
+        if self.preview.suggestion.status != "proposed":
+            raise ValueError("only a proposed creation can be confirmed")
         return self
 
 

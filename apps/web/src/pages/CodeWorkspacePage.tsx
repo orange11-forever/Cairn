@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { BookOpenText, ChevronRight, Code2, FileCode2, FolderGit2, GitBranch, Layers3, ListChecks, Play, RefreshCw, Settings2, X } from 'lucide-react';
+import { ChevronRight, Code2, FileCode2, FolderGit2, GitBranch, Layers3, Play, RefreshCw, Settings2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { fetchProject } from '../api/projects.ts';
@@ -10,6 +10,7 @@ import { ProjectRepository } from '../components/projects/ProjectRepository.tsx'
 import { CodingWorkspace } from '../components/code/CodingWorkspace.tsx';
 import { ArchitectureGraph } from '../components/code/ArchitectureGraph.tsx';
 import { KnowledgeText } from '../components/knowledge/KnowledgeText.tsx';
+import { ProjectTrail } from '../components/trail/ProjectTrail.tsx';
 import { useAbortableAction } from '../hooks/useAbortableAction.ts';
 import { projectKeys } from '../queries/projects.ts';
 import { useSession } from '../session/SessionContext.tsx';
@@ -72,12 +73,8 @@ function CodeWorkspace({ projectId }: { projectId: string }) {
   const error = analyze.state.phase === 'error' ? analyze.state.error : sources.error ?? repository.error ?? assistant.error ?? models.error ?? project.error;
   return <section className="code-page" aria-label="项目代码工作台">
     <header className="code-page-header">
+      <ProjectTrail organizationId={session!.identity.organization.id} projectId={projectId} trail={[{ label: '代码' }]} />
       <div className="code-project-title"><FolderGit2 size={24} aria-hidden="true" /><div><h1>{project.data?.name ?? '代码工作台'}</h1><p>{binding?.repository?.fullName ?? '本地代码与架构'}</p></div></div>
-      <nav className="code-project-nav" aria-label="项目工作区">
-        <Link to={`/projects?project=${projectId}`}><ListChecks size={16} aria-hidden="true" />任务</Link>
-        <Link to={`/projects/${projectId}/knowledge`}><BookOpenText size={16} aria-hidden="true" />知识</Link>
-        <span aria-current="page"><Code2 size={16} aria-hidden="true" />代码与架构</span>
-      </nav>
     </header>
     <div className={`code-workbench${tab === 'editor' ? ' code-workbench-editing' : ''}`}>
       {tab !== 'editor' && <aside className="code-explorer" aria-label="仓库与文件">

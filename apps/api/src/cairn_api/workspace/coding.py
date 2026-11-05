@@ -232,6 +232,7 @@ class CodingRunner:
                 branch='cairn/agent-' + str(run_id), base_head=head,
                 task=payload.task, assistant_id=payload.assistant_id, assistant_revision=payload.assistant_revision,
                 assistant_name=assistant_name, model=model, skill_id=payload.skill_id, depends_on=payload.depends_on,
+                source_task=payload.source_task,
                 status='queued', created_at=now, updated_at=now, events=[], changes=[])
             self._event(run, 'queued', '已排队；将从提交 ' + head[:8] + ' 创建独立工作区，原目录未提交的修改不包含在内。')
             self.runs[run.id] = run

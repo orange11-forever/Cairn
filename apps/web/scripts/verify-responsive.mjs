@@ -1174,22 +1174,14 @@ async function checkProjectsLayout({
 }) {
   setScenario("populated");
   await page.goto(`${new URL(page.url()).origin}/projects`, { waitUntil: "networkidle" });
+  await page.waitForURL(new RegExp(`/projects/${KNOWLEDGE_PROJECT_ID}/tasks$`));
   await page.waitForSelector(".task-workspace");
 
   const populatedLayout = await readLayout(page);
   const populated = await page.evaluate((firstId) => {
     const region = document.querySelector(".task-workspace");
-    const heading = region?.querySelector("h2");
-    const selectedButton = document.querySelector('.project-rail button[aria-pressed="true"]');
-    const secondButton = [...document.querySelectorAll(".project-rail button")].find(
-      (button) => button.textContent.includes("搜索体验升级"),
-    );
-    const switcher = document.querySelector("#project-switcher");
-    const rail = document.querySelector(".project-rail");
-    const mobileSwitcher = document.querySelector(".project-mobile-switcher");
+    const heading = region?.querySelector("h1");
     const acceptance = document.querySelector(".task-acceptance");
-    const selectedStyle = selectedButton === null ? null : getComputedStyle(selectedButton);
-    const railStyle = rail === null ? null : getComputedStyle(rail);
     const acceptanceStyle = acceptance === null ? null : getComputedStyle(acceptance);
     const readBoundary = (style) => style === null
       ? { widths: [], styles: [], colors: [] }
@@ -1218,15 +1210,6 @@ async function checkProjectsLayout({
       regionId: region?.id ?? null,
       labelledBy: region?.getAttribute("aria-labelledby") ?? null,
       headingId: heading?.id ?? null,
-      selectedControls: selectedButton?.getAttribute("aria-controls") ?? null,
-      secondControls: secondButton?.getAttribute("aria-controls") ?? null,
-      switcherControls: switcher?.getAttribute("aria-controls") ?? null,
-      railVisible: rail?.checkVisibility() ?? false,
-      switcherVisible: mobileSwitcher?.checkVisibility() ?? false,
-      selectedBackground: selectedStyle?.backgroundColor ?? null,
-      railBackground: railStyle?.backgroundColor ?? null,
-      selectedBoxShadow: selectedStyle?.boxShadow ?? null,
-      selectedBoundary: readBoundary(selectedStyle),
       acceptanceBoundary: readBoundary(acceptanceStyle),
       emptyMascots: document.querySelectorAll(".project-empty-state .mascot-figure").length,
       taskMascots: document.querySelectorAll(".task-workspace .mascot-figure").length,
@@ -1246,23 +1229,6 @@ async function checkProjectsLayout({
       populated.headingId === `${populated.expectedFirstRegionId}-heading`,
     `${viewport.name} 当前任务区域缺少稳定 id/标题关联`,
   );
-  expect(
-    populated.selectedControls === populated.regionId &&
-      populated.secondControls === populated.regionId &&
-      populated.switcherControls === populated.regionId,
-    `${viewport.name} 项目选择控件未指向当前任务区域`,
-  );
-  expect(
-    populated.railVisible === (viewport.width >= 768) &&
-      populated.switcherVisible === (viewport.width < 768),
-    `${viewport.name} 项目轨道/选择器断点错误`,
-  );
-  expect(
-    populated.selectedBackground !== populated.railBackground &&
-      populated.selectedBoxShadow?.includes("inset"),
-    `${viewport.name} 选中项目缺少完整表面与稳定内边界`,
-  );
-  assertUniformFullBoundary(populated.selectedBoundary, expect, `${viewport.name} 选中项目`);
   assertUniformFullBoundary(populated.acceptanceBoundary, expect, `${viewport.name} 验收标准`);
   expect(
     populated.emptyMascots === 0 && populated.taskMascots === 0,
@@ -1299,17 +1265,10 @@ async function checkProjectsLayout({
     const action = [...document.querySelectorAll(".task-actions button")].find(
       (button) => button.textContent.includes("开始任务"),
     );
-    const selectedProject = document.querySelector(
-      '.project-rail button[aria-pressed="true"]',
-    );
-    const switcher = document.querySelector("#project-switcher");
     return {
       messageVisible: error?.textContent.trim() === expectedMessage,
       boundary,
       actionEnabled: action instanceof HTMLButtonElement && !action.disabled,
-      selectedProjectEnabled:
-        selectedProject instanceof HTMLButtonElement && !selectedProject.disabled,
-      switcherEnabled: switcher instanceof HTMLSelectElement && !switcher.disabled,
       workspacePresent: document.querySelector(".task-workspace") !== null,
     };
   }, TASK_TRANSITION_ERROR_MESSAGE);
@@ -1324,8 +1283,6 @@ async function checkProjectsLayout({
   // Each mutation fails here even when the earlier static rule still matches the CSS contract.
   expect(
     failedTransition.actionEnabled &&
-      failedTransition.selectedProjectEnabled &&
-      failedTransition.switcherEnabled &&
       failedTransition.workspacePresent,
     `${viewport.name} 任务更新失败后项目或任务控件不可继续使用`,
   );
@@ -1339,33 +1296,16 @@ async function checkProjectsLayout({
   expect(await page.getByRole("button", { name: "完成任务", exact: true }).isEnabled(),
     `${viewport.name} 最新状态应显示可用后续操作`);
 
-  if (viewport.width < 768) {
-    await page.selectOption("#project-switcher", RESPONSIVE_PROJECT_B_ID);
-  } else {
-    await page.getByRole("button", { name: /搜索体验升级/ }).click();
-  }
+  await page.locator(".project-switcher-trigger").click();
+  await page.getByRole("button", { name: "搜索体验升级" }).click();
+  await page.waitForURL(new RegExp(`/projects/${RESPONSIVE_PROJECT_B_ID}/tasks$`));
   await page.waitForSelector(`#project-task-workspace-${RESPONSIVE_PROJECT_B_ID}`);
-  const switched = await page.evaluate((projectId) => {
-    const regionId = `project-task-workspace-${projectId}`;
-    return {
-      regionPresent: document.getElementById(regionId) !== null,
-      selectedControls: document.querySelector('.project-rail button[aria-pressed="true"]')
-        ?.getAttribute("aria-controls") ?? null,
-      switcherControls: document.querySelector("#project-switcher")
-        ?.getAttribute("aria-controls") ?? null,
-      announcement: document.querySelector(".project-selection-announcement")?.textContent ?? null,
-    };
-  }, RESPONSIVE_PROJECT_B_ID);
-  expect(switched.regionPresent, `${viewport.name} 选择项目后未切换受控区域`);
-  expect(
-    switched.selectedControls === `project-task-workspace-${RESPONSIVE_PROJECT_B_ID}` &&
-      switched.switcherControls === `project-task-workspace-${RESPONSIVE_PROJECT_B_ID}`,
-    `${viewport.name} 选择项目后 aria-controls 未更新`,
-  );
-  expect(
-    switched.announcement === "已选择项目：搜索体验升级",
-    `${viewport.name} 项目选择播报错误：${switched.announcement}`,
-  );
+  const switched = await page.evaluate((projectId) => ({
+    regionPresent: document.getElementById(`project-task-workspace-${projectId}`) !== null,
+    currentNav: document.querySelector('.primary-nav a[aria-current="page"]')?.getAttribute("aria-label") ?? null,
+  }), RESPONSIVE_PROJECT_B_ID);
+  expect(switched.regionPresent, `${viewport.name} 切换项目后未进入新项目任务页`);
+  expect(switched.currentNav === "任务", `${viewport.name} 切换项目后侧栏应停留在「任务」`);
 
   const populatedImages = await readImageHealth(page);
   expectHealthyImages(populatedImages, expect, `${viewport.name} 项目页`);
@@ -2232,12 +2172,12 @@ export async function checkResponsiveFoundation({
   }
 
   await logout();
-  await page.emulateMedia({ colorScheme: "dark" });
+  await page.emulateMedia({ colorScheme: "light" });
   await page.evaluate(() => localStorage.removeItem("cairn-theme"));
   await page.reload({ waitUntil: "networkidle" });
   expect(
     (await page.locator("html").getAttribute("data-theme")) === "dark",
-    "无手动偏好时应跟随系统夜间主题",
+    "无手动偏好时默认夜间主题",
   );
   await login();
 
@@ -2251,8 +2191,8 @@ export async function checkResponsiveFoundation({
 
   await chooseTheme(page, "跟随系统");
   expect(
-    (await page.evaluate(() => localStorage.getItem("cairn-theme"))) === null,
-    "跟随系统应清除本地覆盖",
+    (await page.evaluate(() => localStorage.getItem("cairn-theme"))) === "system",
+    "跟随系统应明确保存",
   );
   await page.emulateMedia({ colorScheme: "light" });
   await page.waitForFunction(() => document.documentElement.dataset.theme === "light");

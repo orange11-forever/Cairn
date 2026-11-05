@@ -3,6 +3,9 @@ import { ArrowLeft, Plus } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, Navigate, useParams, useLocation } from "react-router-dom";
 
+import { projectPath } from "../app/projectRoutes.ts";
+import { ProjectTrail } from "../components/trail/ProjectTrail.tsx";
+
 import { ApiError } from "../api/errors.ts";
 import {
   createFeishuSource, disableFeishuSource, patchFeishuSource, queueFeishuSync,
@@ -196,6 +199,8 @@ function KnowledgeSourcesWorkspace({ organizationId, projectId, csrfToken, sessi
     <p role="status">{active ? "正在确认项目访问权限…" : "页面暂停显示。恢复网络并返回此页面后重新检查权限。"}</p>
   </section>;
   if (project.isError || accessLost || sourceAccessLost || historyAccessLost || syncAccessLost) return <section className="feishu-page" aria-label="飞书来源管理">
+    <ProjectTrail organizationId={organizationId} projectId={projectId}
+      trail={[{ label: "知识", to: `${projectPath(projectId, "knowledge")}${location.search}` }, { label: "来源与同步" }]} />
     <WorkspaceHeader id="feishu-page-title" title="来源与同步" description="当前项目的来源管理暂不可用。" actions={back} />
     <div className="feishu-access-message"><p role="alert">{accessLost || sourceAccessLost || historyAccessLost || syncAccessLost ? "项目来源不可用或你已失去管理权限。" : displayedError(project.error)}</p>
       {!accessLost && !sourceAccessLost && !historyAccessLost && !syncAccessLost && project.error instanceof ApiError && project.error.retryable ?
@@ -203,6 +208,8 @@ function KnowledgeSourcesWorkspace({ organizationId, projectId, csrfToken, sessi
   </section>;
 
   return <section className="feishu-page" aria-label="飞书来源管理">
+    <ProjectTrail organizationId={organizationId} projectId={projectId}
+      trail={[{ label: "知识", to: `${projectPath(projectId, "knowledge")}${location.search}` }, { label: "来源与同步" }]} />
     <WorkspaceHeader id="feishu-page-title" title="来源与同步"
       description={`${project.data.name} · 飞书文档来源、同步安排与读取记录。`}
       actions={<>{back}<button type="button" className="primary-btn" onClick={() => {

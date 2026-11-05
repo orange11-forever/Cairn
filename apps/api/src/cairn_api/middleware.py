@@ -35,7 +35,7 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         )
         response.headers["X-Request-ID"] = request_id
         if request.url.path.startswith(
-            ("/api/v1/tasks/", "/api/v1/projects")
+            ("/api/v1/tasks/", "/api/v1/projects", "/api/v1/project-creations")
         ) and not request.url.path.endswith("/events"):
             response.headers["Cache-Control"] = "private, no-store"
             response.headers["X-Content-Type-Options"] = "nosniff"
@@ -51,7 +51,7 @@ class ProjectErrorBoundary:
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         protected = (
             scope["type"] == "http"
-            and scope.get("path", "").startswith(("/api/v1/tasks/", "/api/v1/projects"))
+            and scope.get("path", "").startswith(("/api/v1/tasks/", "/api/v1/projects", "/api/v1/project-creations"))
             and not scope.get("path", "").endswith("/events")
         )
         failed = False

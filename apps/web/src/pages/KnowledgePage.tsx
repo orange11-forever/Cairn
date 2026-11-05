@@ -1,7 +1,13 @@
+import { ResizeHandle } from "../components/ResizeHandle.tsx";
+import type { CSSProperties } from "react";
+import { CairnLoader } from "../components/trail/CairnLoader.tsx";
 import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { ArrowLeft, BookOpenText, CalendarDays, FileText, HardDrive, MessageSquare, PackageOpen, Search, UploadCloud, X, PanelLeft, PanelRight, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, Navigate, useParams, useSearchParams, useLocation } from "react-router-dom";
+
+import { projectPath } from "../app/projectRoutes.ts";
+import { TrailBreadcrumb } from "../components/trail/TrailBreadcrumb.tsx";
 
 import { ApiError } from "../api/errors.ts";
 import type { KnowledgeResource, KnowledgeResourcePage } from "../api/knowledge.ts";
@@ -175,6 +181,11 @@ function KnowledgeWorkspaceContent({
   const [mobilePane, setMobilePane] = useState<MobilePane>("assistant");
   const [compact, setCompact] = useState(() => window.matchMedia?.("(max-width: 900px)").matches ?? window.innerWidth <= 900);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const workbench = useRef<HTMLDivElement>(null);
+  const assistantPane = useRef<HTMLElement>(null);
+  const explorerPane = useRef<HTMLElement>(null);
+  const [chatWidth, setChatWidth] = useState<number | null>(null);
+  const [explorerWidth, setExplorerWidth] = useState<number | null>(null);
   const selectionEpoch = useRef(0);
   const active = useRef(true);
   const deletionNotice = useRef<HTMLParagraphElement | null>(null);
@@ -377,7 +388,7 @@ function KnowledgeWorkspaceContent({
 
   if (project.isPending || project.isFetching) return (
     <section aria-busy="true" aria-label="项目知识工作区" className="knowledge-page">
-      <p role="status">正在确认项目访问权限…</p>
+      <CairnLoader label="正在确认项目访问权限…" />
     </section>
   );
   if (project.isError) return (
@@ -403,7 +414,18 @@ function KnowledgeWorkspaceContent({
     >
       <h1 id="knowledge-page-title" className="workbench-sr-only">{project.data.name}</h1>
       <header className="knowledge-workspace-bar">
-        <div className="knowledge-workspace-title" aria-hidden="true"><BookOpenText size={16} /><span>{project.data.name}</span></div>
+        <TrailBreadcrumb items={[{ label: project.data.name, to: projectPath(projectId, "tasks") }, { label: "知识" }]} />
+        <div className="knowledge-workspace-links">
+          <Link
+            aria-current={searchParams.get("view") === "search" ? "page" : undefined}
+            to={`${projectPath(projectId, "knowledge")}?${(() => { const params = new URLSearchParams(location.search); params.set("view", "search"); return params.toString(); })()}`}
+          >
+            <Search aria-hidden="true" size={15} />搜索
+          </Link>
+          <Link to={`${projectPath(projectId, "knowledge")}/sources${location.search}`}>
+            <RefreshCw aria-hidden="true" size={15} />来源与同步
+          </Link>
+        </div>
         <div className="knowledge-pane-controls" aria-label="工作台布局">
           <button type="button" title={explorerOpen ? "收起资料栏" : "展开资料栏"} aria-label={explorerOpen ? "收起资料栏" : "展开资料栏"} aria-expanded={explorerOpen} aria-controls="knowledge-explorer-panel" onClick={() => setExplorerOpen(value => !value)}><BookOpenText size={18} aria-hidden="true" /></button>
           <button type="button" title={assistantOpen ? "收起助手" : "展开助手"} aria-label={assistantOpen ? "收起助手" : "展开助手"} aria-expanded={assistantOpen} aria-controls="knowledge-assistant-panel" onClick={() => {
@@ -450,8 +472,8 @@ function KnowledgeWorkspaceContent({
         </div>
       ) : null}
 
-      {!accessUnavailable && resources.data !== undefined ? <div className="knowledge-workbench" data-mobile-pane={mobilePane} data-explorer-open={compact || explorerOpen} data-assistant-open={compact || assistantOpen} data-content-open={compact || contentOpen}>
-        <aside id="knowledge-assistant-panel" className="knowledge-assistant" aria-label="岑宁问答面板" hidden={compact ? mobilePane !== "assistant" : !assistantOpen}>
+      {!accessUnavailable && resources.data !== undefined ? <div className="knowledge-workbench" ref={workbench} style={{ "--knowledge-chat-size": chatWidth === null ? undefined : `${chatWidth}px`, "--knowledge-explorer-size": explorerWidth === null ? undefined : `${explorerWidth}px` } as CSSProperties} data-mobile-pane={mobilePane} data-explorer-open={compact || explorerOpen} data-assistant-open={compact || assistantOpen} data-content-open={compact || contentOpen}>
+        <aside id="knowledge-assistant-panel" className="knowledge-assistant" ref={assistantPane} aria-label="岑宁问答面板" hidden={compact ? mobilePane !== "assistant" : !assistantOpen}>
           {conversations !== null ? <KnowledgeConversations organizationId={organizationId} projectId={projectId}
             sessionSignal={signal} onAccessUnavailable={onSearchAccessUnavailable} resourceDeletion={resourceDeletion}
             projectName={project.data.name} onOpenCitation={(citation) => void openSelection({ kind: "citation", citation })} /> : <KnowledgeAnswers key={`answers:${organizationId}:${projectId}`}
@@ -460,6 +482,7 @@ function KnowledgeWorkspaceContent({
             resourceDeletion={resourceDeletion} docked projectName={project.data.name}
             onOpenCitation={(citation) => void openSelection({ kind: "citation", citation })} />}
         </aside>
+        <ResizeHandle axis="x" className="knowledge-chat-resizer" label="调整对话区宽度" pane={assistantPane} min={280} max={() => (workbench.current?.clientWidth ?? 0) - (explorerOpen ? (explorerPane.current?.getBoundingClientRect().width ?? 0) + 8 : 0) - 288} hidden={compact || !assistantOpen || !contentOpen} onResize={setChatWidth} onReset={() => setChatWidth(null)} />
         <section id="knowledge-content-panel" className="knowledge-content" aria-label="知识内容" hidden={compact ? mobilePane !== "content" : !contentOpen}>
           <div className="knowledge-content-tabs" role="tablist" aria-label="内容标签" onKeyDown={event => {
             if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key) || (event.target as HTMLElement).getAttribute("role") !== "tab") return;
@@ -512,7 +535,8 @@ function KnowledgeWorkspaceContent({
             onDeleteSucceeded={handleDeleteSucceeded} /> : null}
           </div>
         </section>
-        <aside id="knowledge-explorer-panel" className="knowledge-explorer" aria-label="项目资料" hidden={compact ? mobilePane !== "explorer" : !explorerOpen}>
+        <ResizeHandle axis="x" direction={-1} className="knowledge-explorer-resizer" label="调整资料栏宽度" pane={explorerPane} min={160} max={() => (workbench.current?.clientWidth ?? 0) - (assistantOpen && contentOpen ? (assistantPane.current?.getBoundingClientRect().width ?? 0) + 8 : 0) - 288} hidden={compact || !explorerOpen} onResize={setExplorerWidth} onReset={() => setExplorerWidth(null)} />
+        <aside id="knowledge-explorer-panel" className="knowledge-explorer" ref={explorerPane} aria-label="项目资料" hidden={compact ? mobilePane !== "explorer" : !explorerOpen}>
           <div className="knowledge-explorer-heading">
             <h2>项目资料</h2>
             {capabilities?.canWrite === true ? <button type="button"

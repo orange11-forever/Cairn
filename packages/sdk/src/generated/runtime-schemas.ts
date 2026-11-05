@@ -460,6 +460,52 @@ export const componentSchemas = {
     "title": "ArchitectureSource",
     "type": "object"
   },
+  "AssignTaskAction": {
+    "additionalProperties": false,
+    "properties": {
+      "assigneeName": {
+        "anyOf": [
+          {
+            "maxLength": 240,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Assigneename"
+      },
+      "assigneeUserId": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Assigneeuserid"
+      },
+      "taskId": {
+        "format": "uuid",
+        "title": "Taskid",
+        "type": "string"
+      },
+      "type": {
+        "const": "assign_task",
+        "title": "Type",
+        "type": "string"
+      }
+    },
+    "required": [
+      "type",
+      "taskId",
+      "assigneeUserId"
+    ],
+    "title": "AssignTaskAction",
+    "type": "object"
+  },
   "AssigneePage": {
     "properties": {
       "items": {
@@ -1454,6 +1500,16 @@ export const componentSchemas = {
         ],
         "title": "Skillid"
       },
+      "sourceTask": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/CodingTaskSource"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
       "status": {
         "enum": [
           "queued",
@@ -1705,6 +1761,16 @@ export const componentSchemas = {
         ],
         "title": "Skillid"
       },
+      "sourceTask": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/CodingTaskSource"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
       "task": {
         "maxLength": 6000,
         "minLength": 1,
@@ -1724,6 +1790,27 @@ export const componentSchemas = {
       "allowWrites"
     ],
     "title": "CodingStart",
+    "type": "object"
+  },
+  "CodingTaskSource": {
+    "additionalProperties": false,
+    "properties": {
+      "revision": {
+        "minimum": 1,
+        "title": "Revision",
+        "type": "integer"
+      },
+      "taskId": {
+        "format": "uuid",
+        "title": "Taskid",
+        "type": "string"
+      }
+    },
+    "required": [
+      "taskId",
+      "revision"
+    ],
+    "title": "CodingTaskSource",
     "type": "object"
   },
   "CommandDecision": {
@@ -1786,6 +1873,40 @@ export const componentSchemas = {
       "authorEmail"
     ],
     "title": "CommitRequest",
+    "type": "object"
+  },
+  "CreateProjectAction": {
+    "additionalProperties": false,
+    "properties": {
+      "description": {
+        "anyOf": [
+          {
+            "maxLength": 4000,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Description"
+      },
+      "name": {
+        "maxLength": 160,
+        "minLength": 1,
+        "title": "Name",
+        "type": "string"
+      },
+      "type": {
+        "const": "create_project",
+        "title": "Type",
+        "type": "string"
+      }
+    },
+    "required": [
+      "type",
+      "name"
+    ],
+    "title": "CreateProjectAction",
     "type": "object"
   },
   "CreateTaskAction": {
@@ -2027,6 +2148,52 @@ export const componentSchemas = {
       "createdAt"
     ],
     "title": "DependencyResponse",
+    "type": "object"
+  },
+  "DispatchTaskAction": {
+    "additionalProperties": false,
+    "properties": {
+      "assistantId": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Assistantid"
+      },
+      "assistantName": {
+        "anyOf": [
+          {
+            "maxLength": 240,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Assistantname"
+      },
+      "taskId": {
+        "format": "uuid",
+        "title": "Taskid",
+        "type": "string"
+      },
+      "type": {
+        "const": "dispatch_task",
+        "title": "Type",
+        "type": "string"
+      }
+    },
+    "required": [
+      "type",
+      "taskId",
+      "assistantId"
+    ],
+    "title": "DispatchTaskAction",
     "type": "object"
   },
   "DocxLocator": {
@@ -6167,6 +6334,67 @@ export const componentSchemas = {
     "title": "ProjectCreateRequest",
     "type": "object"
   },
+  "ProjectCreationApplyRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "confirmed": {
+        "const": true,
+        "title": "Confirmed",
+        "type": "boolean"
+      },
+      "operationId": {
+        "format": "uuid",
+        "title": "Operationid",
+        "type": "string"
+      },
+      "preview": {
+        "$ref": "#/components/schemas/ProjectCreationPreviewResponse"
+      }
+    },
+    "required": [
+      "operationId",
+      "confirmed",
+      "preview"
+    ],
+    "title": "ProjectCreationApplyRequest",
+    "type": "object"
+  },
+  "ProjectCreationPreviewResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "generatedAt": {
+        "format": "date-time",
+        "title": "Generatedat",
+        "type": "string"
+      },
+      "intent": {
+        "maxLength": 2000,
+        "minLength": 1,
+        "title": "Intent",
+        "type": "string"
+      },
+      "model": {
+        "$ref": "#/components/schemas/AnswerModelOption"
+      },
+      "organizationId": {
+        "format": "uuid",
+        "title": "Organizationid",
+        "type": "string"
+      },
+      "suggestion": {
+        "$ref": "#/components/schemas/ProjectOperationSuggestion"
+      }
+    },
+    "required": [
+      "organizationId",
+      "intent",
+      "generatedAt",
+      "model",
+      "suggestion"
+    ],
+    "title": "ProjectCreationPreviewResponse",
+    "type": "object"
+  },
   "ProjectOperationApplyRequest": {
     "additionalProperties": false,
     "properties": {
@@ -6294,14 +6522,23 @@ export const componentSchemas = {
         "discriminator": {
           "mapping": {
             "add_dependency": "#/components/schemas/AddDependencyAction",
+            "assign_task": "#/components/schemas/AssignTaskAction",
             "change_status": "#/components/schemas/ChangeStatusAction",
+            "create_project": "#/components/schemas/CreateProjectAction",
             "create_task": "#/components/schemas/CreateTaskAction",
+            "dispatch_task": "#/components/schemas/DispatchTaskAction",
             "remove_dependency": "#/components/schemas/RemoveDependencyAction",
             "update_task": "#/components/schemas/UpdateTaskAction"
           },
           "propertyName": "type"
         },
         "oneOf": [
+          {
+            "$ref": "#/components/schemas/CreateProjectAction"
+          },
+          {
+            "$ref": "#/components/schemas/DispatchTaskAction"
+          },
           {
             "$ref": "#/components/schemas/CreateTaskAction"
           },
@@ -6310,6 +6547,9 @@ export const componentSchemas = {
           },
           {
             "$ref": "#/components/schemas/ChangeStatusAction"
+          },
+          {
+            "$ref": "#/components/schemas/AssignTaskAction"
           },
           {
             "$ref": "#/components/schemas/AddDependencyAction"
@@ -6376,14 +6616,23 @@ export const componentSchemas = {
             "discriminator": {
               "mapping": {
                 "add_dependency": "#/components/schemas/AddDependencyAction",
+                "assign_task": "#/components/schemas/AssignTaskAction",
                 "change_status": "#/components/schemas/ChangeStatusAction",
+                "create_project": "#/components/schemas/CreateProjectAction",
                 "create_task": "#/components/schemas/CreateTaskAction",
+                "dispatch_task": "#/components/schemas/DispatchTaskAction",
                 "remove_dependency": "#/components/schemas/RemoveDependencyAction",
                 "update_task": "#/components/schemas/UpdateTaskAction"
               },
               "propertyName": "type"
             },
             "oneOf": [
+              {
+                "$ref": "#/components/schemas/CreateProjectAction"
+              },
+              {
+                "$ref": "#/components/schemas/DispatchTaskAction"
+              },
               {
                 "$ref": "#/components/schemas/CreateTaskAction"
               },
@@ -6392,6 +6641,9 @@ export const componentSchemas = {
               },
               {
                 "$ref": "#/components/schemas/ChangeStatusAction"
+              },
+              {
+                "$ref": "#/components/schemas/AssignTaskAction"
               },
               {
                 "$ref": "#/components/schemas/AddDependencyAction"
@@ -9695,6 +9947,150 @@ export const componentSchemas = {
       }
     ],
     "title": "TaskUpdateRequest"
+  },
+  "TerminalInput": {
+    "additionalProperties": false,
+    "properties": {
+      "data": {
+        "maxLength": 8192,
+        "minLength": 1,
+        "title": "Data",
+        "type": "string"
+      }
+    },
+    "required": [
+      "data"
+    ],
+    "title": "TerminalInput",
+    "type": "object"
+  },
+  "TerminalSize": {
+    "additionalProperties": false,
+    "properties": {
+      "cols": {
+        "default": 100,
+        "maximum": 500,
+        "minimum": 2,
+        "title": "Cols",
+        "type": "integer"
+      },
+      "rows": {
+        "default": 24,
+        "maximum": 200,
+        "minimum": 2,
+        "title": "Rows",
+        "type": "integer"
+      }
+    },
+    "title": "TerminalSize",
+    "type": "object"
+  },
+  "TerminalSnapshot": {
+    "additionalProperties": false,
+    "properties": {
+      "error": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Error"
+      },
+      "exitCode": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Exitcode"
+      },
+      "id": {
+        "format": "uuid",
+        "title": "Id",
+        "type": "string"
+      },
+      "localPath": {
+        "title": "Localpath",
+        "type": "string"
+      },
+      "nextOffset": {
+        "title": "Nextoffset",
+        "type": "integer"
+      },
+      "output": {
+        "title": "Output",
+        "type": "string"
+      },
+      "shell": {
+        "title": "Shell",
+        "type": "string"
+      },
+      "startOffset": {
+        "title": "Startoffset",
+        "type": "integer"
+      },
+      "status": {
+        "enum": [
+          "running",
+          "exited",
+          "stopped",
+          "failed"
+        ],
+        "title": "Status",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "localPath",
+      "shell",
+      "status",
+      "output",
+      "startOffset",
+      "nextOffset"
+    ],
+    "title": "TerminalSnapshot",
+    "type": "object"
+  },
+  "TerminalStart": {
+    "additionalProperties": false,
+    "properties": {
+      "allowExecution": {
+        "title": "Allowexecution",
+        "type": "boolean"
+      },
+      "cols": {
+        "default": 100,
+        "maximum": 500,
+        "minimum": 2,
+        "title": "Cols",
+        "type": "integer"
+      },
+      "rows": {
+        "default": 24,
+        "maximum": 200,
+        "minimum": 2,
+        "title": "Rows",
+        "type": "integer"
+      },
+      "workspaceId": {
+        "pattern": "^[0-9a-f]{64}$",
+        "title": "Workspaceid",
+        "type": "string"
+      }
+    },
+    "required": [
+      "workspaceId",
+      "allowExecution"
+    ],
+    "title": "TerminalStart",
+    "type": "object"
   },
   "TextLocator": {
     "properties": {

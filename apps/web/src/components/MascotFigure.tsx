@@ -49,7 +49,7 @@ export function MascotFigure({
       ) : (
         <picture className="mascot-art">
           {variant === "full" && imageStage === "primary" ? (
-            <source media="(max-width: 599px)" srcSet={MASCOT_CHIBI_SRC} />
+            <source media="(max-width: 767px)" srcSet={MASCOT_CHIBI_SRC} />
           ) : null}
           <img
             alt={label}

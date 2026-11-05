@@ -5,10 +5,12 @@ import { AuthenticatedLayout } from "../components/AuthenticatedLayout.tsx";
 import { RegistrationForm } from "../components/RegistrationForm.tsx";
 import { LoginForm } from "../components/LoginForm.tsx";
 import { OAuthFinalize } from "../components/OAuthFinalize.tsx";
+import { TopoBackground } from "../components/trail/TopoBackground.tsx";
+import { StartupIntro } from "../components/StartupIntro.tsx";
 import { KnowledgePage } from "../pages/KnowledgePage.tsx";
 import { KnowledgeSourcesPage } from "../pages/KnowledgeSourcesPage.tsx";
 import { AccountIdentitiesPage } from "../pages/AccountIdentitiesPage.tsx";
-import { ProjectsPage } from "../pages/ProjectsPage.tsx";
+import { ProjectCreatePage, ProjectTasksPage, ProjectsPage } from "../pages/ProjectsPage.tsx";
 import { CodeWorkspacePage } from "../pages/CodeWorkspacePage.tsx";
 import { useSession } from "../session/SessionContext.tsx";
 
@@ -43,12 +45,10 @@ function FallbackRoute() {
 
 function SessionRoutes() {
   const { status, restoreError, retryRestore, restartLogin } = useSession();
-  if (status === "restoring") {
-    return <main className="session-status-page" aria-busy="true">正在恢复会话…</main>;
-  }
-  if (status === "restore-error") {
-    return (
+  return <StartupIntro restoring={status === "restoring"}>
+    {status === "restore-error" ? (
       <main className="session-status-page">
+        <TopoBackground variant="scene" />
         <div className="session-restore-error">
           <p className="form-error" role="alert">
             {restoreError?.message ?? "暂时无法恢复会话，请重试"}
@@ -59,15 +59,15 @@ function SessionRoutes() {
           {restoreError?.code === "session_changed" && <button type="button" className="retry-btn" onClick={() => void restartLogin()}>重新开始登录</button>}
         </div>
       </main>
-    );
-  }
-  return (
+    ) : (
     <Routes>
       <Route path="/login" element={<LoginRoute />} />
       <Route element={<RequireSession />}>
         <Route element={<AuthenticatedLayout />}>
           <Route path="/account/identities" element={<AccountIdentitiesPage />} />
           <Route path="/projects" element={<ProjectsPage />} />
+          <Route path="/projects/new" element={<ProjectCreatePage />} />
+          <Route path="/projects/:projectId/tasks" element={<ProjectTasksPage />} />
           <Route path="/projects/:projectId/code" element={<CodeWorkspacePage />} />
           <Route path="/projects/:projectId/knowledge" element={<KnowledgePage />} />
           <Route path="/projects/:projectId/knowledge/sources" element={<KnowledgeSourcesPage />} />
@@ -77,7 +77,8 @@ function SessionRoutes() {
       </Route>
       <Route path="*" element={<FallbackRoute />} />
     </Routes>
-  );
+    )}
+  </StartupIntro>;
 }
 
 // Registration remains available while the existing browser session is restored.

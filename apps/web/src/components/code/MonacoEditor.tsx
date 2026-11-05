@@ -4,6 +4,38 @@ import 'monaco-editor/esm/vs/editor/editor.all.js';
 import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker.js?worker';
 
 self.MonacoEnvironment = { getWorker: () => new EditorWorker() };
+monaco.editor.defineTheme('cairn-light', {
+  base: 'vs', inherit: true,
+  rules: [
+    { token: 'comment', foreground: '64746A' },
+    { token: 'keyword', foreground: '7352BA' },
+    { token: 'string', foreground: 'A74C5E' },
+    { token: 'number', foreground: '99651B' },
+    { token: 'type', foreground: '246B91' },
+  ],
+  colors: {
+    'editor.background': '#FFFFFF', 'editor.foreground': '#252633',
+    'editor.lineHighlightBackground': '#F8F7FC', 'editor.lineHighlightBorder': '#F8F7FC',
+    'editorLineNumber.foreground': '#807D91', 'editorLineNumber.activeForeground': '#6356CC',
+    'editor.selectionBackground': '#EBE7FB', 'editorIndentGuide.background1': '#E9E6F2',
+  },
+});
+monaco.editor.defineTheme('cairn-dark', {
+  base: 'vs-dark', inherit: true,
+  rules: [
+    { token: 'comment', foreground: '8E9A9E' },
+    { token: 'keyword', foreground: 'B4A7FF' },
+    { token: 'string', foreground: 'B9CD8A' },
+    { token: 'number', foreground: 'DBAA82' },
+    { token: 'type', foreground: '79CBC0' },
+  ],
+  colors: {
+    'editor.background': '#20212B', 'editor.foreground': '#ECECF3',
+    'editor.lineHighlightBackground': '#292A37', 'editor.lineHighlightBorder': '#292A37',
+    'editorLineNumber.foreground': '#9090A4', 'editorLineNumber.activeForeground': '#B4A7FF',
+    'editor.selectionBackground': '#413A60', 'editorIndentGuide.background1': '#363746',
+  },
+});
 const languages = import.meta.glob('/node_modules/monaco-editor/esm/vs/basic-languages/*/*.contribution.js', { eager: true });
 void languages;
 function language(path: string) {
@@ -27,7 +59,7 @@ export default function MonacoEditor({ path, value, original, readOnly = false, 
   useEffect(() => {
     const current = monaco.editor.createModel(value, language(path));
     model.current = current;
-    const theme = () => monaco.editor.setTheme(document.documentElement.dataset.theme === 'dark' ? 'vs-dark' : 'vs');
+    const theme = () => monaco.editor.setTheme(document.documentElement.dataset.theme === 'dark' ? 'cairn-dark' : 'cairn-light');
     theme();
     const observer = new MutationObserver(theme);
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });

@@ -27,6 +27,15 @@ import { cleanup } from "@testing-library/react";
 // aria-describedby 的整个过程（多个 id、空格分隔、拼接顺序）。
 import "@testing-library/jest-dom/vitest";
 
+// JSDOM has no layout observer. Geometry and resize delivery are checked in Chromium.
+if (typeof ResizeObserver === "undefined") {
+  Object.defineProperty(globalThis, "ResizeObserver", { configurable: true, value: class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } });
+}
+
 // JSDOM has scroll offsets but no Element.scrollTo or layout. Preserve the
 // browser method's offset side effect here; real viewport clipping is checked
 // in Chromium and the citation geometry regression supplies independent boxes.

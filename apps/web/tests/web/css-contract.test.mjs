@@ -5,18 +5,26 @@ import { parse } from 'node-html-parser';
 
 const htmlUrl = new URL('../../index.html', import.meta.url);
 const cssUrl = new URL('../../styles/main.css', import.meta.url);
+const tokensUrl = new URL('../../styles/tokens.css', import.meta.url);
+const shellUrl = new URL('../../styles/shell.css', import.meta.url);
 
 async function readPage() {
   return parse(await readFile(htmlUrl, 'utf8'));
 }
 
-test('page loads the external Cairn stylesheet', async () => {
+test('page loads tokens first, then the Cairn stylesheets in cascade order', async () => {
   const document = await readPage();
-  const stylesheet = document.querySelector(
-    'link[rel="stylesheet"][href="styles/main.css"]',
-  );
-
-  assert.ok(stylesheet, 'missing external stylesheet link');
+  const hrefs = document
+    .querySelectorAll('link[rel="stylesheet"]')
+    .map((link) => link.getAttribute('href'));
+  assert.deepEqual(hrefs, [
+    'styles/tokens.css',
+    'styles/main.css',
+    'styles/workbench.css',
+    'styles/auth.css',
+    'styles/primitives.css',
+    'styles/shell.css',
+  ]);
   await assert.doesNotReject(readFile(cssUrl, 'utf8'));
 });
 
@@ -29,7 +37,11 @@ test('page loads the external Cairn stylesheet', async () => {
 // 只是样式静悄悄地不生效了——浏览器不会报错，测试也不会红，
 // 只有肉眼看截图才发现布局塌了。所以两个方向都要守。
 test('stylesheet keeps the layout hooks the components render', async () => {
-  const css = await readFile(cssUrl, 'utf8');
+  const css = [
+    await readFile(cssUrl, 'utf8'),
+    await readFile(shellUrl, 'utf8'),
+    await readFile(new URL('../../styles/auth.css', import.meta.url), 'utf8'),
+  ].join('\n');
 
   for (const hook of [
     '.app-shell',
@@ -66,74 +78,62 @@ test('stylesheet keeps the layout hooks the components render', async () => {
   assert.match(css, /\[data-invalid=/, 'stylesheet lost the [data-invalid] form hook');
 });
 
-test('stylesheet defines semantic light and dark theme tokens', async () => {
-  const css = await readFile(cssUrl, 'utf8');
-  assert.match(css, /:root\[data-theme=['"]dark['"]\]/);
+test('tokens define dark as the default and a light override', async () => {
+  const css = await readFile(tokensUrl, 'utf8');
+  assert.match(css, /:root,\s*:root\[data-theme=['"]dark['"]\]\s*\{/);
+  assert.match(css, /:root\[data-theme=['"]light['"]\]\s*\{/);
   for (const token of [
-    '--color-canvas',
-    '--color-surface',
-    '--color-ink',
-    '--color-border',
-    '--color-idle-bg',
-    '--color-loading-bg',
-    '--color-success-bg',
-    '--color-empty-bg',
-    '--color-danger-bg',
-    '--color-focus',
-    '--color-mineral',
-    '--color-jade',
-    '--color-amber',
-    '--color-coral',
-    '--color-selected-surface',
-    '--elevation-floating',
-    '--motion-feedback',
-    '--z-navigation',
-    '--z-popover',
+    '--color-canvas', '--color-surface', '--color-surface-subtle', '--color-surface-raised',
+    '--color-ink', '--color-muted', '--color-border', '--color-border-strong',
+    '--color-accent', '--color-accent-strong', '--color-on-accent',
+    '--color-success', '--color-warning', '--color-danger', '--color-focus', '--color-topo-line',
+    '--color-idle-bg', '--color-loading-bg', '--color-success-bg', '--color-empty-bg',
+    '--color-danger-bg', '--color-selected-surface',
+    '--color-mineral', '--color-jade', '--color-amber', '--color-coral',
+    '--elevation-floating', '--motion-feedback', '--motion-fast', '--motion-base', '--motion-slow',
+    '--motion-ease-out', '--motion-ease-hop', '--z-navigation', '--z-popover',
+    '--text-xs', '--text-sm', '--text-md', '--text-base', '--text-lg', '--text-xl', '--text-2xl',
+    '--weight-regular', '--weight-semibold', '--weight-bold',
+    '--radius-sm', '--radius', '--radius-lg', '--radius-stone', '--font-sans', '--font-mono',
+    '--workbench-panel', '--workbench-field', '--shell-sidebar', '--shell-header',
   ]) {
-    assert.match(css, new RegExp(`${token}:`), `missing theme token ${token}`);
+    assert.match(css, new RegExp(`${token}:`), `missing token ${token}`);
   }
+  assert.match(css, /--color-accent:\s*#a597ff/);
+  assert.match(css, /--color-accent:\s*#6356cc/);
 });
 
-test('navigation and project selection expose stable full-surface interaction states', async () => {
-  const css = await readFile(cssUrl, 'utf8');
+test('navigation exposes stable full-surface interaction states', async () => {
+  const shell = await readFile(shellUrl, 'utf8');
+  const main = await readFile(cssUrl, 'utf8');
 
-  const navHover = css.match(/\.primary-nav a:hover\s*\{([^}]*)\}/);
+  const navHover = shell.match(/\.primary-nav a:hover\s*\{([^}]*)\}/);
   assert.ok(navHover, 'primary navigation needs an explicit hover state');
-  assert.match(navHover[1], /background:/, 'navigation hover needs surface feedback');
-  assert.match(navHover[1], /text-decoration:\s*none/, 'navigation hover must not underline');
+  assert.match(navHover[1], /background:/);
+  assert.match(navHover[1], /text-decoration:\s*none/);
 
-  const selectedNav = css.match(/\.primary-nav a\[aria-current=['"]page['"]\]\s*\{([^}]*)\}/);
+  const selectedNav = shell.match(/\.primary-nav a\[aria-current=['"]page['"]\]\s*\{([^}]*)\}/);
   assert.ok(selectedNav, 'primary navigation needs a current-page state');
-  assert.match(selectedNav[1], /box-shadow:\s*inset/, 'current navigation needs a stable inset boundary');
+  assert.match(selectedNav[1], /background:\s*var\(--color-selected-surface\)/);
 
-  const railButton = css.match(/\.project-rail button\s*\{([^}]*)\}/);
-  assert.ok(railButton, 'missing project rail button rule');
-  assert.match(railButton[1], /border:\s*1px solid transparent/, 'rail boundary must not shift layout');
-  assert.doesNotMatch(railButton[1], /border-left:\s*3px/, 'rail must not use a selection stripe');
+  assert.match(shell, /\.nav-indicator\[data-index=['"]1['"]\]/, 'the hop indicator needs per-item positions');
 
-  const selectedProject = css.match(
-    /\.project-rail button\[aria-pressed=['"]true['"]\]\s*\{([^}]*)\}/,
-  );
-  assert.ok(selectedProject, 'missing selected project surface');
-  assert.match(selectedProject[1], /background:/, 'selected project needs full-surface feedback');
-  assert.match(selectedProject[1], /box-shadow:\s*inset/, 'selected project needs an inset boundary');
-
-  for (const selector of ['task-acceptance', 'task-transition-error']) {
-    const rule = css.match(new RegExp(`\\.${selector}\\s*\\{([^}]*)\\}`));
-    assert.ok(rule, `missing .${selector} rule`);
-    assert.match(rule[1], /border:\s*1px solid/, `.${selector} needs a full boundary`);
-    assert.doesNotMatch(rule[1], /border-left:\s*3px/, `.${selector} must not use a side stripe`);
-  }
+  const errorRule = main.match(/\.task-transition-error\s*\{([^}]*)\}/);
+  assert.ok(errorRule, 'missing task transition error rule');
+  assert.match(errorRule[1], /border:\s*1px solid/);
+  assert.doesNotMatch(errorRule[1], /border-left:\s*3px/);
 });
 
 test('stylesheet covers every interactive surface rendered by current components', async () => {
-  const css = await readFile(cssUrl, 'utf8');
+  const css = [
+    await readFile(cssUrl, 'utf8'),
+    await readFile(new URL('../../styles/auth.css', import.meta.url), 'utf8'),
+  ].join('\n');
 
   for (const hook of [
     '.login-card',
     '.field-hint',
     '.account-menu-panel',
-    '.project-rail',
     '.task-knowledge-link',
     '.knowledge-upload-actions',
     '.knowledge-search-actions',
@@ -155,23 +155,29 @@ test('stylesheet keeps focus visible and avoids priority escape hatches', async 
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
   assert.doesNotMatch(css, /!important/);
   assert.doesNotMatch(css, /outline:\s*none/);
+
+  for (const name of ['tokens.css', 'primitives.css', 'shell.css']) {
+    const extra = await readFile(new URL(`../../styles/${name}`, import.meta.url), 'utf8');
+    assert.doesNotMatch(extra, /!important/, `${name} uses !important`);
+    assert.doesNotMatch(extra, /outline:\s*none/, `${name} hides focus`);
+  }
 });
 
 test('stylesheet defines the approved tablet and mobile application-shell transitions', async () => {
-  const css = await readFile(cssUrl, 'utf8');
-
-  assert.match(css, /@media \(max-width:\s*1023px\)/);
-  assert.match(css, /@media \(max-width:\s*599px\)/);
-  assert.match(css, /min-height:\s*44px/, 'touch targets must be at least 44px high');
-  assert.match(css, /env\(safe-area-inset-bottom\)/, 'mobile nav must reserve the safe area');
-
-  const mobile = css.match(/@media \(max-width:\s*599px\)\s*\{([\s\S]*)\}\s*$/);
-  assert.ok(mobile, 'missing final mobile media query');
-  assert.match(mobile[1], /\.primary-nav[\s\S]*position:\s*fixed/);
+  const main = await readFile(cssUrl, 'utf8');
+  const shell = await readFile(shellUrl, 'utf8');
+  assert.match(main, /@media \(max-width:\s*1023px\)/);
+  assert.match(main, /@media \(max-width:\s*599px\)/);
+  assert.match(main + shell, /min-height:\s*44px/, 'touch targets must be at least 44px high');
+  const mobile = shell.match(/@media \(max-width:\s*600px\)\s*\{([\s\S]*)\}\s*$/);
+  assert.ok(mobile, 'missing final mobile shell media query');
+  assert.match(mobile[1], /\.primary-nav\s*\{[^}]*position:\s*fixed/);
+  assert.match(mobile[1], /env\(safe-area-inset-bottom\)/, 'mobile nav must reserve the safe area');
 });
 
 test('mascot thumbnails stay square and circular at every compact size', async () => {
   const css = await readFile(cssUrl, 'utf8');
+  const authCss = await readFile(new URL('../../styles/auth.css', import.meta.url), 'utf8');
 
   assert.match(css, /\.mascot-art\s*>\s*img/);
   assert.match(css, /border-radius:\s*50%/, 'thumbnail imagery must be circular');
@@ -185,8 +191,12 @@ test('mascot thumbnails stay square and circular at every compact size', async (
 
   const mobile = css.match(/@media \(max-width:\s*599px\)\s*\{([\s\S]*)\}\s*$/);
   assert.ok(mobile, 'missing mobile media query');
-  assert.match(mobile[1], /width:\s*82px/);
-  assert.match(mobile[1], /height:\s*82px/);
+
+  // Login mascot compact size lives in auth.css since the auth scene refactor.
+  const authMobile = authCss.match(/@media \(max-width:\s*767px\)\s*\{([\s\S]*)\}\s*$/);
+  assert.ok(authMobile, 'auth.css missing mobile media query');
+  assert.match(authMobile[1], /width:\s*64px/);
+  assert.match(authMobile[1], /height:\s*64px/);
 });
 
 test('login full mascot uses transparent artwork instead of a photo frame', async () => {

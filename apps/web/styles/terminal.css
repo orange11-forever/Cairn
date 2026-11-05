@@ -1,0 +1,71 @@
+.code-editor-column { min-width: 0; }
+.code-terminal {
+  border-top: 1px solid var(--terminal-border);
+  color: var(--terminal-foreground);
+  background: var(--terminal-background);
+  min-width: 0;
+  color-scheme: dark;
+}
+.terminal-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; min-height: 46px; padding: 0 16px; background: var(--terminal-surface); border-bottom: 1px solid var(--terminal-border); }
+.terminal-toolbar h2 { display: flex; align-items: center; align-self: stretch; gap: 8px; margin: 0; padding: 12px 0 10px; border-bottom: 2px solid var(--terminal-accent); font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+.terminal-toolbar h2 svg { color: var(--terminal-accent); }
+.terminal-shell { padding: 3px 7px; border-radius: var(--radius-sm); background: var(--terminal-badge); color: var(--terminal-violet); font: var(--text-xs)/1.5 var(--font-mono); }
+.terminal-status { display: flex; align-items: center; gap: 6px; color: var(--terminal-muted); font-size: var(--text-xs); }
+.terminal-status > span { width: 5px; height: 5px; border-radius: 50%; background: var(--terminal-muted); }
+.terminal-status.is-running > span { background: var(--terminal-accent); }
+.terminal-status.is-error { color: var(--terminal-danger); }
+.terminal-status.is-error > span { background: currentColor; }
+.terminal-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-left: auto; }
+.code-terminal button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; padding: 5px 9px; border: 1px solid transparent; border-radius: var(--radius); background: transparent; color: var(--terminal-foreground); font: inherit; font-size: var(--text-xs); cursor: pointer; }
+.code-terminal button:hover:not(:disabled) { background: var(--terminal-hover); color: var(--terminal-bright); }
+.code-terminal button:disabled { opacity: .5; cursor: not-allowed; }
+.code-terminal :is(button, input, summary):focus-visible { outline: 2px solid var(--terminal-accent); outline-offset: 2px; }
+.terminal-actions button { color: var(--terminal-muted); }
+.terminal-actions kbd { font: var(--text-xs) var(--font-mono); color: var(--terminal-muted); padding: 1px 3px; border: 1px solid var(--terminal-border-strong); border-radius: var(--radius-sm); }
+.terminal-actions .terminal-close { margin-left: 6px; }
+.terminal-actions .terminal-close:hover:not(:disabled) { background: var(--terminal-danger-hover); color: var(--terminal-danger); }
+.terminal-surface { min-width: 0; }
+.terminal-screen { height: 260px; min-height: 160px; max-height: 70vh; resize: vertical; overflow: hidden; padding: 12px 18px; }
+.terminal-screen[hidden] { display: none; }
+.terminal-screen .xterm { height: 100%; }
+.terminal-screen .xterm-viewport { scrollbar-width: thin; scrollbar-color: var(--terminal-scrollbar) var(--terminal-background); }
+.terminal-empty { padding: 26px 20px 12px; }
+.terminal-prompt-preview { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; font: var(--text-md)/1.65 var(--font-mono); }
+.terminal-prompt-preview > span { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; padding: 5px 10px; border-radius: var(--radius-sm); overflow-wrap: anywhere; }
+.terminal-prompt-preview svg { flex-shrink: 0; }
+.terminal-preview-path { background: var(--terminal-path); color: var(--terminal-accent); }
+.terminal-preview-branch { background: var(--terminal-branch); color: var(--terminal-violet); }
+.terminal-preview-input { display: flex; align-items: center; gap: 12px; margin-top: 18px; }
+.terminal-preview-input > span { color: var(--terminal-success); font: var(--weight-semibold) var(--text-xl)/1.5 var(--font-mono); }
+.terminal-preview-input p { margin: 0; color: var(--terminal-muted); font-size: var(--text-sm); line-height: 1.8; }
+.terminal-start { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 20px 20px; font-size: var(--text-xs); }
+.terminal-start label { display: flex; align-items: flex-start; gap: 8px; flex: 1 1 260px; color: var(--terminal-muted); line-height: 1.8; }
+.terminal-start input { flex-shrink: 0; accent-color: var(--terminal-accent); margin-top: 4px; }
+.terminal-start button { min-height: 36px; padding: 7px 14px; background: var(--terminal-accent); color: var(--terminal-background); font-weight: var(--weight-semibold); }
+.terminal-start button:hover:not(:disabled) { background: var(--terminal-accent-hover); color: var(--terminal-background); }
+.terminal-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; padding: 6px 18px; min-height: 38px; border-top: 1px solid var(--terminal-border); color: var(--terminal-muted); font-size: var(--text-xs); }
+.terminal-footer kbd { font: var(--text-xs)/1.5 var(--font-mono); color: var(--terminal-shortcut); }
+.terminal-shortcut { margin-left: 16px; }
+.terminal-help { margin-left: auto; max-width: 100%; }
+.terminal-help > summary { display: flex; align-items: center; gap: 6px; padding: 6px 0; min-height: 26px; cursor: pointer; list-style: none; }
+.terminal-help > summary::-webkit-details-marker { display: none; }
+.terminal-help > summary:hover { color: var(--terminal-foreground); }
+.terminal-help[open] { flex-basis: 100%; }
+.terminal-help p { margin: 6px 0 10px; max-width: 75ch; font-size: var(--text-xs); line-height: 1.8; overflow-wrap: anywhere; }
+.terminal-help code { color: var(--terminal-accent); font: var(--text-xs)/1.8 var(--font-mono); }
+.terminal-error { margin: 12px 18px; padding: 10px 12px; border: 1px solid var(--terminal-danger-border); border-radius: var(--radius); background: var(--terminal-danger-surface); color: var(--terminal-danger-ink); font-size: var(--text-sm); line-height: 1.7; overflow-wrap: anywhere; }
+.terminal-error button { margin-left: 8px; }
+.code-terminal ::selection { background: var(--terminal-selection); color: var(--terminal-bright); }
+@media (max-width: 650px) {
+  .terminal-toolbar { gap: 8px; padding-inline: 12px; }
+  .terminal-actions { gap: 0; }
+  .terminal-actions button { min-height: 40px; padding-inline: 7px; }
+  .terminal-actions kbd { display: none; }
+  .terminal-actions .terminal-close { margin-left: 0; }
+  .terminal-screen { padding-inline: 12px; height: 240px; }
+  .terminal-empty { padding: 20px 14px 8px; }
+  .terminal-start { padding: 12px 14px 16px; }
+  .terminal-start button { min-height: 40px; }
+  .terminal-footer { padding-inline: 12px; }
+  .terminal-shortcut { margin-left: 10px; }
+}

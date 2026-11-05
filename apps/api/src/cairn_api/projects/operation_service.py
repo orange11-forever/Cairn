@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import ValidationError
 from sqlalchemy import select
 
+from cairn_api.auth.models import User
 from cairn_api.authorization.types import ProjectPermission
 from cairn_api.errors import ApiProblem
 from cairn_api.knowledge import assistant_repository
@@ -19,12 +20,15 @@ from cairn_api.knowledge.answer_provider import (
 )
 from cairn_api.knowledge.conversation_service import safe_knowledge_operation
 from cairn_api.pagination import load_cursor_page, page_by_timestamp
+from cairn_api.projects import task_repository
 from cairn_api.projects.analysis_service import ProjectAnalysisService, analysis_changed
 from cairn_api.projects.operation_models import ProjectOperation
 from cairn_api.projects.operation_schemas import (
     AddDependencyAction,
+    AssignTaskAction,
     ChangeStatusAction,
     CreateTaskAction,
+    DispatchTaskAction,
     ProjectOperationApplyRequest,
     ProjectOperationPage,
     ProjectOperationPreviewRequest,
@@ -55,6 +59,16 @@ class ProjectOperationService(ProjectAnalysisService):
         with self._session.begin():
             self._guard(project_id)
             snapshot = self._snapshot(project_id)
+            members, next_cursor = task_repository.list_assignees(
+                self._session, org_id=self._identity.organization.id, project_id=project_id,
+                requester_id=self._identity.user.id, cursor=None, limit=100,
+            )
+            assignees = {user.id: user.display_name or str(user.id) for _, user in members}
+            model_snapshot = snapshot.model_dump(mode="json", by_alias=True)
+            model_snapshot["assignees"] = [
+                {"userId": str(user_id), "displayName": name} for user_id, name in assignees.items()
+            ]
+            model_snapshot["assigneesComplete"] = next_cursor is None
             assistant = assistant_repository.settings_response(
                 assistant_repository.settings_row(
                     self._session,
@@ -63,13 +77,24 @@ class ProjectOperationService(ProjectAnalysisService):
                     self._identity.user.id,
                 )
             )
+            agents: dict[UUID | None, str] = {
+                row.id: row.name for row in assistant_repository.assistant_rows(
+                    self._session, self._identity.organization.id, project_id, self._identity.user.id
+                )
+            }
+            if assistant.id is None:
+                agents[None] = assistant.name
+            model_snapshot["codingAssistants"] = [
+                {"assistantId": str(agent_id) if agent_id else None, "name": name}
+                for agent_id, name in agents.items()
+            ]
             model = selected_answer_model(self._answer_models, assistant.model_id)
         try:
             if not callable(getattr(model.provider, "suggest_project_operation", None)):
                 raise AnswerProviderUnavailable()
             suggestion = cast(ProjectOperationProvider, model.provider).suggest_project_operation(
                 intent=payload.intent,
-                snapshot=snapshot.model_dump_json(by_alias=True),
+                snapshot=json.dumps(model_snapshot, ensure_ascii=False),
                 guidance=AnswerGuidance(
                     assistant_name=assistant.name,
                     instructions=assistant.instructions,
@@ -78,6 +103,15 @@ class ProjectOperationService(ProjectAnalysisService):
                     resources=[],
                 ),
             )
+            if isinstance(suggestion.action, AssignTaskAction):
+                target = suggestion.action.assignee_user_id
+                if target is not None and target not in assignees:
+                    raise AnswerProviderInvalidResponse()
+                suggestion.action.assignee_name = assignees.get(target) if target else None
+            if isinstance(suggestion.action, DispatchTaskAction):
+                if suggestion.action.assistant_id not in agents:
+                    raise AnswerProviderInvalidResponse()
+                suggestion.action.assistant_name = agents[suggestion.action.assistant_id]
             response = ProjectOperationPreviewResponse(
                 projectId=project_id,
                 intent=payload.intent,
@@ -122,8 +156,8 @@ class ProjectOperationService(ProjectAnalysisService):
             {
                 "operationId": row.id,
                 "projectId": row.project_id,
-                "generatedAt": row.generated_at,
-                "appliedAt": row.created_at,
+                "generatedAt": row.generated_at.astimezone(UTC),
+                "appliedAt": row.created_at.astimezone(UTC),
                 **row.details,
             }
         )
@@ -228,6 +262,23 @@ class ProjectOperationService(ProjectAnalysisService):
                     expected_revision=revisions[action.task_id],
                     audit=audit,
                 ).model_dump(mode="json", by_alias=True)
+            elif isinstance(action, AssignTaskAction):
+                result = writer._update_task_in_transaction(
+                    identity=identity,
+                    task_id=action.task_id,
+                    audit=audit,
+                    payload=TaskUpdateRequest(
+                        expectedRevision=revisions[action.task_id],
+                        assigneeUserId=action.assignee_user_id,
+                    ),
+                ).model_dump(mode="json", by_alias=True)
+                name = None
+                if action.assignee_user_id is not None:
+                    # The writer has checked and locked the active, authorized member.
+                    user = self._session.get(User, action.assignee_user_id)
+                    assert user is not None
+                    name = user.display_name or str(user.id)
+                action = action.model_copy(update={"assignee_name": name})
             elif isinstance(action, AddDependencyAction):
                 result = writer._add_dependency_in_transaction(
                     identity=identity,

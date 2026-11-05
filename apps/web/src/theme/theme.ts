@@ -7,19 +7,18 @@ export type ResolvedTheme = "light" | "dark";
 export function readThemePreference(storage: Pick<Storage, "getItem">): ThemePreference {
   try {
     const value = storage.getItem(THEME_STORAGE_KEY);
-    return value === "light" || value === "dark" ? value : "system";
+    return value === "light" || value === "dark" || value === "system" ? value : "dark";
   } catch {
-    return "system";
+    return "dark";
   }
 }
 
 export function writeThemePreference(
   preference: ThemePreference,
-  storage: Pick<Storage, "setItem" | "removeItem">,
+  storage: Pick<Storage, "setItem">,
 ): void {
   try {
-    if (preference === "system") storage.removeItem(THEME_STORAGE_KEY);
-    else storage.setItem(THEME_STORAGE_KEY, preference);
+    storage.setItem(THEME_STORAGE_KEY, preference);
   } catch {
     return;
   }
