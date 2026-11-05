@@ -133,7 +133,7 @@
   .app-shell:has(.knowledge-page) .workbench-conversations { display: block; border-top: 1px solid var(--workbench-border); margin-top: 24px; padding: 24px 0; }
 }
 .project-switcher { position: relative; min-width: 0; justify-self: start; width: 100%; max-width: 300px; z-index: var(--z-dropdown); }
-.project-switcher-trigger { display: flex; align-items: center; gap: 10px; min-height: 40px; width: 100%; padding: 6px 12px; border: 0; border-radius: var(--radius); background: transparent; color: var(--color-ink); font-size: var(--text-md); cursor: pointer; }
+.project-switcher-trigger { display: flex; align-items: center; gap: 10px; min-height: 44px; width: 100%; padding: 6px 12px; border: 0; border-radius: var(--radius); background: transparent; color: var(--color-ink); font-size: var(--text-md); cursor: pointer; }
 .project-switcher-trigger span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .project-switcher-trigger svg { flex: none; }
 .project-switcher-panel { position: absolute; top: calc(100% + 8px); left: 50%; width: min(340px, calc(100vw - 24px)); max-height: min(520px, 75dvh); overflow: auto; transform: translateX(-50%); border: 1px solid var(--workbench-border); border-radius: var(--radius); background: var(--color-surface); box-shadow: var(--elevation-floating); padding: 8px; }
@@ -507,7 +507,7 @@
 .project-switcher-trigger > svg:last-child { margin-left: auto; color: var(--color-muted); width: 14px; }
 .app-shell:not(:has(.knowledge-page)):not(:has(.feishu-page)):not(:has(.code-page)) .workspace { width: calc(100% - 48px); margin: 28px auto; }
 .app-shell:has(.code-page) .workspace { width: 100%; margin: 0; padding: 0; }
-.task-workspace .task-title-line h3 button { display: inline; min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: var(--radius-sm); background: none; text-align: left; font: inherit; font-weight: var(--weight-semibold); }
+.task-workspace .task-title-line h3 button { display: inline-flex; align-items: center; min-width: 44px; min-height: 44px; padding: 0; border: 0; border-radius: var(--radius-sm); background: none; text-align: left; font: inherit; font-weight: var(--weight-semibold); }
 .task-workspace .task-title-line h3 button:hover { color: var(--color-accent); background: none; text-decoration: underline; text-underline-offset: 4px; }
 .task-workspace-tools > button { display: inline-flex; align-items: center; justify-content: center; background: var(--color-accent); border-color: var(--color-accent); color: var(--color-on-accent); }
 .task-workspace-tools > button:hover:not(:disabled) { background: var(--color-accent-strong); }
