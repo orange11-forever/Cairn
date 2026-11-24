@@ -10,6 +10,8 @@ import { StartupIntro } from "../components/StartupIntro.tsx";
 import { KnowledgePage } from "../pages/KnowledgePage.tsx";
 import { KnowledgeSourcesPage } from "../pages/KnowledgeSourcesPage.tsx";
 import { AccountIdentitiesPage } from "../pages/AccountIdentitiesPage.tsx";
+import { AgentDialoguePage } from "../pages/AgentDialoguePage.tsx";
+import { AgentsPage } from "../pages/AgentsPage.tsx";
 import { ProjectCreatePage, ProjectTasksPage, ProjectsPage } from "../pages/ProjectsPage.tsx";
 import { CodeWorkspacePage } from "../pages/CodeWorkspacePage.tsx";
 import { useSession } from "../session/SessionContext.tsx";
@@ -69,6 +71,8 @@ function SessionRoutes() {
           <Route path="/projects/new" element={<ProjectCreatePage />} />
           <Route path="/projects/:projectId/tasks" element={<ProjectTasksPage />} />
           <Route path="/projects/:projectId/code" element={<CodeWorkspacePage />} />
+          <Route path="/projects/:projectId/agents" element={<AgentsPage />} />
+          <Route path="/projects/:projectId/agents/:assistantId/dialogue" element={<AgentDialoguePage />} />
           <Route path="/projects/:projectId/knowledge" element={<KnowledgePage />} />
           <Route path="/projects/:projectId/knowledge/sources" element={<KnowledgeSourcesPage />} />
           <Route path="/documents" element={<Navigate to="/projects" replace />} />

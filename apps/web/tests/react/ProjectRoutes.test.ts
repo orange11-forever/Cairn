@@ -10,6 +10,8 @@ test("project paths resolve id and module only for module routes", () => {
   expect(projectModuleFromPath("/projects/p1/knowledge/sources")).toBe("knowledge");
   expect(projectModuleFromPath("/projects/p1/tasks")).toBe("tasks");
   expect(projectModuleFromPath("/projects/p1/code")).toBe("code");
+  expect(projectModuleFromPath("/projects/p1/agents")).toBe("agents");
+  expect(projectIdFromPath("/projects/p%201/agents")).toBe("p 1");
   expect(projectIdFromPath("/projects/new")).toBeNull();
   expect(projectIdFromPath("/projects")).toBeNull();
   expect(projectIdFromPath("/account/identities")).toBeNull();

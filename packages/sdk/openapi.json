@@ -137,6 +137,153 @@
         "title": "AddDependencyAction",
         "type": "object"
       },
+      "AgentDialogueApplyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "confirmed": {
+            "const": true,
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "operationId": {
+            "format": "uuid",
+            "title": "Operationid",
+            "type": "string"
+          },
+          "preview": {
+            "$ref": "#/components/schemas/AgentDialoguePreviewResponse"
+          }
+        },
+        "required": [
+          "operationId",
+          "confirmed",
+          "preview"
+        ],
+        "title": "AgentDialogueApplyRequest",
+        "type": "object"
+      },
+      "AgentDialogueContext": {
+        "additionalProperties": false,
+        "properties": {
+          "assistantId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assistantid"
+          },
+          "originProjectId": {
+            "format": "uuid",
+            "title": "Originprojectid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "originProjectId",
+          "assistantId"
+        ],
+        "title": "AgentDialogueContext",
+        "type": "object"
+      },
+      "AgentDialogueMessage": {
+        "additionalProperties": false,
+        "properties": {
+          "role": {
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "text"
+        ],
+        "title": "AgentDialogueMessage",
+        "type": "object"
+      },
+      "AgentDialoguePreviewRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "agent": {
+            "$ref": "#/components/schemas/AgentDialogueContext"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/AgentDialogueMessage"
+            },
+            "maxItems": 12,
+            "title": "History",
+            "type": "array"
+          },
+          "intent": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Intent",
+            "type": "string"
+          },
+          "targetProjectId": {
+            "format": "uuid",
+            "title": "Targetprojectid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent",
+          "targetProjectId",
+          "intent"
+        ],
+        "title": "AgentDialoguePreviewRequest",
+        "type": "object"
+      },
+      "AgentDialoguePreviewResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "agent": {
+            "$ref": "#/components/schemas/AgentDialogueContext"
+          },
+          "assistant": {
+            "$ref": "#/components/schemas/AssistantSettingsResponse"
+          },
+          "preview": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProjectOperationPreviewResponse"
+              },
+              {
+                "$ref": "#/components/schemas/ProjectCreationPreviewResponse"
+              }
+            ],
+            "title": "Preview"
+          },
+          "targetProjectId": {
+            "format": "uuid",
+            "title": "Targetprojectid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent",
+          "targetProjectId",
+          "assistant",
+          "preview"
+        ],
+        "title": "AgentDialoguePreviewResponse",
+        "type": "object"
+      },
       "AnswerModelOption": {
         "additionalProperties": false,
         "properties": {
@@ -10513,6 +10660,1162 @@
           }
         },
         "summary": "Api Version"
+      }
+    },
+    "/api/v1/agent-dialogue/operations": {
+      "get": {
+        "operationId": "list_dialogue_operations_api_v1_agent_dialogue_operations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "origin_project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Origin Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Target Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "assistant_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Assistant Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 20,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectOperationPage"
+                }
+              }
+            },
+            "description": "Successful Response",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "会话无效",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "请求来源或 CSRF 令牌无效",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "项目不存在或不可访问",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "项目知识在生成期间发生变化",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "搜索请求无效",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "搜索请求过于频繁",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "当前搜索限流窗口剩余秒数",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "服务器内部错误",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "数据库、Embedding 或生成式回答服务暂时不可用",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "summary": "List Dialogue Operations",
+        "tags": [
+          "project-operations"
+        ]
+      },
+      "post": {
+        "operationId": "apply_dialogue_api_v1_agent_dialogue_operations_post",
+        "parameters": [
+          {
+            "description": "Session-bound CSRF token returned by login or session restore.",
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentDialogueApplyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectOperationResponse"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectOperationResponse"
+                }
+              }
+            },
+            "description": "Successful Response",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "会话无效",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "请求来源或 CSRF 令牌无效",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "项目不存在或不可访问",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "项目知识在生成期间发生变化",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "搜索请求无效",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "搜索请求过于频繁",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "当前搜索限流窗口剩余秒数",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "服务器内部错误",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "数据库、Embedding 或生成式回答服务暂时不可用",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Apply Dialogue",
+        "tags": [
+          "project-operations"
+        ]
+      }
+    },
+    "/api/v1/agent-dialogue/operations/{operation_id}": {
+      "get": {
+        "operationId": "get_dialogue_operation_api_v1_agent_dialogue_operations__operation_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "operation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Operation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "origin_project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Origin Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Target Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "assistant_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Assistant Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectOperationResponse"
+                }
+              }
+            },
+            "description": "Successful Response",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "会话无效",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "请求来源或 CSRF 令牌无效",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "项目不存在或不可访问",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "项目知识在生成期间发生变化",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "搜索请求无效",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "搜索请求过于频繁",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "当前搜索限流窗口剩余秒数",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "服务器内部错误",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "数据库、Embedding 或生成式回答服务暂时不可用",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Get Dialogue Operation",
+        "tags": [
+          "project-operations"
+        ]
+      }
+    },
+    "/api/v1/agent-dialogue/preview": {
+      "post": {
+        "operationId": "preview_dialogue_api_v1_agent_dialogue_preview_post",
+        "parameters": [
+          {
+            "description": "Session-bound CSRF token returned by login or session restore.",
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentDialoguePreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentDialoguePreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "会话无效",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "请求来源或 CSRF 令牌无效",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "项目不存在或不可访问",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "项目知识在生成期间发生变化",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "搜索请求无效",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "搜索请求过于频繁",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "Retry-After": {
+                "description": "当前搜索限流窗口剩余秒数",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "服务器内部错误",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "数据库、Embedding 或生成式回答服务暂时不可用",
+            "headers": {
+              "Cache-Control": {
+                "description": "防止受保护知识响应被浏览器或中间缓存保存",
+                "schema": {
+                  "const": "private, no-store",
+                  "type": "string"
+                }
+              },
+              "X-Request-ID": {
+                "description": "请求追踪标识",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Preview Dialogue",
+        "tags": [
+          "project-operations"
+        ]
       }
     },
     "/api/v1/auth/identities": {

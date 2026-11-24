@@ -40,7 +40,7 @@ export function AccountIdentitiesPage() {
 
   return <section className="identity-page" aria-labelledby="identity-title">
     <h1 id="identity-title">登录方式</h1>
-    <p>查看当前账号的登录方式。GitHub 和飞书需启用后才能绑定；仓库访问需要另外授权。</p>
+    <p>查看当前账号的登录方式。GitHub 需启用后才能绑定；仓库访问需要另外授权。</p>
     <p className="identity-account">当前账号：{session.user.displayName ?? session.user.email ?? "Cairn 用户"} · {session.user.email ?? "未提供邮箱"}</p>
     <OAuthNotice outcome={params.get("oauth")} />
     {identities.isPending || providers.isPending ? <p role="status">正在读取登录方式…</p> : null}
@@ -51,9 +51,9 @@ export function AccountIdentitiesPage() {
     {identities.data && providers.data && <>
       <ul className="identity-methods">
         <li><div><strong>邮箱密码</strong><p>{identities.data.passwordAvailable ? "可以使用" : "尚未设置"}</p></div></li>
-        {providers.data.map(({ provider, enabled }) => {
+        {providers.data.filter(({ provider }) => provider === "github").map(({ provider, enabled }) => {
           const linked = identities.data!.identities.filter(item => item.provider === provider);
-          const name = provider === "github" ? "GitHub" : "飞书";
+          const name = "GitHub";
           return <li key={provider}><div><strong>{name}</strong>
             <p>{linked.length ? "已绑定" : "未绑定"}{!enabled ? " · 尚未启用" : ""}</p>
             {linked.map(item => <div key={item.id} className="identity-linked">
@@ -64,7 +64,7 @@ export function AccountIdentitiesPage() {
                 <button type="button" disabled={pending} onClick={() => setConfirmId(null)}>取消</button>
               </div> : <button type="button" disabled={pending} onClick={() => setConfirmId(item.id)}>解绑 {name}</button>}
             </div>)}
-          </div>{linked.length === 0 && (desktop && provider === "github" ?
+          </div>{linked.length === 0 && (desktop ?
             <GitHubDeviceAuthorization intent="link" label="绑定 GitHub" csrfToken={session.identity.csrfToken}
               signal={session.signal} disabled={!enabled || pending} onComplete={() => void queryClient.invalidateQueries({ queryKey: key })} /> :
             <button type="button" disabled={!enabled || pending} onClick={() => void bind(provider)}>绑定 {name}</button>)}</li>;

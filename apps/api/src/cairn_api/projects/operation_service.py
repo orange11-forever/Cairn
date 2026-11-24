@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import cast
 from uuid import UUID
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import select
 
 from cairn_api.auth.models import User
@@ -150,6 +150,18 @@ class ProjectOperationService(ProjectAnalysisService):
             ProjectOperation.owner_id == self._identity.user.id,
         )
 
+    def _receipt_digest(self, preview: BaseModel) -> bytes:
+        return hashlib.sha256(json.dumps(
+            preview.model_dump(mode="json", by_alias=True),
+            sort_keys=True, separators=(",", ":"),
+        ).encode()).digest()
+
+    def _receipt_attribution(self) -> dict[str, object]:
+        return {}
+
+    def _receipt_record(self, project_id: UUID, operation_id: UUID) -> ProjectOperation | None:
+        return self._session.scalar(self._records(project_id).where(ProjectOperation.id == operation_id))
+
     @staticmethod
     def _response(row: ProjectOperation) -> ProjectOperationResponse:
         return ProjectOperationResponse.model_validate(
@@ -158,7 +170,7 @@ class ProjectOperationService(ProjectAnalysisService):
                 "projectId": row.project_id,
                 "generatedAt": row.generated_at.astimezone(UTC),
                 "appliedAt": row.created_at.astimezone(UTC),
-                **row.details,
+                **{key: value for key, value in row.details.items() if key != "agentDialogue"},
             }
         )
 
@@ -199,18 +211,10 @@ class ProjectOperationService(ProjectAnalysisService):
         self, project_id: UUID, payload: ProjectOperationApplyRequest
     ) -> tuple[ProjectOperationResponse, bool]:
         preview = payload.preview
-        digest = hashlib.sha256(
-            json.dumps(
-                preview.model_dump(mode="json", by_alias=True),
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode()
-        ).digest()
+        digest = self._receipt_digest(preview)
         with self._session.begin():
             self._guard(project_id, write=True)
-            existing = self._session.scalar(
-                self._records(project_id).where(ProjectOperation.id == payload.operation_id)
-            )
+            existing = self._receipt_record(project_id, payload.operation_id)
             if existing is not None:
                 if existing.request_digest != digest:
                     raise ApiProblem(
@@ -327,6 +331,7 @@ class ProjectOperationService(ProjectAnalysisService):
                 request_digest=digest,
                 generated_at=preview.generated_at,
                 details={
+                    **self._receipt_attribution(),
                     "intent": preview.intent,
                     "action": action.model_dump(mode="json", by_alias=True),
                     "explanation": preview.suggestion.explanation,

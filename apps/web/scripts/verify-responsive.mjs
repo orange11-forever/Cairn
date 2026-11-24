@@ -719,10 +719,12 @@ async function checkKnowledgeResourceLayout(
   );
   if (viewport.width <= 900) await page.getByRole("button", { name: "资料", exact: true }).click();
   await page.waitForSelector(".knowledge-resource-list");
+  await page.locator(".startup-intro").waitFor({ state: "hidden" });
 
+  const projectHeadingCount = await page.getByRole("heading", { level: 1, name: RESPONSIVE_PROJECTS[0].name }).count();
   expect(
-    await page.getByRole("heading", { level: 1, name: RESPONSIVE_PROJECTS[0].name }).count() === 1,
-    `${viewport.name} 知识工作台必须保留可访问的项目标题`,
+    projectHeadingCount === 1,
+    `${viewport.name} 知识工作台必须保留可访问的项目标题，实际匹配 ${projectHeadingCount} 个；页面标题：${JSON.stringify(await page.getByRole("heading", { level: 1 }).allTextContents())}`,
   );
 
   const layout = await readLayout(page);
@@ -1306,7 +1308,7 @@ async function checkProjectsLayout({
   const emptyLayout = await readLayout(page);
   expect(emptyLayout.overflow <= 0 && emptyLayout.panelInsideViewport,
     `${viewport.name} 项目顶层空态超出视口`);
-  expect(emptyLayout.activeLabel === null && await page.locator('.primary-nav [aria-disabled="true"]').count() === 2,
+  expect(emptyLayout.activeLabel === null && await page.locator('.primary-nav [aria-disabled="true"]').count() === 3,
     `${viewport.name} 无项目时任务和知识导航应保持禁用`);
   expect(emptyLayout.undersizedTargets.length === 0,
     `${viewport.name} 项目空态存在小于44px的目标：${emptyLayout.undersizedTargets.join(" / ")}`);

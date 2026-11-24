@@ -54,10 +54,11 @@ def test_terminal_keeps_shell_input_unicode_cwd_resize_and_exit(workspace: tuple
     session = service.session(user, project, snapshot.id)
     try:
         session.write("mkdir child\rcd child\r")
+        # Only the evaluated prompt may satisfy the wait, never the command echo.
         if os.name == 'nt':
-            session.write("$answer = Read-Host 'VALUE'\r")
+            session.write("$answer = Read-Host ('VAL' + 'UE')\r")
         else:
-            session.write("read -p VALUE answer\r")
+            session.write("read -p 'VAL''UE' answer\r")
         until(lambda: 'VALUE' in session.snapshot(0).output)
         session.write('你好\r')
         command = "[IO.File]::WriteAllText((Join-Path $PWD 'result.txt'), $answer)\r" if os.name == 'nt' else "printf '%s' \"$answer\" > result.txt\r"

@@ -51,7 +51,7 @@ export function AppShell({ identity, onLogout, logoutError }: { identity: Identi
             <AccountMenu appearance={<ThemeControl />} identity={identity} logoutError={logoutError} onLogout={onLogout} />
           </div>
         </header>
-        {module === "knowledge" && projectId !== null && session !== null ? (
+        {(module === "knowledge" || module === "agents") && projectId !== null && session !== null ? (
           <ProjectConversationsProvider
             csrfToken={identity.csrfToken}
             generation={session.generation}

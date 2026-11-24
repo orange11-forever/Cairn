@@ -37,6 +37,7 @@ from cairn_api.knowledge.source_router import router as knowledge_source_router
 from cairn_api.logging import configure_app_logging
 from cairn_api.middleware import ProjectErrorBoundary, RequestIdMiddleware, new_request_id
 from cairn_api.organizations.router import router as organizations_router
+from cairn_api.projects.agent_dialogue_router import router as agent_dialogue_router
 from cairn_api.projects.analysis_router import router as project_analysis_router
 from cairn_api.projects.creation_router import router as project_creation_router
 from cairn_api.projects.operation_router import router as project_operation_router
@@ -371,6 +372,7 @@ def create_app(
     application.include_router(project_analysis_router)
     application.include_router(project_operation_router)
     application.include_router(project_creation_router)
+    application.include_router(agent_dialogue_router)
     application.include_router(project_schedule_router)
     application.include_router(knowledge_router)
     application.include_router(knowledge_conversation_router)

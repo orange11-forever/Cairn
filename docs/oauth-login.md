@@ -2,6 +2,8 @@
 
 ## 本地功能与验收边界
 
+2026-11-07范围调整：飞书剩余接入与验收纳入二次开发，不作为本轮验收或发布前置条件。共用前端暂时撤下飞书登录和账号绑定入口；已有后端能力、身份记录及下述历史验收保留。飞书配置说明供已有部署或二次开发恢复时使用。
+
 默认不启用任何真实 provider。适配器测试使用 `httpx.MockTransport`，API 回归使用 mock provider 与独立临时 PostgreSQL。2026-10-03 已另外完成 GitHub / 飞书首次注册、显式身份绑定和再次登录的真实授权验收；部署者仍需配置自己的应用与回调地址，自动化门禁不使用真实凭据。
 
 首次 GitHub／飞书授权在第三方回调中只保存短期已验证身份，不创建账号、组织或会话。用户返回 Cairn 并完成最终确认后，首次身份在同一事务中创建独立 User、个人 Organization、owner Membership、ExternalIdentity 与会话；没有邮箱时 email 和 normalized_email 为 null，不制造邮箱地址。新账号不能读取已有组织或项目，也不会按邮箱、昵称、GitHub login、飞书租户或 union_id 自动合并或加入已有组织。GitHub 使用数值用户 ID，飞书使用当前应用的 open_id，唯一键包含 provider 与 client ID。

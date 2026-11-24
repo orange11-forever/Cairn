@@ -7,6 +7,7 @@ Both installers contain a complete runtime. All application data uses a new --wo
 import argparse
 import ctypes
 import hashlib
+import io
 import json
 import os
 import runpy
@@ -17,6 +18,10 @@ import tempfile
 import time
 import winreg
 from pathlib import Path
+from uuid import UUID, uuid4
+
+import psycopg
+from psycopg.types.json import Jsonb
 
 KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\CairnDesktop"
 KERNEL = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -214,9 +219,11 @@ def main():
                 "/api/v1/login", json={"email": email, "password": password}
             )
             assert response.status_code == 200, response.text
-            instance.client.headers["X-CSRF-Token"] = response.json()["csrfToken"]
+            identity = response.json()
+            instance.client.headers["X-CSRF-Token"] = identity["csrfToken"]
+            return identity
 
-        login(runtime)
+        identity = login(runtime)
         result = runtime.client.post("/api/v1/projects", json={"name": "安装更新后保留"})
         assert result.status_code == 201, result.text
         project = result.json()["id"]
@@ -252,7 +259,10 @@ def main():
                         "apiKey": key,
                     }],
                     "defaultModelId": "default",
-                    "embedding": None,
+                    "embedding": {
+                        "baseUrl": "http://127.0.0.1:9/v1", "model": "retained-index",
+                        "apiKey": key,
+                    },
                 }
             ),
             text=True,
@@ -265,6 +275,76 @@ def main():
         passed(
             "installed runtime registers, persists project/task and encrypts synthetic model settings"
         )
+
+        # Seed existing published knowledge directly: this checks upgrade retention,
+        # while ingestion/model connectivity is covered by its separate acceptance.
+        from cairn_api.workspace.github import GitHubToken
+        from cairn_api.workspace.schemas import GitHubAccount
+        from cairn_desktop.object_store import LocalObjectStore
+        from cairn_desktop.workspace import load_workspace
+
+        resource, version, chunk = uuid4(), uuid4(), uuid4()
+        org = UUID(identity["organization"]["id"])
+        user = UUID(identity["user"]["id"])
+        content = "升级后保留知识正文、向量索引和引用。\n"
+        raw_content = content.encode("utf-8")
+        digest = hashlib.sha256(raw_content).hexdigest()
+        values = json.loads((data / "settings.json").read_text(encoding="utf-8"))
+        object_key = f"{org}/{project}/retained.txt"
+        store = LocalObjectStore(data / "objects", "http://127.0.0.1", bytes.fromhex(values["objectSecret"]))
+        store.put_object(object_key=object_key, source=io.BytesIO(raw_content),
+                         size_bytes=len(raw_content), content_type="text/plain", checksum_sha256=digest)
+
+        def database(instance):
+            return psycopg.connect(host="127.0.0.1", port=instance.ready["postgresPort"],
+                user="cairn", password=values["databasePassword"], dbname="cairn")
+
+        def knowledge_snapshot(instance):
+            with database(instance) as db:
+                row = db.execute(
+                    "SELECT v.status,v.sha256,c.text,e.embedding::text,p.provider_key,p.model "
+                    "FROM knowledge_resource_versions v JOIN knowledge_chunks c ON c.resource_version_id=v.id "
+                    "JOIN chunk_embeddings e ON e.chunk_id=c.id JOIN embedding_profiles p ON p.id=e.embedding_profile_id "
+                    "WHERE v.id=%s", (version,),
+                ).fetchone()
+                assert row is not None and row[0] == "ready" and row[1] == digest and row[2] == content
+                assert len(json.loads(row[3])) == 1024 and row[5] == "retained-index"
+                return row
+
+        runtime = start()
+        login(runtime)
+        with database(runtime) as db:
+            profile, scope = db.execute("SELECT id,scope_org_id FROM embedding_profiles WHERE status='active'").fetchone()
+            db.execute("INSERT INTO knowledge_resources(id,org_id,project_id,title,source_type,source_id,external_id) "
+                       "VALUES(%s,%s,%s,'retained.txt','upload','installer-proof','retained.txt')", (resource, org, project))
+            db.execute("INSERT INTO knowledge_resource_versions(id,org_id,project_id,resource_id,source_type,source_id,external_id,source_version,object_key,media_type,size_bytes,sha256,parser_profile,chunking_profile,status,processing_started_at,ready_at) "
+                       "VALUES(%s,%s,%s,%s,'upload','installer-proof','retained.txt','1',%s,'text/plain',%s,%s,'default-v1','default-v1','ready',now(),now())",
+                       (version, org, project, resource, object_key, len(raw_content), digest))
+            db.execute("UPDATE knowledge_resources SET current_version_id=%s WHERE id=%s", (version, resource))
+            db.execute("INSERT INTO knowledge_chunks(id,org_id,project_id,resource_id,resource_version_id,ordinal,kind,text,normalized_text,locator) "
+                       "VALUES(%s,%s,%s,%s,%s,0,'text',%s,%s,%s)",
+                       (chunk, org, project, resource, version, content, content,
+                        Jsonb({"type": "text", "headingPath": [], "lineStart": 1, "lineEnd": 1})))
+            db.execute("INSERT INTO chunk_embeddings(id,org_id,project_id,resource_id,resource_version_id,chunk_id,embedding_profile_scope_org_id,embedding_profile_id,embedding) "
+                       "VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s::vector)",
+                       (uuid4(), org, project, resource, version, chunk, scope, profile, json.dumps([1] + [0] * 1023)))
+        knowledge_before = knowledge_snapshot(runtime)
+        response = runtime.client.get(f"/api/v1/projects/{project}/knowledge/resources/{resource}/content")
+        assert response.status_code == 200 and response.json()["content"] == content, response.text
+        runtime.stop()
+        runtime = None
+
+        code = work / "用户代码"
+        code.mkdir()
+        subprocess.run([str(destination / "git/cmd/git.exe"), "-C", str(code), "init", "-b", "main"], check=True, capture_output=True)
+        (code / "keep.py").write_text('print("保留本地代码")\n', encoding="utf-8")
+        workspace = load_workspace(destination, data)
+        workspace.bind_local(user, UUID(project), str(code))
+        workspace.connect(user, GitHubAccount(id=123, login="cairn-installer-test"),
+            GitHubToken(access_token="synthetic-installer-github-key", token_type="bearer", scope="repo"))
+        code_before = tree_hash(code)
+        assert b"synthetic-installer-github-key" not in (data / "workspace-settings.dpapi").read_bytes()
+        passed("published knowledge, a 1024-dimensional index, local code and encrypted repository settings prepared")
 
         unknown = destination / "app/user-notes.txt"
         unknown.write_bytes(b"unknown personal notes")
@@ -319,10 +399,17 @@ def main():
         assert result.status_code == 200 and result.json()["title"] == "更新卸载不丢失"
         assert result.json()["remainingEffortMinutes"] == 90
         assert runtime.ready["modelStatus"]["answerModels"][0]["model"] == "合成验收模型"
+        assert knowledge_snapshot(runtime) == knowledge_before
+        response = runtime.client.get(f"/api/v1/projects/{project}/knowledge/resources/{resource}/content")
+        assert response.status_code == 200 and response.json()["content"] == content, response.text
+        restored_workspace = load_workspace(destination, data)
+        assert restored_workspace.binding(user, UUID(project)).local_path == str(code)
+        assert restored_workspace.token(user).token.get_secret_value() == "synthetic-installer-github-key"
+        assert tree_hash(code) == code_before
         runtime.stop()
         runtime = None
         passed(
-            "updated installed runtime reopens the original account, task and model configuration"
+            "updated runtime reopens the original account, task, model, knowledge/index and encrypted repository binding"
         )
 
         data_before = tree_hash(data)
@@ -335,6 +422,7 @@ def main():
             and unknown.read_bytes() == b"unknown personal notes"
         )
         assert tree_hash(default_data) == original_default
+        assert tree_hash(code) == code_before
         passed(
             "uninstall removes owned program/registration/shortcut and preserves default, custom and unknown data"
         )
