@@ -54,6 +54,8 @@ def generate_payload(bundle: Path, destination: Path) -> dict:
     for path in sorted(bundle.rglob("*")):
         relative = path.relative_to(bundle)
         name = relative.as_posix()
+        if not name.isascii():
+            raise ValueError("Packaged program paths must be ASCII; user data is stored separately")
         if path.is_symlink():
             raise ValueError("Installer payload cannot contain filesystem links")
         if "__pycache__" in relative.parts or path.suffix == ".pyc":
@@ -181,6 +183,7 @@ def main():
         shutil.copy2(ROOT / "apps/desktop/windows/Cairn.nsi", working / "Cairn.nsi")
         shutil.copy2(ROOT / "apps/desktop/windows/Cairn.ico", working / "Cairn.ico")
         shutil.copy2(ROOT / "apps/desktop/windows/prerequisites.ps1", working / "prerequisites.ps1")
+        shutil.copy2(ROOT / "apps/desktop/windows/owned_files.ps1", working / "owned_files.ps1")
         script = working / "build.nsi"
         script.write_text(
             f'!define OUTPUT_FILE "{nsis_text(windows(output))}"\n!define APP_VERSION "{args.version}"\n!include "Cairn.nsi"\n',

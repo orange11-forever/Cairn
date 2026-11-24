@@ -2,7 +2,7 @@ import { ResizeHandle } from "../components/ResizeHandle.tsx";
 import type { CSSProperties } from "react";
 import { CairnLoader } from "../components/trail/CairnLoader.tsx";
 import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
-import { ArrowLeft, BookOpenText, CalendarDays, FileText, HardDrive, MessageSquare, PackageOpen, Search, UploadCloud, X, PanelLeft, PanelRight, RefreshCw } from "lucide-react";
+import { ArrowLeft, BookOpenText, CalendarDays, FileText, HardDrive, MessageSquare, PackageOpen, Search, UploadCloud, X, PanelLeft, PanelRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, Navigate, useParams, useSearchParams, useLocation } from "react-router-dom";
 
@@ -78,7 +78,6 @@ export function KnowledgePage() {
       projectId={projectId}
       csrfToken={session.identity.csrfToken}
       signal={session.signal}
-      canManageSources={session.identity.membership.role === "owner" || session.identity.membership.role === "admin"}
     />
   );
 }
@@ -88,13 +87,11 @@ function KnowledgeWorkspace({
   projectId,
   csrfToken,
   signal,
-  canManageSources,
 }: {
   organizationId: string;
   projectId: string;
   csrfToken: string;
   signal: AbortSignal;
-  canManageSources: boolean;
 }) {
   const queryClient = useQueryClient();
   const [searchAccessError, setSearchAccessError] = useState<ApiError | null>(null);
@@ -118,7 +115,6 @@ function KnowledgeWorkspace({
       projectId={projectId}
       csrfToken={csrfToken}
       signal={signal}
-      canManageSources={canManageSources}
       onSearchAccessUnavailable={handleSearchAccessUnavailable}
     />
   );
@@ -145,14 +141,12 @@ function KnowledgeWorkspaceContent({
   projectId,
   csrfToken,
   signal,
-  canManageSources,
   onSearchAccessUnavailable,
 }: {
   organizationId: string;
   projectId: string;
   csrfToken: string;
   signal: AbortSignal;
-  canManageSources: boolean;
   onSearchAccessUnavailable(error: ApiError): void;
 }) {
   const conversations = useProjectConversations();
@@ -422,9 +416,6 @@ function KnowledgeWorkspaceContent({
           >
             <Search aria-hidden="true" size={15} />搜索
           </Link>
-          <Link to={`${projectPath(projectId, "knowledge")}/sources${location.search}`}>
-            <RefreshCw aria-hidden="true" size={15} />来源与同步
-          </Link>
         </div>
         <div className="knowledge-pane-controls" aria-label="工作台布局">
           <button type="button" title={explorerOpen ? "收起资料栏" : "展开资料栏"} aria-label={explorerOpen ? "收起资料栏" : "展开资料栏"} aria-expanded={explorerOpen} aria-controls="knowledge-explorer-panel" onClick={() => setExplorerOpen(value => !value)}><BookOpenText size={18} aria-hidden="true" /></button>
@@ -546,7 +537,6 @@ function KnowledgeWorkspaceContent({
             </button> : null}
           </div>
           <p className="knowledge-explorer-project" title={project.data.name}>{project.data.name}</p>
-          {canManageSources ? <Link className="knowledge-sources-entry" aria-label="打开来源与同步" to={`/projects/${projectId}/knowledge/sources${location.search}`}><RefreshCw size={15} aria-hidden="true" />来源与同步</Link> : null}
           {capabilities?.canWrite === true ? <div className="knowledge-explorer-upload">
             <KnowledgeUploadBatch key={`upload:${organizationId}:${projectId}`}
               organizationId={organizationId} projectId={projectId} csrfToken={csrfToken}

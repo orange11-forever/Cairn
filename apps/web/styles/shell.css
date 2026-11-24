@@ -62,6 +62,7 @@
 .nav-indicator { position: absolute; top: 36px; left: 22px; width: 10px; height: 8px; pointer-events: none; transition: transform 320ms var(--motion-ease-hop); }
 .nav-indicator[data-index='1'] { transform: translateY(50px); }
 .nav-indicator[data-index='2'] { transform: translateY(100px); }
+.nav-indicator[data-index='3'] { transform: translateY(150px); }
 .nav-indicator .stone { display: block; width: 100%; height: 100%; background: var(--color-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent); animation: nav-stone-land 320ms var(--motion-ease-out); }
 @keyframes nav-stone-land { 0% { transform: none; } 45% { transform: translateX(8px) rotate(-20deg); } 80% { transform: translateY(1px) scale(1.25, 0.75); } 100% { transform: none; } }
 

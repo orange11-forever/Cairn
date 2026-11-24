@@ -35,13 +35,14 @@ test("显示当前账号绑定状态并在明确确认后携带 CSRF 解绑", as
       deletes.push(request); removed = true;
       return new Response(null, { status: 204 });
     }
-    if (path.endsWith("providers")) return response([{ provider: "github", enabled: true }, { provider: "feishu", enabled: false }]);
+    if (path.endsWith("providers")) return response([{ provider: "github", enabled: true }, { provider: "feishu", enabled: true }]);
     return response({ passwordAvailable: true, identities: removed ? [] : [{ id: linkedId, provider: "github", displayName: "My Github", createdAt: "2026-10-02T00:00:00Z" }] });
   }));
   const queries = mount();
   expect(await screen.findByText("My Github")).toBeInTheDocument();
   expect(screen.getByText("当前账号：演示用户 · demo@cairn.dev")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "绑定 飞书" })).toBeDisabled();
+  expect(screen.queryByRole("button", { name: /飞书/ })).not.toBeInTheDocument();
+  expect(screen.queryByText(/飞书/)).not.toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "解绑 GitHub" }));
   expect(deletes).toHaveLength(0);
   await userEvent.click(screen.getByRole("button", { name: "确认解绑" }));

@@ -34,7 +34,7 @@ export function OperationDetails({action,snapshot,removedPredecessorId,taskNames
   return <dl className="operation-details"><dt>后续任务</dt><dd>{task(action.taskId)}</dd><dt>{predecessor?"移除的前置任务":"移除的依赖编号"}</dt><dd>{predecessor?task(predecessor):action.dependencyId}</dd></dl>;
 }
 
-function SavedOperation({value,onOpenTask}:{value:ProjectOperation;onOpenTask?:Props["onOpenTask"]}) {
+export function SavedOperation({value,onOpenTask}:{value:ProjectOperation;onOpenTask?:Props["onOpenTask"]}) {
   const taskId=value.action.type==="create_project" ? undefined : value.action.type==="create_task" ? value.result.id : value.action.type==="add_dependency" ? value.action.successorTaskId : value.action.taskId;
   const taskNames:Record<string,string>={};
   if(typeof taskId==="string" && typeof value.result.title==="string")taskNames[taskId]=value.result.title;

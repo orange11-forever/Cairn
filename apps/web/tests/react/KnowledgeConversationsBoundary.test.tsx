@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Link, MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { Link, MemoryRouter, Route, Routes, useLocation, useNavigate, type NavigateFunction } from "react-router-dom";
 import { afterEach, expect, test, vi } from "vitest";
 import { AppShell } from "../../src/components/AppShell.tsx";
 import { KnowledgePage } from "../../src/pages/KnowledgePage.tsx";
@@ -20,8 +20,10 @@ function Sources() { const location = useLocation(); return <><output aria-label
 function mount() {
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[`/projects/${pid}/knowledge?conversation=${cid}&view=chat`]}><ThemeProvider><SessionProvider restoredIdentity={identity}><Routes><Route element={<AppShell identity={identity} onLogout={async () => undefined} logoutError={null} />}><Route path="/projects/:projectId/knowledge" element={<KnowledgePage />} /><Route path="/projects/:projectId/knowledge/sources" element={<Sources />} /></Route></Routes></SessionProvider></ThemeProvider></MemoryRouter></QueryClientProvider>);
-  return { client, user: userEvent.setup() };
+  let navigate!: NavigateFunction;
+  function Navigation() { navigate = useNavigate(); return null; }
+  render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[`/projects/${pid}/knowledge?conversation=${cid}&view=chat`]}><Navigation /><ThemeProvider><SessionProvider restoredIdentity={identity}><Routes><Route element={<AppShell identity={identity} onLogout={async () => undefined} logoutError={null} />}><Route path="/projects/:projectId/knowledge" element={<KnowledgePage />} /><Route path="/projects/:projectId/knowledge/sources" element={<Sources />} /></Route></Routes></SessionProvider></ThemeProvider></MemoryRouter></QueryClientProvider>);
+  return { client, user: userEvent.setup(), openSources: () => act(() => navigate(`/projects/${pid}/knowledge/sources?conversation=${cid}&view=chat`)) };
 }
 function fixture() {
   const { turns: _turns, ...summary } = stored;
@@ -86,13 +88,14 @@ test("conversation-only404 keeps authorized project titles in the conversation s
   expect(screen.getByRole("option", { name: "私有历史标题" })).toBeInTheDocument();
 });
 
-test.each([false, true])("explorer source roundtrip preserves selected draft and recovery=%s", async recovery => {
-  fixture(); const { user } = mount();
+test.each([false, true])("hidden source entry keeps the existing direct-route draft and recovery=%s", async recovery => {
+  fixture(); const { user, openSources } = mount();
   await screen.findByText("私有历史回答");
+  expect(screen.queryAllByRole("link", { name: /来源与同步/ })).toHaveLength(0);
   const input = screen.getByLabelText("向项目知识提问");
   await user.type(input, "来源页面往返草稿");
   if (recovery) { await user.click(screen.getByRole("button", { name: "生成回答" })); await screen.findByText(/发送结果尚未确认，请重新读取会话/); }
-  await user.click(screen.getByRole("link", { name: "打开来源与同步" }));
+  openSources();
   expect(screen.getByLabelText("来源地址")).toHaveTextContent(`conversation=${cid}`);
   await user.click(screen.getByRole("link", { name: "返回项目知识" }));
   expect(screen.getByLabelText("向项目知识提问")).toHaveValue("来源页面往返草稿");

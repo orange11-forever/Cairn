@@ -101,3 +101,11 @@ def test_payload_rejects_links_and_windows_case_collisions(tmp_path):
     (bundle / "APP/main.py").write_bytes(b"collision")
     with pytest.raises(ValueError):
         tool["generate_payload"](bundle, tmp_path / "generated")
+
+
+def test_payload_rejects_non_ascii_program_names_for_shared_ownership_hashes(tmp_path):
+    tool = runpy.run_path(str(TOOL))
+    bundle = bundle_at(tmp_path / "bundle")
+    (bundle / "app/配置.py").write_text("user-data-does-not-belong-in-the-program-payload")
+    with pytest.raises(ValueError, match="program paths must be ASCII"):
+        tool["generate_payload"](bundle, tmp_path / "generated")

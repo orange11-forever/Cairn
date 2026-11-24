@@ -281,6 +281,18 @@ Function un.onInit
 FunctionEnd
 
 Section "Uninstall"
+  InitPluginsDir
+  SetOutPath "$PLUGINSDIR"
+  File "owned_files.ps1"
+  File "payload-manifest.json"
+  DetailPrint "正在清理有安装归属记录的旧程序文件和 Python 缓存；保留用户数据与额外文件。"
+  nsExec::ExecToLog '"$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\owned_files.ps1" -InstallDirectory "$INSTDIR" -ManifestPath "$PLUGINSDIR\payload-manifest.json"'
+  Pop $0
+  StrCmp $0 0 owned_cleanup_ready
+  MessageBox MB_ICONSTOP|MB_OK "旧程序文件或缓存清理失败，卸载未完成。请查看卸载详情，关闭占用文件的程序并检查目录权限后重试。项目数据保持不变。" /SD IDOK
+  SetErrorLevel 1
+  Abort
+owned_cleanup_ready:
   !include "payload-uninstall.nsh"
   ClearErrors
   Delete "$INSTDIR\.cairn-owned.ini"

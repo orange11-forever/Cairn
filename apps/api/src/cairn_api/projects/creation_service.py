@@ -1,5 +1,3 @@
-import hashlib
-import json
 from datetime import UTC, datetime
 from typing import cast
 from uuid import UUID
@@ -87,9 +85,7 @@ class ProjectCreationService(ProjectOperationService):
     @safe_knowledge_operation
     def apply_creation(self, payload: ProjectCreationApplyRequest) -> tuple[ProjectOperationResponse, bool]:
         preview = payload.preview
-        digest = hashlib.sha256(json.dumps(
-            preview.model_dump(mode="json", by_alias=True), sort_keys=True, separators=(",", ":")
-        ).encode()).digest()
+        digest = self._receipt_digest(preview)
         with self._session.begin():
             self._creation_guard()
             if preview.organization_id != self._identity.organization.id:
@@ -110,7 +106,7 @@ class ProjectCreationService(ProjectOperationService):
                 org_id=self._identity.organization.id, project_id=project.id,
                 owner_id=self._identity.user.id, id=payload.operation_id, request_digest=digest,
                 generated_at=preview.generated_at,
-                details={"intent": preview.intent, "action": action.model_dump(mode="json", by_alias=True),
+                details={**self._receipt_attribution(), "intent": preview.intent, "action": action.model_dump(mode="json", by_alias=True),
                          "explanation": preview.suggestion.explanation,
                          "result": project.model_dump(mode="json", by_alias=True)},
             )

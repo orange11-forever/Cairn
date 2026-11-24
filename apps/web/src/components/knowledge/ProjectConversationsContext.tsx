@@ -1,6 +1,7 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { projectModuleFromPath, projectPath } from "../../app/projectRoutes.ts";
 import type { StreamParagraph } from "../../api/conversationStreaming.ts";
 import { ApiError } from "../../api/errors.ts";
 import { appendKnowledgeConversationTurn, streamKnowledgeConversationTurn, createKnowledgeConversation, fetchKnowledgeAnswerModel, fetchKnowledgeConversation, fetchKnowledgeConversations, isConversationId, type KnowledgeConversation } from "../../api/knowledgeConversations.ts";
@@ -14,6 +15,7 @@ const NEW = "new";
 function useConversationState({ organizationId, userId, projectId, generation, csrfToken, sessionSignal }: Scope) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const [params] = useSearchParams();
   const selectedId = params.get("conversation");
   const selected = useRef(selectedId); selected.current = selectedId;
@@ -94,11 +96,13 @@ function useConversationState({ organizationId, userId, projectId, generation, c
   }
   function selectConversation(id: string | null, preserveDraft = false) {
     abortAction(); setError(null); setNotice(null);
-    const next = new URLSearchParams(params); next.set("view", "chat");
+    const managingAgents = projectModuleFromPath(pathname) === "agents";
+    const next = new URLSearchParams(params);
+    if (!managingAgents) next.set("view", "chat");
     if (id === null) { next.delete("conversation"); if (!preserveDraft) drafts.current.set(newDraftKey, { value: "", revision: 0 }); }
     else next.set("conversation", id);
     selected.current = id;
-    navigate({ pathname: `/projects/${projectId}/knowledge`, search: next.toString() }); update();
+    navigate({ pathname: projectPath(projectId, managingAgents ? "agents" : "knowledge"), search: next.toString() }); update();
   }
   const previousAssistant = useRef<string | null | undefined>(undefined);
   useLayoutEffect(() => {

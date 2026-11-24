@@ -1,4 +1,4 @@
-import { BookOpenText, Code2, ListChecks, Settings2, type LucideIcon } from "lucide-react";
+import { BookOpenText, Bot, Code2, ListChecks, Settings2, type LucideIcon } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 
 import { projectModuleFromPath, projectPath, type ProjectModule } from "../app/projectRoutes.ts";
@@ -10,13 +10,15 @@ const MODULES: readonly { module: ProjectModule; label: string; icon: LucideIcon
   { module: "tasks", label: "任务", icon: ListChecks, desktopOnly: false },
   { module: "knowledge", label: "知识", icon: BookOpenText, desktopOnly: false },
   { module: "code", label: "代码", icon: Code2, desktopOnly: true },
+  { module: "agents", label: "智能体", icon: Bot, desktopOnly: false },
 ];
 
 export function PrimaryNavigation({ projectId }: { projectId: string | null }) {
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
+  const currentModule = projectModuleFromPath(pathname);
   const host = (window as Window & { chrome?: { webview?: DesktopHost } }).chrome?.webview;
   const items = MODULES.filter((item) => !item.desktopOnly || host !== undefined);
-  const currentIndex = projectId === null ? -1 : items.findIndex((item) => item.module === projectModuleFromPath(pathname));
+  const currentIndex = projectId === null ? -1 : items.findIndex((item) => item.module === currentModule);
 
   return (
     <nav aria-label="主导航" className="primary-nav">
@@ -28,6 +30,8 @@ export function PrimaryNavigation({ projectId }: { projectId: string | null }) {
       ) : null}
       <ul>
         {items.map(({ module, label, icon: Icon }) => {
+          const keepConversation = (currentModule === "knowledge" || currentModule === "agents") &&
+            (module === "knowledge" || module === "agents");
           const content = (
             <>
               <Icon aria-hidden="true" size={18} strokeWidth={1.8} />
@@ -39,7 +43,7 @@ export function PrimaryNavigation({ projectId }: { projectId: string | null }) {
             <li key={module}>
               {projectId === null
                 ? <span aria-disabled="true" className="nav-item-disabled">{content}</span>
-                : <NavLink aria-label={label} to={projectPath(projectId, module)}>{content}</NavLink>}
+                : <NavLink aria-label={label} to={projectPath(projectId, module) + (keepConversation ? search : "")}>{content}</NavLink>}
             </li>
           );
         })}

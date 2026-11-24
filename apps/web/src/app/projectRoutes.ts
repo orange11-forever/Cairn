@@ -1,6 +1,6 @@
-export type ProjectModule = "tasks" | "knowledge" | "code";
+export type ProjectModule = "tasks" | "knowledge" | "code" | "agents";
 
-const PROJECT_MODULE_PATH = /^\/projects\/([^/]+)\/(tasks|knowledge|code)(?:\/|$)/;
+const PROJECT_MODULE_PATH = /^\/projects\/([^/]+)\/(tasks|knowledge|code|agents)(?:\/|$)/;
 
 export function projectIdFromPath(pathname: string): string | null {
   const match = pathname.match(PROJECT_MODULE_PATH);

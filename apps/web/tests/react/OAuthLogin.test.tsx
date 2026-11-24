@@ -6,14 +6,14 @@ import { OAuthLoginButtons } from "../../src/components/OAuthLoginButtons.tsx";
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
-test("desktop offers device login while keeping Feishu unavailable", () => {
+test("desktop offers GitHub device login without a Feishu entry", () => {
   vi.stubGlobal("chrome", { webview: { postMessage: vi.fn() } });
   const fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
   render(<OAuthLoginButtons />);
   expect(screen.getByRole("button", { name: "使用 GitHub 登录" })).toBeVisible();
   expect(screen.queryByRole("button", { name: /飞书/ })).not.toBeInTheDocument();
-  expect(screen.getByText(/飞书登录尚未启用/)).toBeVisible();
+  expect(screen.queryByText(/飞书/)).not.toBeInTheDocument();
   expect(fetchMock).not.toHaveBeenCalled();
 });
 
@@ -26,6 +26,7 @@ test("使用 GitHub 登录先发起安全请求再跳转到 provider", async () 
   vi.stubGlobal("fetch", fetchMock);
   const navigate = vi.fn();
   render(<OAuthLoginButtons navigate={navigate} />);
+  expect(screen.queryByRole("button", { name: /飞书/ })).not.toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "使用 GitHub 登录" }));
   expect(navigate).toHaveBeenCalledWith(authorizationUrl);
   const request = fetchMock.mock.calls[0]?.[0] as Request;
@@ -39,7 +40,7 @@ test("provider 未配置时保留页面并解释下一步", async () => {
   }), { status: 503, headers: { "Content-Type": "application/json" } })));
   const navigate = vi.fn();
   render(<OAuthLoginButtons navigate={navigate} />);
-  await userEvent.click(screen.getByRole("button", { name: "使用飞书登录" }));
+  await userEvent.click(screen.getByRole("button", { name: "使用 GitHub 登录" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("尚未启用");
   expect(navigate).not.toHaveBeenCalled();
 });

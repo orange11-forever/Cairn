@@ -18,6 +18,10 @@ const PAGE_COPY = {
     title: "代码与架构助手",
     description: "我会陪你查看仓库关联、架构解析和编程 Agent 的运行状态。",
   },
+  agents: {
+    title: "智能体助手",
+    description: "集中配置当前项目的智能体，并在知识问答和代码工作区使用。",
+  },
 } as const;
 
 export function MascotAssistant({

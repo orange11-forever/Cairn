@@ -136,6 +136,153 @@ export const componentSchemas = {
     "title": "AddDependencyAction",
     "type": "object"
   },
+  "AgentDialogueApplyRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "confirmed": {
+        "const": true,
+        "title": "Confirmed",
+        "type": "boolean"
+      },
+      "operationId": {
+        "format": "uuid",
+        "title": "Operationid",
+        "type": "string"
+      },
+      "preview": {
+        "$ref": "#/components/schemas/AgentDialoguePreviewResponse"
+      }
+    },
+    "required": [
+      "operationId",
+      "confirmed",
+      "preview"
+    ],
+    "title": "AgentDialogueApplyRequest",
+    "type": "object"
+  },
+  "AgentDialogueContext": {
+    "additionalProperties": false,
+    "properties": {
+      "assistantId": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Assistantid"
+      },
+      "originProjectId": {
+        "format": "uuid",
+        "title": "Originprojectid",
+        "type": "string"
+      }
+    },
+    "required": [
+      "originProjectId",
+      "assistantId"
+    ],
+    "title": "AgentDialogueContext",
+    "type": "object"
+  },
+  "AgentDialogueMessage": {
+    "additionalProperties": false,
+    "properties": {
+      "role": {
+        "enum": [
+          "user",
+          "assistant"
+        ],
+        "title": "Role",
+        "type": "string"
+      },
+      "text": {
+        "maxLength": 4000,
+        "minLength": 1,
+        "title": "Text",
+        "type": "string"
+      }
+    },
+    "required": [
+      "role",
+      "text"
+    ],
+    "title": "AgentDialogueMessage",
+    "type": "object"
+  },
+  "AgentDialoguePreviewRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "agent": {
+        "$ref": "#/components/schemas/AgentDialogueContext"
+      },
+      "history": {
+        "items": {
+          "$ref": "#/components/schemas/AgentDialogueMessage"
+        },
+        "maxItems": 12,
+        "title": "History",
+        "type": "array"
+      },
+      "intent": {
+        "maxLength": 2000,
+        "minLength": 1,
+        "title": "Intent",
+        "type": "string"
+      },
+      "targetProjectId": {
+        "format": "uuid",
+        "title": "Targetprojectid",
+        "type": "string"
+      }
+    },
+    "required": [
+      "agent",
+      "targetProjectId",
+      "intent"
+    ],
+    "title": "AgentDialoguePreviewRequest",
+    "type": "object"
+  },
+  "AgentDialoguePreviewResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "agent": {
+        "$ref": "#/components/schemas/AgentDialogueContext"
+      },
+      "assistant": {
+        "$ref": "#/components/schemas/AssistantSettingsResponse"
+      },
+      "preview": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ProjectOperationPreviewResponse"
+          },
+          {
+            "$ref": "#/components/schemas/ProjectCreationPreviewResponse"
+          }
+        ],
+        "title": "Preview"
+      },
+      "targetProjectId": {
+        "format": "uuid",
+        "title": "Targetprojectid",
+        "type": "string"
+      }
+    },
+    "required": [
+      "agent",
+      "targetProjectId",
+      "assistant",
+      "preview"
+    ],
+    "title": "AgentDialoguePreviewResponse",
+    "type": "object"
+  },
   "AnswerModelOption": {
     "additionalProperties": false,
     "properties": {

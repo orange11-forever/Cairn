@@ -165,8 +165,8 @@ async function checkAuthenticatedShell() {
     "主导航应暴露真实项目工作台",
   );
   expect(
-    (await page.getByRole("navigation", { name: "主导航" }).getByRole("link").evaluateAll(links => links.map(link => link.getAttribute("href")))).join("|") === `${taskPath}|${taskPath.replace(/tasks$/, "knowledge")}`,
-    "主导航应指向当前项目的任务和知识页面",
+    (await page.getByRole("navigation", { name: "主导航" }).getByRole("link").evaluateAll(links => links.map(link => link.getAttribute("href")))).join("|") === `${taskPath}|${taskPath.replace(/tasks$/, "knowledge")}|${taskPath.replace(/tasks$/, "agents")}`,
+    "主导航应指向当前项目的任务、知识和智能体页面",
   );
   await page.locator(".account-menu summary").click();
   expect(await page.getByText("Cairn Demo").isVisible(), "账户菜单应显示当前组织");
@@ -306,7 +306,10 @@ async function checkFeishuSources() {
     }
   });
   await page.goto(`${WEB}/projects/${CORE_PROJECT_ID}/knowledge`, { waitUntil: "networkidle" });
-  await page.getByRole("link", { name: "来源与同步", exact: true }).click();
+  await page.locator("#knowledge-page-title").waitFor({ state: "attached" });
+  expect(await page.getByRole("link", { name: /来源与同步/, includeHidden: true }).count() === 0, "本轮应撤下飞书来源入口");
+  // Feishu entry points are deferred; keep existing source regression coverage via its direct route.
+  await page.goto(`${WEB}/projects/${CORE_PROJECT_ID}/knowledge/sources`, { waitUntil: "networkidle" });
   await installSourceFormDiagnostics(page, [FEISHU_DOCUMENT_ID, `https://team.feishu.cn/docx/${FEISHU_DOCUMENT_ID}`,
     "verify_feishu", "飞书浏览器验收"]);
   let created;
@@ -399,7 +402,7 @@ async function checkFeishuSources() {
   await snapshot.locator(".knowledge-document-body").getByText(FEISHU_PHRASE, { exact: false }).first().waitFor();
   expect(await snapshot.locator(".knowledge-document-body").innerText().then(text => text.includes(FEISHU_PHRASE)), "合成飞书快照应从真实全文接口读取");
 
-  await page.getByRole("link", { name: "来源与同步", exact: true }).click();
+  await page.goto(`${WEB}/projects/${CORE_PROJECT_ID}/knowledge/sources`, { waitUntil: "networkidle" });
   await page.getByRole("button", { name: /飞书浏览器验收/ }).click();
   await page.getByRole("button", { name: "编辑设置" }).click();
   const targetInterval = created.syncIntervalSeconds === 900 ? "300" : "900";
@@ -436,7 +439,7 @@ async function checkFeishuSources() {
   expect(await page.locator(".knowledge-search-result").filter({ hasText: FEISHU_PHRASE }).count() === 0,
     "旧飞书片段不能留在搜索界面");
 
-  await page.getByRole("link", { name: "来源与同步", exact: true }).click();
+  await page.goto(`${WEB}/projects/${CORE_PROJECT_ID}/knowledge/sources`, { waitUntil: "networkidle" });
   await page.getByRole("button", { name: /飞书浏览器验收/ }).click();
   const restore = page.getByRole("button", { name: "恢复来源" });
   expect(await restore.isDisabled(), "恢复来源必须重新确认共享");

@@ -1,11 +1,13 @@
+import { Link } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
+import { MessageCircle } from "lucide-react";
 import { importSkill, previewSkill, saveAssistantSettings, fetchAssistantSettings, createAssistant, selectAssistant, type SkillSource } from "../../api/assistantSkills.ts";
 import { useProjectConversations } from "./ProjectConversationsContext.tsx";
 import { AssistantAvatar, readAssistantAvatar } from "./AssistantAvatar.tsx";
 import { ApiError } from "../../api/errors.ts";
 
-export function AssistantSkills({ projectId, csrfToken, sessionSignal }: { projectId: string; csrfToken: string; sessionSignal: AbortSignal }) {
+export function AssistantSkills({ projectId, csrfToken, sessionSignal, standalone = false }: { projectId: string; csrfToken: string; sessionSignal: AbortSignal; standalone?: boolean }) {
   const state = useProjectConversations();
   const avatarSequence = useRef(0);
   const [avatarLoading, setAvatarLoading] = useState(false);
@@ -35,19 +37,20 @@ export function AssistantSkills({ projectId, csrfToken, sessionSignal }: { proje
       state!.setImportMode(selected.type); state!.setImportSource(selected); state!.setImportPreview(null); setError(null);
     } catch { setError("文件必须是有界 UTF-8 SKILL.md 或单个 ZIP 技能包。"); }
   }
-  return <details className="assistant-skills"><summary><span>助手与技能</span><span className="assistant-current-name" title={config?.name}>{config?.name ?? "岑宁"}</span></summary><div className="assistant-skills-content">
+  const content = <div className="assistant-skills-content">
     <div className="assistant-profile-controls">
       <AssistantAvatar name={config?.name ?? "岑宁"} avatarDataUrl={config?.avatarDataUrl} />
       <label>当前助手<select aria-label="当前助手" value={config?.id ?? ""} disabled={switchingDisabled} onChange={event => { const assistantId = event.target.value; if (!assistantId || config === undefined) return; void run(async signal => { state.setAssistantNeedsReload(true); const saved = await selectAssistant({ projectId, assistantId, expectedRevision: config.revision, csrfToken, signal }); signal.throwIfAborted(); state.applyAssistant(saved); void state.assistants.refetch(); state.setAssistantNeedsReload(false); setNotice(`已切换到${saved.name}，后续回答使用该助手。`); }); }}>
         {config?.id == null ? <option value="">{config?.name ?? "岑宁"}</option> : !state.assistants.data?.items.some(item => item.id === config.id) ? <option value={config.id}>{config.name}</option> : null}
         {state.assistants.data?.items.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
       </select></label>
-      <button type="button" disabled={switchingDisabled || (state.assistants.data?.items.length ?? 0) >= 20} onClick={() => void run(async signal => { state.setAssistantNeedsReload(true); const saved = await createAssistant({ projectId, csrfToken, signal, body: { expectedRevision: config!.revision, name: `助手 ${Math.max(state.assistants.data?.items.length ?? 0, 1) + 1}`, instructions: "", enabledSkillIds: [], modelId: null } }); signal.throwIfAborted(); state.applyAssistant(saved); void state.assistants.refetch(); state.setAssistantNeedsReload(false); setNotice("新助手已创建并选用，可继续编辑名称、模型、行为和技能。"); })}>新建助手</button>
+      <button className={standalone ? "assistant-create" : undefined} type="button" disabled={switchingDisabled || (state.assistants.data?.items.length ?? 0) >= 20} onClick={() => void run(async signal => { state.setAssistantNeedsReload(true); const saved = await createAssistant({ projectId, csrfToken, signal, body: { expectedRevision: config!.revision, name: `助手 ${Math.max(state.assistants.data?.items.length ?? 0, 1) + 1}`, instructions: "", enabledSkillIds: [], modelId: null } }); signal.throwIfAborted(); state.applyAssistant(saved); void state.assistants.refetch(); state.setAssistantNeedsReload(false); setNotice("新助手已创建并选用，可继续编辑名称、模型、行为和技能。"); })}>{standalone ? "新建智能体" : "新建助手"}</button>
+      {standalone && config !== undefined && !switchingDisabled ? <Link className="assistant-dialogue-start btn-primary" to={`/projects/${encodeURIComponent(projectId)}/agents/${config.id ?? "builtin"}/dialogue`}><MessageCircle size={18} aria-hidden="true"/><span>开始对话</span></Link> : null}
     </div>
     {state.assistantDraft !== null ? <p>请先保存或取消编辑，再切换或新建助手。</p> : null}
     {state.assistantNeedsReload && !operation.isPending ? <p role="status">助手切换或创建结果尚未确认，请先重新读取助手与技能。</p> : null}
     {changedAssistant ? <p role="alert">当前助手已在别处切换，未保存编辑仍保留。请取消编辑后再选择要修改的助手。</p> : null}
-    <p>技能只提供只读指导，不执行脚本、工具或项目写入。</p>
+    <p>{standalone ? "Skills 为知识问答和编程任务提供指导；执行命令仍需在代码工作区授权。" : "技能只提供只读指导，不执行脚本、工具或项目写入。"}</p>
     {editing === null ? <p role="status">正在读取助手配置…</p> : <form onSubmit={event => { event.preventDefault(); void run(async signal => { const { assistantId, ...body } = editing; if (assistantId !== (config?.id ?? null)) return; const saved = await saveAssistantSettings({ projectId, csrfToken, signal, body }); signal.throwIfAborted(); state.applyAssistant(saved); void state.assistants.refetch(); state.setAssistantDraft(null); setNotice("助手配置已保存。"); }); }}>
       <fieldset disabled={avatarLoading || operation.isPending || state.busy || state.assistantNeedsReload}>
       <div className="assistant-avatar-editor">
@@ -68,7 +71,7 @@ export function AssistantSkills({ projectId, csrfToken, sessionSignal }: { proje
         <option value="">服务端默认{defaultModel ? `（${defaultModel.name}）` : "（尚未配置）"}</option>
         {editing.modelId && !state.model.data?.models.some(item => item.id === editing.modelId) ? <option value={editing.modelId}>已不可用（{editing.modelId}）</option> : null}
         {state.model.data?.models.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-      </select><small>保存后用于下一轮回答，已有回答保留原模型记录。</small></label>
+      </select><small>{standalone ? "保存后用于后续问答和编程任务，已经开始的执行保留原配置。" : "保存后用于下一轮回答，已有回答保留原模型记录。"}</small></label>
       <label>行为说明<textarea aria-label="行为说明" maxLength={2000} rows={3} value={editing.instructions} onChange={event => state.setAssistantDraft({ ...editing, instructions: event.target.value })} /></label>
       <fieldset><legend>启用只读技能</legend>{state.skills.data?.items.map(item => <label className="assistant-skill-option" key={item.id}><input type="checkbox" aria-label={`启用：${item.name}`} disabled={!item.runnable} checked={editing.enabledSkillIds.includes(item.id)} onChange={event => state.setAssistantDraft({ ...editing, enabledSkillIds: event.target.checked ? [...editing.enabledSkillIds, item.id] : editing.enabledSkillIds.filter(id => id !== item.id) })} /><span>{item.name}<small>{item.description}{!item.runnable ? ` · ${item.warnings.join("；")}` : ""}</small></span></label>)}</fieldset>
       <div className="assistant-skill-actions"><button disabled={operation.isPending || changedAssistant} type="submit">保存助手配置</button><button type="button" onClick={() => state.setAssistantDraft(null)}>取消编辑</button></div>
@@ -89,5 +92,7 @@ export function AssistantSkills({ projectId, csrfToken, sessionSignal }: { proje
       state.setPendingImport(null); state.setImportPreview(null); await state.skills.refetch(); setNotice("技能已导入，尚未启用。请勾选并保存助手配置。");
     })}>{state.pendingImport === null ? "确认导入技能" : "重新确认导入结果（同一请求）"}</button>}
     {operation.isPending ? <p role="status">正在处理助手配置或技能…</p> : null}{error === null ? null : <p role="alert">{error}</p>}{notice === null ? null : <p role="status">{notice}</p>}
-  </div></details>;
+  </div>;
+  return standalone ? <section className="assistant-skills assistant-skills-page" aria-label="智能体配置">{content}</section> :
+    <details className="assistant-skills"><summary><span>助手与技能</span><span className="assistant-current-name" title={config?.name}>{config?.name ?? "岑宁"}</span></summary>{content}</details>;
 }
